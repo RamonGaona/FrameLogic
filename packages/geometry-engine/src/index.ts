@@ -1,1 +1,19 @@
-export {};
+export type {
+    Point3,
+  } from "./types/Point3";
+  
+  export type {
+    Vector3,
+  } from "./types/Vector3";
+  
+  export {
+    distanceBetweenPoints,
+  } from "./points/distanceBetweenPoints";
+  
+  export {
+    directionBetweenPoints,
+  } from "./points/directionBetweenPoints";
+  
+  export {
+    midpoint,
+  } from "./points/midpoint";
