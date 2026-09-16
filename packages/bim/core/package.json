@@ -4,9 +4,18 @@
     "private": true,
     "type": "module",
     "exports": {
-      ".": "./src/index.ts"
+        ".": "./src/index.ts"
     },
     "scripts": {
-      "typecheck": "tsc -p tsconfig.json --noEmit"
+        "typecheck": "tsc -p tsconfig.json --noEmit"
+    },
+    "dependencies": {
+        "@thatopen/components": "^3.4.8",
+        "@thatopen/fragments": "^3.4.7",
+        "three": "^0.184.0",
+        "web-ifc": "^0.0.77"
+    },
+    "devDependencies": {
+        "@types/three": "^0.184.0"
     }
-  }
+}
