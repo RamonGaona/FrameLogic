@@ -1,27 +1,42 @@
 import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 
-
 import {
   addSceneHelpers,
 } from "../helpers/addSceneHelpers";
 
+import {
+  ModelRegistry,
+} from "../models/ModelRegistry";
+
+
+// ============================================================
+// CREATE BIM CORE
+// ============================================================
 
 export async function createBimCore(
   container: HTMLElement,
 ) {
 
-  // ====================================================
+  // ==========================================================
   // COMPONENTS
-  // ====================================================
+  // ==========================================================
 
   const components =
     new OBC.Components();
 
 
-  // ====================================================
+  // ==========================================================
+  // MODEL REGISTRY
+  // ==========================================================
+
+  const modelRegistry =
+    new ModelRegistry();
+
+
+  // ==========================================================
   // WORLD
-  // ====================================================
+  // ==========================================================
 
   const worlds =
     components.get(
@@ -37,9 +52,9 @@ export async function createBimCore(
     >();
 
 
-  // ====================================================
+  // ==========================================================
   // SCENE
-  // ====================================================
+  // ==========================================================
 
   world.scene =
     new OBC.SimpleScene(
@@ -50,9 +65,9 @@ export async function createBimCore(
   world.scene.setup();
 
 
-  // ====================================================
+  // ==========================================================
   // RENDERER
-  // ====================================================
+  // ==========================================================
 
   world.renderer =
     new OBC.SimpleRenderer(
@@ -60,8 +75,9 @@ export async function createBimCore(
       container,
     );
 
-    const canvas =
-  world.renderer.three.domElement;
+
+  const canvas =
+    world.renderer.three.domElement;
 
 
   world.renderer.three.setPixelRatio(
@@ -72,9 +88,9 @@ export async function createBimCore(
   );
 
 
-  // ====================================================
+  // ==========================================================
   // CAMERA
-  // ====================================================
+  // ==========================================================
 
   world.camera =
     new OBC.SimpleCamera(
@@ -89,6 +105,10 @@ export async function createBimCore(
   world.camera.controls.minDistance =
     0.02;
 
+
+  // ==========================================================
+  // THREE CAMERA
+  // ==========================================================
 
   const cameraThree =
     world.camera.three;
@@ -108,21 +128,22 @@ export async function createBimCore(
 
 
     cameraThree.updateProjectionMatrix();
+
   }
 
 
-  // ====================================================
+  // ==========================================================
   // INITIALIZE COMPONENTS
-  // ====================================================
+  // ==========================================================
 
   components.init();
 
 
-  // ====================================================
-  // INITIAL CAMERA
-  // ====================================================
+  // ==========================================================
+  // INITIAL CAMERA POSITION
+  // ==========================================================
 
-  world.camera.controls.setLookAt(
+  await world.camera.controls.setLookAt(
     6,
     6,
     6,
@@ -133,9 +154,9 @@ export async function createBimCore(
   );
 
 
-  // ====================================================
+  // ==========================================================
   // HELPERS
-  // ====================================================
+  // ==========================================================
 
   const helpers =
     addSceneHelpers(
@@ -143,28 +164,28 @@ export async function createBimCore(
     );
 
 
-  // ====================================================
+  // ==========================================================
   // FRAGMENTS MANAGER
-  // ====================================================
+  // ==========================================================
 
   const fragments =
-  components.get(
-    OBC.FragmentsManager,
+    components.get(
+      OBC.FragmentsManager,
+    );
+
+
+  const workerUrl =
+    await OBC.FragmentsManager.getWorker();
+
+
+  fragments.init(
+    workerUrl,
   );
 
 
-const workerUrl =
-  await OBC.FragmentsManager.getWorker();
-
-
-fragments.init(
-  workerUrl,
-);
-
-
-  // ====================================================
+  // ==========================================================
   // UPDATE FRAGMENTS WHEN CAMERA MOVES
-  // ====================================================
+  // ==========================================================
 
   const updateFragments =
     () => {
@@ -180,12 +201,14 @@ fragments.init(
   );
 
 
-  // ====================================================
-  // CAMERA CHANGE
-  // ====================================================
+  // ==========================================================
+  // CAMERA CHANGED
+  // ==========================================================
 
   world.onCameraChanged.add(
-    (camera) => {
+    (
+      camera,
+    ) => {
 
       for (
         const [, model]
@@ -207,9 +230,9 @@ fragments.init(
   );
 
 
-  // ====================================================
+  // ==========================================================
   // IFC LOADER
-  // ====================================================
+  // ==========================================================
 
   const ifcLoader =
     components.get(
@@ -235,8 +258,8 @@ fragments.init(
 
       webIfc: {
 
-        // Las piezas de FrameLogic deben conservar
-        // el origen definido en el propio IFC.
+        // FrameLogic conserva el origen
+        // definido en el propio IFC.
         COORDINATE_TO_ORIGIN:
           false,
 
@@ -245,9 +268,9 @@ fragments.init(
     });
 
 
-  // ====================================================
+  // ==========================================================
   // LOAD IFC FILE
-  // ====================================================
+  // ==========================================================
 
   async function loadIfcFile(
     file: File,
@@ -274,73 +297,265 @@ fragments.init(
       );
 
 
+    // --------------------------------------------------------
+    // CAMERA
+    // --------------------------------------------------------
+
     model.useCamera(
       world.camera.three,
     );
 
+
+    // --------------------------------------------------------
+    // ADD TO SCENE
+    // --------------------------------------------------------
 
     world.scene.three.add(
       model.object,
     );
 
 
+    // --------------------------------------------------------
+    // REGISTER IN FRAMELOGIC
+    // --------------------------------------------------------
+
+    const loadedModel =
+      modelRegistry.register({
+
+        name:
+          file.name,
+
+        source:
+          "IFC",
+
+        visible:
+          true,
+
+
+        // ====================================================
+        // VISIBILITY
+        // ====================================================
+
+        setVisible:
+          (
+            visible,
+          ) => {
+
+            model.object.visible =
+              visible;
+
+
+            fragments.core.update(
+              true,
+            );
+
+          },
+
+
+        // ====================================================
+        // REMOVE
+        // ====================================================
+
+        remove:
+          () => {
+
+            world.scene.three.remove(
+              model.object,
+            );
+
+
+            fragments.core.update(
+              true,
+            );
+
+          },
+
+      });
+
+
+    // --------------------------------------------------------
+    // UPDATE FRAGMENTS
+    // --------------------------------------------------------
+
     await fragments.core.update(
       true,
     );
 
 
-    return model;
+    // --------------------------------------------------------
+    // IMPORTANT:
+    // We return our FrameLogic model information,
+    // not the internal That Open model.
+    // --------------------------------------------------------
+
+    return loadedModel;
+
   }
 
 
-  // ====================================================
+  // ==========================================================
+  // GET LOADED MODELS
+  // ==========================================================
+
+  function getLoadedModels() {
+
+    return modelRegistry
+      .getLoadedModels();
+
+  }
+
+
+  // ==========================================================
+  // GET MODEL
+  // ==========================================================
+
+  function getModel(
+    id: string,
+  ) {
+
+    return modelRegistry
+      .getModel(
+        id,
+      );
+
+  }
+
+
+  // ==========================================================
+  // MODEL VISIBILITY
+  // ==========================================================
+
+  function setModelVisible(
+    id: string,
+    visible: boolean,
+  ): boolean {
+
+    return modelRegistry
+      .setModelVisible(
+        id,
+        visible,
+      );
+
+  }
+
+
+  // ==========================================================
+  // REMOVE MODEL
+  // ==========================================================
+
+  function removeModel(
+    id: string,
+  ): boolean {
+
+    return modelRegistry
+      .removeModel(
+        id,
+      );
+
+  }
+
+
+  // ==========================================================
+  // CLEAR MODELS
+  // ==========================================================
+
+  function clearModels(): void {
+
+    modelRegistry
+      .clearModels();
+
+  }
+
+
+  // ==========================================================
   // DISPOSE
-  // ====================================================
+  // ==========================================================
 
   function dispose(): void {
+
+    // --------------------------------------------------------
+    // CAMERA EVENT
+    // --------------------------------------------------------
 
     world.camera.controls.removeEventListener(
       "update",
       updateFragments,
     );
-  
-  
+
+
+    // --------------------------------------------------------
+    // FRAMELOGIC MODELS
+    // --------------------------------------------------------
+
+    modelRegistry.clearModels();
+
+
+    // --------------------------------------------------------
+    // THAT OPEN
+    // --------------------------------------------------------
+
     components.dispose();
-  
-  
+
+
+    // --------------------------------------------------------
+    // REMOVE ONLY THIS BIM CORE CANVAS
+    //
+    // Do NOT use:
+    //
+    // container.replaceChildren()
+    //
+    // because React StrictMode can initialize two instances
+    // during development.
+    // --------------------------------------------------------
+
     if (
-      canvas.parentElement === container
+      canvas.parentElement
+      === container
     ) {
-  
+
       canvas.remove();
-  
+
     }
+
   }
 
 
-  // ====================================================
-  // PUBLIC BIM CORE API
-  // ====================================================
+  // ==========================================================
+  // PUBLIC API
+  // ==========================================================
 
   return {
 
+    // Infrastructure
     components,
-
     world,
-
     helpers,
 
+    // BIM
     fragments,
-
     ifcLoader,
 
+    // Loading
     loadIfcFile,
 
+    // Model Registry
+    getLoadedModels,
+    getModel,
+    setModelVisible,
+    removeModel,
+    clearModels,
+
+    // Lifecycle
     dispose,
 
   };
+
 }
 
+
+// ============================================================
+// PUBLIC INSTANCE TYPE
+// ============================================================
 
 export type BimCoreInstance =
   Awaited<

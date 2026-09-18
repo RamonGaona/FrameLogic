@@ -16,3 +16,8 @@ export {
   export type {
     SceneHelpers,
   } from "./helpers/addSceneHelpers";
+
+  export type {
+  LoadedModelInfo,
+  ModelSource,
+} from "./models/LoadedModel";
