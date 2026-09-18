@@ -4,16 +4,29 @@ import {
   useState,
 } from "react";
 
+import type {
+  ChangeEvent,
+} from "react";
+
 import {
   createBimCore,
 } from "@framelogic/bim-core";
 
 import type {
   BimCoreInstance,
+  LoadedModelInfo,
 } from "@framelogic/bim-core";
+
+import {
+  ModelPanel,
+} from "./components/ModelPanel";
 
 
 export function BimViewport() {
+
+  // ==========================================================
+  // REFERENCES
+  // ==========================================================
 
   const containerRef =
     useRef<HTMLDivElement>(
@@ -33,6 +46,10 @@ export function BimViewport() {
     );
 
 
+  // ==========================================================
+  // STATE
+  // ==========================================================
+
   const [
     loading,
     setLoading,
@@ -40,9 +57,46 @@ export function BimViewport() {
     useState(false);
 
 
-  // ====================================================
+  const [
+    models,
+    setModels,
+  ] =
+    useState<
+      LoadedModelInfo[]
+    >([]);
+
+
+  // ==========================================================
+  // REFRESH MODEL LIST
+  // ==========================================================
+
+  function refreshModels(): void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (!bimCore) {
+
+      setModels(
+        [],
+      );
+
+      return;
+
+    }
+
+
+    setModels(
+      bimCore.getLoadedModels(),
+    );
+
+  }
+
+
+  // ==========================================================
   // INITIALIZE BIM CORE
-  // ====================================================
+  // ==========================================================
 
   useEffect(
     () => {
@@ -51,7 +105,10 @@ export function BimViewport() {
         containerRef.current;
 
 
-      if (container === null) {
+      if (
+        container === null
+      ) {
+
         return;
       }
 
@@ -64,9 +121,13 @@ export function BimViewport() {
         container,
       )
         .then(
-          (instance) => {
+          (
+            instance,
+          ) => {
 
-            if (disposed) {
+            if (
+              disposed
+            ) {
 
               instance.dispose();
 
@@ -77,10 +138,17 @@ export function BimViewport() {
             bimCoreRef.current =
               instance;
 
+
+            setModels(
+              instance.getLoadedModels(),
+            );
+
           },
         )
         .catch(
-          (error: unknown) => {
+          (
+            error: unknown,
+          ) => {
 
             console.error(
               "Error initializing FrameLogic BIM Core:",
@@ -97,7 +165,8 @@ export function BimViewport() {
           true;
 
 
-        bimCoreRef.current?.dispose();
+        bimCoreRef.current
+          ?.dispose();
 
 
         bimCoreRef.current =
@@ -110,32 +179,36 @@ export function BimViewport() {
   );
 
 
-  // ====================================================
-  // OPEN FILE DIALOG
-  // ====================================================
+  // ==========================================================
+  // OPEN IFC
+  // ==========================================================
 
   function handleOpenIfc(): void {
 
-    fileInputRef.current?.click();
+    fileInputRef.current
+      ?.click();
 
   }
 
 
-  // ====================================================
-  // LOAD IFC
-  // ====================================================
+  // ==========================================================
+  // IFC SELECTED
+  // ==========================================================
 
   async function handleIfcSelected(
     event:
-      React.ChangeEvent<HTMLInputElement>,
+      ChangeEvent<HTMLInputElement>,
   ): Promise<void> {
 
     const file =
-      event.target.files?.[0];
+      event.target
+        .files?.[0];
 
 
     if (!file) {
+
       return;
+
     }
 
 
@@ -150,6 +223,7 @@ export function BimViewport() {
       );
 
       return;
+
     }
 
 
@@ -167,15 +241,19 @@ export function BimViewport() {
 
 
       const model =
-        await bimCore.loadIfcFile(
-          file,
-        );
+        await bimCore
+          .loadIfcFile(
+            file,
+          );
 
 
       console.log(
         "IFC loaded:",
         model,
       );
+
+
+      refreshModels();
 
     }
     catch (
@@ -195,18 +273,102 @@ export function BimViewport() {
       );
 
 
-      // Permite seleccionar otra vez
-      // el mismo archivo.
       event.target.value =
         "";
 
     }
+
   }
 
 
-  // ====================================================
+  // ==========================================================
+  // MODEL VISIBILITY
+  // ==========================================================
+
+  function handleVisibilityChange(
+    id: string,
+    visible: boolean,
+  ): void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (!bimCore) {
+
+      return;
+
+    }
+
+
+    bimCore.setModelVisible(
+      id,
+      visible,
+    );
+
+
+    refreshModels();
+
+  }
+
+
+  // ==========================================================
+  // REMOVE MODEL
+  // ==========================================================
+
+  function handleRemoveModel(
+    id: string,
+  ): void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (!bimCore) {
+
+      return;
+
+    }
+
+
+    bimCore.removeModel(
+      id,
+    );
+
+
+    refreshModels();
+
+  }
+
+
+  // ==========================================================
+  // CLEAR MODELS
+  // ==========================================================
+
+  function handleClearModels(): void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (!bimCore) {
+
+      return;
+
+    }
+
+
+    bimCore.clearModels();
+
+
+    refreshModels();
+
+  }
+
+
+  // ==========================================================
   // UI
-  // ====================================================
+  // ==========================================================
 
   return (
     <div
@@ -225,8 +387,12 @@ export function BimViewport() {
 
         <button
           type="button"
-          onClick={handleOpenIfc}
-          disabled={loading}
+          onClick={
+            handleOpenIfc
+          }
+          disabled={
+            loading
+          }
         >
 
           {
@@ -240,11 +406,33 @@ export function BimViewport() {
       </div>
 
 
+      <ModelPanel
+
+        models={
+          models
+        }
+
+        onVisibilityChange={
+          handleVisibilityChange
+        }
+
+        onRemove={
+          handleRemoveModel
+        }
+
+        onClear={
+          handleClearModels
+        }
+
+      />
+
+
       <input
         ref={fileInputRef}
         type="file"
         accept=".ifc"
         hidden
+
         onChange={
           (
             event,
