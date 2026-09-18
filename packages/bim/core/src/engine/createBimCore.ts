@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 
+
 import {
   addSceneHelpers,
 } from "../helpers/addSceneHelpers";
 
 
-export function createBimCore(
+export async function createBimCore(
   container: HTMLElement,
 ) {
 
@@ -19,7 +20,7 @@ export function createBimCore(
 
 
   // ====================================================
-  // WORLDS
+  // WORLD
   // ====================================================
 
   const worlds =
@@ -59,6 +60,9 @@ export function createBimCore(
       container,
     );
 
+    const canvas =
+  world.renderer.three.domElement;
+
 
   world.renderer.three.setPixelRatio(
     Math.min(
@@ -86,10 +90,6 @@ export function createBimCore(
     0.02;
 
 
-  // ====================================================
-  // THREE CAMERA
-  // ====================================================
-
   const cameraThree =
     world.camera.three;
 
@@ -112,14 +112,14 @@ export function createBimCore(
 
 
   // ====================================================
-  // INITIALIZE
+  // INITIALIZE COMPONENTS
   // ====================================================
 
   components.init();
 
 
   // ====================================================
-  // INITIAL CAMERA POSITION
+  // INITIAL CAMERA
   // ====================================================
 
   world.camera.controls.setLookAt(
@@ -144,31 +144,207 @@ export function createBimCore(
 
 
   // ====================================================
+  // FRAGMENTS MANAGER
+  // ====================================================
+
+  const fragments =
+  components.get(
+    OBC.FragmentsManager,
+  );
+
+
+const workerUrl =
+  await OBC.FragmentsManager.getWorker();
+
+
+fragments.init(
+  workerUrl,
+);
+
+
+  // ====================================================
+  // UPDATE FRAGMENTS WHEN CAMERA MOVES
+  // ====================================================
+
+  const updateFragments =
+    () => {
+
+      fragments.core.update();
+
+    };
+
+
+  world.camera.controls.addEventListener(
+    "update",
+    updateFragments,
+  );
+
+
+  // ====================================================
+  // CAMERA CHANGE
+  // ====================================================
+
+  world.onCameraChanged.add(
+    (camera) => {
+
+      for (
+        const [, model]
+        of fragments.list
+      ) {
+
+        model.useCamera(
+          camera.three,
+        );
+
+      }
+
+
+      fragments.core.update(
+        true,
+      );
+
+    },
+  );
+
+
+  // ====================================================
+  // IFC LOADER
+  // ====================================================
+
+  const ifcLoader =
+    components.get(
+      OBC.IfcLoader,
+    );
+
+
+  const ifcReady =
+    ifcLoader.setup({
+
+      autoSetWasm:
+        false,
+
+      wasm: {
+
+        path:
+          "/wasm/",
+
+        absolute:
+          true,
+
+      },
+
+      webIfc: {
+
+        // Las piezas de FrameLogic deben conservar
+        // el origen definido en el propio IFC.
+        COORDINATE_TO_ORIGIN:
+          false,
+
+      },
+
+    });
+
+
+  // ====================================================
+  // LOAD IFC FILE
+  // ====================================================
+
+  async function loadIfcFile(
+    file: File,
+  ) {
+
+    await ifcReady;
+
+
+    const arrayBuffer =
+      await file.arrayBuffer();
+
+
+    const data =
+      new Uint8Array(
+        arrayBuffer,
+      );
+
+
+    const model =
+      await ifcLoader.load(
+        data,
+        false,
+        file.name,
+      );
+
+
+    model.useCamera(
+      world.camera.three,
+    );
+
+
+    world.scene.three.add(
+      model.object,
+    );
+
+
+    await fragments.core.update(
+      true,
+    );
+
+
+    return model;
+  }
+
+
+  // ====================================================
   // DISPOSE
   // ====================================================
 
   function dispose(): void {
 
+    world.camera.controls.removeEventListener(
+      "update",
+      updateFragments,
+    );
+  
+  
     components.dispose();
-
-    container.replaceChildren();
+  
+  
+    if (
+      canvas.parentElement === container
+    ) {
+  
+      canvas.remove();
+  
+    }
   }
 
 
   // ====================================================
-  // PUBLIC API
+  // PUBLIC BIM CORE API
   // ====================================================
 
   return {
+
     components,
+
     world,
+
     helpers,
+
+    fragments,
+
+    ifcLoader,
+
+    loadIfcFile,
+
     dispose,
+
   };
 }
 
 
 export type BimCoreInstance =
-  ReturnType<
-    typeof createBimCore
+  Awaited<
+    ReturnType<
+      typeof createBimCore
+    >
   >;
