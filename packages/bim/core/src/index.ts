@@ -18,6 +18,7 @@ export {
   } from "./helpers/addSceneHelpers";
 
   export type {
-  LoadedModelInfo,
-  ModelSource,
-} from "./models/LoadedModel";
+    LoadedModelInfo,
+    ModelRole,
+    ModelSource,
+  } from "./models/LoadedModel";

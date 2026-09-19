@@ -1,24 +1,31 @@
 import type {
-    LoadedModelInfo,
-    ModelSource,
-  } from "./LoadedModel";
+  LoadedModelInfo,
+  ModelRole,
+  ModelSource,
+} from "./LoadedModel";
   
   
-  interface ModelEntry {
-    id: string;
-    name: string;
-    source: ModelSource;
-    visible: boolean;
-  
-    setVisible:
-      (
-        visible: boolean,
-      ) => void;
-  
-    remove:
-      () => void;
-  }
-  
+interface ModelEntry {
+
+  id: string;
+
+  name: string;
+
+  source: ModelSource;
+
+  role: ModelRole;
+
+  visible: boolean;
+
+  setVisible:
+    (
+      visible: boolean,
+    ) => void;
+
+  remove:
+    () => void;
+
+}
   
   export interface RegisterModelInput {
     id?: string;
@@ -26,6 +33,8 @@ import type {
     name: string;
   
     source: ModelSource;
+
+    role: ModelRole;
   
     visible?: boolean;
   
@@ -83,6 +92,9 @@ import type {
   
         source:
           input.source,
+
+          role:
+  input.role,
   
         visible:
           input.visible
@@ -257,6 +269,9 @@ import type {
   
         source:
           model.source,
+
+          role:
+  model.role,
   
         visible:
           model.visible,

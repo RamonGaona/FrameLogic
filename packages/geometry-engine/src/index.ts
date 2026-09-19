@@ -17,3 +17,13 @@ export type {
   export {
     midpoint,
   } from "./points/midpoint";
+  
+  export type {
+    Rotation3,
+    Transform3D,
+  } from "./types/Transform3D";
+  
+  
+  export {
+    createIdentityTransform3D,
+  } from "./types/Transform3D";

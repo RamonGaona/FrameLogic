@@ -9,6 +9,10 @@ import {
   ModelRegistry,
 } from "../models/ModelRegistry";
 
+import {
+  DesignModel,
+} from "@framelogic/domain";
+
 
 // ============================================================
 // CREATE BIM CORE
@@ -24,6 +28,13 @@ export async function createBimCore(
 
   const components =
     new OBC.Components();
+
+    // ==========================================================
+// DESIGN MODEL
+// ==========================================================
+
+const designModel =
+new DesignModel();
 
 
   // ==========================================================
@@ -328,6 +339,9 @@ export async function createBimCore(
         source:
           "IFC",
 
+          role:
+  "REFERENCE",
+
         visible:
           true,
 
@@ -489,6 +503,7 @@ export async function createBimCore(
 
     modelRegistry.clearModels();
 
+    designModel.clear();
 
     // --------------------------------------------------------
     // THAT OPEN
@@ -526,28 +541,29 @@ export async function createBimCore(
 
   return {
 
+    // FrameLogic domain
+    designModel,
+  
     // Infrastructure
     components,
     world,
     helpers,
-
+  
     // BIM
     fragments,
     ifcLoader,
-
-    // Loading
+  
+    // Reference models
     loadIfcFile,
-
-    // Model Registry
     getLoadedModels,
     getModel,
     setModelVisible,
     removeModel,
     clearModels,
-
+  
     // Lifecycle
     dispose,
-
+  
   };
 
 }

@@ -21,6 +21,7 @@ import type {
   
     onClear:
       () => void;
+  
   }
   
   
@@ -38,6 +39,10 @@ import type {
         className="model-panel"
       >
   
+        {/* ===================================================
+            HEADER
+        =================================================== */}
+  
         <div
           className="model-panel-header"
         >
@@ -52,6 +57,10 @@ import type {
   
         </div>
   
+  
+        {/* ===================================================
+            MODEL LIST
+        =================================================== */}
   
         {
           models.length === 0
@@ -78,14 +87,20 @@ import type {
                           className="model-row"
                         >
   
+                          {/* ===============================
+                              VISIBILITY
+                          =============================== */}
+  
                           <button
                             type="button"
                             className="model-visibility-button"
+  
                             title={
                               model.visible
                                 ? "Ocultar modelo"
                                 : "Mostrar modelo"
                             }
+  
                             onClick={
                               () => {
   
@@ -107,6 +122,10 @@ import type {
                           </button>
   
   
+                          {/* ===============================
+                              MODEL INFORMATION
+                          =============================== */}
+  
                           <div
                             className="model-info"
                           >
@@ -118,19 +137,31 @@ import type {
                               {model.name}
                             </div>
   
+  
                             <div
                               className="model-source"
                             >
+  
                               {model.source}
+  
+                              {" · "}
+  
+                              {model.role}
+  
                             </div>
   
                           </div>
   
   
+                          {/* ===============================
+                              REMOVE MODEL
+                          =============================== */}
+  
                           <button
                             type="button"
                             className="model-remove-button"
                             title="Eliminar modelo"
+  
                             onClick={
                               () => {
   
@@ -155,6 +186,10 @@ import type {
         }
   
   
+        {/* ===================================================
+            CLEAR ALL
+        =================================================== */}
+  
         {
           models.length > 0
           && (
@@ -170,4 +205,5 @@ import type {
   
       </div>
     );
+  
   }
