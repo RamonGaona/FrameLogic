@@ -11,6 +11,42 @@ import type {
 
 
 // ============================================================
+// SURFACE HIT
+// ============================================================
+
+export interface DesignSurfaceHit {
+
+  readonly point:
+    THREE.Vector3;
+
+  readonly distance:
+    number;
+
+  readonly modelId:
+    string;
+
+  readonly localId:
+    number;
+
+}
+
+
+// ============================================================
+// SURFACE PICKER
+// ============================================================
+
+export type DesignSurfacePicker =
+  (
+    clientX: number,
+    clientY: number,
+  ) =>
+    Promise<
+      DesignSurfaceHit
+      | null
+    >;
+
+
+// ============================================================
 // DESIGN PLACEMENT CONTROLLER
 // ============================================================
 
@@ -40,8 +76,12 @@ export class DesignPlacementController {
     DesignSceneController;
 
 
+  private readonly surfacePicker:
+    DesignSurfacePicker;
+
+
   // ==========================================================
-  // RAYCAST
+  // FALLBACK RAYCAST
   // ==========================================================
 
   private readonly raycaster =
@@ -53,9 +93,9 @@ export class DesignPlacementController {
 
 
   // ==========================================================
-  // WORK PLANE
+  // FALLBACK WORK PLANE
   //
-  // Horizontal XZ plane:
+  // Horizontal plane:
   //
   // Y = 0
   // ==========================================================
@@ -97,16 +137,27 @@ export class DesignPlacementController {
       null;
 
 
-      private resolver:
+  private resolver:
+    (
       (
-        (
-          result:
-            PieceInstance
-            | null,
-        ) => void
-      )
-      | null =
-        null;
+        result:
+          PieceInstance
+          | null,
+      ) => void
+    )
+    | null =
+      null;
+
+
+  // ==========================================================
+  // ASYNC PICK CONTROL
+  //
+  // Evita que un raycast antiguo mueva la pieza después
+  // de haber llegado un resultado más reciente.
+  // ==========================================================
+
+  private pickRequestId =
+    0;
 
 
   // ==========================================================
@@ -139,6 +190,7 @@ export class DesignPlacementController {
     cameraProvider: () => THREE.Camera,
     designModel: DesignModel,
     designScene: DesignSceneController,
+    surfacePicker: DesignSurfacePicker,
   ) {
 
     this.scene =
@@ -159,6 +211,10 @@ export class DesignPlacementController {
 
     this.designScene =
       designScene;
+
+
+    this.surfacePicker =
+      surfacePicker;
 
 
     this.domElement.addEventListener(
@@ -278,10 +334,6 @@ export class DesignPlacementController {
 
     // --------------------------------------------------------
     // CREATE PREVIEW
-    //
-    // Hierarchy is cloned.
-    // Geometry remains shared.
-    // Materials are cloned because opacity is preview-only.
     // --------------------------------------------------------
 
     const preview =
@@ -298,13 +350,23 @@ export class DesignPlacementController {
       false;
 
 
+    // --------------------------------------------------------
+    // PREVIEW MATERIAL
+    //
+    // Geometría compartida.
+    // Material independiente semitransparente.
+    // --------------------------------------------------------
+
     preview.traverse(
       (
         child,
       ) => {
 
         if (
-          !(child instanceof THREE.Mesh)
+          !(
+            child
+            instanceof THREE.Mesh
+          )
         ) {
 
           return;
@@ -376,7 +438,7 @@ export class DesignPlacementController {
 
 
     // --------------------------------------------------------
-    // WAIT FOR CLICK OR CANCEL
+    // WAIT FOR CLICK / CANCEL
     // --------------------------------------------------------
 
     return new Promise<
@@ -431,16 +493,171 @@ export class DesignPlacementController {
 
 
   // ==========================================================
-  // UPDATE POINTER POSITION
+  // SET PREVIEW POINT
   // ==========================================================
 
-  private updatePointerPosition(
+  private setPreviewPoint(
+    point:
+      THREE.Vector3,
+  ): void {
+
+    const preview =
+      this.preview;
+
+
+    if (
+      !preview
+    ) {
+
+      return;
+
+    }
+
+
+    preview.position.set(
+      point.x,
+      point.y,
+      point.z,
+    );
+
+
+    preview.visible =
+      true;
+
+
+    preview.updateMatrix();
+
+
+    preview.updateMatrixWorld(
+      true,
+    );
+
+
+    this.currentPoint =
+      point.clone();
+
+  }
+
+
+  // ==========================================================
+  // UPDATE POINTER POSITION
+  //
+  // ORDER:
+  //
+  // 1. IFC reference surface
+  // 2. Fallback work plane Y = 0
+  // ==========================================================
+
+  private async updatePointerPosition(
+    event:
+      PointerEvent,
+  ): Promise<boolean> {
+
+    if (
+      !this.preview
+      || !this.isPlacing
+    ) {
+
+      return false;
+
+    }
+
+
+    const requestId =
+      ++this.pickRequestId;
+
+
+    // --------------------------------------------------------
+    // 1. TRY IFC REFERENCE SURFACE
+    // --------------------------------------------------------
+
+    let surfaceHit:
+      DesignSurfaceHit
+      | null =
+        null;
+
+
+    try {
+
+      surfaceHit =
+        await this.surfacePicker(
+          event.clientX,
+          event.clientY,
+        );
+
+    }
+    catch (
+      error
+    ) {
+
+      console.error(
+        "Reference surface raycast failed:",
+        error,
+      );
+
+    }
+
+
+    // --------------------------------------------------------
+    // IGNORE OLD ASYNC RESULT
+    // --------------------------------------------------------
+
+    if (
+      requestId
+      !== this.pickRequestId
+      || !this.preview
+      || !this.isPlacing
+    ) {
+
+      return false;
+
+    }
+
+
+    // --------------------------------------------------------
+    // IFC SURFACE FOUND
+    // --------------------------------------------------------
+
+    if (
+      surfaceHit
+    ) {
+
+      this.setPreviewPoint(
+        surfaceHit.point,
+      );
+
+
+      return true;
+
+    }
+
+
+    // --------------------------------------------------------
+    // 2. FALLBACK TO Y = 0
+    // --------------------------------------------------------
+
+    return this.updateFromWorkPlane(
+      event,
+    );
+
+  }
+
+
+  // ==========================================================
+  // FALLBACK WORK PLANE
+  // ==========================================================
+
+  private updateFromWorkPlane(
     event:
       PointerEvent,
   ): boolean {
 
+    const preview =
+      this.preview;
+
+
     if (
-      !this.preview
+      !preview
     ) {
 
       return false;
@@ -517,7 +734,7 @@ export class DesignPlacementController {
       !intersection
     ) {
 
-      this.preview.visible =
+      preview.visible =
         false;
 
 
@@ -530,31 +747,9 @@ export class DesignPlacementController {
     }
 
 
-    // --------------------------------------------------------
-    // PREVIEW POSITION
-    // --------------------------------------------------------
-
-    this.preview.position.set(
-      intersection.x,
-      intersection.y,
-      intersection.z,
+    this.setPreviewPoint(
+      intersection,
     );
-
-
-    this.preview.visible =
-      true;
-
-
-    this.preview.updateMatrix();
-
-
-    this.preview.updateMatrixWorld(
-      true,
-    );
-
-
-    this.currentPoint =
-      intersection.clone();
 
 
     return true;
@@ -581,7 +776,7 @@ export class DesignPlacementController {
       }
 
 
-      this.updatePointerPosition(
+      void this.updatePointerPosition(
         event,
       );
 
@@ -632,81 +827,105 @@ export class DesignPlacementController {
         PointerEvent,
     ): void => {
 
-      if (
-        !this.isPlacing
-        || event.button !== 0
-        || !this.pointerDownActive
-      ) {
-
-        return;
-
-      }
-
-
-      this.pointerDownActive =
-        false;
-
-
-      // ------------------------------------------------------
-      // DISTINGUISH CLICK FROM CAMERA DRAG
-      // ------------------------------------------------------
-
-      const dx =
-        event.clientX
-        - this.pointerDownX;
-
-
-      const dy =
-        event.clientY
-        - this.pointerDownY;
-
-
-      const movement =
-        Math.hypot(
-          dx,
-          dy,
-        );
-
-
-      if (
-        movement > 5
-      ) {
-
-        return;
-
-      }
-
-
-      // Make sure point corresponds to final mouse position.
-      if (
-        !this.updatePointerPosition(
-          event,
-        )
-      ) {
-
-        return;
-
-      }
-
-
-      const point =
-        this.currentPoint;
-
-
-      if (
-        !point
-      ) {
-
-        return;
-
-      }
-
-
-      this.confirmPlacement(
-        point,
+      void this.processPointerUp(
+        event,
       );
 
     };
+
+
+  // ==========================================================
+  // PROCESS POINTER UP
+  // ==========================================================
+
+  private async processPointerUp(
+    event:
+      PointerEvent,
+  ): Promise<void> {
+
+    if (
+      !this.isPlacing
+      || event.button !== 0
+      || !this.pointerDownActive
+    ) {
+
+      return;
+
+    }
+
+
+    this.pointerDownActive =
+      false;
+
+
+    // --------------------------------------------------------
+    // DISTINGUISH CLICK FROM CAMERA DRAG
+    // --------------------------------------------------------
+
+    const dx =
+      event.clientX
+      - this.pointerDownX;
+
+
+    const dy =
+      event.clientY
+      - this.pointerDownY;
+
+
+    const movement =
+      Math.hypot(
+        dx,
+        dy,
+      );
+
+
+    if (
+      movement > 5
+    ) {
+
+      return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // FINAL PICK
+    // --------------------------------------------------------
+
+    const updated =
+      await this.updatePointerPosition(
+        event,
+      );
+
+
+    if (
+      !updated
+    ) {
+
+      return;
+
+    }
+
+
+    const point =
+      this.currentPoint
+        ?.clone();
+
+
+    if (
+      !point
+    ) {
+
+      return;
+
+    }
+
+
+    this.confirmPlacement(
+      point,
+    );
+
+  }
 
 
   // ==========================================================
@@ -715,6 +934,10 @@ export class DesignPlacementController {
 
   private readonly handlePointerLeave =
     (): void => {
+
+      // Invalidamos raycasts pendientes.
+      ++this.pickRequestId;
+
 
       if (
         this.preview
@@ -835,14 +1058,14 @@ export class DesignPlacementController {
 
 
     // --------------------------------------------------------
-    // DOMAIN -> SCENE
+    // DOMAIN -> VISUAL SCENE
     // --------------------------------------------------------
 
     this.designScene.sync();
 
 
     // --------------------------------------------------------
-    // RESOLVE PROMISE
+    // RESOLVE
     // --------------------------------------------------------
 
     const resolver =
@@ -894,6 +1117,10 @@ export class DesignPlacementController {
 
   private finishPlacement(): void {
 
+    // Invalidamos cualquier raycast pendiente.
+    ++this.pickRequestId;
+
+
     // --------------------------------------------------------
     // REMOVE PREVIEW
     // --------------------------------------------------------
@@ -939,7 +1166,7 @@ export class DesignPlacementController {
 
 
     // --------------------------------------------------------
-    // RESTORE CURSOR
+    // CURSOR
     // --------------------------------------------------------
 
     this.domElement.style.cursor =
@@ -955,8 +1182,8 @@ export class DesignPlacementController {
   // ==========================================================
   // DISPOSE PREVIEW MATERIALS
   //
-  // Geometry is NOT disposed because it belongs to the
-  // reusable asset prototype.
+  // Geometry must NOT be disposed because it is shared
+  // with the reusable PieceDefinition prototype.
   // ==========================================================
 
   private disposePreviewMaterials(
@@ -970,7 +1197,10 @@ export class DesignPlacementController {
       ) => {
 
         if (
-          !(child instanceof THREE.Mesh)
+          !(
+            child
+            instanceof THREE.Mesh
+          )
         ) {
 
           return;
@@ -1013,6 +1243,10 @@ export class DesignPlacementController {
   dispose(): void {
 
     this.cancelPlacement();
+
+
+    // Invalidamos también cualquier callback async pendiente.
+    ++this.pickRequestId;
 
 
     this.domElement.removeEventListener(

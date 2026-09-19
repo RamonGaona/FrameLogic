@@ -2,13 +2,6 @@ export {
   createBimCore,
 } from "./engine/createBimCore";
 
-
-export type {
-  BimCoreInstance,
-  ImportDesignPieceIfcInput,
-} from "./engine/createBimCore";
-
-
 export {
   addSceneHelpers,
 } from "./helpers/addSceneHelpers";
@@ -33,3 +26,16 @@ export type {
 export {
   DesignPlacementController,
 } from "./interaction/DesignPlacementController";
+
+export type {
+  DesignSurfaceHit,
+  DesignSurfacePicker,
+} from "./interaction/DesignPlacementController";
+
+export type {
+  BimCoreInstance,
+  ImportDesignPieceIfcInput,
+  StandardView,
+  CardinalDirection,
+  CameraOrientation,
+} from "./engine/createBimCore";

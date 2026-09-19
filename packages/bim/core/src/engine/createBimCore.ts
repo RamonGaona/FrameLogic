@@ -6,6 +6,10 @@ import {
   DesignPlacementController,
 } from "../interaction/DesignPlacementController";
 
+import type {
+  DesignSurfaceHit,
+} from "../interaction/DesignPlacementController";
+
 import {
   DesignModel,
 } from "@framelogic/domain";
@@ -26,6 +30,24 @@ import {
   DesignSceneController,
 } from "../design/DesignSceneController";
 
+export type StandardView =
+  | "TOP"
+  | "BOTTOM"
+  | "FRONT"
+  | "BACK"
+  | "LEFT"
+  | "RIGHT"
+  | "ISO";
+
+  export interface CameraOrientation {
+
+    readonly azimuth:
+      number;
+  
+    readonly polar:
+      number;
+  
+  }
 
 // ============================================================
 // TYPES
@@ -105,6 +127,73 @@ export async function createBimCore(
 
 
   world.scene.setup();
+
+  // ==========================================================
+// CARDINAL CAMERA DIRECTION
+// ==========================================================
+
+async function setCardinalDirection(
+  direction:
+    CardinalDirection,
+): Promise<void> {
+
+  const controls =
+    world.camera.controls;
+
+
+  const polar =
+    controls.polarAngle;
+
+
+  let azimuth:
+    number;
+
+
+  switch (
+    direction
+  ) {
+
+    case "N":
+
+      azimuth =
+        0;
+
+      break;
+
+
+    case "E":
+
+      azimuth =
+        Math.PI / 2;
+
+      break;
+
+
+    case "S":
+
+      azimuth =
+        Math.PI;
+
+      break;
+
+
+    case "W":
+
+      azimuth =
+        -Math.PI / 2;
+
+      break;
+
+  }
+
+
+  await controls.rotateTo(
+    azimuth,
+    polar,
+    true,
+  );
+
+}
 
 
   // ==========================================================
@@ -206,20 +295,6 @@ export async function createBimCore(
     0,
   );
 
-  // ==========================================================
-// DESIGN PLACEMENT
-// ==========================================================
-
-const designPlacement =
-new DesignPlacementController(
-  world.scene.three,
-  canvas,
-  () =>
-    world.camera.three,
-  designModel,
-  designScene,
-);
-
 
   // ==========================================================
   // HELPERS
@@ -249,6 +324,260 @@ new DesignPlacementController(
     workerUrl,
   );
 
+  // ==========================================================
+// REFERENCE SURFACE RAYCAST
+//
+// FrameLogic hace raycast modelo por modelo.
+// Esto permite:
+// - múltiples IFC de referencia
+// - escoger siempre el impacto más cercano
+// - evitar depender del raycaster global para multi-model
+// ==========================================================
+
+const referenceRaycaster =
+new THREE.Raycaster();
+
+
+const referencePointer =
+new THREE.Vector2();
+
+
+async function pickReferenceSurface(
+clientX: number,
+clientY: number,
+): Promise<
+DesignSurfaceHit
+| null
+> {
+
+// --------------------------------------------------------
+// FIND NEAREST FRAGMENTS HIT
+// --------------------------------------------------------
+
+let bestHit:
+  {
+    readonly modelId:
+      string;
+
+    readonly localId:
+      number;
+
+    readonly distance:
+      number;
+  }
+  | null =
+    null;
+
+
+const rawMouse =
+  new THREE.Vector2(
+    clientX,
+    clientY,
+  );
+
+
+for (
+  const [, model]
+  of fragments.list
+) {
+
+  // ------------------------------------------------------
+  // IGNORE HIDDEN REFERENCE MODELS
+  // ------------------------------------------------------
+
+  if (
+    !model.object.visible
+  ) {
+
+    continue;
+
+  }
+
+
+  try {
+
+    const hit =
+      await model.raycast({
+
+        camera:
+          world.camera.three,
+
+        mouse:
+          rawMouse,
+
+        dom:
+          canvas,
+
+      });
+
+
+    if (
+      !hit
+    ) {
+
+      continue;
+
+    }
+
+
+    if (
+      typeof hit.localId
+      !== "number"
+      || typeof hit.distance
+      !== "number"
+    ) {
+
+      continue;
+
+    }
+
+
+    if (
+      !bestHit
+      || hit.distance
+        < bestHit.distance
+    ) {
+
+      bestHit = {
+
+        modelId:
+          model.modelId,
+
+        localId:
+          hit.localId,
+
+        distance:
+          hit.distance,
+
+      };
+
+    }
+
+  }
+  catch (
+    error
+  ) {
+
+    console.error(
+      `Raycast failed for reference model "${model.modelId}":`,
+      error,
+    );
+
+  }
+
+}
+
+
+if (
+  !bestHit
+) {
+
+  return null;
+
+}
+
+
+// --------------------------------------------------------
+// SCREEN -> NDC
+//
+// model.raycast() uses raw client coordinates.
+// THREE.Raycaster uses normalized device coordinates.
+// --------------------------------------------------------
+
+const rect =
+  canvas.getBoundingClientRect();
+
+
+if (
+  rect.width <= 0
+  || rect.height <= 0
+) {
+
+  return null;
+
+}
+
+
+referencePointer.x =
+  (
+    (
+      clientX
+      - rect.left
+    )
+    / rect.width
+  )
+  * 2
+  - 1;
+
+
+referencePointer.y =
+  -(
+    (
+      clientY
+      - rect.top
+    )
+    / rect.height
+  )
+  * 2
+  + 1;
+
+
+// --------------------------------------------------------
+// RECONSTRUCT WORLD POINT FROM DISTANCE
+// --------------------------------------------------------
+
+referenceRaycaster.setFromCamera(
+  referencePointer,
+  world.camera.three,
+);
+
+
+const point =
+  referenceRaycaster.ray.at(
+    bestHit.distance,
+    new THREE.Vector3(),
+  );
+
+
+return {
+
+  point,
+
+  distance:
+    bestHit.distance,
+
+  modelId:
+    bestHit.modelId,
+
+  localId:
+    bestHit.localId,
+
+};
+
+}
+
+
+// ==========================================================
+// DESIGN PLACEMENT
+// ==========================================================
+
+const designPlacement =
+new DesignPlacementController(
+
+  world.scene.three,
+
+  canvas,
+
+  () =>
+    world.camera.three,
+
+  designModel,
+
+  designScene,
+
+  pickReferenceSurface,
+
+);
 
   // ==========================================================
   // UPDATE FRAGMENTS WHEN CAMERA MOVES
@@ -1006,6 +1335,190 @@ function cancelDesignPiecePlacement(): void {
 
   }
 
+  // ==========================================================
+// STANDARD CAMERA VIEW
+// ==========================================================
+
+async function setStandardView(
+  view: StandardView,
+): Promise<void> {
+
+  const controls =
+    world.camera.controls;
+
+
+  const currentAzimuth =
+    controls.azimuthAngle;
+
+  switch (
+    view
+  ) {
+
+    // ------------------------------------------------------
+    // TOP / BOTTOM
+    //
+    // Mantienen el azimut actual.
+    // Solo cambia la inclinación.
+    // ------------------------------------------------------
+
+    case "TOP":
+
+      await controls.rotateTo(
+        currentAzimuth,
+        0,
+        true,
+      );
+
+      break;
+
+
+    case "BOTTOM":
+
+      await controls.rotateTo(
+        currentAzimuth,
+        Math.PI,
+        true,
+      );
+
+      break;
+
+
+    // ------------------------------------------------------
+    // ISO
+    //
+    // Mantiene también la dirección horizontal actual.
+    // Solo coloca una inclinación isométrica.
+    // ------------------------------------------------------
+
+    case "ISO":
+
+      await controls.rotateTo(
+        currentAzimuth,
+        Math.acos(
+          1 / Math.sqrt(3),
+        ),
+        true,
+      );
+
+      break;
+
+
+    // ------------------------------------------------------
+    // SIDE VIEWS
+    // ------------------------------------------------------
+
+    case "FRONT":
+
+      await controls.rotateTo(
+        0,
+        Math.PI / 2,
+        true,
+      );
+
+      break;
+
+
+      case "RIGHT":
+
+      await controls.rotateTo(
+        -Math.PI / 2,
+        Math.PI / 2,
+        true,
+      );
+    
+      break;
+
+
+    case "BACK":
+
+      await controls.rotateTo(
+        Math.PI,
+        Math.PI / 2,
+        true,
+      );
+
+      break;
+
+
+    case "LEFT":
+
+      await controls.rotateTo(
+        Math.PI / 2,
+        Math.PI / 2,
+        true,
+      );
+
+      break;
+
+  }
+
+}
+
+// ==========================================================
+// CAMERA ORIENTATION
+// ==========================================================
+
+function getCameraOrientation():
+  CameraOrientation {
+
+  return {
+
+    azimuth:
+      world.camera.controls
+        .azimuthAngle,
+
+    polar:
+      world.camera.controls
+        .polarAngle,
+
+  };
+
+}
+
+
+// ==========================================================
+// SUBSCRIBE CAMERA ORIENTATION
+// ==========================================================
+
+function subscribeCameraOrientation(
+  callback:
+    (
+      orientation:
+        CameraOrientation,
+    ) => void,
+): () => void {
+
+  const handleUpdate =
+    (): void => {
+
+      callback(
+        getCameraOrientation(),
+      );
+
+    };
+
+
+  world.camera.controls.addEventListener(
+    "update",
+    handleUpdate,
+  );
+
+
+  // Estado inicial
+  handleUpdate();
+
+
+  return () => {
+
+    world.camera.controls.removeEventListener(
+      "update",
+      handleUpdate,
+    );
+
+  };
+
+}
+
 
   // ==========================================================
   // DISPOSE
@@ -1148,7 +1661,14 @@ function cancelDesignPiecePlacement(): void {
 
     cancelDesignPiecePlacement,
 
+    // Camera
+setStandardView,
 
+setCardinalDirection,
+
+getCameraOrientation,
+
+subscribeCameraOrientation,
     // --------------------------------------------------------
     // LIFECYCLE
     // --------------------------------------------------------
@@ -1170,3 +1690,9 @@ export type BimCoreInstance =
       typeof createBimCore
     >
   >;
+
+  export type CardinalDirection =
+  | "N"
+  | "E"
+  | "S"
+  | "W";

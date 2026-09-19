@@ -14,12 +14,18 @@ import {
 
 import type {
   BimCoreInstance,
+  CameraOrientation,
+  CardinalDirection,
   LoadedModelInfo,
 } from "@framelogic/bim-core";
 
 import {
   ModelPanel,
 } from "./components/ModelPanel";
+
+import {
+  ViewCube,
+} from "./components/ViewCube";
 
 
 // ============================================================
@@ -54,6 +60,72 @@ export function BimViewport() {
       null,
     );
 
+    // ==========================================================
+// CARDINAL VIEW
+// ==========================================================
+
+function handleCardinalDirection(
+  direction:
+    CardinalDirection,
+): void {
+
+  const bimCore =
+    bimCoreRef.current;
+
+
+  if (
+    !bimCore
+  ) {
+
+    return;
+
+  }
+
+
+  void bimCore
+    .setCardinalDirection(
+      direction,
+    );
+
+}
+
+    function handleStandardView(
+      view:
+        import("@framelogic/bim-core").StandardView,
+    ): void {
+    
+      const bimCore =
+        bimCoreRef.current;
+    
+    
+      if (
+        !bimCore
+      ) {
+    
+        return;
+    
+      }
+    
+    
+      void bimCore.setStandardView(
+        view,
+      );
+    
+    }
+
+    const [
+      cameraOrientation,
+      setCameraOrientation,
+    ] =
+      useState<CameraOrientation>({
+    
+        azimuth:
+          Math.PI / 4,
+    
+        polar:
+          Math.PI / 3,
+    
+      });
 
   // ----------------------------------------------------------
   // REFERENCE IFC INPUT
@@ -164,24 +236,30 @@ export function BimViewport() {
 
   useEffect(
     () => {
-
+  
       const container =
         containerRef.current;
-
-
+  
+  
       if (
         container === null
       ) {
-
+  
         return;
-
+  
       }
-
-
+  
+  
       let disposed =
         false;
-
-
+  
+  
+      let unsubscribeCamera:
+        (() => void)
+        | null =
+          null;
+  
+  
       void createBimCore(
         container,
       )
@@ -189,61 +267,88 @@ export function BimViewport() {
           (
             instance,
           ) => {
-
-            // ------------------------------------------------
-            // REACT STRICT MODE SAFETY
-            // ------------------------------------------------
-
+  
             if (
               disposed
             ) {
-
+  
               instance.dispose();
-
+  
               return;
-
+  
             }
-
-
+  
+  
             bimCoreRef.current =
               instance;
-
-
+  
+  
             setModels(
               instance.getLoadedModels(),
             );
-
+  
+  
+            // ==================================================
+            // CAMERA ORIENTATION SUBSCRIPTION
+            // ==================================================
+  
+            unsubscribeCamera =
+              instance.subscribeCameraOrientation(
+                (
+                  orientation,
+                ) => {
+  
+                  if (
+                    disposed
+                  ) {
+  
+                    return;
+  
+                  }
+  
+  
+                  setCameraOrientation(
+                    orientation,
+                  );
+  
+                },
+              );
+  
           },
         )
         .catch(
           (
             error: unknown,
           ) => {
-
+  
             console.error(
               "Error initializing FrameLogic BIM Core:",
               error,
             );
-
+  
           },
         );
-
-
+  
+  
       return () => {
-
+  
         disposed =
           true;
-
-
+  
+  
+        unsubscribeCamera
+          ?.();
+  
+  
         bimCoreRef.current
           ?.dispose();
-
-
+  
+  
         bimCoreRef.current =
           null;
-
+  
       };
-
+  
     },
     [],
   );
@@ -932,21 +1037,42 @@ export function BimViewport() {
     <div
       className="bim-page"
     >
-
+  
       {/* ====================================================
           3D VIEWPORT
           ==================================================== */}
-
+  
       <div
         ref={containerRef}
         className="bim-viewport"
       />
+  
+  
+      {/* ====================================================
+          VIEW CUBE
+          ==================================================== */}
+  
+  <ViewCube
 
+  orientation={
+    cameraOrientation
+  }
 
+  onViewChange={
+    handleStandardView
+  }
+
+  onCardinalChange={
+    handleCardinalDirection
+  }
+
+/>
+  
+  
       {/* ====================================================
           TOOLBAR
           ==================================================== */}
-
+  
       <div
         className="bim-toolbar"
       >

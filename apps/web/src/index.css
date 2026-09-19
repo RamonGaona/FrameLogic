@@ -79,7 +79,7 @@ body {
 .model-panel {
   position: absolute;
 
-  top: 16px;
+  top: 200px;
   right: 16px;
 
   width: 280px;
@@ -235,3 +235,238 @@ body {
     0.1
   );
 }
+
+/* ==========================================================
+   VIEW CUBE
+   ========================================================== */
+
+   .view-cube-container {
+    position: absolute;
+  
+    top: 20px;
+    right: 24px;
+  
+    width: 150px;
+    height: 165px;
+  
+    z-index: 30;
+  
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  
+    pointer-events: auto;
+  }
+
+  /* ==========================================================
+   VIEW COMPASS
+   ========================================================== */
+
+.view-compass {
+  position: absolute;
+
+  top: 0;
+
+  width: 128px;
+  height: 128px;
+
+  border:
+    2px solid
+    rgba(
+      160,
+      170,
+      180,
+      0.55
+    );
+
+  border-radius: 50%;
+
+  pointer-events: none;
+
+  transition:
+    transform 0.08s linear;
+}
+
+
+.view-compass-label {
+  position: absolute;
+
+  width: 28px;
+  height: 28px;
+
+  padding: 0;
+
+  border: none;
+  outline: none;
+
+  background: transparent;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 15px;
+  font-weight: 700;
+
+  color: #d7dde2;
+
+  line-height: 1;
+
+  cursor: pointer;
+
+  pointer-events: auto;
+
+  transition:
+    color 0.15s ease,
+    transform 0.08s linear;
+}
+
+
+.view-compass-label:hover {
+  color: #ffc533;
+}
+
+
+/* NORTH */
+
+.view-compass-north {
+  top: -14px;
+  left: calc(50% - 14px);
+}
+
+
+.view-compass-east {
+  top: calc(50% - 14px);
+  right: -14px;
+}
+
+
+.view-compass-south {
+  bottom: -14px;
+  left: calc(50% - 14px);
+}
+
+
+.view-compass-west {
+  top: calc(50% - 14px);
+  left: -14px;
+}
+  
+.view-cube {
+  position: absolute;
+
+  top: 32px;
+  left: 43px;
+
+  width: 64px;
+  height: 64px;
+
+  transform-style: preserve-3d;
+
+  transition:
+    transform 0.08s linear;
+}
+  
+  
+  .view-cube-face {
+    position: absolute;
+  
+    width: 64px;
+    height: 64px;
+  
+    border: 1px solid #8895a0;
+  
+    background:
+      rgba(
+        225,
+        232,
+        238,
+        0.92
+      );
+  
+    font-size: 10px;
+    font-weight: 600;
+  
+    cursor: pointer;
+  
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  
+    backface-visibility: hidden;
+  }
+  
+  
+  .view-cube-face:hover {
+    background:
+      rgba(
+        255,
+        205,
+        70,
+        0.95
+      );
+  }
+  
+  
+  .view-cube-front {
+    transform:
+      translateZ(32px);
+  }
+  
+  
+  .view-cube-back {
+    transform:
+      rotateY(180deg)
+      translateZ(32px);
+  }
+  
+  
+  .view-cube-right {
+    transform:
+      rotateY(90deg)
+      translateZ(32px);
+  }
+  
+  
+  .view-cube-left {
+    transform:
+      rotateY(-90deg)
+      translateZ(32px);
+  }
+  
+  
+  .view-cube-top {
+    transform:
+      rotateX(90deg)
+      translateZ(32px);
+  }
+  
+  
+  .view-cube-bottom {
+    transform:
+      rotateX(-90deg)
+      translateZ(32px);
+  }
+  
+  
+  .view-cube-iso {
+    position: absolute;
+  
+    top: 135px;
+  
+    border: 1px solid #8a969f;
+    border-radius: 4px;
+  
+    padding: 4px 12px;
+  
+    background: white;
+  
+    cursor: pointer;
+  
+    font-size: 11px;
+  }
+  
+  
+  .view-cube-iso:hover {
+    background: #e5e9ed;
+  }
