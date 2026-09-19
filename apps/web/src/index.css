@@ -258,6 +258,57 @@ body {
     pointer-events: auto;
   }
 
+  .view-cube-actions {
+    position: absolute;
+  
+    top: 135px;
+  
+    display: flex;
+    align-items: center;
+  
+    gap: 6px;
+  }
+  
+  
+  .view-cube-iso {
+    position: static;
+  
+    border: 1px solid #8a969f;
+    border-radius: 4px;
+  
+    padding: 3px 10px;
+  
+    background: white;
+  
+    cursor: pointer;
+  
+    font-size: 11px;
+  }
+  
+  
+  .view-cube-projection {
+    width: 28px;
+    height: 24px;
+  
+    padding: 0;
+  
+    border: 1px solid #8a969f;
+    border-radius: 4px;
+  
+    background: white;
+  
+    cursor: pointer;
+  
+    font-size: 11px;
+    font-weight: 700;
+  }
+  
+  
+  .view-cube-projection:hover,
+  .view-cube-iso:hover {
+    background: #e5e9ed;
+  }
+
   /* ==========================================================
    VIEW COMPASS
    ========================================================== */
@@ -447,25 +498,6 @@ body {
       rotateX(-90deg)
       translateZ(32px);
   }
-  
-  
-  .view-cube-iso {
-    position: absolute;
-  
-    top: 135px;
-  
-    border: 1px solid #8a969f;
-    border-radius: 4px;
-  
-    padding: 4px 12px;
-  
-    background: white;
-  
-    cursor: pointer;
-  
-    font-size: 11px;
-  }
-  
   
   .view-cube-iso:hover {
     background: #e5e9ed;

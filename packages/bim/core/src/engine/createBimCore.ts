@@ -81,6 +81,8 @@ export async function createBimCore(
   const components =
     new OBC.Components();
 
+    
+
 
   // ==========================================================
   // DESIGN MODEL
@@ -108,10 +110,10 @@ export async function createBimCore(
     );
 
 
-  const world =
+    const world =
     worlds.create<
       OBC.SimpleScene,
-      OBC.SimpleCamera,
+      OBC.OrthoPerspectiveCamera,
       OBC.SimpleRenderer
     >();
 
@@ -235,9 +237,9 @@ async function setCardinalDirection(
   // ==========================================================
 
   world.camera =
-    new OBC.SimpleCamera(
-      components,
-    );
+  new OBC.OrthoPerspectiveCamera(
+    components,
+  );
 
 
   world.camera.controls.dollySpeed =
@@ -1336,6 +1338,69 @@ function cancelDesignPiecePlacement(): void {
   }
 
   // ==========================================================
+// CAMERA PROJECTION MODE
+// ==========================================================
+
+function getCameraProjectionMode():
+  CameraProjectionMode {
+
+  return (
+    world.camera.projection.current
+    === "Orthographic"
+  )
+    ? "ORTHOGRAPHIC"
+    : "PERSPECTIVE";
+
+}
+
+
+// ==========================================================
+// TOGGLE CAMERA PROJECTION
+// ==========================================================
+
+async function toggleCameraProjection():
+  Promise<CameraProjectionMode> {
+
+  // --------------------------------------------------------
+  // Perspective <-> Orthographic
+  //
+  // IMPORTANTE:
+  // projection.toggle() es async.
+  // --------------------------------------------------------
+
+  await world.camera.projection.toggle();
+
+
+  // --------------------------------------------------------
+  // UPDATE FRAGMENTS WITH ACTIVE CAMERA
+  // --------------------------------------------------------
+
+  for (
+    const [, model]
+    of fragments.list
+  ) {
+
+    model.useCamera(
+      world.camera.three,
+    );
+
+  }
+
+
+  await fragments.core.update(
+    true,
+  );
+
+
+  // --------------------------------------------------------
+  // RETURN REAL CURRENT MODE
+  // --------------------------------------------------------
+
+  return getCameraProjectionMode();
+
+}
+
+  // ==========================================================
 // STANDARD CAMERA VIEW
 // ==========================================================
 
@@ -1669,6 +1734,10 @@ setCardinalDirection,
 getCameraOrientation,
 
 subscribeCameraOrientation,
+
+getCameraProjectionMode,
+toggleCameraProjection,
+
     // --------------------------------------------------------
     // LIFECYCLE
     // --------------------------------------------------------
@@ -1696,3 +1765,7 @@ export type BimCoreInstance =
   | "E"
   | "S"
   | "W";
+
+  export type CameraProjectionMode =
+  | "PERSPECTIVE"
+  | "ORTHOGRAPHIC";

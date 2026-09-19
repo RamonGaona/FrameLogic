@@ -127,6 +127,17 @@ function handleCardinalDirection(
     
       });
 
+      const [
+        projectionMode,
+        setProjectionMode,
+      ] =
+        useState<
+          "PERSPECTIVE"
+          | "ORTHOGRAPHIC"
+        >(
+          "PERSPECTIVE",
+        );
+
   // ----------------------------------------------------------
   // REFERENCE IFC INPUT
   // ----------------------------------------------------------
@@ -199,6 +210,51 @@ function handleCardinalDirection(
     ] =
       useState(false);
 
+
+      // ==========================================================
+// CAMERA PROJECTION
+// ==========================================================
+
+async function handleToggleProjection():
+Promise<void> {
+
+const bimCore =
+  bimCoreRef.current;
+
+
+if (
+  !bimCore
+) {
+
+  return;
+
+}
+
+
+try {
+
+  const mode =
+    await bimCore
+      .toggleCameraProjection();
+
+
+  setProjectionMode(
+    mode,
+  );
+
+}
+catch (
+  error
+) {
+
+  console.error(
+    "Error changing camera projection:",
+    error,
+  );
+
+}
+
+}
 
   // ==========================================================
   // REFRESH REFERENCE MODEL LIST
@@ -285,6 +341,10 @@ function handleCardinalDirection(
   
             setModels(
               instance.getLoadedModels(),
+            );
+
+            setProjectionMode(
+              instance.getCameraProjectionMode(),
             );
   
   
@@ -1058,12 +1118,24 @@ function handleCardinalDirection(
     cameraOrientation
   }
 
+  projectionMode={
+    projectionMode
+  }
+
   onViewChange={
     handleStandardView
   }
 
   onCardinalChange={
     handleCardinalDirection
+  }
+
+  onToggleProjection={
+    () => {
+
+      void handleToggleProjection();
+
+    }
   }
 
 />
@@ -1098,7 +1170,7 @@ function handleCardinalDirection(
           }
 
         </button>
-
+       
 
         {/* --------------------------------------------------
             DESIGN PIECE IFC

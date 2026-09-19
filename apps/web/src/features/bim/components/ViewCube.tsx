@@ -4,6 +4,7 @@ import type {
   
   import type {
     CameraOrientation,
+    CameraProjectionMode,
     CardinalDirection,
     StandardView,
   } from "@framelogic/bim-core";
@@ -13,6 +14,10 @@ import type {
   
     orientation:
       CameraOrientation;
+  
+  
+    projectionMode:
+      CameraProjectionMode;
   
   
     onViewChange:
@@ -28,6 +33,10 @@ import type {
           CardinalDirection,
       ) => void;
   
+  
+    onToggleProjection:
+      () => void;
+  
   }
   
   
@@ -38,8 +47,10 @@ import type {
   export function ViewCube(
     {
       orientation,
+      projectionMode,
       onViewChange,
       onCardinalChange,
+      onToggleProjection,
     }: ViewCubeProps,
   ) {
   
@@ -67,8 +78,6 @@ import type {
   
     // ==========================================================
     // COMPASS ORIENTATION
-    //
-    // El compás gira respecto al modelo.
     // ==========================================================
   
     const compassStyle:
@@ -81,7 +90,7 @@ import type {
   
   
     // ==========================================================
-    // KEEP TEXT UPRIGHT
+    // KEEP COMPASS TEXT UPRIGHT
     // ==========================================================
   
     const compassTextStyle:
@@ -403,25 +412,66 @@ import type {
   
   
         {/* ====================================================
-            ISOMETRIC VIEW
+            VIEW ACTIONS
             ==================================================== */}
   
-        <button
-          type="button"
-  
-          className="view-cube-iso"
-  
-          onClick={
-            () =>
-              onViewChange(
-                "ISO",
-              )
-          }
+        <div
+          className="view-cube-actions"
         >
   
-          ISO
+          {/* --------------------------------------------------
+              ISOMETRIC VIEW
+              -------------------------------------------------- */}
   
-        </button>
+          <button
+            type="button"
+  
+            className="view-cube-iso"
+  
+            title="Vista isométrica"
+  
+            onClick={
+              () =>
+                onViewChange(
+                  "ISO",
+                )
+            }
+          >
+  
+            ISO
+  
+          </button>
+  
+  
+          {/* --------------------------------------------------
+              PROJECTION
+              -------------------------------------------------- */}
+  
+          <button
+            type="button"
+  
+            className="view-cube-projection"
+  
+            title={
+              projectionMode === "PERSPECTIVE"
+                ? "Cambiar a proyección ortográfica"
+                : "Cambiar a perspectiva"
+            }
+  
+            onClick={
+              onToggleProjection
+            }
+          >
+  
+            {
+              projectionMode === "PERSPECTIVE"
+                ? "O"
+                : "P"
+            }
+  
+          </button>
+  
+        </div>
   
       </div>
     );

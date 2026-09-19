@@ -38,4 +38,5 @@ export type {
   StandardView,
   CardinalDirection,
   CameraOrientation,
+  CameraProjectionMode,
 } from "./engine/createBimCore";
