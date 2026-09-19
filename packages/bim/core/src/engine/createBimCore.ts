@@ -3,6 +3,10 @@ import * as OBC from "@thatopen/components";
 import * as OBF from "@thatopen/components-front";
 
 import {
+  DesignPlacementController,
+} from "../interaction/DesignPlacementController";
+
+import {
   DesignModel,
 } from "@framelogic/domain";
 
@@ -201,6 +205,20 @@ export async function createBimCore(
     0,
     0,
   );
+
+  // ==========================================================
+// DESIGN PLACEMENT
+// ==========================================================
+
+const designPlacement =
+new DesignPlacementController(
+  world.scene.three,
+  canvas,
+  () =>
+    world.camera.three,
+  designModel,
+  designScene,
+);
 
 
   // ==========================================================
@@ -888,6 +906,32 @@ export async function createBimCore(
 
   }
 
+  // ==========================================================
+// START DESIGN PIECE PLACEMENT
+// ==========================================================
+
+function startDesignPiecePlacement(
+  definitionId: string,
+) {
+
+  return designPlacement
+    .startPlacement(
+      definitionId,
+    );
+
+}
+
+
+// ==========================================================
+// CANCEL DESIGN PIECE PLACEMENT
+// ==========================================================
+
+function cancelDesignPiecePlacement(): void {
+
+  designPlacement
+    .cancelPlacement();
+
+}
 
   // ==========================================================
   // GET LOADED REFERENCE MODELS
@@ -985,6 +1029,7 @@ export async function createBimCore(
 
     modelRegistry.clearModels();
 
+    designPlacement.dispose();
 
     // --------------------------------------------------------
     // DESIGN VISUALS
@@ -1098,6 +1143,10 @@ export async function createBimCore(
     updateDesignPieceInstanceTransform,
 
     removeDesignPieceInstance,
+
+    startDesignPiecePlacement,
+
+    cancelDesignPiecePlacement,
 
 
     // --------------------------------------------------------

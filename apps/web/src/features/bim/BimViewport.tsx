@@ -121,6 +121,12 @@ export function BimViewport() {
       | null
     >(null);
 
+    const [
+      placingPiece,
+      setPlacingPiece,
+    ] =
+      useState(false);
+
 
   // ==========================================================
   // REFRESH REFERENCE MODEL LIST
@@ -684,128 +690,137 @@ export function BimViewport() {
 
   }
 
+  function handleCancelPlacement(): void {
+
+    bimCoreRef.current
+      ?.cancelDesignPiecePlacement();
+  
+  }
+
 
   // ==========================================================
   // INSERT ANOTHER INSTANCE
   // ==========================================================
 
-  function handleInsertAnotherInstance(): void {
+  async function handleInsertAnotherInstance(): Promise<void> {
 
     const bimCore =
       bimCoreRef.current;
-
-
+  
+  
     if (
       !bimCore
       || !activePiece
     ) {
-
+  
       return;
-
+  
     }
-
-
-    // --------------------------------------------------------
-    // TEMPORARY TEST POSITION
-    //
-    // Primera instancia:
-    //
-    // X = 0
-    //
-    // Segunda:
-    //
-    // X = 3
-    //
-    // Tercera:
-    //
-    // X = 6
-    //
-    // etc.
-    //
-    // Después sustituiremos esto por la herramienta
-    // real de colocación mediante cursor / snaps.
-    // --------------------------------------------------------
-
-    const x =
-      activePiece.instanceCount
-      * 3;
-
-
-    const instance =
-      bimCore
-        .createDesignPieceInstance({
-
-          definitionId:
+  
+  
+    try {
+  
+      setPlacingPiece(
+        true,
+      );
+  
+  
+      console.log(
+        "Placement mode started:",
+        activePiece.code,
+      );
+  
+  
+      const instance =
+        await bimCore
+          .startDesignPiecePlacement(
             activePiece.definitionId,
-
-          transform: {
-
-            position: {
-
-              x,
-
-              y:
-                0,
-
-              z:
-                0,
-
-            },
-
-            rotation: {
-
-              x:
-                0,
-
-              y:
-                0,
-
-              z:
-                0,
-
-            },
-
-          },
-
-          tags:
-            [],
-
-        });
-
-
-    console.log(
-      "Additional PieceInstance created:",
-      instance,
-    );
-
-
-    setActivePiece(
-      (
-        current,
-      ) => {
-
-        if (
-          !current
-        ) {
-
-          return current;
-
-        }
-
-
-        return {
-
-          ...current,
-
-          instanceCount:
-            current.instanceCount
-            + 1,
-
-        };
-
-      },
-    );
-
+          );
+  
+  
+      // --------------------------------------------------------
+      // CANCELLED WITH ESC OR BUTTON
+      // --------------------------------------------------------
+  
+      if (
+        !instance
+      ) {
+  
+        console.log(
+          "Placement cancelled.",
+        );
+  
+  
+        return;
+  
+      }
+  
+  
+      console.log(
+        "PieceInstance placed:",
+        instance,
+      );
+  
+  
+      setActivePiece(
+        (
+          current,
+        ) => {
+  
+          if (
+            !current
+          ) {
+  
+            return current;
+  
+          }
+  
+  
+          return {
+  
+            ...current,
+  
+            instanceCount:
+              current.instanceCount
+              + 1,
+  
+          };
+  
+        },
+      );
+  
+    }
+    catch (
+      error
+    ) {
+  
+      console.error(
+        "Error placing PieceInstance:",
+        error,
+      );
+  
+  
+      const message =
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            );
+  
+  
+      window.alert(
+        `No se pudo insertar la pieza.\n\n${message}`,
+      );
+  
+    }
+    finally {
+  
+      setPlacingPiece(
+        false,
+      );
+  
+    }
+  
   }
 
 
@@ -986,24 +1001,51 @@ export function BimViewport() {
             INSERT ANOTHER INSTANCE
             -------------------------------------------------- */}
 
-        <button
-          type="button"
-          onClick={
-            handleInsertAnotherInstance
-          }
-          disabled={
-            loading
-            || activePiece === null
-          }
-        >
+<button
+  type="button"
 
-          {
-            activePiece
-              ? `Insertar otra ${activePiece.code}`
-              : "Insertar otra instancia"
-          }
+  onClick={
+    () => {
 
-        </button>
+      void handleInsertAnotherInstance();
+
+    }
+  }
+
+  disabled={
+    loading
+    || activePiece === null
+    || placingPiece
+  }
+>
+
+  {
+    placingPiece
+      ? "Haz clic en el visor..."
+      : activePiece
+        ? `Insertar otra ${activePiece.code}`
+        : "Insertar otra instancia"
+  }
+
+</button>
+
+{
+  placingPiece
+  && (
+
+    <button
+      type="button"
+      onClick={
+        handleCancelPlacement
+      }
+    >
+
+      Cancelar inserción
+
+    </button>
+
+  )
+}
 
 
         {/* --------------------------------------------------

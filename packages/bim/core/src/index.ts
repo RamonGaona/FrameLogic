@@ -29,3 +29,7 @@ export type {
   ModelRole,
   ModelSource,
 } from "./models/LoadedModel";
+
+export {
+  DesignPlacementController,
+} from "./interaction/DesignPlacementController";
