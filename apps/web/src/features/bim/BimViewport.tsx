@@ -22,6 +22,27 @@ import {
 } from "./components/ModelPanel";
 
 
+// ============================================================
+// TYPES
+// ============================================================
+
+interface ActivePieceInfo {
+
+  definitionId: string;
+
+  code: string;
+
+  name: string;
+
+  instanceCount: number;
+
+}
+
+
+// ============================================================
+// BIM VIEWPORT
+// ============================================================
+
 export function BimViewport() {
 
   // ==========================================================
@@ -34,11 +55,29 @@ export function BimViewport() {
     );
 
 
-  const fileInputRef =
+  // ----------------------------------------------------------
+  // REFERENCE IFC INPUT
+  // ----------------------------------------------------------
+
+  const referenceFileInputRef =
     useRef<HTMLInputElement>(
       null,
     );
 
+
+  // ----------------------------------------------------------
+  // DESIGN PIECE IFC INPUT
+  // ----------------------------------------------------------
+
+  const pieceFileInputRef =
+    useRef<HTMLInputElement>(
+      null,
+    );
+
+
+  // ----------------------------------------------------------
+  // BIM CORE
+  // ----------------------------------------------------------
 
   const bimCoreRef =
     useRef<BimCoreInstance | null>(
@@ -51,8 +90,15 @@ export function BimViewport() {
   // ==========================================================
 
   const [
-    loading,
-    setLoading,
+    loadingReference,
+    setLoadingReference,
+  ] =
+    useState(false);
+
+
+  const [
+    loadingPiece,
+    setLoadingPiece,
   ] =
     useState(false);
 
@@ -66,8 +112,18 @@ export function BimViewport() {
     >([]);
 
 
+  const [
+    activePiece,
+    setActivePiece,
+  ] =
+    useState<
+      ActivePieceInfo
+      | null
+    >(null);
+
+
   // ==========================================================
-  // REFRESH MODEL LIST
+  // REFRESH REFERENCE MODEL LIST
   // ==========================================================
 
   function refreshModels(): void {
@@ -76,7 +132,9 @@ export function BimViewport() {
       bimCoreRef.current;
 
 
-    if (!bimCore) {
+    if (
+      !bimCore
+    ) {
 
       setModels(
         [],
@@ -110,6 +168,7 @@ export function BimViewport() {
       ) {
 
         return;
+
       }
 
 
@@ -125,6 +184,10 @@ export function BimViewport() {
             instance,
           ) => {
 
+            // ------------------------------------------------
+            // REACT STRICT MODE SAFETY
+            // ------------------------------------------------
+
             if (
               disposed
             ) {
@@ -132,6 +195,7 @@ export function BimViewport() {
               instance.dispose();
 
               return;
+
             }
 
 
@@ -180,22 +244,22 @@ export function BimViewport() {
 
 
   // ==========================================================
-  // OPEN IFC
+  // OPEN REFERENCE IFC
   // ==========================================================
 
-  function handleOpenIfc(): void {
+  function handleOpenReferenceIfc(): void {
 
-    fileInputRef.current
+    referenceFileInputRef.current
       ?.click();
 
   }
 
 
   // ==========================================================
-  // IFC SELECTED
+  // REFERENCE IFC SELECTED
   // ==========================================================
 
-  async function handleIfcSelected(
+  async function handleReferenceIfcSelected(
     event:
       ChangeEvent<HTMLInputElement>,
   ): Promise<void> {
@@ -205,7 +269,9 @@ export function BimViewport() {
         .files?.[0];
 
 
-    if (!file) {
+    if (
+      !file
+    ) {
 
       return;
 
@@ -216,11 +282,18 @@ export function BimViewport() {
       bimCoreRef.current;
 
 
-    if (!bimCore) {
+    if (
+      !bimCore
+    ) {
 
       console.error(
         "BIM Core is not initialized yet.",
       );
+
+
+      event.target.value =
+        "";
+
 
       return;
 
@@ -229,26 +302,25 @@ export function BimViewport() {
 
     try {
 
-      setLoading(
+      setLoadingReference(
         true,
       );
 
 
       console.log(
-        "Loading IFC:",
+        "Loading reference IFC:",
         file.name,
       );
 
 
       const model =
-        await bimCore
-          .loadIfcFile(
-            file,
-          );
+        await bimCore.loadIfcFile(
+          file,
+        );
 
 
       console.log(
-        "IFC loaded:",
+        "Reference IFC loaded:",
         model,
       );
 
@@ -261,14 +333,19 @@ export function BimViewport() {
     ) {
 
       console.error(
-        "Error loading IFC:",
+        "Error loading reference IFC:",
         error,
+      );
+
+
+      window.alert(
+        "No se pudo cargar el IFC de referencia. Revisa la consola.",
       );
 
     }
     finally {
 
-      setLoading(
+      setLoadingReference(
         false,
       );
 
@@ -277,6 +354,457 @@ export function BimViewport() {
         "";
 
     }
+
+  }
+
+
+  // ==========================================================
+  // IMPORT DESIGN PIECE IFC
+  // ==========================================================
+
+  function handleImportPieceIfc(): void {
+
+    pieceFileInputRef.current
+      ?.click();
+
+  }
+
+
+  // ==========================================================
+  // DESIGN PIECE IFC SELECTED
+  // ==========================================================
+
+  async function handlePieceIfcSelected(
+    event:
+      ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+
+    const file =
+      event.target
+        .files?.[0];
+
+
+    if (
+      !file
+    ) {
+
+      return;
+
+    }
+
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      console.error(
+        "BIM Core is not initialized yet.",
+      );
+
+
+      event.target.value =
+        "";
+
+
+      return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // DEFAULT PIECE CODE FROM FILE NAME
+    // --------------------------------------------------------
+
+    const defaultCode =
+      file.name
+        .replace(
+          /\.ifc$/i,
+          "",
+        )
+        .trim()
+        .toUpperCase();
+
+
+    // --------------------------------------------------------
+    // CODE
+    // --------------------------------------------------------
+
+    const codeInput =
+      window.prompt(
+        "Código de la pieza:",
+        defaultCode,
+      );
+
+
+    const code =
+      codeInput
+        ?.trim();
+
+
+    if (
+      !code
+    ) {
+
+      event.target.value =
+        "";
+
+      return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // NAME
+    // --------------------------------------------------------
+
+    const nameInput =
+      window.prompt(
+        "Nombre de la pieza:",
+        code,
+      );
+
+
+    if (
+      nameInput === null
+    ) {
+
+      event.target.value =
+        "";
+
+      return;
+
+    }
+
+
+    const name =
+      nameInput.trim()
+      || code;
+
+
+    // --------------------------------------------------------
+    // CLASSIFICATION
+    //
+    // Texto libre.
+    // FrameLogic NO interpreta esta clasificación.
+    // --------------------------------------------------------
+
+    const classificationInput =
+      window.prompt(
+        "Clasificación opcional:",
+        "",
+      );
+
+
+    if (
+      classificationInput === null
+    ) {
+
+      event.target.value =
+        "";
+
+      return;
+
+    }
+
+
+    const classification =
+      classificationInput.trim();
+
+
+    try {
+
+      setLoadingPiece(
+        true,
+      );
+
+
+      console.log(
+        "Importing FrameLogic piece IFC:",
+        file.name,
+      );
+
+
+      // ------------------------------------------------------
+      // IMPORT PIECE DEFINITION
+      // ------------------------------------------------------
+
+      const {
+        asset,
+        definition,
+      } =
+        await bimCore
+          .importDesignPieceIfc(
+            file,
+            {
+
+              code,
+
+              name,
+
+              classification:
+                classification
+                || undefined,
+
+              tags:
+                [],
+
+            },
+          );
+
+
+      console.log(
+        "FrameLogic asset created:",
+        asset,
+      );
+
+
+      console.log(
+        "FrameLogic piece definition created:",
+        definition,
+      );
+
+
+      // ------------------------------------------------------
+      // CREATE FIRST INSTANCE
+      //
+      // Primera inserción en origen.
+      // ------------------------------------------------------
+
+      const instance =
+        bimCore
+          .createDesignPieceInstance({
+
+            definitionId:
+              definition.id,
+
+            transform: {
+
+              position: {
+
+                x:
+                  0,
+
+                y:
+                  0,
+
+                z:
+                  0,
+
+              },
+
+              rotation: {
+
+                x:
+                  0,
+
+                y:
+                  0,
+
+                z:
+                  0,
+
+              },
+
+            },
+
+            tags:
+              [],
+
+          });
+
+
+      console.log(
+        "First PieceInstance created:",
+        instance,
+      );
+
+
+      // ------------------------------------------------------
+      // ACTIVE PIECE
+      //
+      // Temporalmente trabajaremos con la última
+      // PieceDefinition importada.
+      // ------------------------------------------------------
+
+      setActivePiece({
+
+        definitionId:
+          definition.id,
+
+        code:
+          definition.code,
+
+        name:
+          definition.name,
+
+        instanceCount:
+          1,
+
+      });
+
+    }
+    catch (
+      error
+    ) {
+
+      console.error(
+        "Error importing FrameLogic piece:",
+        error,
+      );
+
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            );
+
+
+      window.alert(
+        `No se pudo importar la pieza.\n\n${message}`,
+      );
+
+    }
+    finally {
+
+      setLoadingPiece(
+        false,
+      );
+
+
+      event.target.value =
+        "";
+
+    }
+
+  }
+
+
+  // ==========================================================
+  // INSERT ANOTHER INSTANCE
+  // ==========================================================
+
+  function handleInsertAnotherInstance(): void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+      || !activePiece
+    ) {
+
+      return;
+
+    }
+
+
+    // --------------------------------------------------------
+    // TEMPORARY TEST POSITION
+    //
+    // Primera instancia:
+    //
+    // X = 0
+    //
+    // Segunda:
+    //
+    // X = 3
+    //
+    // Tercera:
+    //
+    // X = 6
+    //
+    // etc.
+    //
+    // Después sustituiremos esto por la herramienta
+    // real de colocación mediante cursor / snaps.
+    // --------------------------------------------------------
+
+    const x =
+      activePiece.instanceCount
+      * 3;
+
+
+    const instance =
+      bimCore
+        .createDesignPieceInstance({
+
+          definitionId:
+            activePiece.definitionId,
+
+          transform: {
+
+            position: {
+
+              x,
+
+              y:
+                0,
+
+              z:
+                0,
+
+            },
+
+            rotation: {
+
+              x:
+                0,
+
+              y:
+                0,
+
+              z:
+                0,
+
+            },
+
+          },
+
+          tags:
+            [],
+
+        });
+
+
+    console.log(
+      "Additional PieceInstance created:",
+      instance,
+    );
+
+
+    setActivePiece(
+      (
+        current,
+      ) => {
+
+        if (
+          !current
+        ) {
+
+          return current;
+
+        }
+
+
+        return {
+
+          ...current,
+
+          instanceCount:
+            current.instanceCount
+            + 1,
+
+        };
+
+      },
+    );
 
   }
 
@@ -294,7 +822,9 @@ export function BimViewport() {
       bimCoreRef.current;
 
 
-    if (!bimCore) {
+    if (
+      !bimCore
+    ) {
 
       return;
 
@@ -313,7 +843,7 @@ export function BimViewport() {
 
 
   // ==========================================================
-  // REMOVE MODEL
+  // REMOVE REFERENCE MODEL
   // ==========================================================
 
   function handleRemoveModel(
@@ -324,7 +854,9 @@ export function BimViewport() {
       bimCoreRef.current;
 
 
-    if (!bimCore) {
+    if (
+      !bimCore
+    ) {
 
       return;
 
@@ -342,7 +874,7 @@ export function BimViewport() {
 
 
   // ==========================================================
-  // CLEAR MODELS
+  // CLEAR REFERENCE MODELS
   // ==========================================================
 
   function handleClearModels(): void {
@@ -351,7 +883,9 @@ export function BimViewport() {
       bimCoreRef.current;
 
 
-    if (!bimCore) {
+    if (
+      !bimCore
+    ) {
 
       return;
 
@@ -367,6 +901,15 @@ export function BimViewport() {
 
 
   // ==========================================================
+  // GLOBAL LOADING STATE
+  // ==========================================================
+
+  const loading =
+    loadingReference
+    || loadingPiece;
+
+
+  // ==========================================================
   // UI
   // ==========================================================
 
@@ -375,20 +918,32 @@ export function BimViewport() {
       className="bim-page"
     >
 
+      {/* ====================================================
+          3D VIEWPORT
+          ==================================================== */}
+
       <div
         ref={containerRef}
         className="bim-viewport"
       />
 
 
+      {/* ====================================================
+          TOOLBAR
+          ==================================================== */}
+
       <div
         className="bim-toolbar"
       >
 
+        {/* --------------------------------------------------
+            REFERENCE IFC
+            -------------------------------------------------- */}
+
         <button
           type="button"
           onClick={
-            handleOpenIfc
+            handleOpenReferenceIfc
           }
           disabled={
             loading
@@ -396,15 +951,90 @@ export function BimViewport() {
         >
 
           {
-            loading
-              ? "Cargando IFC..."
-              : "Abrir IFC"
+            loadingReference
+              ? "Cargando referencia..."
+              : "Abrir IFC referencia"
           }
 
         </button>
 
+
+        {/* --------------------------------------------------
+            DESIGN PIECE IFC
+            -------------------------------------------------- */}
+
+        <button
+          type="button"
+          onClick={
+            handleImportPieceIfc
+          }
+          disabled={
+            loading
+          }
+        >
+
+          {
+            loadingPiece
+              ? "Importando pieza..."
+              : "Importar pieza IFC"
+          }
+
+        </button>
+
+
+        {/* --------------------------------------------------
+            INSERT ANOTHER INSTANCE
+            -------------------------------------------------- */}
+
+        <button
+          type="button"
+          onClick={
+            handleInsertAnotherInstance
+          }
+          disabled={
+            loading
+            || activePiece === null
+          }
+        >
+
+          {
+            activePiece
+              ? `Insertar otra ${activePiece.code}`
+              : "Insertar otra instancia"
+          }
+
+        </button>
+
+
+        {/* --------------------------------------------------
+            ACTIVE PIECE INFORMATION
+            -------------------------------------------------- */}
+
+        {
+          activePiece
+          && (
+
+            <span>
+
+              {
+                `${activePiece.code} · ${activePiece.instanceCount} instancia${
+                  activePiece.instanceCount === 1
+                    ? ""
+                    : "s"
+                }`
+              }
+
+            </span>
+
+          )
+        }
+
       </div>
 
+
+      {/* ====================================================
+          REFERENCE MODEL PANEL
+          ==================================================== */}
 
       <ModelPanel
 
@@ -427,10 +1057,19 @@ export function BimViewport() {
       />
 
 
+      {/* ====================================================
+          REFERENCE IFC FILE INPUT
+          ==================================================== */}
+
       <input
-        ref={fileInputRef}
+        ref={
+          referenceFileInputRef
+        }
+
         type="file"
+
         accept=".ifc"
+
         hidden
 
         onChange={
@@ -438,7 +1077,36 @@ export function BimViewport() {
             event,
           ) => {
 
-            void handleIfcSelected(
+            void handleReferenceIfcSelected(
+              event,
+            );
+
+          }
+        }
+      />
+
+
+      {/* ====================================================
+          DESIGN PIECE IFC FILE INPUT
+          ==================================================== */}
+
+      <input
+        ref={
+          pieceFileInputRef
+        }
+
+        type="file"
+
+        accept=".ifc"
+
+        hidden
+
+        onChange={
+          (
+            event,
+          ) => {
+
+            void handlePieceIfcSelected(
               event,
             );
 
@@ -448,4 +1116,5 @@ export function BimViewport() {
 
     </div>
   );
+
 }

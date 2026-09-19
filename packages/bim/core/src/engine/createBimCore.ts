@@ -1,5 +1,14 @@
 import * as THREE from "three";
 import * as OBC from "@thatopen/components";
+import * as OBF from "@thatopen/components-front";
+
+import {
+  DesignModel,
+} from "@framelogic/domain";
+
+import type {
+  RegisterPieceInstanceInput,
+} from "@framelogic/domain";
 
 import {
   addSceneHelpers,
@@ -10,8 +19,25 @@ import {
 } from "../models/ModelRegistry";
 
 import {
-  DesignModel,
-} from "@framelogic/domain";
+  DesignSceneController,
+} from "../design/DesignSceneController";
+
+
+// ============================================================
+// TYPES
+// ============================================================
+
+export interface ImportDesignPieceIfcInput {
+
+  code: string;
+
+  name?: string;
+
+  classification?: string;
+
+  tags?: string[];
+
+}
 
 
 // ============================================================
@@ -29,16 +55,17 @@ export async function createBimCore(
   const components =
     new OBC.Components();
 
-    // ==========================================================
-// DESIGN MODEL
-// ==========================================================
 
-const designModel =
-new DesignModel();
+  // ==========================================================
+  // DESIGN MODEL
+  // ==========================================================
+
+  const designModel =
+    new DesignModel();
 
 
   // ==========================================================
-  // MODEL REGISTRY
+  // REFERENCE MODEL REGISTRY
   // ==========================================================
 
   const modelRegistry =
@@ -74,6 +101,17 @@ new DesignModel();
 
 
   world.scene.setup();
+
+
+  // ==========================================================
+  // DESIGN SCENE CONTROLLER
+  // ==========================================================
+
+  const designScene =
+    new DesignSceneController(
+      world.scene.three,
+      designModel,
+    );
 
 
   // ==========================================================
@@ -269,8 +307,8 @@ new DesignModel();
 
       webIfc: {
 
-        // FrameLogic conserva el origen
-        // definido en el propio IFC.
+        // Las piezas y modelos de FrameLogic
+        // conservan el origen definido en el IFC.
         COORDINATE_TO_ORIGIN:
           false,
 
@@ -280,7 +318,21 @@ new DesignModel();
 
 
   // ==========================================================
-  // LOAD IFC FILE
+  // MESHER
+  //
+  // Extrae meshes Three.js desde Fragments.
+  // Estos meshes se utilizarán como geometría base
+  // reutilizable para las PieceInstance.
+  // ==========================================================
+
+  const mesher =
+    components.get(
+      OBF.Mesher,
+    );
+
+
+  // ==========================================================
+  // LOAD REFERENCE IFC
   // ==========================================================
 
   async function loadIfcFile(
@@ -289,6 +341,10 @@ new DesignModel();
 
     await ifcReady;
 
+
+    // --------------------------------------------------------
+    // READ FILE
+    // --------------------------------------------------------
 
     const arrayBuffer =
       await file.arrayBuffer();
@@ -300,11 +356,26 @@ new DesignModel();
       );
 
 
+    // --------------------------------------------------------
+    // UNIQUE INTERNAL MODEL ID
+    //
+    // Permite abrir varias veces incluso un IFC
+    // con exactamente el mismo nombre.
+    // --------------------------------------------------------
+
+    const referenceModelId =
+      `REFERENCE_${crypto.randomUUID()}`;
+
+
+    // --------------------------------------------------------
+    // LOAD IFC
+    // --------------------------------------------------------
+
     const model =
       await ifcLoader.load(
         data,
         false,
-        file.name,
+        referenceModelId,
       );
 
 
@@ -327,7 +398,7 @@ new DesignModel();
 
 
     // --------------------------------------------------------
-    // REGISTER IN FRAMELOGIC
+    // REGISTER REFERENCE MODEL
     // --------------------------------------------------------
 
     const loadedModel =
@@ -339,8 +410,8 @@ new DesignModel();
         source:
           "IFC",
 
-          role:
-  "REFERENCE",
+        role:
+          "REFERENCE",
 
         visible:
           true,
@@ -378,8 +449,8 @@ new DesignModel();
             );
 
 
-            fragments.core.update(
-              true,
+            void fragments.core.disposeModel(
+              model.modelId,
             );
 
           },
@@ -396,19 +467,430 @@ new DesignModel();
     );
 
 
-    // --------------------------------------------------------
-    // IMPORTANT:
-    // We return our FrameLogic model information,
-    // not the internal That Open model.
-    // --------------------------------------------------------
-
     return loadedModel;
 
   }
 
 
   // ==========================================================
-  // GET LOADED MODELS
+  // IMPORT IFC AS FRAMELOGIC PIECE DEFINITION
+  // ==========================================================
+
+  async function importDesignPieceIfc(
+    file: File,
+    input: ImportDesignPieceIfcInput,
+  ) {
+
+    await ifcReady;
+
+
+    // --------------------------------------------------------
+    // VALIDATE CODE
+    // --------------------------------------------------------
+
+    const code =
+      input.code.trim();
+
+
+    if (
+      code.length === 0
+    ) {
+
+      throw new Error(
+        "A piece code is required.",
+      );
+
+    }
+
+
+    // --------------------------------------------------------
+    // PREVENT DUPLICATE PIECE CODE
+    // --------------------------------------------------------
+
+    const existingDefinition =
+      designModel
+        .pieceDefinitions
+        .findByCode(
+          code,
+        );
+
+
+    if (
+      existingDefinition
+    ) {
+
+      throw new Error(
+        `A piece definition with code "${code}" already exists.`,
+      );
+
+    }
+
+
+    // --------------------------------------------------------
+    // READ IFC
+    // --------------------------------------------------------
+
+    const arrayBuffer =
+      await file.arrayBuffer();
+
+
+    const data =
+      new Uint8Array(
+        arrayBuffer,
+      );
+
+
+    // --------------------------------------------------------
+    // TEMPORARY FRAGMENTS MODEL
+    //
+    // Solo se utiliza para extraer la geometría.
+    // No se añade directamente a la escena.
+    // --------------------------------------------------------
+
+    const temporaryModelId =
+      `PIECE_IMPORT_${crypto.randomUUID()}`;
+
+
+    const model =
+      await ifcLoader.load(
+        data,
+        false,
+        temporaryModelId,
+      );
+
+
+    try {
+
+      // ------------------------------------------------------
+      // GET ITEMS WITH GEOMETRY
+      // ------------------------------------------------------
+
+      const items =
+        await model.getItemsWithGeometry();
+
+
+        const localIds =
+        (
+          await Promise.all(
+            items.map(
+              (
+                item,
+              ) =>
+                item.getLocalId(),
+            ),
+          )
+        ).filter(
+          (
+            localId,
+          ): localId is number =>
+            localId !== null,
+        );
+      
+      
+      if (
+        localIds.length === 0
+      ) {
+      
+        throw new Error(
+          `The IFC "${file.name}" does not contain renderable geometry.`,
+        );
+      
+      }
+      
+      
+      // ------------------------------------------------------
+      // MODEL ID MAP
+      //
+      // ModelIdMap utiliza:
+      //
+      // modelId -> Set<localId>
+      // ------------------------------------------------------
+      
+      const modelIdMap:
+        OBC.ModelIdMap = {
+      
+          [model.modelId]:
+            new Set(
+              localIds,
+            ),
+      
+        };
+
+
+      // ------------------------------------------------------
+      // EXTRACT THREE.JS MESHES
+      // ------------------------------------------------------
+
+      const meshResult =
+        await mesher.get(
+          modelIdMap,
+          {
+
+            applyTransformation:
+              true,
+
+          },
+        );
+
+
+      const meshes =
+        mesher.getMeshesFromResult(
+          meshResult,
+        );
+
+
+      if (
+        meshes.length === 0
+      ) {
+
+        throw new Error(
+          `No meshes could be extracted from "${file.name}".`,
+        );
+
+      }
+
+
+      // ------------------------------------------------------
+      // CREATE REUSABLE VISUAL PROTOTYPE
+      // ------------------------------------------------------
+
+      const prototype =
+        new THREE.Group();
+
+
+      prototype.name =
+        `PiecePrototype:${code}`;
+
+
+      for (
+        const mesh
+        of meshes
+      ) {
+
+        prototype.add(
+          mesh,
+        );
+
+      }
+
+
+      // ------------------------------------------------------
+      // REGISTER ASSET
+      // ------------------------------------------------------
+
+      const asset =
+        designModel.registerAsset({
+
+          name:
+            file.name,
+
+          format:
+            "IFC",
+
+        });
+
+
+      // ------------------------------------------------------
+      // REGISTER PIECE DEFINITION
+      // ------------------------------------------------------
+
+      let definition;
+
+
+      try {
+
+        definition =
+          designModel.registerPieceDefinition({
+
+            code,
+
+            name:
+              input.name
+                ?.trim()
+              || code,
+
+            geometryAssetId:
+              asset.id,
+
+            classification:
+              input.classification
+                ?.trim()
+              || undefined,
+
+            tags:
+              input.tags
+              ?? [],
+
+          });
+
+      }
+      catch (
+        error
+      ) {
+
+        // Si falla la definición,
+        // no dejamos un Asset huérfano.
+
+        designModel.removeAsset(
+          asset.id,
+        );
+
+
+        throw error;
+
+      }
+
+
+      // ------------------------------------------------------
+      // CONNECT VISUAL PROTOTYPE WITH ASSET
+      // ------------------------------------------------------
+
+      try {
+
+        designScene.registerAssetPrototype(
+          asset.id,
+          prototype,
+        );
+
+      }
+      catch (
+        error
+      ) {
+
+        // Rollback del dominio si falla el registro visual.
+
+        designModel.removePieceDefinition(
+          definition.id,
+        );
+
+
+        designModel.removeAsset(
+          asset.id,
+        );
+
+
+        throw error;
+
+      }
+
+
+      // ------------------------------------------------------
+      // RESULT
+      // ------------------------------------------------------
+
+      return {
+
+        asset,
+
+        definition,
+
+      };
+
+    }
+    finally {
+
+      // ------------------------------------------------------
+      // DISPOSE TEMPORARY FRAGMENTS MODEL
+      //
+      // Los meshes Three.js necesarios ya fueron extraídos.
+      // ------------------------------------------------------
+
+      await fragments.core.disposeModel(
+        model.modelId,
+      );
+
+    }
+
+  }
+
+
+  // ==========================================================
+  // CREATE DESIGN PIECE INSTANCE
+  // ==========================================================
+
+  function createDesignPieceInstance(
+    input: RegisterPieceInstanceInput,
+  ) {
+
+    const instance =
+      designModel.registerPieceInstance(
+        input,
+      );
+
+
+    designScene.sync();
+
+
+    return instance;
+
+  }
+
+
+  // ==========================================================
+  // UPDATE DESIGN PIECE INSTANCE TRANSFORM
+  // ==========================================================
+
+  function updateDesignPieceInstanceTransform(
+    instanceId: string,
+    transform:
+      NonNullable<
+        RegisterPieceInstanceInput["transform"]
+      >,
+  ) {
+
+    const instance =
+      designModel
+        .pieceInstances
+        .updateTransform(
+          instanceId,
+          transform,
+        );
+
+
+    if (
+      instance
+    ) {
+
+      designScene.sync();
+
+    }
+
+
+    return instance;
+
+  }
+
+
+  // ==========================================================
+  // REMOVE DESIGN PIECE INSTANCE
+  // ==========================================================
+
+  function removeDesignPieceInstance(
+    instanceId: string,
+  ): boolean {
+
+    const removed =
+      designModel.removePieceInstance(
+        instanceId,
+      );
+
+
+    if (
+      removed
+    ) {
+
+      designScene.sync();
+
+    }
+
+
+    return removed;
+
+  }
+
+
+  // ==========================================================
+  // GET LOADED REFERENCE MODELS
   // ==========================================================
 
   function getLoadedModels() {
@@ -420,7 +902,7 @@ new DesignModel();
 
 
   // ==========================================================
-  // GET MODEL
+  // GET REFERENCE MODEL
   // ==========================================================
 
   function getModel(
@@ -436,7 +918,7 @@ new DesignModel();
 
 
   // ==========================================================
-  // MODEL VISIBILITY
+  // REFERENCE MODEL VISIBILITY
   // ==========================================================
 
   function setModelVisible(
@@ -454,7 +936,7 @@ new DesignModel();
 
 
   // ==========================================================
-  // REMOVE MODEL
+  // REMOVE REFERENCE MODEL
   // ==========================================================
 
   function removeModel(
@@ -470,7 +952,7 @@ new DesignModel();
 
 
   // ==========================================================
-  // CLEAR MODELS
+  // CLEAR REFERENCE MODELS
   // ==========================================================
 
   function clearModels(): void {
@@ -498,12 +980,28 @@ new DesignModel();
 
 
     // --------------------------------------------------------
-    // FRAMELOGIC MODELS
+    // REFERENCE MODELS
     // --------------------------------------------------------
 
     modelRegistry.clearModels();
 
+
+    // --------------------------------------------------------
+    // DESIGN VISUALS
+    //
+    // Primero quitamos las instancias y liberamos
+    // geometrías/materiales compartidos.
+    // --------------------------------------------------------
+
+    designScene.dispose();
+
+
+    // --------------------------------------------------------
+    // DESIGN DOMAIN
+    // --------------------------------------------------------
+
     designModel.clear();
+
 
     // --------------------------------------------------------
     // THAT OPEN
@@ -513,14 +1011,11 @@ new DesignModel();
 
 
     // --------------------------------------------------------
-    // REMOVE ONLY THIS BIM CORE CANVAS
+    // REMOVE ONLY THIS INSTANCE CANVAS
     //
-    // Do NOT use:
-    //
-    // container.replaceChildren()
-    //
-    // because React StrictMode can initialize two instances
-    // during development.
+    // No usamos container.replaceChildren()
+    // porque React StrictMode puede crear temporalmente
+    // más de una instancia durante desarrollo.
     // --------------------------------------------------------
 
     if (
@@ -541,29 +1036,76 @@ new DesignModel();
 
   return {
 
-    // FrameLogic domain
+    // --------------------------------------------------------
+    // FRAMELOGIC DOMAIN
+    // --------------------------------------------------------
+
     designModel,
-  
-    // Infrastructure
+
+
+    // --------------------------------------------------------
+    // FRAMELOGIC DESIGN VISUAL LAYER
+    // --------------------------------------------------------
+
+    designScene,
+
+
+    // --------------------------------------------------------
+    // INFRASTRUCTURE
+    // --------------------------------------------------------
+
     components,
+
     world,
+
     helpers,
-  
+
+
+    // --------------------------------------------------------
     // BIM
+    // --------------------------------------------------------
+
     fragments,
+
     ifcLoader,
-  
-    // Reference models
+
+
+    // --------------------------------------------------------
+    // REFERENCE MODELS
+    // --------------------------------------------------------
+
     loadIfcFile,
+
     getLoadedModels,
+
     getModel,
+
     setModelVisible,
+
     removeModel,
+
     clearModels,
-  
-    // Lifecycle
+
+
+    // --------------------------------------------------------
+    // DESIGN PIECES
+    // --------------------------------------------------------
+
+    importDesignPieceIfc,
+
+    createDesignPieceInstance,
+
+    updateDesignPieceInstanceTransform,
+
+    removeDesignPieceInstance,
+
+
+    // --------------------------------------------------------
+    // LIFECYCLE
+    // --------------------------------------------------------
+
     dispose,
-  
+
   };
 
 }
