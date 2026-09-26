@@ -40,3 +40,34 @@ export type {
   CameraOrientation,
   CameraProjectionMode,
 } from "./engine/createBimCore";
+
+export {
+  DesignSelectionController,
+} from "./interaction/DesignSelectionController";
+
+
+export type {
+  DesignSelectionListener,
+} from "./interaction/DesignSelectionController";
+
+export {
+  DesignTransformController,
+} from "./interaction/DesignTransformController";
+
+
+export type {
+  DesignTransformMode,
+} from "./interaction/DesignTransformController";
+
+export type {
+  CadCommand,
+} from "./commands/CadCommand";
+
+export {
+  CadCommandManager,
+} from "./commands/CadCommandManager";
+
+export {
+  MoveCommand,
+} from "./commands/MoveCommand";
+

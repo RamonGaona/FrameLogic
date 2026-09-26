@@ -147,6 +147,38 @@ export class DesignSceneController {
 
   }
 
+  // ==========================================================
+// GET ALL INSTANCE OBJECTS
+// ==========================================================
+
+getInstanceObjects():
+THREE.Object3D[] {
+
+return Array.from(
+  this.instanceObjects.values(),
+);
+
+}
+
+
+// ==========================================================
+// GET INSTANCE ENTRIES
+// ==========================================================
+
+getInstanceEntries():
+Array<
+  [
+    string,
+    THREE.Object3D,
+  ]
+> {
+
+return Array.from(
+  this.instanceObjects.entries(),
+);
+
+}
+
 
   // ==========================================================
   // SYNC COMPLETE DESIGN MODEL

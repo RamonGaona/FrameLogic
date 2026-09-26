@@ -30,6 +30,30 @@ import {
   DesignSceneController,
 } from "../design/DesignSceneController";
 
+import {
+  DesignSelectionController,
+} from "../interaction/DesignSelectionController";
+
+import type {
+  DesignSelectionListener,
+} from "../interaction/DesignSelectionController";
+
+import {
+  DesignTransformController,
+} from "../interaction/DesignTransformController";
+
+import type {
+  DesignTransformMode,
+} from "../interaction/DesignTransformController";
+
+import {
+  CadCommandManager,
+} from "../commands/CadCommandManager";
+
+import {
+  MoveCommand,
+} from "../commands/MoveCommand";
+
 export type StandardView =
   | "TOP"
   | "BOTTOM"
@@ -579,6 +603,245 @@ new DesignPlacementController(
 
   pickReferenceSurface,
 
+);
+
+// ==========================================================
+// DESIGN SELECTION
+// ==========================================================
+
+const designSelection =
+  new DesignSelectionController(
+
+    world.scene.three,
+
+    canvas,
+
+    () =>
+      world.camera.three,
+
+    designScene,
+
+  );
+
+  // ==========================================================
+// DESIGN TRANSFORM
+// ==========================================================
+
+const designTransform =
+new DesignTransformController(
+
+  world.scene.three,
+
+  world.camera.three,
+
+  canvas,
+
+  designModel,
+
+  designScene,
+
+  designSelection,
+
+  (
+    enabled,
+  ) => {
+
+    world.camera.controls.enabled =
+      enabled;
+
+  },
+
+);
+
+// ==========================================================
+// CAD COMMANDS
+// ==========================================================
+
+const cadCommandManager =
+  new CadCommandManager();
+
+
+const moveCommand =
+  new MoveCommand(
+    designSelection,
+    designTransform,
+  );
+
+  const unsubscribeCadSelection =
+  designSelection.subscribe(
+    (
+      selectedIds,
+    ) => {
+
+      /*
+       * Si desaparece la selección mientras
+       * existe una orden CAD activa,
+       * la orden también debe terminar.
+       */
+      if (
+        selectedIds.length === 0
+        && cadCommandManager.hasActiveCommand
+      ) {
+
+        cadCommandManager.cancelActive();
+
+      }
+
+    },
+  );
+
+
+// ==========================================================
+// KEYBOARD
+// ==========================================================
+
+function isEditableKeyboardTarget(
+  target:
+    EventTarget | null,
+): boolean {
+
+  if (
+    !(target instanceof HTMLElement)
+  ) {
+
+    return false;
+
+  }
+
+
+  return (
+    target.isContentEditable
+    || target.tagName === "INPUT"
+    || target.tagName === "TEXTAREA"
+    || target.tagName === "SELECT"
+  );
+
+}
+
+
+const handleCadKeyDown =
+  (
+    event:
+      KeyboardEvent,
+  ): void => {
+
+    /*
+     * No capturamos M/Escape mientras el usuario
+     * está escribiendo en un input.
+     */
+
+    if (
+      isEditableKeyboardTarget(
+        event.target,
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    // ------------------------------------------------------
+    // ESCAPE
+    // ------------------------------------------------------
+
+    if (
+      event.key === "Escape"
+    ) {
+
+      /*
+       * Primer Escape:
+       *
+       * cancela MOVE pero conserva la selección.
+       */
+
+      if (
+        cadCommandManager
+          .hasActiveCommand
+      ) {
+
+        event.preventDefault();
+
+
+        event.stopPropagation();
+
+
+        cadCommandManager
+          .cancelActive();
+
+
+        return;
+
+      }
+
+
+      /*
+       * Segundo Escape:
+       *
+       * si no existe ningún comando,
+       * limpia la selección.
+       */
+
+      if (
+        designSelection
+          .getSelectedIds()
+          .length > 0
+      ) {
+
+        event.preventDefault();
+
+
+        event.stopPropagation();
+
+
+        designSelection
+          .clearSelection();
+
+      }
+
+
+      return;
+
+    }
+
+
+    // ------------------------------------------------------
+    // M = MOVE
+    // ------------------------------------------------------
+
+    if (
+      event.key.toLowerCase()
+        === "m"
+      && !event.ctrlKey
+      && !event.metaKey
+      && !event.altKey
+    ) {
+
+      const started =
+        cadCommandManager.start(
+          moveCommand,
+        );
+
+
+      if (
+        started
+      ) {
+
+        event.preventDefault();
+
+
+        event.stopPropagation();
+
+      }
+
+    }
+
+  };
+
+
+window.addEventListener(
+  "keydown",
+  handleCadKeyDown,
 );
 
   // ==========================================================
@@ -1241,14 +1504,33 @@ new DesignPlacementController(
 // START DESIGN PIECE PLACEMENT
 // ==========================================================
 
-function startDesignPiecePlacement(
+async function startDesignPiecePlacement(
   definitionId: string,
 ) {
 
-  return designPlacement
-    .startPlacement(
-      definitionId,
+  // Mientras colocamos una pieza, no queremos
+  // que el mismo clic seleccione objetos existentes.
+
+  designSelection.setEnabled(
+    false,
+  );
+
+
+  try {
+
+    return await designPlacement
+      .startPlacement(
+        definitionId,
+      );
+
+  }
+  finally {
+
+    designSelection.setEnabled(
+      true,
     );
+
+  }
 
 }
 
@@ -1584,73 +1866,226 @@ function subscribeCameraOrientation(
 
 }
 
+// ==========================================================
+// GET SELECTED PIECE INSTANCES
+// ==========================================================
 
-  // ==========================================================
-  // DISPOSE
-  // ==========================================================
+function getSelectedPieceInstanceIds():
+  readonly string[] {
 
-  function dispose(): void {
+  return designSelection
+    .getSelectedIds();
 
-    // --------------------------------------------------------
-    // CAMERA EVENT
-    // --------------------------------------------------------
+}
 
-    world.camera.controls.removeEventListener(
-      "update",
-      updateFragments,
+
+// ==========================================================
+// SELECT PIECE INSTANCE
+// ==========================================================
+
+function selectPieceInstance(
+  instanceId: string,
+): void {
+
+  designSelection
+    .selectSingle(
+      instanceId,
     );
 
-
-    // --------------------------------------------------------
-    // REFERENCE MODELS
-    // --------------------------------------------------------
-
-    modelRegistry.clearModels();
-
-    designPlacement.dispose();
-
-    // --------------------------------------------------------
-    // DESIGN VISUALS
-    //
-    // Primero quitamos las instancias y liberamos
-    // geometrías/materiales compartidos.
-    // --------------------------------------------------------
-
-    designScene.dispose();
+}
 
 
-    // --------------------------------------------------------
-    // DESIGN DOMAIN
-    // --------------------------------------------------------
+// ==========================================================
+// CLEAR PIECE SELECTION
+// ==========================================================
 
-    designModel.clear();
+function clearPieceSelection(): void {
 
+  designSelection
+    .clearSelection();
 
-    // --------------------------------------------------------
-    // THAT OPEN
-    // --------------------------------------------------------
-
-    components.dispose();
+}
 
 
-    // --------------------------------------------------------
-    // REMOVE ONLY THIS INSTANCE CANVAS
-    //
-    // No usamos container.replaceChildren()
-    // porque React StrictMode puede crear temporalmente
-    // más de una instancia durante desarrollo.
-    // --------------------------------------------------------
+// ==========================================================
+// SUBSCRIBE PIECE SELECTION
+// ==========================================================
 
-    if (
-      canvas.parentElement
-      === container
-    ) {
+function subscribePieceSelection(
+  listener:
+    DesignSelectionListener,
+): () => void {
 
-      canvas.remove();
+  return designSelection
+    .subscribe(
+      listener,
+    );
 
-    }
+}
+
+
+// ==========================================================
+// ISOLATE SELECTED PIECES
+// ==========================================================
+
+function isolateSelectedPieceInstances():
+  boolean {
+
+  return designSelection
+    .isolateSelection();
+
+}
+
+
+// ==========================================================
+// EXIT PIECE ISOLATION
+// ==========================================================
+
+function exitPieceIsolation():
+  boolean {
+
+  return designSelection
+    .exitIsolation();
+
+}
+
+// ==========================================================
+// TRANSFORM MODE
+// ==========================================================
+
+function setDesignTransformMode(
+  mode:
+    DesignTransformMode,
+): void {
+
+  designTransform.setMode(
+    mode,
+  );
+
+}
+
+
+// ==========================================================
+// TRANSFORM SPACE
+// ==========================================================
+
+function setDesignTransformSpace(
+  space:
+    "world"
+    | "local",
+): void {
+
+  designTransform.setSpace(
+    space,
+  );
+
+}
+
+// ==========================================================
+// CAD COMMANDS
+// ==========================================================
+
+function startMoveCommand():
+  boolean {
+
+  return cadCommandManager
+    .start(
+      moveCommand,
+    );
+
+}
+
+
+function cancelActiveCadCommand():
+  void {
+
+  cadCommandManager
+    .cancelActive();
+
+}
+
+
+// ==========================================================
+// DISPOSE
+// ==========================================================
+
+function dispose(): void {
+
+  window.removeEventListener(
+    "keydown",
+    handleCadKeyDown,
+  );
+
+  unsubscribeCadSelection();
+
+
+  cadCommandManager.dispose();
+
+
+  // --------------------------------------------------------
+  // CAMERA EVENT
+  // --------------------------------------------------------
+
+  world.camera.controls.removeEventListener(
+    "update",
+    updateFragments,
+  );
+
+
+  // --------------------------------------------------------
+  // REFERENCE MODELS
+  // --------------------------------------------------------
+
+  modelRegistry.clearModels();
+
+
+  // --------------------------------------------------------
+  // INTERACTION CONTROLLERS
+  // --------------------------------------------------------
+
+  designPlacement.dispose();
+
+  designTransform.dispose();
+
+
+  designSelection.dispose();
+
+
+  // --------------------------------------------------------
+  // DESIGN VISUALS
+  // --------------------------------------------------------
+
+  designScene.dispose();
+
+
+  // --------------------------------------------------------
+  // DESIGN DOMAIN
+  // --------------------------------------------------------
+
+  designModel.clear();
+
+
+  // --------------------------------------------------------
+  // THAT OPEN
+  // --------------------------------------------------------
+
+  components.dispose();
+
+
+  // --------------------------------------------------------
+  // REMOVE ONLY THIS BIM CORE CANVAS
+  // --------------------------------------------------------
+
+  if (
+    canvas.parentElement
+    === container
+  ) {
+
+    canvas.remove();
 
   }
+
+}
 
 
   // ==========================================================
@@ -1737,6 +2172,35 @@ subscribeCameraOrientation,
 
 getCameraProjectionMode,
 toggleCameraProjection,
+
+// Selection
+designSelection,
+
+getSelectedPieceInstanceIds,
+
+selectPieceInstance,
+
+clearPieceSelection,
+
+subscribePieceSelection,
+
+isolateSelectedPieceInstances,
+
+exitPieceIsolation,
+
+// CAD commands
+cadCommandManager,
+
+startMoveCommand,
+
+cancelActiveCadCommand,
+
+// Transform
+designTransform,
+
+setDesignTransformMode,
+
+setDesignTransformSpace,
 
     // --------------------------------------------------------
     // LIFECYCLE
