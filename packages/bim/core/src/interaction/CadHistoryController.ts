@@ -40,11 +40,11 @@ interface CadHistoryEntry {
   label:
     string;
 
-  before:
-    CadTransformSnapshot;
+  undo:
+    () => void;
 
-  after:
-    CadTransformSnapshot;
+  redo:
+    () => void;
 
 }
 
@@ -194,10 +194,45 @@ export class CadHistoryController {
     }
 
 
+    this.recordOperation(
+      label,
+      () => {
+
+        this.applySnapshot(
+          before,
+        );
+
+      },
+      () => {
+
+        this.applySnapshot(
+          after,
+        );
+
+      },
+    );
+
+
+    return true;
+
+  }
+
+
+  recordOperation(
+    label:
+      string,
+
+    undo:
+      () => void,
+
+    redo:
+      () => void,
+  ): void {
+
     this.undoStack.push({
       label,
-      before,
-      after,
+      undo,
+      redo,
     });
 
 
@@ -207,9 +242,6 @@ export class CadHistoryController {
      */
     this.redoStack.length =
       0;
-
-
-    return true;
 
   }
 
@@ -229,9 +261,7 @@ export class CadHistoryController {
     }
 
 
-    this.applySnapshot(
-      entry.before,
-    );
+    entry.undo();
 
 
     this.redoStack.push(
@@ -259,9 +289,7 @@ export class CadHistoryController {
     }
 
 
-    this.applySnapshot(
-      entry.after,
-    );
+    entry.redo();
 
 
     this.undoStack.push(
