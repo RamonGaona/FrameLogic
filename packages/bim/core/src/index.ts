@@ -71,3 +71,13 @@ export {
   MoveCommand,
 } from "./commands/MoveCommand";
 
+
+
+export {
+  DesignRotateController,
+} from "./interaction/DesignRotateController";
+
+
+export {
+  RotateCommand,
+} from "./commands/RotateCommand";
