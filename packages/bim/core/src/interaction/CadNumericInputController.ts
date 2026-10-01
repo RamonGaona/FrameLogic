@@ -300,6 +300,9 @@ export class CadNumericInputController {
     this.root.style.display =
       "flex";
 
+
+    this.focusFirstInput();
+
   }
 
 
@@ -332,6 +335,9 @@ export class CadNumericInputController {
 
     this.root.style.display =
       "flex";
+
+
+    this.focusFirstInput();
 
   }
 
@@ -479,6 +485,46 @@ export class CadNumericInputController {
       );
 
     }
+
+  }
+
+
+  private focusFirstInput():
+    void {
+
+    /*
+     * Esperamos a que termine el pointer event del gizmo.
+     *
+     * Así no interferimos con TransformControls y,
+     * si el usuario quiere entrada numérica, puede escribir
+     * inmediatamente sin hacer clic en la casilla.
+     */
+    window.setTimeout(
+      () => {
+
+        const input =
+          this.fields.querySelector(
+            "input",
+          );
+
+
+        if (
+          !(input instanceof HTMLInputElement)
+        ) {
+
+          return;
+
+        }
+
+
+        input.focus();
+
+
+        input.select();
+
+      },
+      0,
+    );
 
   }
 
