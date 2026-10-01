@@ -47,12 +47,20 @@ import type {
 } from "../interaction/DesignTransformController";
 
 import {
+  DesignRotateController,
+} from "../interaction/DesignRotateController";
+
+import {
   CadCommandManager,
 } from "../commands/CadCommandManager";
 
 import {
   MoveCommand,
 } from "../commands/MoveCommand";
+
+import {
+  RotateCommand,
+} from "../commands/RotateCommand";
 
 export type StandardView =
   | "TOP"
@@ -653,6 +661,37 @@ new DesignTransformController(
 
 );
 
+
+// ==========================================================
+// DESIGN ROTATE
+// ==========================================================
+
+const designRotate =
+  new DesignRotateController(
+
+    world.scene.three,
+
+    world.camera.three,
+
+    canvas,
+
+    designModel,
+
+    designScene,
+
+    designSelection,
+
+    (
+      enabled,
+    ) => {
+
+      world.camera.controls.enabled =
+        enabled;
+
+    },
+
+  );
+
 // ==========================================================
 // CAD COMMANDS
 // ==========================================================
@@ -665,6 +704,13 @@ const moveCommand =
   new MoveCommand(
     designSelection,
     designTransform,
+  );
+
+
+const rotateCommand =
+  new RotateCommand(
+    designSelection,
+    designRotate,
   );
 
   const unsubscribeCadSelection =
@@ -820,6 +866,41 @@ const handleCadKeyDown =
       const started =
         cadCommandManager.start(
           moveCommand,
+        );
+
+
+      if (
+        started
+      ) {
+
+        event.preventDefault();
+
+
+        event.stopPropagation();
+
+      }
+
+
+      return;
+
+    }
+
+
+    // ------------------------------------------------------
+    // R = ROTATE
+    // ------------------------------------------------------
+
+    if (
+      event.key.toLowerCase()
+        === "r"
+      && !event.ctrlKey
+      && !event.metaKey
+      && !event.altKey
+    ) {
+
+      const started =
+        cadCommandManager.start(
+          rotateCommand,
         );
 
 
@@ -2055,6 +2136,17 @@ function startMoveCommand():
 }
 
 
+function startRotateCommand():
+  boolean {
+
+  return cadCommandManager
+    .start(
+      rotateCommand,
+    );
+
+}
+
+
 function cancelActiveCadCommand():
   void {
 
@@ -2111,6 +2203,8 @@ function dispose(): void {
   designPlacement.dispose();
 
   designTransform.dispose();
+
+  designRotate.dispose();
 
 
   designSelection.dispose();
@@ -2258,10 +2352,14 @@ cadCommandManager,
 
 startMoveCommand,
 
+startRotateCommand,
+
 cancelActiveCadCommand,
 
 // Transform
 designTransform,
+
+designRotate,
 
 setDesignTransformMode,
 
