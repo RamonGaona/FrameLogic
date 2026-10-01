@@ -16,6 +16,10 @@ import type {
   DesignSelectionController,
 } from "./DesignSelectionController";
 
+import type {
+  RotateNumericAxis,
+} from "./CadNumericInputController";
+
 
 interface RotateStartState {
 
@@ -136,6 +140,13 @@ export class DesignRotateController {
   private unsubscribeSelection:
     (() => void) | null =
       null;
+
+
+  private onNumericAxis:
+    (
+      axis: RotateNumericAxis,
+    ) => void =
+      () => {};
 
 
   constructor(
@@ -463,6 +474,199 @@ export class DesignRotateController {
   }
 
 
+  setNumericAxisHandler(
+    handler:
+      (
+        axis: RotateNumericAxis,
+      ) => void,
+  ): void {
+
+    this.onNumericAxis =
+      handler;
+
+  }
+
+
+  applyNumericRotation(
+    axis:
+      RotateNumericAxis,
+
+    degrees:
+      number,
+  ): boolean {
+
+    if (
+      !this.active
+      || this.transformedObjects.size
+        < 1
+    ) {
+
+      return false;
+
+    }
+
+
+    const axisVector =
+      new THREE.Vector3();
+
+
+    switch (
+      axis
+    ) {
+
+      case "X":
+
+        axisVector.set(
+          1,
+          0,
+          0,
+        );
+
+        break;
+
+
+      case "Y":
+
+        axisVector.set(
+          0,
+          1,
+          0,
+        );
+
+        break;
+
+
+      case "Z":
+
+        axisVector.set(
+          0,
+          0,
+          1,
+        );
+
+        break;
+
+    }
+
+
+    const deltaQuaternion =
+      new THREE.Quaternion()
+        .setFromAxisAngle(
+          axisVector,
+          THREE.MathUtils.degToRad(
+            degrees,
+          ),
+        );
+
+
+    for (
+      const object
+      of this.transformedObjects.values()
+    ) {
+
+      const worldPosition =
+        new THREE.Vector3();
+
+
+      const worldQuaternion =
+        new THREE.Quaternion();
+
+
+      object.getWorldPosition(
+        worldPosition,
+      );
+
+
+      object.getWorldQuaternion(
+        worldQuaternion,
+      );
+
+
+      const nextWorldPosition =
+        worldPosition
+          .sub(
+            this.pivot.position,
+          )
+          .applyQuaternion(
+            deltaQuaternion,
+          )
+          .add(
+            this.pivot.position,
+          );
+
+
+      const nextWorldQuaternion =
+        deltaQuaternion
+          .clone()
+          .multiply(
+            worldQuaternion,
+          );
+
+
+      if (
+        object.parent
+      ) {
+
+        object.parent.updateMatrixWorld(
+          true,
+        );
+
+
+        object.parent.worldToLocal(
+          nextWorldPosition,
+        );
+
+
+        const parentWorldQuaternion =
+          new THREE.Quaternion();
+
+
+        object.parent.getWorldQuaternion(
+          parentWorldQuaternion,
+        );
+
+
+        object.quaternion.copy(
+          parentWorldQuaternion
+            .invert()
+            .multiply(
+              nextWorldQuaternion,
+            ),
+        );
+
+      }
+      else {
+
+        object.quaternion.copy(
+          nextWorldQuaternion,
+        );
+
+      }
+
+
+      object.position.copy(
+        nextWorldPosition,
+      );
+
+
+      object.updateMatrix();
+
+
+      object.updateMatrixWorld(
+        true,
+      );
+
+    }
+
+
+    this.commitTransforms();
+
+
+    return true;
+
+  }
+
+
   // ==========================================================
   // SELECTED OBJECTS
   // ==========================================================
@@ -699,6 +903,23 @@ export class DesignRotateController {
       this.rotationStartPivotQuaternion.copy(
         this.pivot.quaternion,
       );
+
+
+      const axis =
+        this.controls.axis;
+
+
+      if (
+        axis === "X"
+        || axis === "Y"
+        || axis === "Z"
+      ) {
+
+        this.onNumericAxis(
+          axis,
+        );
+
+      }
 
 
       this.rotationStartStates.clear();
