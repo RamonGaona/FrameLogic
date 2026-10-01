@@ -844,6 +844,65 @@ window.addEventListener(
   handleCadKeyDown,
 );
 
+
+// ==========================================================
+// DOUBLE CLICK EMPTY SPACE = CANCEL ACTIVE CAD COMMAND
+// ==========================================================
+
+const handleCadDoubleClick =
+  (
+    event:
+      MouseEvent,
+  ): void => {
+
+    if (
+      !cadCommandManager
+        .hasActiveCommand
+    ) {
+
+      return;
+
+    }
+
+
+    const instanceId =
+      designSelection
+        .getInstanceIdAt(
+          event.clientX,
+          event.clientY,
+        );
+
+
+    /*
+     * Doble clic sobre geometría:
+     * no cancela el comando.
+     */
+    if (
+      instanceId
+    ) {
+
+      return;
+
+    }
+
+
+    event.preventDefault();
+
+
+    event.stopPropagation();
+
+
+    cadCommandManager
+      .cancelActive();
+
+  };
+
+
+canvas.addEventListener(
+  "dblclick",
+  handleCadDoubleClick,
+);
+
   // ==========================================================
   // UPDATE FRAGMENTS WHEN CAMERA MOVES
   // ==========================================================
@@ -2014,6 +2073,12 @@ function dispose(): void {
   window.removeEventListener(
     "keydown",
     handleCadKeyDown,
+  );
+
+
+  canvas.removeEventListener(
+    "dblclick",
+    handleCadDoubleClick,
   );
 
   unsubscribeCadSelection();
