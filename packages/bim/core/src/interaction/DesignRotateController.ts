@@ -17,6 +17,17 @@ import type {
 } from "./DesignSelectionController";
 
 
+interface RotateStartState {
+
+  worldPosition:
+    THREE.Vector3;
+
+  worldQuaternion:
+    THREE.Quaternion;
+
+}
+
+
 export class DesignRotateController {
 
   private readonly scene:
@@ -103,8 +114,15 @@ export class DesignRotateController {
     >();
 
 
-  private previousPivotQuaternion =
+  private rotationStartPivotQuaternion =
     new THREE.Quaternion();
+
+
+  private readonly rotationStartStates =
+    new Map<
+      string,
+      RotateStartState
+    >();
 
 
   private active =
@@ -390,6 +408,9 @@ export class DesignRotateController {
     this.transformedObjects.clear();
 
 
+    this.rotationStartStates.clear();
+
+
     this.controls.detach();
 
 
@@ -584,7 +605,7 @@ export class DesignRotateController {
     this.pivot.quaternion.identity();
 
 
-    this.previousPivotQuaternion.copy(
+    this.rotationStartPivotQuaternion.copy(
       this.pivot.quaternion,
     );
 
@@ -667,9 +688,57 @@ export class DesignRotateController {
       }
 
 
-      this.previousPivotQuaternion.copy(
+      /*
+       * Guardamos un snapshot completo al INICIO del drag.
+       *
+       * Cada objectChange se calculará desde este estado
+       * original, en lugar de acumular pequeños deltas.
+       * Esto evita deriva y hace que el giro siga exactamente
+       * el arco del gizmo también en cámara ortográfica.
+       */
+      this.rotationStartPivotQuaternion.copy(
         this.pivot.quaternion,
       );
+
+
+      this.rotationStartStates.clear();
+
+
+      for (
+        const [
+          instanceId,
+          object,
+        ]
+        of this.transformedObjects
+      ) {
+
+        const worldPosition =
+          new THREE.Vector3();
+
+
+        const worldQuaternion =
+          new THREE.Quaternion();
+
+
+        object.getWorldPosition(
+          worldPosition,
+        );
+
+
+        object.getWorldQuaternion(
+          worldQuaternion,
+        );
+
+
+        this.rotationStartStates.set(
+          instanceId,
+          {
+            worldPosition,
+            worldQuaternion,
+          },
+        );
+
+      }
 
 
       this.setCameraEnabled(
@@ -699,50 +768,75 @@ export class DesignRotateController {
       }
 
 
+      /*
+       * Rotación TOTAL desde el inicio del drag.
+       *
+       * current * inverse(start)
+       *
+       * De esta forma no acumulamos error evento por evento.
+       */
       const deltaQuaternion =
         this.pivot.quaternion
           .clone()
           .multiply(
-            this.previousPivotQuaternion
+            this.rotationStartPivotQuaternion
               .clone()
               .invert(),
           );
 
 
       for (
-        const object
-        of this.transformedObjects.values()
+        const [
+          instanceId,
+          object,
+        ]
+        of this.transformedObjects
       ) {
 
+        const startState =
+          this.rotationStartStates.get(
+            instanceId,
+          );
+
+
+        if (
+          !startState
+        ) {
+
+          continue;
+
+        }
+
+
         /*
-         * Rotar posición alrededor del centro del gizmo.
+         * Posición mundial:
+         *
+         * P' = pivot + Q * (P0 - pivot)
          */
-        const worldPosition =
-          new THREE.Vector3();
-
-
-        object.getWorldPosition(
-          worldPosition,
-        );
-
-
-        const offset =
-          worldPosition
+        const nextWorldPosition =
+          startState.worldPosition
+            .clone()
             .sub(
+              this.pivot.position,
+            )
+            .applyQuaternion(
+              deltaQuaternion,
+            )
+            .add(
               this.pivot.position,
             );
 
 
-        offset.applyQuaternion(
-          deltaQuaternion,
-        );
-
-
-        const nextWorldPosition =
-          this.pivot.position
+        /*
+         * Orientación mundial:
+         *
+         * Q' = delta * Q0
+         */
+        const nextWorldQuaternion =
+          deltaQuaternion
             .clone()
-            .add(
-              offset,
+            .multiply(
+              startState.worldQuaternion,
             );
 
 
@@ -750,8 +844,38 @@ export class DesignRotateController {
           object.parent
         ) {
 
+          object.parent.updateMatrixWorld(
+            true,
+          );
+
+
           object.parent.worldToLocal(
             nextWorldPosition,
+          );
+
+
+          const parentWorldQuaternion =
+            new THREE.Quaternion();
+
+
+          object.parent.getWorldQuaternion(
+            parentWorldQuaternion,
+          );
+
+
+          object.quaternion.copy(
+            parentWorldQuaternion
+              .invert()
+              .multiply(
+                nextWorldQuaternion,
+              ),
+          );
+
+        }
+        else {
+
+          object.quaternion.copy(
+            nextWorldQuaternion,
           );
 
         }
@@ -759,14 +883,6 @@ export class DesignRotateController {
 
         object.position.copy(
           nextWorldPosition,
-        );
-
-
-        /*
-         * Rotar orientación de la pieza sobre el mismo eje.
-         */
-        object.quaternion.premultiply(
-          deltaQuaternion,
         );
 
 
@@ -778,11 +894,6 @@ export class DesignRotateController {
         );
 
       }
-
-
-      this.previousPivotQuaternion.copy(
-        this.pivot.quaternion,
-      );
 
 
       this.selection.refreshHelpers();
@@ -804,6 +915,9 @@ export class DesignRotateController {
 
 
       this.commitTransforms();
+
+
+      this.rotationStartStates.clear();
 
 
       this.setCameraEnabled(
