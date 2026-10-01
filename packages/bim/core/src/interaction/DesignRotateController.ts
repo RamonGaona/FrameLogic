@@ -20,6 +20,11 @@ import type {
   RotateNumericAxis,
 } from "./CadNumericInputController";
 
+import type {
+  CadHistoryController,
+  CadTransformSnapshot,
+} from "./CadHistoryController";
+
 
 interface RotateStartState {
 
@@ -62,6 +67,10 @@ export class DesignRotateController {
     (
       enabled: boolean,
     ) => void;
+
+
+  private readonly history:
+    CadHistoryController;
 
 
   private readonly controls:
@@ -149,6 +158,12 @@ export class DesignRotateController {
       () => {};
 
 
+  private dragHistoryStart:
+    CadTransformSnapshot
+    | null =
+      null;
+
+
   constructor(
     scene:
       THREE.Scene,
@@ -167,6 +182,9 @@ export class DesignRotateController {
 
     selection:
       DesignSelectionController,
+
+    history:
+      CadHistoryController,
 
     setCameraEnabled:
       (
@@ -196,6 +214,10 @@ export class DesignRotateController {
 
     this.selection =
       selection;
+
+
+    this.history =
+      history;
 
 
     this.setCameraEnabled =
@@ -422,6 +444,10 @@ export class DesignRotateController {
     this.rotationStartStates.clear();
 
 
+    this.dragHistoryStart =
+      null;
+
+
     this.controls.detach();
 
 
@@ -504,6 +530,13 @@ export class DesignRotateController {
       return false;
 
     }
+
+
+    const before =
+      this.history.capture(
+        this.selection
+          .getSelectedIds(),
+      );
 
 
     const axisVector =
@@ -660,6 +693,14 @@ export class DesignRotateController {
 
 
     this.commitTransforms();
+
+
+    this.history.recordTransform(
+      "ROTATE",
+      before,
+      this.selection
+        .getSelectedIds(),
+    );
 
 
     return true;
@@ -925,6 +966,13 @@ export class DesignRotateController {
       this.rotationStartStates.clear();
 
 
+      this.dragHistoryStart =
+        this.history.capture(
+          this.selection
+            .getSelectedIds(),
+        );
+
+
       for (
         const [
           instanceId,
@@ -1136,6 +1184,24 @@ export class DesignRotateController {
 
 
       this.commitTransforms();
+
+
+      if (
+        this.dragHistoryStart
+      ) {
+
+        this.history.recordTransform(
+          "ROTATE",
+          this.dragHistoryStart,
+          this.selection
+            .getSelectedIds(),
+        );
+
+      }
+
+
+      this.dragHistoryStart =
+        null;
 
 
       this.rotationStartStates.clear();
