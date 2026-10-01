@@ -52,7 +52,7 @@ implements CadCommand {
 
 
     if (
-      selectedIds.length !== 1
+      selectedIds.length < 1
     ) {
 
       return false;
@@ -60,9 +60,29 @@ implements CadCommand {
     }
 
 
-    return this.transform.activate(
-      "translate",
+    this.selection.setClearOnEmptyClick(
+      false,
     );
+
+
+    const started =
+      this.transform.activate(
+        "translate",
+      );
+
+
+    if (
+      !started
+    ) {
+
+      this.selection.setClearOnEmptyClick(
+        true,
+      );
+
+    }
+
+
+    return started;
 
   }
 
@@ -70,6 +90,11 @@ implements CadCommand {
   cancel(): void {
 
     this.transform.deactivate();
+
+
+    this.selection.setClearOnEmptyClick(
+      true,
+    );
 
   }
 
