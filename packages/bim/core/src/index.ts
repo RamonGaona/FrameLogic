@@ -81,3 +81,14 @@ export {
 export {
   RotateCommand,
 } from "./commands/RotateCommand";
+
+
+export {
+  CadHistoryController,
+} from "./interaction/CadHistoryController";
+
+
+export type {
+  CadTransformSnapshot,
+  CadTransformState,
+} from "./interaction/CadHistoryController";
