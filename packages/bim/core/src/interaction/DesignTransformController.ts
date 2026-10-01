@@ -16,6 +16,10 @@ import type {
   DesignSelectionController,
 } from "./DesignSelectionController";
 
+import type {
+  MoveNumericAxis,
+} from "./CadNumericInputController";
+
 
 export type DesignTransformMode =
   | "translate"
@@ -92,6 +96,13 @@ export class DesignTransformController {
   private unsubscribeSelection:
     (() => void) | null =
       null;
+
+
+  private onNumericAxis:
+    (
+      axis: MoveNumericAxis,
+    ) => void =
+      () => {};
 
 
   constructor(
@@ -358,6 +369,150 @@ export class DesignTransformController {
      */
     this.controls.camera =
       camera;
+
+  }
+
+
+  setNumericAxisHandler(
+    handler:
+      (
+        axis: MoveNumericAxis,
+      ) => void,
+  ): void {
+
+    this.onNumericAxis =
+      handler;
+
+  }
+
+
+  applyNumericMove(
+    axis:
+      MoveNumericAxis,
+
+    first:
+      number,
+
+    second = 0,
+  ): boolean {
+
+    if (
+      !this.active
+      || this.transformedObjects.size
+        < 1
+    ) {
+
+      return false;
+
+    }
+
+
+    const delta =
+      new THREE.Vector3();
+
+
+    switch (
+      axis
+    ) {
+
+      case "X":
+
+        delta.x =
+          first;
+
+        break;
+
+
+      case "Y":
+
+        delta.y =
+          first;
+
+        break;
+
+
+      case "Z":
+
+        delta.z =
+          first;
+
+        break;
+
+
+      case "XY":
+
+        delta.set(
+          first,
+          second,
+          0,
+        );
+
+        break;
+
+
+      case "XZ":
+
+        delta.set(
+          first,
+          0,
+          second,
+        );
+
+        break;
+
+
+      case "YZ":
+
+        delta.set(
+          0,
+          first,
+          second,
+        );
+
+        break;
+
+    }
+
+
+    for (
+      const object
+      of this.transformedObjects.values()
+    ) {
+
+      object.position.add(
+        delta,
+      );
+
+
+      object.updateMatrix();
+
+
+      object.updateMatrixWorld(
+        true,
+      );
+
+    }
+
+
+    this.pivot.position.add(
+      delta,
+    );
+
+
+    this.pivot.updateMatrixWorld(
+      true,
+    );
+
+
+    this.previousPivotPosition.copy(
+      this.pivot.position,
+    );
+
+
+    this.commitTransforms();
+
+
+    return true;
 
   }
 
@@ -630,6 +785,22 @@ export class DesignTransformController {
           axis === "XYZ"
             ? "MOVE_PIVOT"
             : "MOVE_OBJECTS";
+
+
+        if (
+          axis === "X"
+          || axis === "Y"
+          || axis === "Z"
+          || axis === "XY"
+          || axis === "XZ"
+          || axis === "YZ"
+        ) {
+
+          this.onNumericAxis(
+            axis,
+          );
+
+        }
 
       }
 
