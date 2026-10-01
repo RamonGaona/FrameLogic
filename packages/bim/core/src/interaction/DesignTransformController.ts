@@ -81,10 +81,6 @@ export class DesignTransformController {
       "NONE";
 
 
-  private hasCustomPivot =
-    false;
-
-
   private active =
     false;
 
@@ -321,10 +317,6 @@ export class DesignTransformController {
       "NONE";
 
 
-    this.hasCustomPivot =
-      false;
-
-
     this.controls.detach();
 
 
@@ -413,9 +405,6 @@ export class DesignTransformController {
       selectedIds.length < 1
     ) {
 
-      this.hasCustomPivot =
-        false;
-
 
       return;
 
@@ -475,9 +464,6 @@ export class DesignTransformController {
       count < 1
     ) {
 
-      this.hasCustomPivot =
-        false;
-
 
       return;
 
@@ -514,10 +500,6 @@ export class DesignTransformController {
     this.previousPivotQuaternion.copy(
       this.pivot.quaternion,
     );
-
-
-    this.hasCustomPivot =
-      false;
 
   }
 
@@ -696,9 +678,6 @@ export class DesignTransformController {
       this.dragMode
       === "MOVE_PIVOT"
     ) {
-
-      this.hasCustomPivot =
-        true;
 
 
       this.previousPivotPosition.copy(
