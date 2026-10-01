@@ -341,6 +341,28 @@ export class DesignTransformController {
 
 
   // ==========================================================
+  // CAMERA
+  // ==========================================================
+
+  setCamera(
+    camera:
+      THREE.Camera,
+  ): void {
+
+    /*
+     * OrthoPerspectiveCamera puede reemplazar la instancia
+     * THREE.Camera al alternar perspectiva/ortográfica.
+     *
+     * TransformControls debe usar siempre la cámara activa
+     * también para su raycast interno.
+     */
+    this.controls.camera =
+      camera;
+
+  }
+
+
+  // ==========================================================
   // SELECTED OBJECTS
   // ==========================================================
 
