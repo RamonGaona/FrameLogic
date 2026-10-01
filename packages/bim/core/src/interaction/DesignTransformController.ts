@@ -20,6 +20,11 @@ import type {
   MoveNumericAxis,
 } from "./CadNumericInputController";
 
+import type {
+  CadHistoryController,
+  CadTransformSnapshot,
+} from "./CadHistoryController";
+
 
 export type DesignTransformMode =
   | "translate"
@@ -48,6 +53,10 @@ export class DesignTransformController {
     (
       enabled: boolean,
     ) => void;
+
+
+  private readonly history:
+    CadHistoryController;
 
 
   private readonly controls:
@@ -105,6 +114,12 @@ export class DesignTransformController {
       () => {};
 
 
+  private dragHistoryStart:
+    CadTransformSnapshot
+    | null =
+      null;
+
+
   constructor(
     scene:
       THREE.Scene,
@@ -123,6 +138,9 @@ export class DesignTransformController {
 
     selection:
       DesignSelectionController,
+
+    history:
+      CadHistoryController,
 
     setCameraEnabled:
       (
@@ -144,6 +162,10 @@ export class DesignTransformController {
 
     this.selection =
       selection;
+
+
+    this.history =
+      history;
 
 
     this.setCameraEnabled =
@@ -328,6 +350,10 @@ export class DesignTransformController {
       "NONE";
 
 
+    this.dragHistoryStart =
+      null;
+
+
     this.controls.detach();
 
 
@@ -405,6 +431,13 @@ export class DesignTransformController {
       return false;
 
     }
+
+
+    const before =
+      this.history.capture(
+        this.selection
+          .getSelectedIds(),
+      );
 
 
     const delta =
@@ -510,6 +543,14 @@ export class DesignTransformController {
 
 
     this.commitTransforms();
+
+
+    this.history.recordTransform(
+      "MOVE",
+      before,
+      this.selection
+        .getSelectedIds(),
+    );
 
 
     return true;
@@ -805,6 +846,16 @@ export class DesignTransformController {
       }
 
 
+      this.dragHistoryStart =
+        this.dragMode
+          === "MOVE_OBJECTS"
+          ? this.history.capture(
+              this.selection
+                .getSelectedIds(),
+            )
+          : null;
+
+
       this.setCameraEnabled(
         false,
       );
@@ -1021,7 +1072,25 @@ export class DesignTransformController {
 
         this.commitTransforms();
 
+
+        if (
+          this.dragHistoryStart
+        ) {
+
+          this.history.recordTransform(
+            "MOVE",
+            this.dragHistoryStart,
+            this.selection
+              .getSelectedIds(),
+          );
+
+        }
+
       }
+
+
+      this.dragHistoryStart =
+        null;
 
 
       this.dragMode =
