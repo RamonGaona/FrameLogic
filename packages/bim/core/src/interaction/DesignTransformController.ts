@@ -25,25 +25,26 @@ export type DesignTransformMode =
 export class DesignTransformController {
 
   private readonly scene:
-  THREE.Scene;
+    THREE.Scene;
 
 
-private readonly designModel:
-  DesignModel;
+  private readonly designModel:
+    DesignModel;
 
 
-private readonly designScene:
-  DesignSceneController;
+  private readonly designScene:
+    DesignSceneController;
 
 
-private readonly selection:
-  DesignSelectionController;
+  private readonly selection:
+    DesignSelectionController;
 
 
-private readonly setCameraEnabled:
-  (
-    enabled: boolean,
-  ) => void;
+  private readonly setCameraEnabled:
+    (
+      enabled: boolean,
+    ) => void;
+
 
   private readonly controls:
     TransformControls;
@@ -52,32 +53,36 @@ private readonly setCameraEnabled:
   private readonly helper:
     THREE.Object3D;
 
-    private readonly pivot =
-  new THREE.Object3D();
+
+  private readonly pivot =
+    new THREE.Object3D();
 
 
-private transformedObject:
-  THREE.Object3D | null =
-    null;
+  private readonly transformedObjects =
+    new Map<
+      string,
+      THREE.Object3D
+    >();
 
 
-private previousPivotPosition =
-  new THREE.Vector3();
+  private previousPivotPosition =
+    new THREE.Vector3();
+
+
+  private previousPivotQuaternion =
+    new THREE.Quaternion();
+
 
   private dragMode:
-  "NONE"
-  | "MOVE_OBJECT"
-  | "MOVE_PIVOT" =
-    "NONE";
+    | "NONE"
+    | "MOVE_OBJECTS"
+    | "MOVE_PIVOT"
+    | "ROTATE_OBJECTS" =
+      "NONE";
 
 
-private hasCustomPivot =
-  false;
-
-
-  private activeInstanceId:
-    string | null =
-      null;
+  private hasCustomPivot =
+    false;
 
 
   private active =
@@ -93,49 +98,50 @@ private hasCustomPivot =
       null;
 
 
-      constructor(
-        scene:
-          THREE.Scene,
-      
-        camera:
-          THREE.Camera,
-      
-        domElement:
-          HTMLElement,
-      
-        designModel:
-          DesignModel,
-      
-        designScene:
-          DesignSceneController,
-      
-        selection:
-          DesignSelectionController,
-      
-        setCameraEnabled:
-          (
-            enabled: boolean,
-          ) => void,
-      ) {
-      
-        this.scene =
-          scene;
-      
-      
-        this.designModel =
-          designModel;
-      
-      
-        this.designScene =
-          designScene;
-      
-      
-        this.selection =
-          selection;
-      
-      
-        this.setCameraEnabled =
-          setCameraEnabled;
+  constructor(
+    scene:
+      THREE.Scene,
+
+    camera:
+      THREE.Camera,
+
+    domElement:
+      HTMLElement,
+
+    designModel:
+      DesignModel,
+
+    designScene:
+      DesignSceneController,
+
+    selection:
+      DesignSelectionController,
+
+    setCameraEnabled:
+      (
+        enabled: boolean,
+      ) => void,
+  ) {
+
+    this.scene =
+      scene;
+
+
+    this.designModel =
+      designModel;
+
+
+    this.designScene =
+      designScene;
+
+
+    this.selection =
+      selection;
+
+
+    this.setCameraEnabled =
+      setCameraEnabled;
+
 
     this.controls =
       new TransformControls(
@@ -166,23 +172,15 @@ private hasCustomPivot =
       this.helper,
     );
 
+
     this.pivot.name =
-  "FrameLogicTransformPivot";
+      "FrameLogicTransformPivot";
 
 
-this.scene.add(
-  this.pivot,
-);
+    this.scene.add(
+      this.pivot,
+    );
 
-
-    /*
-     * IMPORTANTE:
-     *
-     * seleccionar una pieza NO activa el gizmo.
-     *
-     * Solo actualizamos el objeto conectado si
-     * actualmente existe una orden activa.
-     */
 
     this.unsubscribeSelection =
       this.selection.subscribe(
@@ -203,6 +201,7 @@ this.scene.add(
       this.handleTransformStart,
     );
 
+
     this.controls.addEventListener(
       "objectChange",
       this.handleTransformChange,
@@ -214,10 +213,6 @@ this.scene.add(
       this.handleTransformEnd,
     );
 
-
-    /*
-     * El controlador empieza apagado.
-     */
 
     this.controls.detach();
 
@@ -249,7 +244,7 @@ this.scene.add(
 
 
     if (
-      selectedIds.length !== 1
+      selectedIds.length < 1
     ) {
 
       this.deactivate();
@@ -259,19 +254,10 @@ this.scene.add(
     }
 
 
-    const instanceId =
-      selectedIds[0];
-
-
-    const object =
-      this.designScene
-        .getInstanceObject(
-          instanceId,
-        );
-
-
     if (
-      !object
+      !this.syncSelectedObjects(
+        selectedIds,
+      )
     ) {
 
       this.deactivate();
@@ -287,68 +273,23 @@ this.scene.add(
 
 
     this.active =
-  true;
+      true;
 
 
-this.activeInstanceId =
-  instanceId;
+    /*
+     * Cada comando empieza desde el punto base
+     * de la selección actual.
+     */
+    this.resetPivotToSelectionBase();
 
 
-this.transformedObject =
-  object;
+    this.controls.attach(
+      this.pivot,
+    );
 
 
-/*
- * Inicialmente el punto base coincide
- * con el origen de la pieza.
- */
-
-this.active =
-  true;
-
-this.activeInstanceId =
-  instanceId;
-
-this.transformedObject =
-  object;
-
-
-/*
- * Si todavía no existe un pivot personalizado,
- * arrancamos en el origen de la pieza.
- *
- * Si el usuario ya movió el pivot desde el
- * centro del gizmo, lo conservamos.
- */
-if (
-  !this.hasCustomPivot
-) {
-
-  object.getWorldPosition(
-    this.pivot.position,
-  );
-
-}
-
-
-this.previousPivotPosition.copy(
-  this.pivot.position,
-);
-
-this.pivot.rotation.copy(
-  object.rotation,
-);
-
-this.pivot.updateMatrixWorld(
-  true,
-);
-
-this.controls.attach(
-  this.pivot,
-);
-
-this.dragMode =
-  "NONE";
+    this.dragMode =
+      "NONE";
 
 
     return true;
@@ -362,38 +303,40 @@ this.dragMode =
 
   deactivate(): void {
 
+    /*
+     * Cualquier cancelación devuelve el pivot
+     * al punto base antes de ocultar el gizmo.
+     */
+    this.resetPivotToSelectionBase();
+
+
     this.active =
       false;
-  
-  
-    this.activeInstanceId =
-      null;
-  
-  
-    this.transformedObject =
-      null;
-  
-  
+
+
+    this.transformedObjects.clear();
+
+
     this.dragMode =
       "NONE";
-  
-  
+
+
     this.hasCustomPivot =
       false;
-  
-  
+
+
     this.controls.detach();
-  
-  
+
+
     this.setCameraEnabled(
       true,
     );
-  
-  
+
+
     this.selection.setEnabled(
       true,
     );
-  
+
   }
 
 
@@ -401,6 +344,180 @@ this.dragMode =
     boolean {
 
     return this.active;
+
+  }
+
+
+  // ==========================================================
+  // SELECTED OBJECTS
+  // ==========================================================
+
+  private syncSelectedObjects(
+    selectedIds:
+      readonly string[],
+  ): boolean {
+
+    this.transformedObjects.clear();
+
+
+    for (
+      const instanceId
+      of selectedIds
+    ) {
+
+      const object =
+        this.designScene
+          .getInstanceObject(
+            instanceId,
+          );
+
+
+      if (
+        !object
+      ) {
+
+        continue;
+
+      }
+
+
+      this.transformedObjects.set(
+        instanceId,
+        object,
+      );
+
+    }
+
+
+    return (
+      this.transformedObjects.size
+      > 0
+    );
+
+  }
+
+
+  // ==========================================================
+  // SELECTION BASE
+  // ==========================================================
+
+  private resetPivotToSelectionBase():
+    void {
+
+    const selectedIds =
+      this.selection
+        .getSelectedIds();
+
+
+    if (
+      selectedIds.length < 1
+    ) {
+
+      this.hasCustomPivot =
+        false;
+
+
+      return;
+
+    }
+
+
+    const position =
+      new THREE.Vector3();
+
+
+    const worldPosition =
+      new THREE.Vector3();
+
+
+    let count =
+      0;
+
+
+    for (
+      const instanceId
+      of selectedIds
+    ) {
+
+      const object =
+        this.designScene
+          .getInstanceObject(
+            instanceId,
+          );
+
+
+      if (
+        !object
+      ) {
+
+        continue;
+
+      }
+
+
+      object.getWorldPosition(
+        worldPosition,
+      );
+
+
+      position.add(
+        worldPosition,
+      );
+
+
+      count +=
+        1;
+
+    }
+
+
+    if (
+      count < 1
+    ) {
+
+      this.hasCustomPivot =
+        false;
+
+
+      return;
+
+    }
+
+
+    position.multiplyScalar(
+      1 / count,
+    );
+
+
+    this.pivot.position.copy(
+      position,
+    );
+
+
+    /*
+     * Los ejes del gizmo representan el sistema
+     * cartesiano mundial.
+     */
+    this.pivot.quaternion.identity();
+
+
+    this.pivot.updateMatrixWorld(
+      true,
+    );
+
+
+    this.previousPivotPosition.copy(
+      this.pivot.position,
+    );
+
+
+    this.previousPivotQuaternion.copy(
+      this.pivot.quaternion,
+    );
+
+
+    this.hasCustomPivot =
+      false;
 
   }
 
@@ -415,28 +532,28 @@ this.dragMode =
   ): void {
 
     /*
-     * Si MOVE/ROTATE no está activo,
-     * una selección normal NO muestra gizmo.
+     * Seleccionar normalmente no muestra gizmo.
      */
-
     if (
       !this.active
     ) {
 
-      this.activeInstanceId =
-        null;
-
-
       this.controls.detach();
 
-
       return;
 
     }
 
 
+    /*
+     * Una selección nueva NO cancela el comando.
+     * MOVE/ROTATE continúa sobre las nuevas piezas.
+     */
     if (
-      selectedIds.length !== 1
+      selectedIds.length < 1
+      || !this.syncSelectedObjects(
+        selectedIds,
+      )
     ) {
 
       this.deactivate();
@@ -446,65 +563,20 @@ this.dragMode =
     }
 
 
-    const instanceId =
-      selectedIds[0];
+    /*
+     * Al cambiar las piezas seleccionadas,
+     * el pivot temporal anterior deja de aplicar.
+     */
+    this.resetPivotToSelectionBase();
 
 
-    const object =
-      this.designScene
-        .getInstanceObject(
-          instanceId,
-        );
+    this.controls.attach(
+      this.pivot,
+    );
 
 
-    if (
-      !object
-    ) {
-
-      this.deactivate();
-
-      return;
-
-    }
-
-
-    this.activeInstanceId =
-  instanceId;
-  this.activeInstanceId =
-  instanceId;
-
-this.transformedObject =
-  object;
-
-/*
- * Al cambiar de selección,
- * el pivot vuelve al origen de la nueva pieza.
- */
-this.hasCustomPivot =
-  false;
-
-object.getWorldPosition(
-  this.pivot.position,
-);
-
-this.previousPivotPosition.copy(
-  this.pivot.position,
-);
-
-this.pivot.rotation.copy(
-  object.rotation,
-);
-
-this.pivot.updateMatrixWorld(
-  true,
-);
-
-this.controls.attach(
-  this.pivot,
-);
-
-this.dragMode =
-  "NONE";
+    this.dragMode =
+      "NONE";
 
   }
 
@@ -514,70 +586,99 @@ this.dragMode =
   // ==========================================================
 
   private readonly handleTransformStart =
-  (): void => {
+    (): void => {
 
-    if (
-      !this.active
-    ) {
+      if (
+        !this.active
+      ) {
 
-      return;
+        return;
 
-    }
-
-    this.previousPivotPosition.copy(
-      this.pivot.position,
-    );
+      }
 
 
-    /*
-     * En TransformControls, el control central de translate
-     * suele reportarse como "XYZ".
-     *
-     * Si en tu build reporta otro valor, lo veremos enseguida.
-     */
-    const axis =
-      this.controls.axis;
-
-    this.dragMode =
-      axis === "XYZ"
-        ? "MOVE_PIVOT"
-        : "MOVE_OBJECT";
+      this.previousPivotPosition.copy(
+        this.pivot.position,
+      );
 
 
-    this.setCameraEnabled(
-      false,
-    );
+      this.previousPivotQuaternion.copy(
+        this.pivot.quaternion,
+      );
 
-    this.selection.setEnabled(
-      false,
-    );
 
-  };
+      if (
+        this.controls.getMode()
+        === "rotate"
+      ) {
 
-    // ==========================================================
-// TRANSFORM CHANGE
-// ==========================================================
+        this.dragMode =
+          "ROTATE_OBJECTS";
 
-private readonly handleTransformChange =
-  (): void => {
+      }
+      else {
 
-    if (
-      !this.active
-      || !this.transformedObject
-    ) {
+        const axis =
+          this.controls.axis;
 
-      return;
 
-    }
+        this.dragMode =
+          axis === "XYZ"
+            ? "MOVE_PIVOT"
+            : "MOVE_OBJECTS";
 
-    if (
-      this.controls.getMode()
-      !== "translate"
-    ) {
+      }
 
-      return;
 
-    }
+      this.setCameraEnabled(
+        false,
+      );
+
+
+      this.selection.setEnabled(
+        false,
+      );
+
+    };
+
+
+  // ==========================================================
+  // TRANSFORM CHANGE
+  // ==========================================================
+
+  private readonly handleTransformChange =
+    (): void => {
+
+      if (
+        !this.active
+        || this.transformedObjects.size
+          < 1
+      ) {
+
+        return;
+
+      }
+
+
+      if (
+        this.controls.getMode()
+        === "translate"
+      ) {
+
+        this.handleTranslateChange();
+
+        return;
+
+      }
+
+
+      this.handleRotateChange();
+
+    };
+
+
+  private handleTranslateChange():
+    void {
 
     const delta =
       new THREE.Vector3()
@@ -587,9 +688,9 @@ private readonly handleTransformChange =
         );
 
 
-    // ======================================================
-    // DRAG DEL CENTRO = MOVER SOLO PIVOT
-    // ======================================================
+    // --------------------------------------------------------
+    // CENTRO DEL GIZMO = MOVER SOLO PIVOT
+    // --------------------------------------------------------
 
     if (
       this.dragMode
@@ -599,170 +700,249 @@ private readonly handleTransformChange =
       this.hasCustomPivot =
         true;
 
+
       this.previousPivotPosition.copy(
         this.pivot.position,
       );
 
-      this.selection.refreshHelpers();
 
       return;
 
     }
 
 
-    // ======================================================
-    // DRAG NORMAL = MOVER PIEZA
-    // ======================================================
+    // --------------------------------------------------------
+    // EJES / PLANOS = MOVER TODA LA SELECCIÓN
+    // --------------------------------------------------------
 
-    this.transformedObject.position.add(
-      delta,
-    );
+    for (
+      const object
+      of this.transformedObjects.values()
+    ) {
 
-    this.transformedObject.updateMatrix();
+      object.position.add(
+        delta,
+      );
 
-    this.transformedObject.updateMatrixWorld(
-      true,
-    );
+
+      object.updateMatrix();
+
+
+      object.updateMatrixWorld(
+        true,
+      );
+
+    }
+
 
     this.previousPivotPosition.copy(
       this.pivot.position,
     );
 
+
     this.selection.refreshHelpers();
 
-  };
+  }
+
+
+  private handleRotateChange():
+    void {
+
+    if (
+      this.dragMode
+      !== "ROTATE_OBJECTS"
+    ) {
+
+      return;
+
+    }
+
+
+    const inversePrevious =
+      this.previousPivotQuaternion
+        .clone()
+        .invert();
+
+
+    const deltaQuaternion =
+      this.pivot.quaternion
+        .clone()
+        .multiply(
+          inversePrevious,
+        );
+
+
+    for (
+      const object
+      of this.transformedObjects.values()
+    ) {
+
+      const offset =
+        object.position
+          .clone()
+          .sub(
+            this.pivot.position,
+          );
+
+
+      offset.applyQuaternion(
+        deltaQuaternion,
+      );
+
+
+      object.position.copy(
+        this.pivot.position
+          .clone()
+          .add(
+            offset,
+          ),
+      );
+
+
+      object.quaternion.premultiply(
+        deltaQuaternion,
+      );
+
+
+      object.updateMatrix();
+
+
+      object.updateMatrixWorld(
+        true,
+      );
+
+    }
+
+
+    this.previousPivotQuaternion.copy(
+      this.pivot.quaternion,
+    );
+
+
+    this.selection.refreshHelpers();
+
+  }
+
 
   // ==========================================================
   // TRANSFORM END
   // ==========================================================
 
   private readonly handleTransformEnd =
-  (): void => {
+    (): void => {
 
-    if (
-      !this.active
-    ) {
+      if (
+        !this.active
+      ) {
 
-      return;
+        return;
 
-    }
-
-    if (
-      this.dragMode
-      === "MOVE_OBJECT"
-    ) {
-
-      this.commitTransform();
-
-    }
-
-    this.dragMode =
-      "NONE";
-
-    this.setCameraEnabled(
-      true,
-    );
-
-    window.setTimeout(
-      () => {
-
-        if (
-          this.disposed
-        ) {
-
-          return;
-
-        }
-
-        this.selection.setEnabled(
-          true,
-        );
-
-      },
-      0,
-    );
-
-  };
+      }
 
 
-  // ==========================================================
-  // COMMIT TRANSFORM
-  // ==========================================================
+      if (
+        this.dragMode
+        === "MOVE_OBJECTS"
+        || this.dragMode
+          === "ROTATE_OBJECTS"
+      ) {
 
-  private commitTransform():
-    void {
+        this.commitTransforms();
 
-    const instanceId =
-      this.activeInstanceId;
-
-
-    if (
-      !instanceId
-    ) {
-
-      return;
-
-    }
+      }
 
 
-    const object =
-      this.designScene
-        .getInstanceObject(
-          instanceId,
-        );
+      this.dragMode =
+        "NONE";
 
 
-    if (
-      !object
-    ) {
-
-      return;
-
-    }
-
-
-    this.designModel
-      .pieceInstances
-      .updateTransform(
-        instanceId,
-        {
-
-          position: {
-
-            x:
-              object.position.x,
-
-            y:
-              object.position.y,
-
-            z:
-              object.position.z,
-
-          },
-
-          rotation: {
-
-            x:
-              object.rotation.x,
-
-            y:
-              object.rotation.y,
-
-            z:
-              object.rotation.z,
-
-          },
-
-        },
+      this.setCameraEnabled(
+        true,
       );
 
 
-    object.updateMatrix();
+      window.setTimeout(
+        () => {
+
+          if (
+            this.disposed
+          ) {
+
+            return;
+
+          }
 
 
-    object.updateMatrixWorld(
-      true,
-    );
+          this.selection.setEnabled(
+            true,
+          );
+
+        },
+        0,
+      );
+
+    };
+
+
+  // ==========================================================
+  // COMMIT TRANSFORMS
+  // ==========================================================
+
+  private commitTransforms():
+    void {
+
+    for (
+      const [
+        instanceId,
+        object,
+      ]
+      of this.transformedObjects
+    ) {
+
+      this.designModel
+        .pieceInstances
+        .updateTransform(
+          instanceId,
+          {
+
+            position: {
+
+              x:
+                object.position.x,
+
+              y:
+                object.position.y,
+
+              z:
+                object.position.z,
+
+            },
+
+            rotation: {
+
+              x:
+                object.rotation.x,
+
+              y:
+                object.rotation.y,
+
+              z:
+                object.rotation.z,
+
+            },
+
+          },
+        );
+
+
+      object.updateMatrix();
+
+
+      object.updateMatrixWorld(
+        true,
+      );
+
+    }
 
 
     this.selection.refreshHelpers();
@@ -834,7 +1014,6 @@ private readonly handleTransformChange =
     this.disposed =
       true;
 
-   
 
     this.unsubscribeSelection
       ?.();
@@ -848,6 +1027,7 @@ private readonly handleTransformChange =
       "mouseDown",
       this.handleTransformStart,
     );
+
 
     this.controls.removeEventListener(
       "objectChange",
@@ -868,9 +1048,11 @@ private readonly handleTransformChange =
       this.helper,
     );
 
+
     this.scene.remove(
       this.pivot,
     );
+
 
     this.controls.dispose();
 
