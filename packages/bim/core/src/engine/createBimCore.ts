@@ -1011,6 +1011,24 @@ canvas.addEventListener(
       camera,
     ) => {
 
+      /*
+       * OrthoPerspectiveCamera puede cambiar la instancia
+       * THREE.Camera activa al alternar proyección.
+       *
+       * Los gizmos deben recibir esa misma cámara para que
+       * su raycast de ejes/anillos siga coincidiendo con lo
+       * que el usuario ve.
+       */
+      designTransform.setCamera(
+        camera.three,
+      );
+
+
+      designRotate.setCamera(
+        camera.three,
+      );
+
+
       for (
         const [, model]
         of fragments.list
