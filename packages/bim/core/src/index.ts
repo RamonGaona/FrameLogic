@@ -97,3 +97,14 @@ export type {
 export {
   DeleteCommand,
 } from "./commands/DeleteCommand";
+
+
+export {
+  DesignSnapController,
+} from "./interaction/DesignSnapController";
+
+
+export type {
+  DesignSnapResult,
+  DesignSnapType,
+} from "./interaction/DesignSnapController";
