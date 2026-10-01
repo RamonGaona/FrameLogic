@@ -91,6 +91,10 @@ export class DesignSelectionController {
     true;
 
 
+  private clearOnEmptyClick =
+    true;
+
+
   // ==========================================================
   // POINTER STATE
   // ==========================================================
@@ -190,6 +194,16 @@ export class DesignSelectionController {
   get isEnabled(): boolean {
 
     return this.enabled;
+
+  }
+
+
+  setClearOnEmptyClick(
+    enabled: boolean,
+  ): void {
+
+    this.clearOnEmptyClick =
+      enabled;
 
   }
 
@@ -515,6 +529,87 @@ export class DesignSelectionController {
 
 
   // ==========================================================
+  // HIT TEST
+  // ==========================================================
+
+  getInstanceIdAt(
+    clientX: number,
+    clientY: number,
+  ):
+    string
+    | null {
+
+    const rect =
+      this.domElement
+        .getBoundingClientRect();
+
+
+    if (
+      rect.width <= 0
+      || rect.height <= 0
+    ) {
+
+      return null;
+
+    }
+
+
+    this.pointer.x =
+      (
+        (
+          clientX
+          - rect.left
+        )
+        / rect.width
+      )
+      * 2
+      - 1;
+
+
+    this.pointer.y =
+      -(
+        (
+          clientY
+          - rect.top
+        )
+        / rect.height
+      )
+      * 2
+      + 1;
+
+
+    this.raycaster.setFromCamera(
+      this.pointer,
+      this.cameraProvider(),
+    );
+
+
+    const intersections =
+      this.raycaster
+        .intersectObjects(
+          this.designScene
+            .getInstanceObjects(),
+          true,
+        );
+
+
+    if (
+      intersections.length === 0
+    ) {
+
+      return null;
+
+    }
+
+
+    return this.findInstanceId(
+      intersections[0].object,
+    );
+
+  }
+
+
+  // ==========================================================
   // PICK
   // ==========================================================
 
@@ -603,7 +698,8 @@ export class DesignSelectionController {
     ) {
 
       if (
-        !event.ctrlKey
+        this.clearOnEmptyClick
+        && !event.ctrlKey
         && !event.metaKey
         && !event.shiftKey
       ) {
