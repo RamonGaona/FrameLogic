@@ -27,7 +27,7 @@ export class DesignRotateController {
     HTMLElement;
 
 
-  private readonly camera:
+  private camera:
     THREE.Camera;
 
 
@@ -413,6 +413,31 @@ export class DesignRotateController {
     boolean {
 
     return this.active;
+
+  }
+
+
+  // ==========================================================
+  // CAMERA
+  // ==========================================================
+
+  setCamera(
+    camera:
+      THREE.Camera,
+  ): void {
+
+    /*
+     * Mantener sincronizados:
+     *
+     * - TransformControls (anillos X/Y/Z)
+     * - raycast del centro desplazable
+     */
+    this.camera =
+      camera;
+
+
+    this.controls.camera =
+      camera;
 
   }
 
