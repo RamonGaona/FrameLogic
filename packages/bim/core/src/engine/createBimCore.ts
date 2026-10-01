@@ -847,25 +847,9 @@ const handleCadKeyDown =
   ): void => {
 
     /*
-     * No capturamos M/Escape mientras el usuario
-     * está escribiendo en un input.
+     * Escape siempre pertenece al flujo CAD,
+     * incluso si el foco está dentro de una casilla numérica.
      */
-
-    if (
-      isEditableKeyboardTarget(
-        event.target,
-      )
-    ) {
-
-      return;
-
-    }
-
-
-    // ------------------------------------------------------
-    // ESCAPE
-    // ------------------------------------------------------
-
     if (
       event.key === "Escape"
     ) {
@@ -923,6 +907,21 @@ const handleCadKeyDown =
 
       }
 
+
+      return;
+
+    }
+
+
+    /*
+     * M / R no se capturan mientras el usuario
+     * está escribiendo en una casilla.
+     */
+    if (
+      isEditableKeyboardTarget(
+        event.target,
+      )
+    ) {
 
       return;
 
