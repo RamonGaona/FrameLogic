@@ -92,3 +92,8 @@ export type {
   CadTransformSnapshot,
   CadTransformState,
 } from "./interaction/CadHistoryController";
+
+
+export {
+  DeleteCommand,
+} from "./commands/DeleteCommand";
