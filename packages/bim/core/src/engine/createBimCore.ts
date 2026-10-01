@@ -70,6 +70,10 @@ import {
   RotateCommand,
 } from "../commands/RotateCommand";
 
+import {
+  DeleteCommand,
+} from "../commands/DeleteCommand";
+
 export type StandardView =
   | "TOP"
   | "BOTTOM"
@@ -806,6 +810,15 @@ const rotateCommand =
     designRotate,
   );
 
+
+const deleteCommand =
+  new DeleteCommand(
+    designModel,
+    designScene,
+    designSelection,
+    cadHistory,
+  );
+
   const unsubscribeCadSelection =
   designSelection.subscribe(
     (
@@ -1033,6 +1046,69 @@ const handleCadKeyDown =
 
 
       cadHistory.redo();
+
+
+      return;
+
+    }
+
+
+    // ------------------------------------------------------
+    // DELETE = DELETE SELECTED PIECES
+    // ------------------------------------------------------
+
+    if (
+      event.key === "Delete"
+    ) {
+
+      event.preventDefault();
+
+
+      event.stopPropagation();
+
+
+      if (
+        cadCommandManager
+          .hasActiveCommand
+      ) {
+
+        cadCommandManager
+          .cancelActive();
+
+
+        cadNumericInput.hide();
+
+      }
+
+
+      try {
+
+        deleteCommand.execute();
+
+      }
+      catch (
+        error
+      ) {
+
+        console.error(
+          "DELETE command failed:",
+          error,
+        );
+
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : String(
+                error,
+              );
+
+
+        window.alert(
+          message,
+        );
+
+      }
 
 
       return;
@@ -2385,6 +2461,28 @@ function startRotateCommand():
 }
 
 
+function deleteSelectedPieceInstances():
+  boolean {
+
+  if (
+    cadCommandManager
+      .hasActiveCommand
+  ) {
+
+    cadCommandManager
+      .cancelActive();
+
+
+    cadNumericInput.hide();
+
+  }
+
+
+  return deleteCommand.execute();
+
+}
+
+
 function cancelActiveCadCommand():
   void {
 
@@ -2644,6 +2742,8 @@ cadCommandManager,
 startMoveCommand,
 
 startRotateCommand,
+
+deleteSelectedPieceInstances,
 
 cancelActiveCadCommand,
 
