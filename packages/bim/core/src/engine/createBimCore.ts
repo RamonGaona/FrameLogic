@@ -59,6 +59,10 @@ import {
 } from "../interaction/CadHistoryController";
 
 import {
+  DesignSnapController,
+} from "../interaction/DesignSnapController";
+
+import {
   CadCommandManager,
 } from "../commands/CadCommandManager";
 
@@ -624,6 +628,19 @@ new DesignPlacementController(
   pickReferenceSurface,
 
 );
+
+// ==========================================================
+// DESIGN SNAP
+// ==========================================================
+
+const designSnap =
+  new DesignSnapController(
+    canvas,
+    () =>
+      world.camera.three,
+    designScene,
+  );
+
 
 // ==========================================================
 // DESIGN SELECTION
@@ -2596,6 +2613,9 @@ function dispose(): void {
   designRotate.dispose();
 
 
+  designSnap.dispose();
+
+
   designSelection.dispose();
 
 
@@ -2720,6 +2740,9 @@ subscribeCameraOrientation,
 
 getCameraProjectionMode,
 toggleCameraProjection,
+
+// Snap
+designSnap,
 
 // Selection
 designSelection,
