@@ -51,6 +51,10 @@ import {
 } from "../interaction/DesignRotateController";
 
 import {
+  CadNumericInputController,
+} from "../interaction/CadNumericInputController";
+
+import {
   CadCommandManager,
 } from "../commands/CadCommandManager";
 
@@ -692,6 +696,74 @@ const designRotate =
 
   );
 
+
+// ==========================================================
+// CAD NUMERIC INPUT
+// ==========================================================
+
+const cadNumericInput =
+  new CadNumericInputController(
+    container,
+  );
+
+
+designTransform.setNumericAxisHandler(
+  (
+    axis,
+  ) => {
+
+    cadNumericInput.showMove(
+      axis,
+    );
+
+  },
+);
+
+
+designRotate.setNumericAxisHandler(
+  (
+    axis,
+  ) => {
+
+    cadNumericInput.showRotate(
+      axis,
+    );
+
+  },
+);
+
+
+cadNumericInput.setMoveApplyHandler(
+  (
+    axis,
+    first,
+    second,
+  ) => {
+
+    designTransform.applyNumericMove(
+      axis,
+      first,
+      second,
+    );
+
+  },
+);
+
+
+cadNumericInput.setRotateApplyHandler(
+  (
+    axis,
+    degrees,
+  ) => {
+
+    designRotate.applyNumericRotation(
+      axis,
+      degrees,
+    );
+
+  },
+);
+
 // ==========================================================
 // CAD COMMANDS
 // ==========================================================
@@ -730,6 +802,9 @@ const rotateCommand =
       ) {
 
         cadCommandManager.cancelActive();
+
+
+        cadNumericInput.hide();
 
       }
 
@@ -816,6 +891,9 @@ const handleCadKeyDown =
           .cancelActive();
 
 
+        cadNumericInput.hide();
+
+
         return;
 
       }
@@ -863,6 +941,9 @@ const handleCadKeyDown =
       && !event.altKey
     ) {
 
+      cadNumericInput.hide();
+
+
       const started =
         cadCommandManager.start(
           moveCommand,
@@ -897,6 +978,9 @@ const handleCadKeyDown =
       && !event.metaKey
       && !event.altKey
     ) {
+
+      cadNumericInput.hide();
+
 
       const started =
         cadCommandManager.start(
@@ -975,6 +1059,9 @@ const handleCadDoubleClick =
 
     cadCommandManager
       .cancelActive();
+
+
+    cadNumericInput.hide();
 
   };
 
@@ -2193,6 +2280,9 @@ function cancelActiveCadCommand():
   cadCommandManager
     .cancelActive();
 
+
+  cadNumericInput.hide();
+
 }
 
 
@@ -2217,6 +2307,9 @@ function dispose(): void {
 
 
   cadCommandManager.dispose();
+
+
+  cadNumericInput.dispose();
 
 
   // --------------------------------------------------------
