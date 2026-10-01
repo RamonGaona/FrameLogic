@@ -51,6 +51,18 @@ interface CadHistoryEntry {
 
 export class CadHistoryController {
 
+  private readonly designModel:
+    DesignModel;
+
+
+  private readonly designScene:
+    DesignSceneController;
+
+
+  private readonly selection:
+    DesignSelectionController;
+
+
   private readonly undoStack:
     CadHistoryEntry[] =
       [];
@@ -62,15 +74,28 @@ export class CadHistoryController {
 
 
   constructor(
-    private readonly designModel:
+    designModel:
       DesignModel,
 
-    private readonly designScene:
+    designScene:
       DesignSceneController,
 
-    private readonly selection:
+    selection:
       DesignSelectionController,
-  ) {}
+  ) {
+
+    this.designModel =
+      designModel;
+
+
+    this.designScene =
+      designScene;
+
+
+    this.selection =
+      selection;
+
+  }
 
 
   capture(
