@@ -991,6 +991,28 @@ canvas.addEventListener(
   const updateFragments =
     () => {
 
+      /*
+       * En modo ortográfico la cámara activa de
+       * OrthoPerspectiveCamera puede cambiar/actualizarse
+       * mientras el usuario navega.
+       *
+       * Sincronizamos los gizmos en CADA update para que
+       * su raycast siga usando exactamente la cámara visible.
+       */
+      const activeCamera =
+        world.camera.three;
+
+
+      designTransform.setCamera(
+        activeCamera,
+      );
+
+
+      designRotate.setCamera(
+        activeCamera,
+      );
+
+
       fragments.core.update();
 
     };
