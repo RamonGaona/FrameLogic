@@ -55,6 +55,10 @@ import {
 } from "../interaction/CadNumericInputController";
 
 import {
+  CadHistoryController,
+} from "../interaction/CadHistoryController";
+
+import {
   CadCommandManager,
 } from "../commands/CadCommandManager";
 
@@ -635,6 +639,19 @@ const designSelection =
 
   );
 
+
+// ==========================================================
+// CAD HISTORY
+// ==========================================================
+
+const cadHistory =
+  new CadHistoryController(
+    designModel,
+    designScene,
+    designSelection,
+  );
+
+
   // ==========================================================
 // DESIGN TRANSFORM
 // ==========================================================
@@ -653,6 +670,8 @@ new DesignTransformController(
   designScene,
 
   designSelection,
+
+  cadHistory,
 
   (
     enabled,
@@ -684,6 +703,8 @@ const designRotate =
     designScene,
 
     designSelection,
+
+    cadHistory,
 
     (
       enabled,
@@ -922,6 +943,97 @@ const handleCadKeyDown =
         event.target,
       )
     ) {
+
+      return;
+
+    }
+
+
+    // ------------------------------------------------------
+    // CTRL+Z = UNDO
+    // CTRL+Y / CTRL+SHIFT+Z = REDO
+    // ------------------------------------------------------
+
+    const key =
+      event.key.toLowerCase();
+
+
+    const commandModifier =
+      event.ctrlKey
+      || event.metaKey;
+
+
+    if (
+      commandModifier
+      && key === "z"
+    ) {
+
+      event.preventDefault();
+
+
+      event.stopPropagation();
+
+
+      if (
+        cadCommandManager
+          .hasActiveCommand
+      ) {
+
+        cadCommandManager
+          .cancelActive();
+
+
+        cadNumericInput.hide();
+
+      }
+
+
+      if (
+        event.shiftKey
+      ) {
+
+        cadHistory.redo();
+
+      }
+      else {
+
+        cadHistory.undo();
+
+      }
+
+
+      return;
+
+    }
+
+
+    if (
+      commandModifier
+      && key === "y"
+    ) {
+
+      event.preventDefault();
+
+
+      event.stopPropagation();
+
+
+      if (
+        cadCommandManager
+          .hasActiveCommand
+      ) {
+
+        cadCommandManager
+          .cancelActive();
+
+
+        cadNumericInput.hide();
+
+      }
+
+
+      cadHistory.redo();
+
 
       return;
 
@@ -2285,6 +2397,50 @@ function cancelActiveCadCommand():
 }
 
 
+function undoCadAction():
+  boolean {
+
+  if (
+    cadCommandManager
+      .hasActiveCommand
+  ) {
+
+    cadCommandManager
+      .cancelActive();
+
+
+    cadNumericInput.hide();
+
+  }
+
+
+  return cadHistory.undo();
+
+}
+
+
+function redoCadAction():
+  boolean {
+
+  if (
+    cadCommandManager
+      .hasActiveCommand
+  ) {
+
+    cadCommandManager
+      .cancelActive();
+
+
+    cadNumericInput.hide();
+
+  }
+
+
+  return cadHistory.redo();
+
+}
+
+
 // ==========================================================
 // DISPOSE
 // ==========================================================
@@ -2306,6 +2462,9 @@ function dispose(): void {
 
 
   cadCommandManager.dispose();
+
+
+  cadHistory.clear();
 
 
   cadNumericInput.dispose();
@@ -2487,6 +2646,12 @@ startMoveCommand,
 startRotateCommand,
 
 cancelActiveCadCommand,
+
+undoCadAction,
+
+redoCadAction,
+
+cadHistory,
 
 // Transform
 designTransform,
