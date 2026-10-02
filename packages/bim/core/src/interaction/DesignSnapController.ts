@@ -107,6 +107,22 @@ export class DesignSnapController {
       null;
 
 
+  private readonly excludedInstanceIds =
+    new Set<string>();
+
+
+  private lastClientX =
+    0;
+
+
+  private lastClientY =
+    0;
+
+
+  private hasPointer =
+    false;
+
+
   private readonly pixelTolerance =
     14;
 
@@ -239,6 +255,91 @@ export class DesignSnapController {
     boolean {
 
     return this.enabled;
+
+  }
+
+
+  setExcludedInstanceIds(
+    instanceIds:
+      readonly string[],
+  ): void {
+
+    this.excludedInstanceIds.clear();
+
+
+    for (
+      const instanceId
+      of instanceIds
+    ) {
+
+      this.excludedInstanceIds.add(
+        instanceId,
+      );
+
+    }
+
+
+    if (
+      this.hasPointer
+    ) {
+
+      this.updateCurrentSnap(
+        this.lastClientX,
+        this.lastClientY,
+      );
+
+    }
+
+  }
+
+
+  clearExcludedInstanceIds():
+    void {
+
+    if (
+      this.excludedInstanceIds.size
+      === 0
+    ) {
+
+      return;
+
+    }
+
+
+    this.excludedInstanceIds.clear();
+
+
+    if (
+      this.hasPointer
+    ) {
+
+      this.updateCurrentSnap(
+        this.lastClientX,
+        this.lastClientY,
+      );
+
+    }
+
+  }
+
+
+  getSnapAtCurrentPointer():
+    DesignSnapResult
+    | null {
+
+    if (
+      !this.hasPointer
+    ) {
+
+      return null;
+
+    }
+
+
+    return this.findSnap(
+      this.lastClientX,
+      this.lastClientY,
+    );
 
   }
 
@@ -426,6 +527,9 @@ export class DesignSnapController {
 
       if (
         !instanceId
+        || this.excludedInstanceIds.has(
+          instanceId,
+        )
       ) {
 
         continue;
@@ -548,50 +652,82 @@ export class DesignSnapController {
       }
 
 
-      const snap =
-        this.findSnap(
-          event.clientX,
-          event.clientY,
-        );
+      this.lastClientX =
+        event.clientX;
 
 
-      this.currentSnap =
-        snap;
+      this.lastClientY =
+        event.clientY;
 
 
-      if (
-        !snap
-      ) {
-
-        this.marker.style.display =
-          "none";
+      this.hasPointer =
+        true;
 
 
-        return;
-
-      }
-
-
-      this.marker.textContent =
-        snap.type;
-
-
-      this.marker.style.left =
-        `${event.clientX}px`;
-
-
-      this.marker.style.top =
-        `${event.clientY}px`;
-
-
-      this.marker.style.display =
-        "block";
+      this.updateCurrentSnap(
+        event.clientX,
+        event.clientY,
+      );
 
     };
 
 
+  private updateCurrentSnap(
+    clientX:
+      number,
+
+    clientY:
+      number,
+  ): void {
+
+    const snap =
+      this.findSnap(
+        clientX,
+        clientY,
+      );
+
+
+    this.currentSnap =
+      snap;
+
+
+    if (
+      !snap
+    ) {
+
+      this.marker.style.display =
+        "none";
+
+
+      return;
+
+    }
+
+
+    this.marker.textContent =
+      snap.type;
+
+
+    this.marker.style.left =
+      `${clientX}px`;
+
+
+    this.marker.style.top =
+      `${clientY}px`;
+
+
+    this.marker.style.display =
+      "block";
+
+  }
+
+
   private readonly handlePointerLeave =
     (): void => {
+
+      this.hasPointer =
+        false;
+
 
       this.clearCurrentSnap();
 
@@ -1743,6 +1879,13 @@ export class DesignSnapController {
 
     this.currentSnap =
       null;
+
+
+    this.excludedInstanceIds.clear();
+
+
+    this.hasPointer =
+      false;
 
   }
 
