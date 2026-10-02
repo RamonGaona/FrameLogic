@@ -149,10 +149,6 @@ export class DesignTransformController {
     new THREE.Vector3();
 
 
-  private ignoreNextArmedPointerUp =
-    false;
-
-
   private armedPointerDownX =
     0;
 
@@ -430,10 +426,6 @@ export class DesignTransformController {
 
     this.armedMoveAxis =
       null;
-
-
-    this.ignoreNextArmedPointerUp =
-      false;
 
 
     this.armedPointerDownActive =
@@ -1296,14 +1288,6 @@ export class DesignTransformController {
 
 
         /*
-         * El mismo pointerup que termina el clic del gizmo
-         * no debe interpretarse como clic de destino.
-         */
-        this.ignoreNextArmedPointerUp =
-          true;
-
-
-        /*
          * Mientras esperamos el segundo clic, la selección
          * queda bloqueada para que el destino SNAP no cambie
          * las piezas que se están moviendo.
@@ -1414,19 +1398,6 @@ export class DesignTransformController {
         || !this.armedMoveAxis
         || event.button !== 0
       ) {
-
-        return;
-
-      }
-
-
-      if (
-        this.ignoreNextArmedPointerUp
-      ) {
-
-        this.ignoreNextArmedPointerUp =
-          false;
-
 
         return;
 
