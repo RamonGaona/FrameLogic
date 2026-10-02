@@ -25,6 +25,10 @@ import type {
   CadTransformSnapshot,
 } from "./CadHistoryController";
 
+import type {
+  DesignSnapController,
+} from "./DesignSnapController";
+
 
 export type DesignTransformMode =
   | "translate"
@@ -57,6 +61,10 @@ export class DesignTransformController {
 
   private readonly history:
     CadHistoryController;
+
+
+  private readonly snap:
+    DesignSnapController;
 
 
   private readonly controls:
@@ -120,6 +128,13 @@ export class DesignTransformController {
       null;
 
 
+  private activeMoveAxis:
+    MoveNumericAxis
+    | "XYZ"
+    | null =
+      null;
+
+
   constructor(
     scene:
       THREE.Scene,
@@ -141,6 +156,9 @@ export class DesignTransformController {
 
     history:
       CadHistoryController,
+
+    snap:
+      DesignSnapController,
 
     setCameraEnabled:
       (
@@ -166,6 +184,10 @@ export class DesignTransformController {
 
     this.history =
       history;
+
+
+    this.snap =
+      snap;
 
 
     this.setCameraEnabled =
@@ -352,6 +374,13 @@ export class DesignTransformController {
 
     this.dragHistoryStart =
       null;
+
+
+    this.activeMoveAxis =
+      null;
+
+
+    this.snap.clearExcludedInstanceIds();
 
 
     this.controls.detach();
@@ -778,6 +807,13 @@ export class DesignTransformController {
     this.dragMode =
       "NONE";
 
+
+    this.activeMoveAxis =
+      null;
+
+
+    this.snap.clearExcludedInstanceIds();
+
   }
 
 
@@ -822,10 +858,42 @@ export class DesignTransformController {
           this.controls.axis;
 
 
+        this.activeMoveAxis =
+          (
+            axis === "X"
+            || axis === "Y"
+            || axis === "Z"
+            || axis === "XY"
+            || axis === "XZ"
+            || axis === "YZ"
+            || axis === "XYZ"
+          )
+            ? axis
+            : null;
+
+
         this.dragMode =
           axis === "XYZ"
             ? "MOVE_PIVOT"
             : "MOVE_OBJECTS";
+
+
+        if (
+          this.dragMode
+          === "MOVE_OBJECTS"
+        ) {
+
+          this.snap.setExcludedInstanceIds(
+            this.selection
+              .getSelectedIds(),
+          );
+
+        }
+        else {
+
+          this.snap.clearExcludedInstanceIds();
+
+        }
 
 
         if (
@@ -1064,6 +1132,16 @@ export class DesignTransformController {
 
 
       if (
+        this.controls.getMode()
+        === "translate"
+      ) {
+
+        this.applySnapAtTransformEnd();
+
+      }
+
+
+      if (
         this.dragMode
         === "MOVE_OBJECTS"
         || this.dragMode
@@ -1091,6 +1169,13 @@ export class DesignTransformController {
 
       this.dragHistoryStart =
         null;
+
+
+      this.activeMoveAxis =
+        null;
+
+
+      this.snap.clearExcludedInstanceIds();
 
 
       this.dragMode =
@@ -1123,6 +1208,157 @@ export class DesignTransformController {
       );
 
     };
+
+
+  private applySnapAtTransformEnd():
+    void {
+
+    const snap =
+      this.snap
+        .getSnapAtCurrentPointer();
+
+
+    if (
+      !snap
+      || !this.activeMoveAxis
+    ) {
+
+      return;
+
+    }
+
+
+    const correction =
+      snap.point
+        .clone()
+        .sub(
+          this.pivot.position,
+        );
+
+
+    switch (
+      this.activeMoveAxis
+    ) {
+
+      case "X":
+
+        correction.set(
+          correction.x,
+          0,
+          0,
+        );
+
+        break;
+
+
+      case "Y":
+
+        correction.set(
+          0,
+          correction.y,
+          0,
+        );
+
+        break;
+
+
+      case "Z":
+
+        correction.set(
+          0,
+          0,
+          correction.z,
+        );
+
+        break;
+
+
+      case "XY":
+
+        correction.z =
+          0;
+
+        break;
+
+
+      case "XZ":
+
+        correction.y =
+          0;
+
+        break;
+
+
+      case "YZ":
+
+        correction.x =
+          0;
+
+        break;
+
+
+      case "XYZ":
+
+        break;
+
+    }
+
+
+    if (
+      correction.lengthSq()
+      <= 1e-18
+    ) {
+
+      return;
+
+    }
+
+
+    if (
+      this.dragMode
+      === "MOVE_OBJECTS"
+    ) {
+
+      for (
+        const object
+        of this.transformedObjects.values()
+      ) {
+
+        object.position.add(
+          correction,
+        );
+
+
+        object.updateMatrix();
+
+
+        object.updateMatrixWorld(
+          true,
+        );
+
+      }
+
+    }
+
+
+    this.pivot.position.add(
+      correction,
+    );
+
+
+    this.pivot.updateMatrixWorld(
+      true,
+    );
+
+
+    this.previousPivotPosition.copy(
+      this.pivot.position,
+    );
+
+
+    this.selection.refreshHelpers();
+
+  }
 
 
   // ==========================================================
