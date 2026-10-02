@@ -1277,8 +1277,22 @@ export class DesignTransformController {
         clickedAxis
       ) {
 
-        this.armedMoveAxis =
+        const armedAxis =
           this.activeMoveAxis;
+
+
+        if (
+          armedAxis === null
+          || armedAxis === "XYZ"
+        ) {
+
+          return;
+
+        }
+
+
+        this.armedMoveAxis =
+          armedAxis;
 
 
         /*
