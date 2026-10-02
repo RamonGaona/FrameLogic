@@ -41,6 +41,10 @@ export class DesignTransformController {
     THREE.Scene;
 
 
+  private readonly domElement:
+    HTMLElement;
+
+
   private readonly designModel:
     DesignModel;
 
@@ -135,6 +139,32 @@ export class DesignTransformController {
       null;
 
 
+  private armedMoveAxis:
+    MoveNumericAxis
+    | null =
+      null;
+
+
+  private readonly dragStartPivotPosition =
+    new THREE.Vector3();
+
+
+  private ignoreNextArmedPointerUp =
+    false;
+
+
+  private armedPointerDownX =
+    0;
+
+
+  private armedPointerDownY =
+    0;
+
+
+  private armedPointerDownActive =
+    false;
+
+
   constructor(
     scene:
       THREE.Scene,
@@ -168,6 +198,10 @@ export class DesignTransformController {
 
     this.scene =
       scene;
+
+
+    this.domElement =
+      domElement;
 
 
     this.designModel =
@@ -262,6 +296,20 @@ export class DesignTransformController {
     this.controls.addEventListener(
       "mouseUp",
       this.handleTransformEnd,
+    );
+
+
+    this.domElement.addEventListener(
+      "pointerdown",
+      this.handleArmedPointerDown,
+      true,
+    );
+
+
+    this.domElement.addEventListener(
+      "pointerup",
+      this.handleArmedPointerUp,
+      true,
     );
 
 
@@ -378,6 +426,18 @@ export class DesignTransformController {
 
     this.activeMoveAxis =
       null;
+
+
+    this.armedMoveAxis =
+      null;
+
+
+    this.ignoreNextArmedPointerUp =
+      false;
+
+
+    this.armedPointerDownActive =
+      false;
 
 
     this.snap.clearExcludedInstanceIds();
@@ -812,6 +872,14 @@ export class DesignTransformController {
       null;
 
 
+    this.armedMoveAxis =
+      null;
+
+
+    this.armedPointerDownActive =
+      false;
+
+
     this.snap.clearExcludedInstanceIds();
 
   }
@@ -836,6 +904,19 @@ export class DesignTransformController {
       this.previousPivotPosition.copy(
         this.pivot.position,
       );
+
+
+      this.dragStartPivotPosition.copy(
+        this.pivot.position,
+      );
+
+
+      this.armedMoveAxis =
+        null;
+
+
+      this.armedPointerDownActive =
+        false;
 
 
       this.previousPivotQuaternion.copy(
@@ -1167,15 +1248,75 @@ export class DesignTransformController {
       }
 
 
+      const movedDistance =
+        this.pivot.position
+          .distanceTo(
+            this.dragStartPivotPosition,
+          );
+
+
+      const clickedAxis =
+        this.controls.getMode()
+          === "translate"
+        && this.dragMode
+          === "MOVE_OBJECTS"
+        && this.activeMoveAxis
+          !== null
+        && this.activeMoveAxis
+          !== "XYZ"
+        && movedDistance
+          <= 1e-9;
+
+
       this.dragHistoryStart =
         null;
 
 
+      if (
+        clickedAxis
+      ) {
+
+        this.armedMoveAxis =
+          this.activeMoveAxis;
+
+
+        /*
+         * El mismo pointerup que termina el clic del gizmo
+         * no debe interpretarse como clic de destino.
+         */
+        this.ignoreNextArmedPointerUp =
+          true;
+
+
+        /*
+         * Mientras esperamos el segundo clic, la selección
+         * queda bloqueada para que el destino SNAP no cambie
+         * las piezas que se están moviendo.
+         */
+        this.selection.setEnabled(
+          false,
+        );
+
+
+        this.snap.setExcludedInstanceIds(
+          this.selection
+            .getSelectedIds(),
+        );
+
+      }
+      else {
+
+        this.armedMoveAxis =
+          null;
+
+
+        this.snap.clearExcludedInstanceIds();
+
+      }
+
+
       this.activeMoveAxis =
         null;
-
-
-      this.snap.clearExcludedInstanceIds();
 
 
       this.dragMode =
@@ -1187,49 +1328,245 @@ export class DesignTransformController {
       );
 
 
-      window.setTimeout(
-        () => {
+      if (
+        !clickedAxis
+      ) {
 
-          if (
-            this.disposed
-          ) {
+        window.setTimeout(
+          () => {
 
-            return;
+            if (
+              this.disposed
+            ) {
 
-          }
+              return;
+
+            }
 
 
-          this.selection.setEnabled(
+            this.selection.setEnabled(
+              true,
+            );
+
+          },
+          0,
+        );
+
+      }
+
+    };
+
+
+  private readonly handleArmedPointerDown =
+    (
+      event:
+        PointerEvent,
+    ): void => {
+
+      if (
+        !this.active
+        || !this.armedMoveAxis
+        || event.button !== 0
+      ) {
+
+        return;
+
+      }
+
+
+      this.armedPointerDownX =
+        event.clientX;
+
+
+      this.armedPointerDownY =
+        event.clientY;
+
+
+      this.armedPointerDownActive =
+        true;
+
+    };
+
+
+  private readonly handleArmedPointerUp =
+    (
+      event:
+        PointerEvent,
+    ): void => {
+
+      if (
+        !this.active
+        || !this.armedMoveAxis
+        || event.button !== 0
+      ) {
+
+        return;
+
+      }
+
+
+      if (
+        this.ignoreNextArmedPointerUp
+      ) {
+
+        this.ignoreNextArmedPointerUp =
+          false;
+
+
+        return;
+
+      }
+
+
+      if (
+        !this.armedPointerDownActive
+      ) {
+
+        return;
+
+      }
+
+
+      this.armedPointerDownActive =
+        false;
+
+
+      const movement =
+        Math.hypot(
+          event.clientX
+          - this.armedPointerDownX,
+          event.clientY
+          - this.armedPointerDownY,
+        );
+
+
+      /*
+       * Si hubo arrastre, asumimos navegación de cámara.
+       * El eje sigue armado para intentar de nuevo.
+       */
+      if (
+        movement > 5
+      ) {
+
+        return;
+
+      }
+
+
+      const snap =
+        this.snap.findSnap(
+          event.clientX,
+          event.clientY,
+        );
+
+
+      if (
+        !snap
+      ) {
+
+        return;
+
+      }
+
+
+      event.preventDefault();
+
+
+      event.stopPropagation();
+
+
+      const before =
+        this.history.capture(
+          this.selection
+            .getSelectedIds(),
+        );
+
+
+      const correction =
+        this.getConstrainedSnapCorrection(
+          this.armedMoveAxis,
+          snap.point,
+        );
+
+
+      if (
+        correction.lengthSq()
+        > 1e-18
+      ) {
+
+        for (
+          const object
+          of this.transformedObjects.values()
+        ) {
+
+          object.position.add(
+            correction,
+          );
+
+
+          object.updateMatrix();
+
+
+          object.updateMatrixWorld(
             true,
           );
 
-        },
-        0,
+        }
+
+
+        this.pivot.position.add(
+          correction,
+        );
+
+
+        this.pivot.updateMatrixWorld(
+          true,
+        );
+
+
+        this.previousPivotPosition.copy(
+          this.pivot.position,
+        );
+
+
+        this.commitTransforms();
+
+
+        this.history.recordTransform(
+          "MOVE",
+          before,
+          this.selection
+            .getSelectedIds(),
+        );
+
+      }
+
+
+      this.armedMoveAxis =
+        null;
+
+
+      this.snap.clearExcludedInstanceIds();
+
+
+      this.selection.setEnabled(
+        true,
       );
 
     };
 
 
-  private applySnapAtTransformEnd():
-    void {
+  private getConstrainedSnapCorrection(
+    axis:
+      MoveNumericAxis,
 
-    const snap =
-      this.snap
-        .getSnapAtCurrentPointer();
-
-
-    if (
-      !snap
-      || !this.activeMoveAxis
-    ) {
-
-      return;
-
-    }
-
+    targetPoint:
+      THREE.Vector3,
+  ):
+    THREE.Vector3 {
 
     const correction =
-      snap.point
+      targetPoint
         .clone()
         .sub(
           this.pivot.position,
@@ -1237,7 +1574,7 @@ export class DesignTransformController {
 
 
     switch (
-      this.activeMoveAxis
+      axis
     ) {
 
       case "X":
@@ -1296,12 +1633,44 @@ export class DesignTransformController {
 
         break;
 
+    }
 
-      case "XYZ":
 
-        break;
+    return correction;
+
+  }
+
+
+  private applySnapAtTransformEnd():
+    void {
+
+    const snap =
+      this.snap
+        .getSnapAtCurrentPointer();
+
+
+    if (
+      !snap
+      || !this.activeMoveAxis
+    ) {
+
+      return;
 
     }
+
+
+    const correction =
+      this.activeMoveAxis
+        === "XYZ"
+        ? snap.point
+            .clone()
+            .sub(
+              this.pivot.position,
+            )
+        : this.getConstrainedSnapCorrection(
+            this.activeMoveAxis,
+            snap.point,
+          );
 
 
     if (
@@ -1515,6 +1884,20 @@ export class DesignTransformController {
     this.controls.removeEventListener(
       "mouseUp",
       this.handleTransformEnd,
+    );
+
+
+    this.domElement.removeEventListener(
+      "pointerdown",
+      this.handleArmedPointerDown,
+      true,
+    );
+
+
+    this.domElement.removeEventListener(
+      "pointerup",
+      this.handleArmedPointerUp,
+      true,
     );
 
 
