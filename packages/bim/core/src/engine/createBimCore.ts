@@ -694,6 +694,8 @@ new DesignTransformController(
 
   cadHistory,
 
+  designSnap,
+
   (
     enabled,
   ) => {
