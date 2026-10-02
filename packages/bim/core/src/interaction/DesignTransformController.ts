@@ -145,6 +145,10 @@ export class DesignTransformController {
       null;
 
 
+  private armedPivot =
+    false;
+
+
   private readonly dragStartPivotPosition =
     new THREE.Vector3();
 
@@ -426,6 +430,10 @@ export class DesignTransformController {
 
     this.armedMoveAxis =
       null;
+
+
+    this.armedPivot =
+      false;
 
 
     this.armedPointerDownActive =
@@ -868,6 +876,10 @@ export class DesignTransformController {
       null;
 
 
+    this.armedPivot =
+      false;
+
+
     this.armedPointerDownActive =
       false;
 
@@ -905,6 +917,10 @@ export class DesignTransformController {
 
       this.armedMoveAxis =
         null;
+
+
+      this.armedPivot =
+        false;
 
 
       this.armedPointerDownActive =
@@ -1224,10 +1240,22 @@ export class DesignTransformController {
           <= 1e-9;
 
 
+      const clickedPivot =
+        this.controls.getMode()
+          === "translate"
+        && this.dragMode
+          === "MOVE_PIVOT"
+        && this.activeMoveAxis
+          === "XYZ"
+        && movedDistance
+          <= 1e-9;
+
+
       if (
         this.controls.getMode()
         === "translate"
         && !clickedAxis
+        && !clickedPivot
       ) {
 
         this.applySnapAtTransformEnd();
@@ -1287,6 +1315,10 @@ export class DesignTransformController {
           armedAxis;
 
 
+        this.armedPivot =
+          false;
+
+
         /*
          * Mientras esperamos el segundo clic, la selección
          * queda bloqueada para que el destino SNAP no cambie
@@ -1303,10 +1335,42 @@ export class DesignTransformController {
         );
 
       }
+      else if (
+        clickedPivot
+      ) {
+
+        /*
+         * Clic corto en el centro:
+         * el siguiente clic SNAP reposiciona solamente el pivote.
+         */
+        this.armedMoveAxis =
+          null;
+
+
+        this.armedPivot =
+          true;
+
+
+        this.selection.setEnabled(
+          false,
+        );
+
+
+        /*
+         * Para mover el pivote sí permitimos SNAP sobre
+         * la propia selección.
+         */
+        this.snap.clearExcludedInstanceIds();
+
+      }
       else {
 
         this.armedMoveAxis =
           null;
+
+
+        this.armedPivot =
+          false;
 
 
         this.snap.clearExcludedInstanceIds();
@@ -1329,6 +1393,7 @@ export class DesignTransformController {
 
       if (
         !clickedAxis
+        && !clickedPivot
       ) {
 
         window.setTimeout(
@@ -1364,7 +1429,10 @@ export class DesignTransformController {
 
       if (
         !this.active
-        || !this.armedMoveAxis
+        || (
+          !this.armedMoveAxis
+          && !this.armedPivot
+        )
         || event.button !== 0
       ) {
 
@@ -1395,7 +1463,10 @@ export class DesignTransformController {
 
       if (
         !this.active
-        || !this.armedMoveAxis
+        || (
+          !this.armedMoveAxis
+          && !this.armedPivot
+        )
         || event.button !== 0
       ) {
 
@@ -1468,40 +1539,12 @@ export class DesignTransformController {
         );
 
 
-      const correction =
-        this.getConstrainedSnapCorrection(
-          this.armedMoveAxis,
-          snap.point,
-        );
-
-
       if (
-        correction.lengthSq()
-        > 1e-18
+        this.armedPivot
       ) {
 
-        for (
-          const object
-          of this.transformedObjects.values()
-        ) {
-
-          object.position.add(
-            correction,
-          );
-
-
-          object.updateMatrix();
-
-
-          object.updateMatrixWorld(
-            true,
-          );
-
-        }
-
-
-        this.pivot.position.add(
-          correction,
+        this.pivot.position.copy(
+          snap.point,
         );
 
 
@@ -1515,21 +1558,85 @@ export class DesignTransformController {
         );
 
 
-        this.commitTransforms();
+        /*
+         * Reubicar el pivote no modifica las piezas,
+         * por lo tanto no crea una entrada de Undo/Redo.
+         */
+        this.selection.refreshHelpers();
+
+      }
+      else if (
+        this.armedMoveAxis
+      ) {
+
+        const correction =
+          this.getConstrainedSnapCorrection(
+            this.armedMoveAxis,
+            snap.point,
+          );
 
 
-        this.history.recordTransform(
-          "MOVE",
-          before,
-          this.selection
-            .getSelectedIds(),
-        );
+        if (
+          correction.lengthSq()
+          > 1e-18
+        ) {
+
+          for (
+            const object
+            of this.transformedObjects.values()
+          ) {
+
+            object.position.add(
+              correction,
+            );
+
+
+            object.updateMatrix();
+
+
+            object.updateMatrixWorld(
+              true,
+            );
+
+          }
+
+
+          this.pivot.position.add(
+            correction,
+          );
+
+
+          this.pivot.updateMatrixWorld(
+            true,
+          );
+
+
+          this.previousPivotPosition.copy(
+            this.pivot.position,
+          );
+
+
+          this.commitTransforms();
+
+
+          this.history.recordTransform(
+            "MOVE",
+            before,
+            this.selection
+              .getSelectedIds(),
+          );
+
+        }
 
       }
 
 
       this.armedMoveAxis =
         null;
+
+
+      this.armedPivot =
+        false;
 
 
       this.snap.clearExcludedInstanceIds();
