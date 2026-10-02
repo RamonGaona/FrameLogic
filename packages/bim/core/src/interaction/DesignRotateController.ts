@@ -25,6 +25,10 @@ import type {
   CadTransformSnapshot,
 } from "./CadHistoryController";
 
+import type {
+  DesignSnapController,
+} from "./DesignSnapController";
+
 
 interface RotateStartState {
 
@@ -73,6 +77,10 @@ export class DesignRotateController {
     CadHistoryController;
 
 
+  private readonly snap:
+    DesignSnapController;
+
+
   private readonly controls:
     TransformControls;
 
@@ -118,6 +126,34 @@ export class DesignRotateController {
 
   private centerDragging =
     false;
+
+
+  private centerArmed =
+    false;
+
+
+  private centerPointerDownX =
+    0;
+
+
+  private centerPointerDownY =
+    0;
+
+
+  private readonly centerDragStartPivot =
+    new THREE.Vector3();
+
+
+  private armedCenterPointerDownActive =
+    false;
+
+
+  private armedCenterPointerDownX =
+    0;
+
+
+  private armedCenterPointerDownY =
+    0;
 
 
   private readonly transformedObjects =
@@ -186,6 +222,9 @@ export class DesignRotateController {
     history:
       CadHistoryController,
 
+    snap:
+      DesignSnapController,
+
     setCameraEnabled:
       (
         enabled: boolean,
@@ -218,6 +257,10 @@ export class DesignRotateController {
 
     this.history =
       history;
+
+
+    this.snap =
+      snap;
 
 
     this.setCameraEnabled =
@@ -436,6 +479,17 @@ export class DesignRotateController {
 
     this.centerDragging =
       false;
+
+
+    this.centerArmed =
+      false;
+
+
+    this.armedCenterPointerDownActive =
+      false;
+
+
+    this.snap.clearExcludedInstanceIds();
 
 
     this.transformedObjects.clear();
@@ -913,6 +967,17 @@ export class DesignRotateController {
     this.centerHandle.visible =
       true;
 
+
+    this.centerArmed =
+      false;
+
+
+    this.armedCenterPointerDownActive =
+      false;
+
+
+    this.snap.clearExcludedInstanceIds();
+
   }
 
 
@@ -1255,16 +1320,77 @@ export class DesignRotateController {
       }
 
 
-      if (
-        !this.pickCenterHandle(
+      const pickedCenter =
+        this.pickCenterHandle(
           event.clientX,
           event.clientY,
-        )
+        );
+
+
+      /*
+       * Si el centro está armado y el clic NO cae sobre
+       * la esfera blanca, este gesto es el destino SNAP.
+       */
+      if (
+        this.centerArmed
+        && !pickedCenter
+      ) {
+
+        this.armedCenterPointerDownX =
+          event.clientX;
+
+
+        this.armedCenterPointerDownY =
+          event.clientY;
+
+
+        this.armedCenterPointerDownActive =
+          true;
+
+
+        event.preventDefault();
+
+
+        event.stopPropagation();
+
+
+        return;
+
+      }
+
+
+      if (
+        !pickedCenter
       ) {
 
         return;
 
       }
+
+
+      /*
+       * Un nuevo gesto sobre la esfera cancela cualquier
+       * estado armado anterior y vuelve al modo normal.
+       */
+      this.centerArmed =
+        false;
+
+
+      this.armedCenterPointerDownActive =
+        false;
+
+
+      this.centerPointerDownX =
+        event.clientX;
+
+
+      this.centerPointerDownY =
+        event.clientY;
+
+
+      this.centerDragStartPivot.copy(
+        this.pivot.position,
+      );
 
 
       event.preventDefault();
@@ -1389,6 +1515,87 @@ export class DesignRotateController {
         PointerEvent,
     ): void => {
 
+      /*
+       * SEGUNDO CLIC:
+       * aplicar ENDPOINT / MIDPOINT / CENTER al pivote.
+       */
+      if (
+        this.centerArmed
+        && this.armedCenterPointerDownActive
+      ) {
+
+        this.armedCenterPointerDownActive =
+          false;
+
+
+        const movement =
+          Math.hypot(
+            event.clientX
+            - this.armedCenterPointerDownX,
+            event.clientY
+            - this.armedCenterPointerDownY,
+          );
+
+
+        if (
+          movement <= 5
+        ) {
+
+          const snap =
+            this.snap.findSnap(
+              event.clientX,
+              event.clientY,
+            );
+
+
+          if (
+            snap
+          ) {
+
+            event.preventDefault();
+
+
+            event.stopPropagation();
+
+
+            this.pivot.position.copy(
+              snap.point,
+            );
+
+
+            this.pivot.updateMatrixWorld(
+              true,
+            );
+
+
+            this.centerArmed =
+              false;
+
+
+            this.snap.clearExcludedInstanceIds();
+
+
+            this.selection.setEnabled(
+              true,
+            );
+
+
+            return;
+
+          }
+
+        }
+
+
+        /*
+         * Si no hubo SNAP válido, mantenemos el centro armado
+         * para que el usuario pueda intentar otro punto.
+         */
+        return;
+
+      }
+
+
       if (
         !this.centerDragging
       ) {
@@ -1401,14 +1608,74 @@ export class DesignRotateController {
       event.preventDefault();
 
 
+      const movement =
+        Math.hypot(
+          event.clientX
+          - this.centerPointerDownX,
+          event.clientY
+          - this.centerPointerDownY,
+        );
+
+
       this.centerDragging =
         false;
 
 
       /*
-       * Cambiar el centro NO transforma ni hace commit
-       * de las piezas. Solo cambia el centro temporal.
+       * CLIC CORTO EN LA ESFERA:
+       * no desplaza el pivote; arma el siguiente clic SNAP.
        */
+      if (
+        movement <= 5
+      ) {
+
+        this.pivot.position.copy(
+          this.centerDragStartPivot,
+        );
+
+
+        this.pivot.updateMatrixWorld(
+          true,
+        );
+
+
+        this.centerArmed =
+          true;
+
+
+        /*
+         * A diferencia de mover piezas, aquí sí queremos
+         * poder elegir SNAPs de la propia selección.
+         */
+        this.snap.clearExcludedInstanceIds();
+
+
+        this.setCameraEnabled(
+          true,
+        );
+
+
+        this.selection.setEnabled(
+          false,
+        );
+
+
+        return;
+
+      }
+
+
+      /*
+       * ARRASTRE NORMAL:
+       * mantener exactamente el comportamiento existente.
+       */
+      this.centerArmed =
+        false;
+
+
+      this.snap.clearExcludedInstanceIds();
+
+
       this.setCameraEnabled(
         true,
       );
