@@ -729,6 +729,8 @@ const designRotate =
 
     cadHistory,
 
+    designSnap,
+
     (
       enabled,
     ) => {
