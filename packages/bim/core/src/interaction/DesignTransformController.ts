@@ -1212,9 +1212,30 @@ export class DesignTransformController {
       }
 
 
+      const movedDistance =
+        this.pivot.position
+          .distanceTo(
+            this.dragStartPivotPosition,
+          );
+
+
+      const clickedAxis =
+        this.controls.getMode()
+          === "translate"
+        && this.dragMode
+          === "MOVE_OBJECTS"
+        && this.activeMoveAxis
+          !== null
+        && this.activeMoveAxis
+          !== "XYZ"
+        && movedDistance
+          <= 1e-9;
+
+
       if (
         this.controls.getMode()
         === "translate"
+        && !clickedAxis
       ) {
 
         this.applySnapAtTransformEnd();
@@ -1246,26 +1267,6 @@ export class DesignTransformController {
         }
 
       }
-
-
-      const movedDistance =
-        this.pivot.position
-          .distanceTo(
-            this.dragStartPivotPosition,
-          );
-
-
-      const clickedAxis =
-        this.controls.getMode()
-          === "translate"
-        && this.dragMode
-          === "MOVE_OBJECTS"
-        && this.activeMoveAxis
-          !== null
-        && this.activeMoveAxis
-          !== "XYZ"
-        && movedDistance
-          <= 1e-9;
 
 
       this.dragHistoryStart =
