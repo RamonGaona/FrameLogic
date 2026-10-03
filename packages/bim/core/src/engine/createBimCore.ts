@@ -3833,6 +3833,41 @@ function subscribeCadPointSelection(
 
 
 // ==========================================================
+// CAD LINE SELECTION
+// ==========================================================
+
+function getSelectedCadLineIds():
+  readonly string[] {
+
+  return cadLineSelection
+    .getSelectedIds();
+
+}
+
+
+function clearCadLineSelection():
+  void {
+
+  cadLineSelection
+    .clearSelection();
+
+}
+
+
+function subscribeCadLineSelection(
+  listener:
+    CadLineSelectionListener,
+): () => void {
+
+  return cadLineSelection
+    .subscribe(
+      listener,
+    );
+
+}
+
+
+// ==========================================================
 // ISOLATE SELECTED PIECES
 // ==========================================================
 
@@ -3923,10 +3958,46 @@ function startPointCommand():
 }
 
 
+function startLineCommand():
+  boolean {
+
+  cadWorkPlaneEdit.cancel();
+
+
+  cadNumericInput.hide();
+
+
+  const started =
+    cadCommandManager
+      .start(
+        lineCommand,
+      );
+
+
+  if (
+    started
+  ) {
+
+    cadNumericInput.showLine();
+
+  }
+
+
+  return started;
+
+}
+
+
 function startMoveCommand():
   boolean {
 
   cadWorkPlaneEdit.cancel();
+
+
+  const selectedLineCount =
+    cadLineSelection
+      .getSelectedIds()
+      .length;
 
 
   const selectedPointCount =
@@ -3941,9 +4012,20 @@ function startMoveCommand():
       .length;
 
 
+  const selectedTypeCount =
+    Number(
+      selectedLineCount > 0,
+    )
+    + Number(
+        selectedPointCount > 0,
+      )
+    + Number(
+        selectedPieceCount > 0,
+      );
+
+
   if (
-    selectedPointCount > 0
-    && selectedPieceCount > 0
+    selectedTypeCount > 1
   ) {
 
     return false;
@@ -3951,15 +4033,20 @@ function startMoveCommand():
   }
 
 
-  return selectedPointCount > 0
+  return selectedLineCount > 0
     ? cadCommandManager
         .start(
-          moveCadPointCommand,
+          moveCadLineCommand,
         )
-    : cadCommandManager
-        .start(
-          moveCommand,
-        );
+    : selectedPointCount > 0
+      ? cadCommandManager
+          .start(
+            moveCadPointCommand,
+          )
+      : cadCommandManager
+          .start(
+            moveCommand,
+          );
 
 }
 
@@ -3995,10 +4082,57 @@ function deleteSelectedPieceInstances():
   }
 
 
-  if (
+  const selectedLineCount =
+    cadLineSelection
+      .getSelectedIds()
+      .length;
+
+
+  const selectedPointCount =
     cadPointSelection
       .getSelectedIds()
-      .length > 0
+      .length;
+
+
+  const selectedPieceCount =
+    designSelection
+      .getSelectedIds()
+      .length;
+
+
+  const selectedTypeCount =
+    Number(
+      selectedLineCount > 0,
+    )
+    + Number(
+        selectedPointCount > 0,
+      )
+    + Number(
+        selectedPieceCount > 0,
+      );
+
+
+  if (
+    selectedTypeCount > 1
+  ) {
+
+    return false;
+
+  }
+
+
+  if (
+    selectedLineCount > 0
+  ) {
+
+    return deleteCadLineCommand
+      .execute();
+
+  }
+
+
+  if (
+    selectedPointCount > 0
   ) {
 
     return deleteCadPointCommand
@@ -4091,6 +4225,9 @@ function dispose(): void {
   unsubscribeCadPointSelection();
 
 
+  unsubscribeCadLineSelection();
+
+
   unsubscribeDesignLayers();
 
 
@@ -4134,16 +4271,25 @@ function dispose(): void {
   cadPointMove.dispose();
 
 
+  cadLineMove.dispose();
+
+
   cadWorkPlaneEdit.dispose();
 
 
   cadPointPlacement.dispose();
 
 
+  cadLinePlacement.dispose();
+
+
   designSnap.dispose();
 
 
   cadWindowSelection.dispose();
+
+
+  cadLineSelection.dispose();
 
 
   cadPointSelection.dispose();
@@ -4160,6 +4306,9 @@ function dispose(): void {
   // --------------------------------------------------------
 
   cadPointScene.dispose();
+
+
+  cadLineScene.dispose();
 
 
   designScene.dispose();
@@ -4215,6 +4364,8 @@ function dispose(): void {
     designScene,
 
     cadPointScene,
+
+    cadLineScene,
 
 
     // --------------------------------------------------------
@@ -4337,12 +4488,22 @@ designSnap,
 
 cadPointPlacement,
 
+cadLinePlacement,
+
 // Selection
 designSelection,
 
 cadPointSelection,
 
+cadLineSelection,
+
 cadWindowSelection,
+
+getSelectedCadLineIds,
+
+clearCadLineSelection,
+
+subscribeCadLineSelection,
 
 getSelectedCadPointIds,
 
@@ -4367,6 +4528,8 @@ cadCommandManager,
 
 startPointCommand,
 
+startLineCommand,
+
 startMoveCommand,
 
 startRotateCommand,
@@ -4385,6 +4548,8 @@ cadHistory,
 designTransform,
 
 cadPointMove,
+
+cadLineMove,
 
 designRotate,
 
