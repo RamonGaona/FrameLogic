@@ -1314,6 +1314,64 @@ PieceInstances and CadPoints may coexist in the selection set. Until the transfo
 
 The current v1 implementation uses projected object bounds for PieceInstance window/crossing tests. WINDOW containment is conservative: the complete projected bounds must fit inside the selection rectangle. CROSSING uses projected-bound intersection.
 
+## 15.6 CAD LINE and WorkPlane ORTHO
+
+A constructed CAD line is a placed project object:
+
+```ts
+interface CadLine {
+  id: string;
+  layerId: string;
+  start: { x: number; y: number; z: number };
+  end: { x: number; y: number; z: number };
+}
+```
+
+LINE is started with `L` or the LINE toolbar control and remains active for chained segments until cancelled.
+
+Point acquisition follows the same base rules as POINT:
+
+```text
+SNAP 3D
+WorkPlane pointer acquisition
+typed absolute XYZ
+```
+
+When a WorkPlane is active, free pointer acquisition after the first line point uses ORTHO behavior analogous to AutoCAD F8:
+
+```text
+0°  = WorkPlane local X axis
+90° = WorkPlane local Y axis
+```
+
+The direction is chosen from the dominant local pointer displacement from the current start point.
+
+This rule applies to `XY`, `XZ`, `YZ`, and `CUSTOM` WorkPlanes. Therefore a CUSTOM plane may define an arbitrarily rotated 0°/90° construction basis in 3D.
+
+A valid SNAP always has priority over ORTHO. If the pointer acquires ENDPOINT, MIDPOINT, CENTER or POINT, the exact snapped 3D coordinate is accepted even when it is not aligned to the active WorkPlane and even when it is outside that plane.
+
+If a chained segment starts from a SNAP outside the active WorkPlane, subsequent free ORTHO directions remain parallel to the WorkPlane local X/Y axes but pass through that snapped start point.
+
+With WorkPlane `OFF`, free pointer acquisition is invalid; LINE may continue only from SNAP or explicit typed coordinates.
+
+Typed absolute XYZ is an explicit coordinate command and is not altered by cursor ORTHO.
+
+After a segment is created, its end becomes the start of the next segment.
+
+CadLine supplies semantic snaps:
+
+- ENDPOINT at each end;
+- MIDPOINT at the segment midpoint.
+
+CadLine participates in project layers, visibility, lock, snap-enabled state, Window/Crossing selection, MOVE, Delete and Undo/Redo.
+
+For directional window selection:
+
+- WINDOW selects a line only when both projected endpoints are inside the rectangle;
+- CROSSING selects a line when its projected segment actually intersects the rectangle.
+
+Mixed entity MOVE/DELETE remains intentionally blocked until heterogeneous transforms/history are unified, rather than applying an operation to only part of the selection.
+
 # 16. Identity and uniqueness rules
 
 ## 16.1 Definition identity
