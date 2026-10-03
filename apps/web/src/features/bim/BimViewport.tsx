@@ -14,6 +14,7 @@ import {
 
 import type {
   BimCoreInstance,
+  CadWorkPlaneEditState,
   CadWorkPlaneMode,
   CameraOrientation,
   CardinalDirection,
@@ -228,6 +229,22 @@ function handleCardinalDirection(
     >(
       "XY",
     );
+
+
+  const [
+    workPlaneEdit,
+    setWorkPlaneEdit,
+  ] =
+    useState<
+      CadWorkPlaneEditState
+    >({
+      mode:
+        "NONE",
+      pointCount:
+        0,
+      message:
+        "",
+    });
 
 
   const [
@@ -549,9 +566,30 @@ catch (
     }
 
 
+    bimCore.cancelCadWorkPlaneEdit();
+
+
     setWorkPlaneMode(
       bimCore.cycleCadWorkPlane(),
     );
+
+  }
+
+
+  function handleSetWorkPlaneOrigin():
+    void {
+
+    bimCoreRef.current
+      ?.startCadWorkPlaneOriginEdit();
+
+  }
+
+
+  function handleSetWorkPlaneThreePoints():
+    void {
+
+    bimCoreRef.current
+      ?.startCadWorkPlaneThreePointEdit();
 
   }
 
@@ -593,6 +631,12 @@ catch (
 
 
       let unsubscribeWorkPlane:
+        (() => void)
+        | null =
+          null;
+
+
+      let unsubscribeWorkPlaneEdit:
         (() => void)
         | null =
           null;
@@ -697,6 +741,35 @@ catch (
               );
 
 
+            setWorkPlaneEdit(
+              instance
+                .getCadWorkPlaneEditState(),
+            );
+
+
+            unsubscribeWorkPlaneEdit =
+              instance.subscribeCadWorkPlaneEdit(
+                (
+                  state,
+                ) => {
+
+                  if (
+                    disposed
+                  ) {
+
+                    return;
+
+                  }
+
+
+                  setWorkPlaneEdit(
+                    state,
+                  );
+
+                },
+              );
+
+
             setProjectionMode(
               instance.getCameraProjectionMode(),
             );
@@ -759,6 +832,10 @@ catch (
 
 
         unsubscribeWorkPlane
+          ?.();
+
+
+        unsubscribeWorkPlaneEdit
           ?.();
   
   
@@ -1627,6 +1704,50 @@ catch (
             `WorkPlane: ${workPlaneMode}`
           }
         </button>
+
+
+        <button
+          type="button"
+          className={
+            workPlaneEdit.mode === "ORIGIN"
+              ? "workplane-edit-button workplane-edit-button-active"
+              : "workplane-edit-button"
+          }
+          title="Mover el origen del WorkPlane a un SNAP"
+          onClick={
+            handleSetWorkPlaneOrigin
+          }
+        >
+          WP origen
+        </button>
+
+
+        <button
+          type="button"
+          className={
+            workPlaneEdit.mode === "THREE_POINTS"
+              ? "workplane-edit-button workplane-edit-button-active"
+              : "workplane-edit-button"
+          }
+          title="Definir WorkPlane libre usando 3 SNAPs"
+          onClick={
+            handleSetWorkPlaneThreePoints
+          }
+        >
+          WP 3 SNAP
+        </button>
+
+
+        {
+          workPlaneEdit.mode !== "NONE"
+          && (
+            <span
+              className="workplane-edit-status"
+            >
+              {workPlaneEdit.message}
+            </span>
+          )
+        }
 
 
         {/* --------------------------------------------------
