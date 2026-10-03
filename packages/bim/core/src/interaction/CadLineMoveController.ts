@@ -32,6 +32,10 @@ import type {
   DesignSelectionController,
 } from "./DesignSelectionController";
 
+import type {
+  DesignSnapController,
+} from "./DesignSnapController";
+
 
 interface CadLineMoveState {
 
@@ -63,6 +67,10 @@ export class CadLineMoveController {
     THREE.Scene;
 
 
+  private readonly domElement:
+    HTMLElement;
+
+
   private readonly designModel:
     DesignModel;
 
@@ -87,6 +95,10 @@ export class CadLineMoveController {
     CadHistoryController;
 
 
+  private readonly snap:
+    DesignSnapController;
+
+
   private readonly setCameraEnabled:
     (
       enabled: boolean,
@@ -107,6 +119,38 @@ export class CadLineMoveController {
 
   private readonly previousPivot =
     new THREE.Vector3();
+
+
+  private readonly dragStartPivot =
+    new THREE.Vector3();
+
+
+  private currentAxis:
+    string
+    | null =
+      null;
+
+
+  private armedMoveAxis:
+    MoveNumericAxis
+    | null =
+      null;
+
+
+  private armedPivot =
+    false;
+
+
+  private armedPointerDownX =
+    0;
+
+
+  private armedPointerDownY =
+    0;
+
+
+  private armedPointerDownActive =
+    false;
 
 
   private dragStart:
@@ -159,6 +203,9 @@ export class CadLineMoveController {
     history:
       CadHistoryController,
 
+    snap:
+      DesignSnapController,
+
     setCameraEnabled:
       (
         enabled: boolean,
@@ -167,6 +214,10 @@ export class CadLineMoveController {
 
     this.scene =
       scene;
+
+
+    this.domElement =
+      domElement;
 
 
     this.designModel =
@@ -191,6 +242,10 @@ export class CadLineMoveController {
 
     this.history =
       history;
+
+
+    this.snap =
+      snap;
 
 
     this.setCameraEnabled =
@@ -254,6 +309,20 @@ export class CadLineMoveController {
     );
 
 
+    this.domElement.addEventListener(
+      "pointerdown",
+      this.handleArmedPointerDown,
+      true,
+    );
+
+
+    this.domElement.addEventListener(
+      "pointerup",
+      this.handleArmedPointerUp,
+      true,
+    );
+
+
     this.controls.detach();
 
   }
@@ -306,6 +375,9 @@ export class CadLineMoveController {
     }
 
 
+    this.clearArmedSnap();
+
+
     const selectedIds =
       this.lineSelection
         .getSelectedIds();
@@ -327,6 +399,9 @@ export class CadLineMoveController {
 
     this.active =
       true;
+
+
+    this.clearArmedSnap();
 
 
     this.resetPivot();
@@ -369,6 +444,13 @@ export class CadLineMoveController {
 
     this.dragStart =
       null;
+
+
+    this.currentAxis =
+      null;
+
+
+    this.clearArmedSnap();
 
 
     this.controls.detach();
@@ -729,8 +811,20 @@ export class CadLineMoveController {
       );
 
 
-      const axis =
+      this.dragStartPivot.copy(
+        this.pivot.position,
+      );
+
+
+      this.clearArmedSnap();
+
+
+      this.currentAxis =
         this.controls.axis;
+
+
+      const axis =
+        this.currentAxis;
 
 
       if (
@@ -787,11 +881,22 @@ export class CadLineMoveController {
       }
 
 
-      this.applyDelta(
-        this.lineSelection
-          .getSelectedIds(),
-        delta,
-      );
+      /*
+       * El centro XYZ mueve únicamente el punto base
+       * del gizmo. No traslada las CadLine seleccionadas.
+       */
+      if (
+        this.currentAxis
+        !== "XYZ"
+      ) {
+
+        this.applyDelta(
+          this.lineSelection
+            .getSelectedIds(),
+          delta,
+        );
+
+      }
 
 
       this.previousPivot.copy(
@@ -823,12 +928,98 @@ export class CadLineMoveController {
         this.dragStart;
 
 
+      const axis =
+        this.currentAxis;
+
+
+      const movedDistance =
+        this.pivot.position
+          .distanceTo(
+            this.dragStartPivot,
+          );
+
+
+      const clickedAxis =
+        (
+          axis === "X"
+          || axis === "Y"
+          || axis === "Z"
+          || axis === "XY"
+          || axis === "XZ"
+          || axis === "YZ"
+        )
+        && movedDistance
+          <= 1e-9;
+
+
+      const clickedPivot =
+        axis === "XYZ"
+        && movedDistance
+          <= 1e-9;
+
+
       this.dragStart =
         null;
 
 
+      this.currentAxis =
+        null;
+
+
+      if (
+        clickedAxis
+        && axis !== null
+      ) {
+
+        this.armedMoveAxis =
+          axis as MoveNumericAxis;
+
+
+        this.armedPivot =
+          false;
+
+
+        this.snap.setExcludedInstanceIds(
+          this.lineSelection
+            .getSelectedIds(),
+        );
+
+
+        return;
+
+      }
+
+
+      if (
+        clickedPivot
+      ) {
+
+        this.armedMoveAxis =
+          null;
+
+
+        this.armedPivot =
+          true;
+
+
+        /*
+         * Para reposicionar el pivote sí se permite SNAP
+         * sobre las propias líneas seleccionadas.
+         */
+        this.snap.clearExcludedInstanceIds();
+
+
+        return;
+
+      }
+
+
+      this.clearArmedSnap();
+
+
       if (
         !before
+        || axis === "XYZ"
       ) {
 
         return;
@@ -843,6 +1034,308 @@ export class CadLineMoveController {
       );
 
   };
+
+
+  private readonly handleArmedPointerDown =
+    (
+      event:
+        PointerEvent,
+    ):
+      void => {
+
+      if (
+        !this.active
+        || (
+          !this.armedMoveAxis
+          && !this.armedPivot
+        )
+        || event.button !== 0
+      ) {
+
+        return;
+
+      }
+
+
+      this.armedPointerDownX =
+        event.clientX;
+
+
+      this.armedPointerDownY =
+        event.clientY;
+
+
+      this.armedPointerDownActive =
+        true;
+
+  };
+
+
+  private readonly handleArmedPointerUp =
+    (
+      event:
+        PointerEvent,
+    ):
+      void => {
+
+      if (
+        !this.active
+        || (
+          !this.armedMoveAxis
+          && !this.armedPivot
+        )
+        || event.button !== 0
+        || !this.armedPointerDownActive
+      ) {
+
+        return;
+
+      }
+
+
+      this.armedPointerDownActive =
+        false;
+
+
+      const movement =
+        Math.hypot(
+          event.clientX
+          - this.armedPointerDownX,
+          event.clientY
+          - this.armedPointerDownY,
+        );
+
+
+      if (
+        movement > 5
+      ) {
+
+        return;
+
+      }
+
+
+      const snap =
+        this.snap.findSnap(
+          event.clientX,
+          event.clientY,
+        );
+
+
+      if (
+        !snap
+      ) {
+
+        return;
+
+      }
+
+
+      event.preventDefault();
+
+      event.stopPropagation();
+
+
+      if (
+        this.armedPivot
+      ) {
+
+        this.pivot.position.copy(
+          snap.point,
+        );
+
+
+        this.pivot.updateMatrixWorld(
+          true,
+        );
+
+
+        this.previousPivot.copy(
+          this.pivot.position,
+        );
+
+
+        this.clearArmedSnap();
+
+
+        return;
+
+      }
+
+
+      const axis =
+        this.armedMoveAxis;
+
+
+      if (
+        !axis
+      ) {
+
+        return;
+
+      }
+
+
+      const selectedIds =
+        this.lineSelection
+          .getSelectedIds();
+
+
+      const before =
+        this.capture(
+          selectedIds,
+        );
+
+
+      const correction =
+        this.getConstrainedSnapCorrection(
+          axis,
+          snap.point,
+        );
+
+
+      if (
+        correction.lengthSq()
+        > 1e-18
+      ) {
+
+        this.applyDelta(
+          selectedIds,
+          correction,
+        );
+
+
+        this.pivot.position.add(
+          correction,
+        );
+
+
+        this.pivot.updateMatrixWorld(
+          true,
+        );
+
+
+        this.previousPivot.copy(
+          this.pivot.position,
+        );
+
+
+        this.recordMove(
+          before,
+          selectedIds,
+        );
+
+      }
+
+
+      this.clearArmedSnap();
+
+  };
+
+
+  private getConstrainedSnapCorrection(
+    axis:
+      MoveNumericAxis,
+
+    targetPoint:
+      THREE.Vector3,
+  ):
+    THREE.Vector3 {
+
+    const correction =
+      targetPoint
+        .clone()
+        .sub(
+          this.pivot.position,
+        );
+
+
+    switch (
+      axis
+    ) {
+
+      case "X":
+
+        correction.set(
+          correction.x,
+          0,
+          0,
+        );
+
+        break;
+
+
+      case "Y":
+
+        correction.set(
+          0,
+          correction.y,
+          0,
+        );
+
+        break;
+
+
+      case "Z":
+
+        correction.set(
+          0,
+          0,
+          correction.z,
+        );
+
+        break;
+
+
+      case "XY":
+
+        correction.z =
+          0;
+
+        break;
+
+
+      case "XZ":
+
+        correction.y =
+          0;
+
+        break;
+
+
+      case "YZ":
+
+        correction.x =
+          0;
+
+        break;
+
+    }
+
+
+    return correction;
+
+  }
+
+
+  private clearArmedSnap():
+    void {
+
+    this.armedMoveAxis =
+      null;
+
+
+    this.armedPivot =
+      false;
+
+
+    this.armedPointerDownActive =
+      false;
+
+
+    this.snap.clearExcludedInstanceIds();
+
+  }
 
 
   private applyDelta(
@@ -1164,6 +1657,20 @@ export class CadLineMoveController {
     this.controls.removeEventListener(
       "mouseUp",
       this.handleMoveEnd,
+    );
+
+
+    this.domElement.removeEventListener(
+      "pointerdown",
+      this.handleArmedPointerDown,
+      true,
+    );
+
+
+    this.domElement.removeEventListener(
+      "pointerup",
+      this.handleArmedPointerUp,
+      true,
     );
 
 
