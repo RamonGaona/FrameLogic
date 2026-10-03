@@ -396,6 +396,25 @@ export class CadWorkPlaneEditController {
       }
 
 
+      if (
+        this.points.length === 1
+        && snap.point.distanceToSquared(
+          this.points[0],
+        ) <= 1e-12
+      ) {
+
+        this.messageValue =
+          "Punto 2/3: debe ser diferente al origen para definir +X local.";
+
+
+        this.notify();
+
+
+        return;
+
+      }
+
+
       this.points.push(
         snap.point.clone(),
       );
