@@ -25,6 +25,10 @@ import type {
 } from "./CadPointSelectionController";
 
 import type {
+  CadLineSelectionController,
+} from "./CadLineSelectionController";
+
+import type {
   DesignSnapController,
 } from "./DesignSnapController";
 
@@ -65,6 +69,11 @@ export class CadPointPlacementController {
 
   private readonly pointSelection:
     CadPointSelectionController;
+
+
+  private readonly lineSelection:
+    CadLineSelectionController
+    | null;
 
 
   private active =
@@ -114,6 +123,9 @@ export class CadPointPlacementController {
 
     pointSelection:
       CadPointSelectionController,
+
+    lineSelection?:
+      CadLineSelectionController,
   ) {
 
     this.domElement =
@@ -150,6 +162,11 @@ export class CadPointPlacementController {
 
     this.pointSelection =
       pointSelection;
+
+
+    this.lineSelection =
+      lineSelection
+      ?? null;
 
 
     this.domElement.addEventListener(
@@ -221,6 +238,12 @@ export class CadPointPlacementController {
     );
 
 
+    this.lineSelection
+      ?.setEnabled(
+        false,
+      );
+
+
     return true;
 
   }
@@ -245,6 +268,12 @@ export class CadPointPlacementController {
     this.pointSelection.setEnabled(
       true,
     );
+
+
+    this.lineSelection
+      ?.setEnabled(
+        true,
+      );
 
   }
 
