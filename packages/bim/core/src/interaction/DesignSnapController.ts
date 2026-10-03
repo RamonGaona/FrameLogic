@@ -470,6 +470,24 @@ export class DesignSnapController {
     }
 
 
+    const cadLineSnap =
+      this.findCadLineSnap(
+        clientX,
+        clientY,
+        rect,
+        camera,
+      );
+
+
+    if (
+      cadLineSnap
+    ) {
+
+      return cadLineSnap;
+
+    }
+
+
     this.raycaster.setFromCamera(
       this.pointer,
       camera,
@@ -840,6 +858,199 @@ export class DesignSnapController {
         instanceId:
           cadPoint.id,
       };
+
+    }
+
+
+    return best;
+
+  }
+
+
+  private findCadLineSnap(
+    clientX: number,
+    clientY: number,
+    rect: DOMRect,
+    camera: THREE.Camera,
+  ):
+    DesignSnapResult
+    | null {
+
+    if (
+      !this.designModel
+    ) {
+
+      return null;
+
+    }
+
+
+    let best:
+      DesignSnapResult
+      | null =
+        null;
+
+
+    let bestPixels =
+      this.pixelTolerance;
+
+
+    for (
+      const line
+      of this.designModel
+        .cadLines
+        .getAll()
+    ) {
+
+      const layer =
+        this.designModel
+          .layers
+          .get(
+            line.layerId,
+          );
+
+
+      if (
+        layer?.visible === false
+        || layer?.snapEnabled === false
+      ) {
+
+        continue;
+
+      }
+
+
+      const start =
+        new THREE.Vector3(
+          line.start.x,
+          line.start.y,
+          line.start.z,
+        );
+
+
+      const end =
+        new THREE.Vector3(
+          line.end.x,
+          line.end.y,
+          line.end.z,
+        );
+
+
+      const midpoint =
+        start
+          .clone()
+          .add(
+            end,
+          )
+          .multiplyScalar(
+            0.5,
+          );
+
+
+      const candidates:
+        Array<{
+          type:
+            DesignSnapType;
+          point:
+            THREE.Vector3;
+        }> = [
+          {
+            type:
+              "ENDPOINT",
+            point:
+              start,
+          },
+          {
+            type:
+              "ENDPOINT",
+            point:
+              end,
+          },
+          {
+            type:
+              "MIDPOINT",
+            point:
+              midpoint,
+          },
+        ];
+
+
+      for (
+        const candidate
+        of candidates
+      ) {
+
+        const projected =
+          candidate.point
+            .clone()
+            .project(
+              camera,
+            );
+
+
+        if (
+          projected.z < -1
+          || projected.z > 1
+        ) {
+
+          continue;
+
+        }
+
+
+        const screenX =
+          rect.left
+          + (
+            projected.x
+            + 1
+          )
+          * 0.5
+          * rect.width;
+
+
+        const screenY =
+          rect.top
+          + (
+            1
+            - projected.y
+          )
+          * 0.5
+          * rect.height;
+
+
+        const pixels =
+          Math.hypot(
+            clientX
+            - screenX,
+            clientY
+            - screenY,
+          );
+
+
+        if (
+          pixels
+          >= bestPixels
+        ) {
+
+          continue;
+
+        }
+
+
+        bestPixels =
+          pixels;
+
+
+        best = {
+          type:
+            candidate.type,
+          point:
+            candidate.point,
+          instanceId:
+            line.id,
+        };
+
+      }
 
     }
 
