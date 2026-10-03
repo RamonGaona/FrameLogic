@@ -20,6 +20,7 @@ import type {
   CardinalDirection,
   DesignLayer,
   LoadedModelInfo,
+  PieceDefinitionOriginEditState,
   PieceDefinitionPreparationState,
 } from "@framelogic/bim-core";
 
@@ -279,6 +280,20 @@ function handleCardinalDirection(
         0,
       axisCount:
         0,
+    });
+
+
+  const [
+    pieceOriginEdit,
+    setPieceOriginEdit,
+  ] =
+    useState<
+      PieceDefinitionOriginEditState
+    >({
+      active:
+        false,
+      message:
+        "",
     });
 
     const [
@@ -667,6 +682,45 @@ catch (
   }
 
 
+  function handleStartPreparedPieceOriginSnap():
+    void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      bimCore
+        .startPreparedPieceOriginSnapEdit();
+
+    }
+    catch (
+      error
+    ) {
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
+
+    }
+
+  }
+
+
   function handleAddPreparedPieceSnaps():
     void {
 
@@ -912,6 +966,12 @@ catch (
         (() => void)
         | null =
           null;
+
+
+      let unsubscribePieceOriginEdit:
+        (() => void)
+        | null =
+          null;
   
   
       void createBimCore(
@@ -1072,6 +1132,36 @@ catch (
                 );
 
 
+            setPieceOriginEdit(
+              instance
+                .getPieceDefinitionOriginEditState(),
+            );
+
+
+            unsubscribePieceOriginEdit =
+              instance
+                .subscribePieceDefinitionOriginEdit(
+                  (
+                    state,
+                  ) => {
+
+                    if (
+                      disposed
+                    ) {
+
+                      return;
+
+                    }
+
+
+                    setPieceOriginEdit(
+                      state,
+                    );
+
+                  },
+                );
+
+
             setProjectionMode(
               instance.getCameraProjectionMode(),
             );
@@ -1142,6 +1232,10 @@ catch (
 
 
         unsubscribePiecePreparation
+          ?.();
+
+
+        unsubscribePieceOriginEdit
           ?.();
   
   
@@ -2030,6 +2124,34 @@ catch (
               >
                 Origen ← punto
               </button>
+
+
+              <button
+                type="button"
+                className={
+                  pieceOriginEdit.active
+                    ? "workplane-edit-button workplane-edit-button-active"
+                    : "workplane-edit-button"
+                }
+                title="Selecciona cualquier SNAP válido directamente sobre la geometría para definir el origen local"
+                onClick={
+                  handleStartPreparedPieceOriginSnap
+                }
+              >
+                Origen ← SNAP
+              </button>
+
+
+              {
+                pieceOriginEdit.active
+                && (
+                  <span
+                    className="workplane-edit-status"
+                  >
+                    {pieceOriginEdit.message}
+                  </span>
+                )
+              }
 
 
               <button
