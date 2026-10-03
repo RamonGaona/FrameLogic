@@ -36,6 +36,10 @@ import {
 } from "../design/DesignSceneController";
 
 import {
+  CadPointSceneController,
+} from "../design/CadPointSceneController";
+
+import {
   DesignSelectionController,
 } from "../interaction/DesignSelectionController";
 
@@ -83,6 +87,10 @@ import {
 } from "../interaction/CadHistoryController";
 
 import {
+  CadPointPlacementController,
+} from "../interaction/CadPointPlacementController";
+
+import {
   DesignSnapController,
 } from "../interaction/DesignSnapController";
 
@@ -101,6 +109,10 @@ import {
 import {
   DeleteCommand,
 } from "../commands/DeleteCommand";
+
+import {
+  PointCommand,
+} from "../commands/PointCommand";
 
 export type StandardView =
   | "TOP"
@@ -287,6 +299,13 @@ async function setCardinalDirection(
 
   const designScene =
     new DesignSceneController(
+      world.scene.three,
+      designModel,
+    );
+
+
+  const cadPointScene =
+    new CadPointSceneController(
       world.scene.three,
       designModel,
     );
@@ -796,6 +815,9 @@ function applyDesignLayerEffects(): void {
   designScene.sync();
 
 
+  cadPointScene.sync();
+
+
   for (
     const layer
     of designModel.layers.getAll()
@@ -890,6 +912,24 @@ const cadHistory =
   new CadHistoryController(
     designModel,
     designScene,
+    designSelection,
+  );
+
+
+// ==========================================================
+// CAD POINT PLACEMENT
+// ==========================================================
+
+const cadPointPlacement =
+  new CadPointPlacementController(
+    canvas,
+    () =>
+      world.camera.three,
+    designModel,
+    cadPointScene,
+    designSnap,
+    cadWorkPlane,
+    cadHistory,
     designSelection,
   );
 
@@ -1031,6 +1071,24 @@ cadNumericInput.setRotateApplyHandler(
   },
 );
 
+
+cadNumericInput.setPointApplyHandler(
+  (
+    x,
+    y,
+    z,
+  ) => {
+
+    cadPointPlacement
+      .createAtCoordinates(
+        x,
+        y,
+        z,
+      );
+
+  },
+);
+
 // ==========================================================
 // CAD COMMANDS
 // ==========================================================
@@ -1050,6 +1108,12 @@ const rotateCommand =
   new RotateCommand(
     designSelection,
     designRotate,
+  );
+
+
+const pointCommand =
+  new PointCommand(
+    cadPointPlacement,
   );
 
 
@@ -1367,6 +1431,50 @@ const handleCadKeyDown =
         window.alert(
           message,
         );
+
+      }
+
+
+      return;
+
+    }
+
+
+    // ------------------------------------------------------
+    // P = POINT
+    // ------------------------------------------------------
+
+    if (
+      event.key.toLowerCase()
+        === "p"
+      && !event.ctrlKey
+      && !event.metaKey
+      && !event.altKey
+    ) {
+
+      cadWorkPlaneEdit.cancel();
+
+
+      cadNumericInput.hide();
+
+
+      const started =
+        cadCommandManager.start(
+          pointCommand,
+        );
+
+
+      if (
+        started
+      ) {
+
+        cadNumericInput.showPoint();
+
+
+        event.preventDefault();
+
+
+        event.stopPropagation();
 
       }
 
@@ -3098,6 +3206,36 @@ function setDesignTransformSpace(
 // CAD COMMANDS
 // ==========================================================
 
+function startPointCommand():
+  boolean {
+
+  cadWorkPlaneEdit.cancel();
+
+
+  cadNumericInput.hide();
+
+
+  const started =
+    cadCommandManager
+      .start(
+        pointCommand,
+      );
+
+
+  if (
+    started
+  ) {
+
+    cadNumericInput.showPoint();
+
+  }
+
+
+  return started;
+
+}
+
+
 function startMoveCommand():
   boolean {
 
@@ -3267,6 +3405,9 @@ function dispose(): void {
   cadWorkPlaneEdit.dispose();
 
 
+  cadPointPlacement.dispose();
+
+
   designSnap.dispose();
 
 
@@ -3279,6 +3420,9 @@ function dispose(): void {
   // --------------------------------------------------------
   // DESIGN VISUALS
   // --------------------------------------------------------
+
+  cadPointScene.dispose();
+
 
   designScene.dispose();
 
@@ -3331,6 +3475,8 @@ function dispose(): void {
     // --------------------------------------------------------
 
     designScene,
+
+    cadPointScene,
 
 
     // --------------------------------------------------------
@@ -3451,6 +3597,8 @@ toggleCameraProjection,
 // Snap
 designSnap,
 
+cadPointPlacement,
+
 // Selection
 designSelection,
 
@@ -3468,6 +3616,8 @@ exitPieceIsolation,
 
 // CAD commands
 cadCommandManager,
+
+startPointCommand,
 
 startMoveCommand,
 
