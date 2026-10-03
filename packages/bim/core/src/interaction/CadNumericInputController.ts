@@ -34,6 +34,7 @@ export class CadNumericInputController {
   private mode:
     "MOVE"
     | "ROTATE"
+    | "POINT"
     | null =
       null;
 
@@ -63,6 +64,15 @@ export class CadNumericInputController {
     (
       axis: RotateNumericAxis,
       degrees: number,
+    ) => void =
+      () => {};
+
+
+  private onPointApply:
+    (
+      x: number,
+      y: number,
+      z: number,
     ) => void =
       () => {};
 
@@ -264,6 +274,21 @@ export class CadNumericInputController {
   }
 
 
+  setPointApplyHandler(
+    handler:
+      (
+        x: number,
+        y: number,
+        z: number,
+      ) => void,
+  ): void {
+
+    this.onPointApply =
+      handler;
+
+  }
+
+
   showMove(
     axis:
       MoveNumericAxis,
@@ -330,6 +355,43 @@ export class CadNumericInputController {
     this.buildInputs(
       [axis],
       "°",
+    );
+
+
+    this.root.style.display =
+      "flex";
+
+
+    this.focusFirstInput();
+
+  }
+
+
+  showPoint(): void {
+
+    this.mode =
+      "POINT";
+
+
+    this.moveAxis =
+      null;
+
+
+    this.rotateAxis =
+      null;
+
+
+    this.title.textContent =
+      "POINT · XYZ";
+
+
+    this.buildInputs(
+      [
+        "X",
+        "Y",
+        "Z",
+      ],
+      "",
     );
 
 
@@ -596,6 +658,22 @@ export class CadNumericInputController {
         this.onRotateApply(
           this.rotateAxis,
           values[0] ?? 0,
+        );
+
+
+        return;
+
+      }
+
+
+      if (
+        this.mode === "POINT"
+      ) {
+
+        this.onPointApply(
+          values[0] ?? 0,
+          values[1] ?? 0,
+          values[2] ?? 0,
         );
 
       }
