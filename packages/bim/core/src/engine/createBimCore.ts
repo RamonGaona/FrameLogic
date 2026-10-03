@@ -60,6 +60,16 @@ import {
 } from "../interaction/CadNumericInputController";
 
 import {
+  CadWorkPlaneController,
+} from "../interaction/CadWorkPlaneController";
+
+import type {
+  CadWorkPlaneListener,
+  CadWorkPlaneMode,
+  CadWorkPlaneState,
+} from "../interaction/CadWorkPlaneController";
+
+import {
   CadHistoryController,
 } from "../interaction/CadHistoryController";
 
@@ -357,6 +367,16 @@ async function setCardinalDirection(
 
   const helpers =
     addSceneHelpers(
+      world.scene.three,
+    );
+
+
+  // ==========================================================
+  // CAD WORKPLANE
+  // ==========================================================
+
+  const cadWorkPlane =
+    new CadWorkPlaneController(
       world.scene.three,
     );
 
@@ -2255,6 +2275,53 @@ function cancelDesignPiecePlacement(): void {
   }
 
   // ==========================================================
+  // CAD WORKPLANE
+  // ==========================================================
+
+  function getCadWorkPlaneState():
+    CadWorkPlaneState {
+
+    return cadWorkPlane
+      .getState();
+
+  }
+
+
+  function setCadWorkPlaneMode(
+    mode:
+      CadWorkPlaneMode,
+  ): void {
+
+    cadWorkPlane.setMode(
+      mode,
+    );
+
+  }
+
+
+  function cycleCadWorkPlane():
+    CadWorkPlaneMode {
+
+    return cadWorkPlane
+      .cycleMode();
+
+  }
+
+
+  function subscribeCadWorkPlane(
+    listener:
+      CadWorkPlaneListener,
+  ): () => void {
+
+    return cadWorkPlane
+      .subscribe(
+        listener,
+      );
+
+  }
+
+
+  // ==========================================================
   // DESIGN LAYERS
   // ==========================================================
 
@@ -3025,6 +3092,9 @@ function dispose(): void {
   designSelection.dispose();
 
 
+  cadWorkPlane.dispose();
+
+
   // --------------------------------------------------------
   // DESIGN VISUALS
   // --------------------------------------------------------
@@ -3119,6 +3189,21 @@ function dispose(): void {
     clearModels,
 
     setReferenceModelLayer,
+
+
+    // --------------------------------------------------------
+    // CAD WORKPLANE
+    // --------------------------------------------------------
+
+    cadWorkPlane,
+
+    getCadWorkPlaneState,
+
+    setCadWorkPlaneMode,
+
+    cycleCadWorkPlane,
+
+    subscribeCadWorkPlane,
 
 
     // --------------------------------------------------------
