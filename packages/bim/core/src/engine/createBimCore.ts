@@ -44,6 +44,10 @@ import {
 } from "../design/CadLineSceneController";
 
 import {
+  PieceDefinitionHelperSceneController,
+} from "../design/PieceDefinitionHelperSceneController";
+
+import {
   DesignSelectionController,
 } from "../interaction/DesignSelectionController";
 
@@ -134,6 +138,15 @@ import type {
 import {
   CadMixedMoveController,
 } from "../interaction/CadMixedMoveController";
+
+import {
+  PieceDefinitionPreparationController,
+} from "../interaction/PieceDefinitionPreparationController";
+
+import type {
+  PieceDefinitionPreparationListener,
+  PieceDefinitionPreparationState,
+} from "../interaction/PieceDefinitionPreparationController";
 
 import {
   CadWindowSelectionController,
@@ -395,6 +408,14 @@ async function setCardinalDirection(
     );
 
 
+  const pieceDefinitionHelpers =
+    new PieceDefinitionHelperSceneController(
+      world.scene.three,
+      designModel,
+      designScene,
+    );
+
+
   // ==========================================================
   // RENDERER
   // ==========================================================
@@ -522,6 +543,155 @@ async function setCardinalDirection(
    */
   helpers.grid.visible =
     false;
+
+
+  // ==========================================================
+  // PIECE DEFINITION PREPARATION
+  // ==========================================================
+
+  function getPieceDefinitionPreparationState():
+    PieceDefinitionPreparationState {
+
+    return piecePreparation
+      .getState();
+
+  }
+
+
+  function startPieceDefinitionPreparation(
+    instanceId?:
+      string,
+  ):
+    PieceDefinitionPreparationState {
+
+    cadWindowSelection.cancel();
+
+
+    cadCommandManager.cancelActive();
+
+    cadNumericInput.hide();
+
+    cadWorkPlaneEdit.cancel();
+
+
+    const targetId =
+      instanceId
+      ?? (
+        designSelection
+          .getSelectedIds()
+          .length === 1
+          ? designSelection
+              .getSelectedIds()[0]
+          : undefined
+      );
+
+
+    if (
+      !targetId
+    ) {
+
+      throw new Error(
+        "Select exactly one PieceInstance before starting piece preparation.",
+      );
+
+    }
+
+
+    const state =
+      piecePreparation.start(
+        targetId,
+      );
+
+
+    pieceDefinitionHelpers
+      .setActiveInstanceId(
+        targetId,
+      );
+
+
+    return state;
+
+  }
+
+
+  function stopPieceDefinitionPreparation():
+    void {
+
+    piecePreparation.stop();
+
+
+    pieceDefinitionHelpers
+      .setActiveInstanceId(
+        null,
+      );
+
+  }
+
+
+  function setPreparedPieceOriginFromSelectedPoint():
+    PieceDefinitionPreparationState {
+
+    piecePreparation
+      .setOriginFromSelectedCadPoint();
+
+
+    pieceDefinitionHelpers.sync();
+
+
+    return piecePreparation
+      .getState();
+
+  }
+
+
+  function addPreparedPieceSnapsFromSelection():
+    number {
+
+    const added =
+      piecePreparation
+        .addSelectedCadPointsAsSnaps(
+          "CUSTOM",
+        );
+
+
+    pieceDefinitionHelpers.sync();
+
+
+    return added;
+
+  }
+
+
+  function addPreparedPieceAxesFromSelection():
+    number {
+
+    const added =
+      piecePreparation
+        .addSelectedCadLinesAsAxes(
+          "REFERENCE",
+        );
+
+
+    pieceDefinitionHelpers.sync();
+
+
+    return added;
+
+  }
+
+
+  function subscribePieceDefinitionPreparation(
+    listener:
+      PieceDefinitionPreparationListener,
+  ):
+    () => void {
+
+    return piecePreparation
+      .subscribe(
+        listener,
+      );
+
+  }
 
 
   // ==========================================================
@@ -912,6 +1082,15 @@ const cadSelection =
   );
 
 
+const piecePreparation =
+  new PieceDefinitionPreparationController(
+    designModel,
+    designScene,
+    cadPointSelection,
+    cadLineSelection,
+  );
+
+
 designSelection
   .setExternalSelectionClearHandler(
     () => {
@@ -991,6 +1170,9 @@ function applyDesignLayerEffects(): void {
 
 
   cadLineScene.sync();
+
+
+  pieceDefinitionHelpers.sync();
 
 
   for (
@@ -4539,6 +4721,9 @@ function dispose(): void {
   cadSelection.dispose();
 
 
+  piecePreparation.dispose();
+
+
   cadLineSelection.dispose();
 
 
@@ -4559,6 +4744,9 @@ function dispose(): void {
 
 
   cadLineScene.dispose();
+
+
+  pieceDefinitionHelpers.dispose();
 
 
   designScene.dispose();
@@ -4655,6 +4843,29 @@ function dispose(): void {
     clearModels,
 
     setReferenceModelLayer,
+
+
+    // --------------------------------------------------------
+    // PIECE DEFINITION PREPARATION
+    // --------------------------------------------------------
+
+    piecePreparation,
+
+    pieceDefinitionHelpers,
+
+    getPieceDefinitionPreparationState,
+
+    startPieceDefinitionPreparation,
+
+    stopPieceDefinitionPreparation,
+
+    setPreparedPieceOriginFromSelectedPoint,
+
+    addPreparedPieceSnapsFromSelection,
+
+    addPreparedPieceAxesFromSelection,
+
+    subscribePieceDefinitionPreparation,
 
 
     // --------------------------------------------------------
