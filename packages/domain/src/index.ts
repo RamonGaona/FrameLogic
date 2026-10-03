@@ -82,3 +82,17 @@ export type {
   UpdateDesignLayerInput,
   DesignLayerListener,
 } from "./layers/DesignLayerRegistry";
+
+
+export type {
+  CadPoint,
+  CadPointPosition,
+} from "./cad/CadPoint";
+
+export {
+  CadPointRegistry,
+} from "./cad/CadPointRegistry";
+
+export type {
+  RegisterCadPointInput,
+} from "./cad/CadPointRegistry";
