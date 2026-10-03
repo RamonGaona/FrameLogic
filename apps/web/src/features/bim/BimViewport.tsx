@@ -310,44 +310,6 @@ catch (
 
 
   // ==========================================================
-  // REFRESH LAYERS
-  // ==========================================================
-
-  function refreshLayers(): void {
-
-    const bimCore =
-      bimCoreRef.current;
-
-
-    if (
-      !bimCore
-    ) {
-
-      setLayers(
-        [],
-      );
-
-      return;
-
-    }
-
-
-    setLayers(
-      bimCore.getDesignLayers(),
-    );
-
-
-    setActiveLayerId(
-      bimCore.getActiveDesignLayerId(),
-    );
-
-
-    refreshModels();
-
-  }
-
-
-  // ==========================================================
   // LAYER ACTIONS
   // ==========================================================
 
