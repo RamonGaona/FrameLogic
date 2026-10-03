@@ -12,7 +12,8 @@ import type {
 export type DesignSnapType =
   | "ENDPOINT"
   | "MIDPOINT"
-  | "CENTER";
+  | "CENTER"
+  | "POINT";
 
 
 export interface DesignSnapResult {
@@ -451,6 +452,24 @@ export class DesignSnapController {
       this.cameraProvider();
 
 
+    const cadPointSnap =
+      this.findCadPointSnap(
+        clientX,
+        clientY,
+        rect,
+        camera,
+      );
+
+
+    if (
+      cadPointSnap
+    ) {
+
+      return cadPointSnap;
+
+    }
+
+
     this.raycaster.setFromCamera(
       this.pointer,
       camera,
@@ -680,6 +699,147 @@ export class DesignSnapController {
         };
 
       }
+
+    }
+
+
+    return best;
+
+  }
+
+
+  private findCadPointSnap(
+    clientX: number,
+    clientY: number,
+    rect: DOMRect,
+    camera: THREE.Camera,
+  ):
+    DesignSnapResult
+    | null {
+
+    if (
+      !this.designModel
+    ) {
+
+      return null;
+
+    }
+
+
+    let best:
+      DesignSnapResult
+      | null =
+        null;
+
+
+    let bestPixels =
+      this.pixelTolerance;
+
+
+    for (
+      const cadPoint
+      of this.designModel
+        .cadPoints
+        .getAll()
+    ) {
+
+      const layer =
+        this.designModel
+          .layers
+          .get(
+            cadPoint.layerId,
+          );
+
+
+      if (
+        layer?.visible === false
+        || layer?.snapEnabled === false
+      ) {
+
+        continue;
+
+      }
+
+
+      const worldPoint =
+        new THREE.Vector3(
+          cadPoint.position.x,
+          cadPoint.position.y,
+          cadPoint.position.z,
+        );
+
+
+      const projected =
+        worldPoint
+          .clone()
+          .project(
+            camera,
+          );
+
+
+      if (
+        projected.z < -1
+        || projected.z > 1
+      ) {
+
+        continue;
+
+      }
+
+
+      const screenX =
+        rect.left
+        + (
+          projected.x
+          + 1
+        )
+        * 0.5
+        * rect.width;
+
+
+      const screenY =
+        rect.top
+        + (
+          1
+          - projected.y
+        )
+        * 0.5
+        * rect.height;
+
+
+      const pixels =
+        Math.hypot(
+          clientX
+          - screenX,
+          clientY
+          - screenY,
+        );
+
+
+      if (
+        pixels
+        >= bestPixels
+      ) {
+
+        continue;
+
+      }
+
+
+      bestPixels =
+        pixels;
+
+
+      best = {
+        type:
+          "POINT",
+
+        point:
+          worldPoint,
+
+        instanceId:
+          cadPoint.id,
+      };
 
     }
 
