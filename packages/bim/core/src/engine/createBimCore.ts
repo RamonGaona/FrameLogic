@@ -1588,6 +1588,11 @@ canvas.addEventListener(
       );
 
 
+      cameraControlsWithUp
+        .updateCameraUp
+        ?.();
+
+
       designTransform.setCamera(
         camera.three,
       );
@@ -3259,13 +3264,13 @@ function dispose(): void {
   designRotate.dispose();
 
 
+  cadWorkPlaneEdit.dispose();
+
+
   designSnap.dispose();
 
 
   designSelection.dispose();
-
-
-  cadWorkPlaneEdit.dispose();
 
 
   cadWorkPlane.dispose();
