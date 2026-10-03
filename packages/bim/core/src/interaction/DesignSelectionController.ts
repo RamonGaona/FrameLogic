@@ -791,17 +791,48 @@ export class DesignSelectionController {
 
 
     // --------------------------------------------------------
-    // CTRL / SHIFT = MULTI-SELECTION
+    // SELECTION MODIFIERS
+    //
+    // Ctrl         = add / toggle
+    // Ctrl + Shift = remove only
+    // Shift only   = no-op
     // --------------------------------------------------------
 
-    const multiSelection =
-      event.ctrlKey
-      || event.metaKey
-      || event.shiftKey;
+    if (
+      event.shiftKey
+      && !event.ctrlKey
+    ) {
+
+      return;
+
+    }
 
 
     if (
-      multiSelection
+      event.ctrlKey
+      && event.shiftKey
+    ) {
+
+      if (
+        this.isSelected(
+          instanceId,
+        )
+      ) {
+
+        this.toggle(
+          instanceId,
+        );
+
+      }
+
+
+      return;
+
+    }
+
+
+    if (
+      event.ctrlKey
     ) {
 
       this.toggle(
