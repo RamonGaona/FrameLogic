@@ -284,10 +284,6 @@ export class PieceDefinitionPreparationController {
   setOriginFromSelectedCadPoint():
     PieceDefinition {
 
-    const context =
-      this.requireContext();
-
-
     const pointIds =
       this.pointSelection
         .getSelectedIds();
@@ -324,13 +320,30 @@ export class PieceDefinitionPreparationController {
     }
 
 
+    return this.setOriginFromWorldPoint(
+      new THREE.Vector3(
+        cadPoint.position.x,
+        cadPoint.position.y,
+        cadPoint.position.z,
+      ),
+    );
+
+  }
+
+
+  setOriginFromWorldPoint(
+    worldPoint:
+      THREE.Vector3,
+  ):
+    PieceDefinition {
+
+    const context =
+      this.requireContext();
+
+
     const assetPoint =
       this.worldToAsset(
-        new THREE.Vector3(
-          cadPoint.position.x,
-          cadPoint.position.y,
-          cadPoint.position.z,
-        ),
+        worldPoint,
         context.object,
       );
 
@@ -372,10 +385,6 @@ export class PieceDefinitionPreparationController {
     }
 
 
-    /*
-     * El ORIGIN persistente siempre representa
-     * (0,0,0) del sistema local vigente.
-     */
     this.designModel
       .pieceDefinitions
       .removeSnapPointsByType(
