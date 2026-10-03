@@ -67,6 +67,20 @@ import {
     RegisterCadPointInput,
   } from "../cad/CadPointRegistry";
 
+
+  import {
+    CadLineRegistry,
+  } from "../cad/CadLineRegistry";
+
+  import type {
+    CadLine,
+  } from "../cad/CadLine";
+
+  import type {
+    RegisterCadLineInput,
+  } from "../cad/CadLineRegistry";
+
+
   import {
     DEFAULT_DESIGN_LAYER_IDS,
   } from "../layers/DesignLayer";
@@ -100,6 +114,10 @@ import {
 
     readonly cadPoints =
       new CadPointRegistry();
+
+
+    readonly cadLines =
+      new CadLineRegistry();
   
   
     // ==========================================================
@@ -261,6 +279,74 @@ import {
 
       return this
         .cadPoints
+        .remove(
+          id,
+        );
+
+    }
+
+
+    // ==========================================================
+    // CAD LINES
+    // ==========================================================
+
+    registerCadLine(
+      input:
+        RegisterCadLineInput,
+    ):
+      CadLine {
+
+      const layerId =
+        input.layerId
+        ?? this.layers
+          .activeLayerId;
+
+
+      const layer =
+        this.layers.get(
+          layerId,
+        );
+
+
+      if (
+        !layer
+      ) {
+
+        throw new Error(
+          `Cannot create CAD line. Layer "${layerId}" does not exist.`,
+        );
+
+      }
+
+
+      if (
+        layer.locked
+      ) {
+
+        throw new Error(
+          `Cannot create CAD line. Layer "${layer.name}" is locked.`,
+        );
+
+      }
+
+
+      return this
+        .cadLines
+        .register({
+          ...input,
+          layerId,
+        });
+
+    }
+
+
+    removeCadLine(
+      id: string,
+    ):
+      boolean {
+
+      return this
+        .cadLines
         .remove(
           id,
         );
@@ -443,6 +529,40 @@ import {
 
 
     // ==========================================================
+    // UPDATE CAD LINE LAYER
+    // ==========================================================
+
+    updateCadLineLayer(
+      lineId: string,
+      layerId: string,
+    ):
+      CadLine
+      | undefined {
+
+      if (
+        !this.layers.get(
+          layerId,
+        )
+      ) {
+
+        throw new Error(
+          `Cannot move CAD line to layer "${layerId}" because the layer does not exist.`,
+        );
+
+      }
+
+
+      return this
+        .cadLines
+        .updateLayerId(
+          lineId,
+          layerId,
+        );
+
+    }
+
+
+    // ==========================================================
     // UPDATE ASSEMBLY LAYER
     // ==========================================================
 
@@ -607,6 +727,23 @@ import {
       }
 
 
+      for (
+        const line
+        of this.cadLines
+          .findByLayerId(
+            layerId,
+          )
+      ) {
+
+        this.cadLines
+          .updateLayerId(
+            line.id,
+            cadFallbackLayerId,
+          );
+
+      }
+
+
       return this.layers.remove(
         layerId,
       );
@@ -750,6 +887,9 @@ import {
 
 
       this.cadPoints.clear();
+
+
+      this.cadLines.clear();
 
 
       this.layers.reset();
