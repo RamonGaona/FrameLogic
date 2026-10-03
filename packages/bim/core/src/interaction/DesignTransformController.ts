@@ -1111,9 +1111,27 @@ export class DesignTransformController {
       === "MOVE_PIVOT"
     ) {
 
+      /*
+       * El centro XYZ ya no permite colocar el pivote
+       * por arrastre aproximado.
+       *
+       * Cualquier movimiento del puntero se descarta y
+       * el pivote permanece en su posición inicial.
+       * Al soltar, el centro queda armado y el siguiente
+       * clic sobre un SNAP define la posición exacta 3D.
+       */
+      this.pivot.position.copy(
+        this.dragStartPivotPosition,
+      );
+
+
+      this.pivot.updateMatrixWorld(
+        true,
+      );
+
 
       this.previousPivotPosition.copy(
-        this.pivot.position,
+        this.dragStartPivotPosition,
       );
 
 
