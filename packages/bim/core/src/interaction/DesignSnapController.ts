@@ -1062,6 +1062,17 @@ export class DesignSnapController {
         .getAll()
     ) {
 
+      if (
+        this.excludedInstanceIds.has(
+          cadPoint.id,
+        )
+      ) {
+
+        continue;
+
+      }
+
+
       const layer =
         this.designModel
           .layers
@@ -1202,6 +1213,17 @@ export class DesignSnapController {
         .cadLines
         .getAll()
     ) {
+
+      if (
+        this.excludedInstanceIds.has(
+          line.id,
+        )
+      ) {
+
+        continue;
+
+      }
+
 
       const layer =
         this.designModel
