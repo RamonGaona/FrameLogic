@@ -126,6 +126,57 @@ export class CadPointRegistry {
   }
 
 
+  updatePosition(
+    id: string,
+    position:
+      CadPointPosition,
+  ):
+    CadPoint
+    | undefined {
+
+    const current =
+      this.points.get(
+        id,
+      );
+
+
+    if (
+      !current
+    ) {
+
+      return undefined;
+
+    }
+
+
+    const updated:
+      CadPoint = {
+
+        ...current,
+
+        position: {
+          x:
+            position.x,
+          y:
+            position.y,
+          z:
+            position.z,
+        },
+
+      };
+
+
+    this.points.set(
+      id,
+      updated,
+    );
+
+
+    return updated;
+
+  }
+
+
   updateLayerId(
     id: string,
     layerId: string,
