@@ -24,6 +24,9 @@ interface DeletedPieceSnapshot {
   definitionId:
     string;
 
+  layerId:
+    string;
+
   transform:
     {
       position: {
@@ -252,6 +255,9 @@ export class DeleteCommand {
           definitionId:
             snapshot.definitionId,
 
+          layerId:
+            snapshot.layerId,
+
           transform: {
             position: {
               ...snapshot
@@ -353,6 +359,9 @@ export class DeleteCommand {
 
       definitionId:
         instance.definitionId,
+
+      layerId:
+        instance.layerId,
 
       transform: {
         position: {
