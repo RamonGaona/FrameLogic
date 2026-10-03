@@ -1148,7 +1148,7 @@ export class CadMixedMoveController {
       ) {
 
         this.armedMoveAxis =
-          axis;
+          axis as MoveNumericAxis;
 
 
         this.armedPivot =
