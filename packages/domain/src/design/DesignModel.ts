@@ -155,11 +155,31 @@ import {
       }
   
   
+      const layerId =
+        input.layerId
+        ?? DEFAULT_DESIGN_LAYER_IDS
+          .GEOMETRY;
+
+
+      if (
+        !this.layers.get(
+          layerId,
+        )
+      ) {
+
+        throw new Error(
+          `Cannot create piece instance. Layer "${layerId}" does not exist.`,
+        );
+
+      }
+
+
       return this
         .pieceInstances
-        .register(
-          input,
-        );
+        .register({
+          ...input,
+          layerId,
+        });
   
     }
   
@@ -199,11 +219,31 @@ import {
       }
   
   
+      const layerId =
+        input.layerId
+        ?? DEFAULT_DESIGN_LAYER_IDS
+          .GEOMETRY;
+
+
+      if (
+        !this.layers.get(
+          layerId,
+        )
+      ) {
+
+        throw new Error(
+          `Cannot create assembly. Layer "${layerId}" does not exist.`,
+        );
+
+      }
+
+
       return this
         .assemblies
-        .register(
-          input,
-        );
+        .register({
+          ...input,
+          layerId,
+        });
   
     }
   
@@ -250,6 +290,139 @@ import {
     }
   
   
+    // ==========================================================
+    // UPDATE PIECE INSTANCE LAYER
+    // ==========================================================
+
+    updatePieceInstanceLayer(
+      instanceId: string,
+      layerId: string,
+    ):
+      PieceInstance
+      | undefined {
+
+      if (
+        !this.layers.get(
+          layerId,
+        )
+      ) {
+
+        throw new Error(
+          `Cannot move piece instance to layer "${layerId}" because the layer does not exist.`,
+        );
+
+      }
+
+
+      return this
+        .pieceInstances
+        .updateLayerId(
+          instanceId,
+          layerId,
+        );
+
+    }
+
+
+    // ==========================================================
+    // UPDATE ASSEMBLY LAYER
+    // ==========================================================
+
+    updateAssemblyLayer(
+      assemblyId: string,
+      layerId: string,
+    ):
+      Assembly
+      | undefined {
+
+      if (
+        !this.layers.get(
+          layerId,
+        )
+      ) {
+
+        throw new Error(
+          `Cannot move assembly to layer "${layerId}" because the layer does not exist.`,
+        );
+
+      }
+
+
+      return this
+        .assemblies
+        .updateLayerId(
+          assemblyId,
+          layerId,
+        );
+
+    }
+
+
+    // ==========================================================
+    // REMOVE DESIGN LAYER
+    // ==========================================================
+
+    removeDesignLayer(
+      layerId: string,
+      fallbackLayerId =
+        DEFAULT_DESIGN_LAYER_IDS
+          .GEOMETRY,
+    ): boolean {
+
+      if (
+        !this.layers.get(
+          fallbackLayerId,
+        )
+      ) {
+
+        throw new Error(
+          `Cannot remove layer. Fallback layer "${fallbackLayerId}" does not exist.`,
+        );
+
+      }
+
+
+      for (
+        const instance
+        of this.pieceInstances
+          .findByLayerId(
+            layerId,
+          )
+      ) {
+
+        this.pieceInstances
+          .updateLayerId(
+            instance.id,
+            fallbackLayerId,
+          );
+
+      }
+
+
+      for (
+        const assembly
+        of this.assemblies
+          .findByLayerId(
+            layerId,
+          )
+      ) {
+
+        this.assemblies
+          .updateLayerId(
+            assembly.id,
+            fallbackLayerId,
+          );
+
+      }
+
+
+      return this.layers.remove(
+        layerId,
+      );
+
+    }
+
+
     // ==========================================================
     // REMOVE ASSEMBLY
     // ==========================================================
