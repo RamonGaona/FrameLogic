@@ -1196,6 +1196,48 @@ Rules for future POINT and LINE commands:
 
 This rule allows a line to use planar construction for ordinary free placement while still connecting to semantic geometry located anywhere in 3D.
 
+## 15.4 CAD POINT
+
+A constructed CAD point is a placed project object:
+
+```ts
+interface CadPoint {
+  id: string;
+  layerId: string;
+  position: {
+    x: number;
+    y: number;
+    z: number;
+  };
+}
+```
+
+POINT supports three coordinate acquisition methods:
+
+```text
+1. exact 3D SNAP
+2. free click projected to the active WorkPlane
+3. typed absolute global X / Y / Z coordinates
+```
+
+Acquisition priority for pointer input is:
+
+```text
+SNAP 3D
+   ↓ if none
+active WorkPlane intersection
+   ↓ if WorkPlane OFF
+no point is created
+```
+
+Typed XYZ coordinates are explicit global model coordinates and remain valid even when the WorkPlane is `OFF`.
+
+New CAD points are created on the currently active project layer. The default active CAD layer is `Reference CAD`.
+
+A constructed CAD point SHALL itself provide a `POINT` SNAP candidate when its layer is visible and snap-enabled. This allows future LINE and reference-geometry commands to reuse construction points exactly.
+
+POINT is a continuous command: after creating one point it remains active until cancelled. Each created point is a separate Undo/Redo operation.
+
 # 16. Identity and uniqueness rules
 
 ## 16.1 Definition identity
