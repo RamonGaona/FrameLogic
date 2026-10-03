@@ -1054,6 +1054,77 @@ Rules:
 
 ---
 
+## 15.1 Project layer system
+
+Layers are project/model-space organization. They belong to **placed objects**, not reusable library definitions.
+
+The rule is:
+
+```text
+PieceDefinition
+AssemblyDefinition
+→ no project layer membership
+
+PieceInstance
+AssemblyInstance
+CadPoint
+CadLine
+ExternalReferenceModel
+→ layerId
+```
+
+This allows two occurrences of the same reusable definition to belong to different layers.
+
+Example:
+
+```text
+PieceDefinition PL-001
+├─ PI-001 → layer "Level 1"
+├─ PI-002 → layer "Level 3"
+└─ PI-003 → layer "Temporary Works"
+```
+
+A project layer has the following core state:
+
+```ts
+interface DesignLayer {
+  id: string;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  snapEnabled: boolean;
+  system: boolean;
+}
+```
+
+Rules:
+
+- `visible = false` hides every placed object assigned to the layer;
+- `locked = true` prevents selection/editing of FrameLogic-authored objects on the layer;
+- `snapEnabled = false` prevents objects on the layer from providing SNAP candidates;
+- hiding a layer does not delete its objects;
+- locking a layer does not remove or alter its geometry;
+- reusable definitions are not modified when an instance changes layer;
+- world/global coordinates are derived from instance transforms and hierarchy, not duplicated in definitions.
+
+Initial system layers are:
+
+```text
+Geometry
+Reference CAD
+Snap Manual
+Reference Axes
+External References
+```
+
+New FrameLogic piece instances default to `Geometry` unless another layer is explicitly supplied.
+
+Future `CadPoint` and `CadLine` creation defaults to the currently active CAD layer, initially `Reference CAD`.
+
+External read-only IFC reference models default to `External References`.
+
+Deleting a user-created layer SHALL first reassign its placed objects to an appropriate valid fallback layer. System layers SHALL NOT be deletable.
+
 # 16. Identity and uniqueness rules
 
 ## 16.1 Definition identity
