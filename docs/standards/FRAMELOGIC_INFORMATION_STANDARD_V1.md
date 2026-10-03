@@ -1311,7 +1311,30 @@ Selection modifier rules are:
 
 These modifier rules apply consistently to both click selection and window/crossing selection.
 
-PieceInstances and CadPoints may coexist in the selection set. Until the transform layer is unified for heterogeneous entities, mixed PieceInstance + CadPoint MOVE is intentionally rejected rather than partially moving the selection.
+PieceInstance, CadPoint and CadLine may coexist in one logical CAD selection set.
+
+FrameLogic exposes a unified selection state containing typed entity references:
+
+```ts
+type CadSelectionItem =
+  | { type: "PIECE"; id: string }
+  | { type: "POINT"; id: string }
+  | { type: "LINE"; id: string };
+```
+
+The individual visual selectors remain implementation adapters, while CAD commands operate on the unified selection when more than one entity type is present.
+
+Mixed MOVE is atomic:
+
+- one common translation gizmo is positioned at the average anchor of the selected entities;
+- PieceInstance anchors use their object origin;
+- CadPoint anchors use the point coordinate;
+- CadLine anchors use the segment midpoint;
+- every selected entity receives the same translation delta, preserving relative positions;
+- the XYZ center handle moves only the mixed-selection gizmo base point;
+- one mixed MOVE creates one Undo/Redo history entry.
+
+Single-type MOVE continues to use the existing specialized controller so previously validated PieceInstance, CadPoint and CadLine behavior is preserved.
 
 The current v1 implementation uses projected object bounds for PieceInstance window/crossing tests. WINDOW containment is conservative: the complete projected bounds must fit inside the selection rectangle. CROSSING uses projected-bound intersection.
 
@@ -1371,7 +1394,11 @@ For directional window selection:
 - WINDOW selects a line only when both projected endpoints are inside the rectangle;
 - CROSSING selects a line when its projected segment actually intersects the rectangle.
 
-Mixed entity MOVE/DELETE remains intentionally blocked until heterogeneous transforms/history are unified, rather than applying an operation to only part of the selection.
+Mixed entity MOVE and DELETE are supported for PieceInstance, CadPoint and CadLine.
+
+Mixed DELETE is atomic. Before any entity is removed, FrameLogic validates every selected entity, including locked-layer rules and PieceInstance assembly dependencies. If any selected entity cannot be deleted, none of the mixed selection is removed.
+
+A successful mixed DELETE creates one Undo/Redo history entry. Undo restores the original entity IDs, PieceInstance definition references, transforms and tags, CadPoint coordinates, CadLine endpoints and every original layer assignment, then restores the mixed selection.
 
 # 16. Identity and uniqueness rules
 
