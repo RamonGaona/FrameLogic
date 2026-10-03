@@ -1294,7 +1294,8 @@ The first selection corner starts only from empty viewport space. Starting on an
 Current selectable project entities include:
 
 - PieceInstance;
-- CadPoint.
+- CadPoint;
+- CadLine.
 
 Layer rules remain authoritative:
 
