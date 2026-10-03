@@ -1469,6 +1469,26 @@ Mixed DELETE is atomic. Before any entity is removed, FrameLogic validates every
 
 A successful mixed DELETE creates one Undo/Redo history entry. Undo restores the original entity IDs, PieceInstance definition references, transforms and tags, CadPoint coordinates, CadLine endpoints and every original layer assignment, then restores the mixed selection.
 
+## 15.7 Camera navigation and ISO recovery
+
+FrameLogic CAD navigation SHALL remain usable when the camera is very close to model geometry.
+
+Close navigation uses:
+
+- dolly toward the cursor location;
+- infinity dolly at the minimum target distance so forward navigation can continue instead of becoming trapped at the orbit target;
+- progressive truck/pan speed compensation at short camera-target distances.
+
+The ISO standard view is also a camera-recovery operation. Selecting ISO SHALL:
+
+1. orient the camera to the isometric polar angle while preserving the current horizontal azimuth;
+2. calculate the bounds of visible physical geometry, including visible PieceInstance geometry and visible external IFC reference models;
+3. move the camera target to the visible model center;
+4. restore a useful camera-target distance that fits the visible model;
+5. adjust orthographic zoom when the active projection is orthographic.
+
+Auxiliary WorkPlane, SNAP, reference-axis and selection-helper geometry SHALL NOT determine the ISO fit bounds.
+
 # 16. Identity and uniqueness rules
 
 ## 16.1 Definition identity
