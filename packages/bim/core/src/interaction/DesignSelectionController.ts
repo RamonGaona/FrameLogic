@@ -47,7 +47,8 @@ export class DesignSelectionController {
 
 
   private readonly designModel:
-    DesignModel;
+    DesignModel
+    | null;
 
 
   // ==========================================================
@@ -143,7 +144,7 @@ export class DesignSelectionController {
     domElement: HTMLElement,
     cameraProvider: () => THREE.Camera,
     designScene: DesignSceneController,
-    designModel: DesignModel,
+    designModel?: DesignModel,
   ) {
 
     this.scene =
@@ -163,7 +164,8 @@ export class DesignSelectionController {
 
 
     this.designModel =
-      designModel;
+      designModel
+      ?? null;
 
 
     this.domElement.addEventListener(
@@ -826,6 +828,15 @@ export class DesignSelectionController {
   private isInstanceSelectable(
     instanceId: string,
   ): boolean {
+
+    if (
+      !this.designModel
+    ) {
+
+      return true;
+
+    }
+
 
     const instance =
       this.designModel
