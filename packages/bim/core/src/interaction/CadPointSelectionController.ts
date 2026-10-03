@@ -62,6 +62,12 @@ export class CadPointSelectionController {
     true;
 
 
+  private externalSelectionClearHandler:
+    (() => void)
+    | null =
+      null;
+
+
   private pointerDownX =
     0;
 
@@ -169,6 +175,19 @@ export class CadPointSelectionController {
   }
 
 
+  setExternalSelectionClearHandler(
+    handler:
+      (() => void)
+      | null,
+  ):
+    void {
+
+    this.externalSelectionClearHandler =
+      handler;
+
+  }
+
+
   getSelectedIds():
     readonly string[] {
 
@@ -210,6 +229,10 @@ export class CadPointSelectionController {
 
     this.designSelection
       .clearSelection();
+
+
+    this.externalSelectionClearHandler
+      ?.();
 
 
     this.selectedIds.clear();
