@@ -624,7 +624,8 @@ It is the authority for:
 - optional georeferencing;
 - project classification and metadata;
 - spatial organization;
-- references to library definitions.
+- references to library definitions;
+- read-only external IFC reference models used for coordination/federation.
 
 Target structure:
 
@@ -637,6 +638,7 @@ ProjectModel
 ├─ SpatialStructure
 ├─ PieceInstances[]
 ├─ AssemblyInstances[]
+├─ ExternalReferences[]
 ├─ Classification
 └─ ProjectProperties
 ```
@@ -678,7 +680,81 @@ The internal FrameLogic spatial structure SHOULD remain generic enough for build
 
 IFC export SHALL map project spatial nodes to the most specific valid IFC spatial entities required by the exchange.
 
-### 9.4 Complete project IFC
+### 9.4 External IFC reference models
+
+FrameLogic SHALL support external IFC models supplied by third parties or other authoring software as **read-only project references**.
+
+Typical use case:
+
+```text
+External architectural/structural IFC
+        ↓
+loaded as reference
+        ↓
+positioned / coordinated in FrameLogic
+        ↓
+FrameLogic tower designed relative to it
+```
+
+An external reference is NOT:
+
+- a `PieceDefinition`;
+- an `AssemblyDefinition`;
+- editable FrameLogic-owned geometry;
+- automatically part of the authored FrameLogic IFC export.
+
+Proposed contract:
+
+```ts
+interface ExternalReferenceModel {
+  id: string;
+
+  name: string;
+
+  sourceAssetId: string;
+
+  sourceFormat: "IFC";
+
+  transform: TransformData;
+
+  visible: boolean;
+
+  snapEnabled: boolean;
+
+  locked: true;
+
+  provenance?: {
+    originator?: string;
+    sourceSystem?: string;
+    sourceFileName?: string;
+    sourceRevision?: string;
+    receivedAt?: string;
+    contentHash?: string;
+  };
+
+  coordinateReference?: {
+    crs?: string;
+    sourceUnits?: string;
+  };
+}
+```
+
+Rules:
+
+- the source IFC SHALL remain immutable inside FrameLogic;
+- FrameLogic MAY store a local placement transform to coordinate the external model;
+- changing the reference placement MUST NOT rewrite the original IFC;
+- the reference MAY participate in visual coordination and snapping;
+- MOVE/ROTATE/DELETE intended for authored FrameLogic objects MUST NOT modify reference IFC elements;
+- the reference SHALL have its own visibility control/layer;
+- source provenance SHOULD be retained;
+- a content hash SHOULD be retained when available so updated revisions of the external file can be detected;
+- reference-model replacement SHOULD preserve the FrameLogic placement when practical;
+- georeferencing/shared coordinates SHOULD be preferred over arbitrary manual placement when trustworthy coordinate information is available.
+
+ISO 19650 treats an information model as a set of interrelated information containers and defines federation as combining information from separate sources for a specific purpose. Therefore an external IFC SHOULD normally remain a separate information container rather than being silently absorbed into the FrameLogic-authored model.
+
+### 9.5 Complete project IFC
 
 The editable FrameLogic project SHALL NOT rely on IFC as its only persistence format.
 
@@ -950,6 +1026,8 @@ InformationContainer
    ├─ PieceInstances
    ├─ AssemblyInstances
    └─ nested decomposition
+
+External reference IFCs remain separate exchange/source containers by default.
 ```
 
 ---
@@ -1237,7 +1315,8 @@ FRAMELOGIC PROJECT
    ├─ Georeferencing
    ├─ SpatialStructure
    ├─ PieceInstances[]
-   └─ AssemblyInstances[]
+   ├─ AssemblyInstances[]
+   └─ ExternalReferences[]
 
 INFORMATION EXCHANGE
 │
