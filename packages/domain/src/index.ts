@@ -20,7 +20,14 @@ export type {
   
   
   export type {
+    LocalCoordinateSystem,
+    PersistentSnapType,
     PieceDefinition,
+    PieceReferenceGeometry,
+    PieceSnapPoint,
+    PieceVector3Data,
+    ReferenceAxisLine,
+    ReferenceAxisType,
   } from "./pieces/PieceDefinition";
   
   
@@ -30,6 +37,8 @@ export type {
   
   
   export type {
+    AddPieceSnapPointInput,
+    AddReferenceAxisLineInput,
     RegisterPieceDefinitionInput,
   } from "./pieces/PieceDefinitionRegistry";
   
