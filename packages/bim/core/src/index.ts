@@ -178,3 +178,8 @@ export {
 export {
   DeleteCadPointCommand,
 } from "./commands/DeleteCadPointCommand";
+
+
+export {
+  CadWindowSelectionController,
+} from "./interaction/CadWindowSelectionController";
