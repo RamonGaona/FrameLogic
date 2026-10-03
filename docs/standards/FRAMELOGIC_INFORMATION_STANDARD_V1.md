@@ -1282,7 +1282,14 @@ Layer rules remain authoritative:
 - hidden entities are not selected;
 - locked entities are not selected.
 
-A plain selection window replaces the current selection. Holding Ctrl, Shift or Meta adds the window result to the existing selection.
+Selection modifier rules are:
+
+- no modifier: normal replacement selection;
+- Ctrl: add/toggle selection;
+- Ctrl+Shift: remove matched entities from the current selection;
+- Shift alone: no selection action is executed.
+
+These modifier rules apply consistently to both click selection and window/crossing selection.
 
 PieceInstances and CadPoints may coexist in the selection set. Until the transform layer is unified for heterogeneous entities, mixed PieceInstance + CadPoint MOVE is intentionally rejected rather than partially moving the selection.
 
