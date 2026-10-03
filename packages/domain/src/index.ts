@@ -96,3 +96,17 @@ export {
 export type {
   RegisterCadPointInput,
 } from "./cad/CadPointRegistry";
+
+
+export type {
+  CadLine,
+  CadLinePosition,
+} from "./cad/CadLine";
+
+export {
+  CadLineRegistry,
+} from "./cad/CadLineRegistry";
+
+export type {
+  RegisterCadLineInput,
+} from "./cad/CadLineRegistry";
