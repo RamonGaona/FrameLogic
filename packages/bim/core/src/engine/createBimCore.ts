@@ -1274,6 +1274,19 @@ cadPointMove.setNumericAxisHandler(
 );
 
 
+cadLineMove.setNumericAxisHandler(
+  (
+    axis,
+  ) => {
+
+    cadNumericInput.showMove(
+      axis,
+    );
+
+  },
+);
+
+
 designRotate.setNumericAxisHandler(
   (
     axis,
@@ -1299,6 +1312,22 @@ cadNumericInput.setMoveApplyHandler(
     ) {
 
       cadPointMove.applyNumericMove(
+        axis,
+        first,
+        second,
+      );
+
+
+      return;
+
+    }
+
+
+    if (
+      cadLineMove.isActive
+    ) {
+
+      cadLineMove.applyNumericMove(
         axis,
         first,
         second,
@@ -1352,6 +1381,24 @@ cadNumericInput.setPointApplyHandler(
   },
 );
 
+
+cadNumericInput.setLineApplyHandler(
+  (
+    x,
+    y,
+    z,
+  ) => {
+
+    cadLinePlacement
+      .createAtCoordinates(
+        x,
+        y,
+        z,
+      );
+
+  },
+);
+
 // ==========================================================
 // CAD COMMANDS
 // ==========================================================
@@ -1380,9 +1427,21 @@ const pointCommand =
   );
 
 
+const lineCommand =
+  new LineCommand(
+    cadLinePlacement,
+  );
+
+
 const moveCadPointCommand =
   new MoveCadPointCommand(
     cadPointMove,
+  );
+
+
+const moveCadLineCommand =
+  new MoveCadLineCommand(
+    cadLineMove,
   );
 
 
@@ -1391,6 +1450,15 @@ const deleteCadPointCommand =
     designModel,
     cadPointScene,
     cadPointSelection,
+    cadHistory,
+  );
+
+
+const deleteCadLineCommand =
+  new DeleteCadLineCommand(
+    designModel,
+    cadLineScene,
+    cadLineSelection,
     cadHistory,
   );
 
@@ -1448,6 +1516,29 @@ const unsubscribeCadPointSelection =
         selectedIds.length === 0
         && cadCommandManager.activeCommandId
           === "MOVE_POINT"
+      ) {
+
+        cadCommandManager.cancelActive();
+
+
+        cadNumericInput.hide();
+
+      }
+
+    },
+  );
+
+
+const unsubscribeCadLineSelection =
+  cadLineSelection.subscribe(
+    (
+      selectedIds,
+    ) => {
+
+      if (
+        selectedIds.length === 0
+        && cadCommandManager.activeCommandId
+          === "MOVE_LINE"
       ) {
 
         cadCommandManager.cancelActive();
@@ -1575,37 +1666,34 @@ const handleCadKeyDown =
        * limpia la selección.
        */
 
-      if (
-        cadPointSelection
+      const hasSelection =
+        cadLineSelection
           .getSelectedIds()
           .length > 0
+        || cadPointSelection
+          .getSelectedIds()
+          .length > 0
+        || designSelection
+          .getSelectedIds()
+          .length > 0;
+
+
+      if (
+        hasSelection
       ) {
 
         event.preventDefault();
 
 
         event.stopPropagation();
+
+
+        cadLineSelection
+          .clearSelection();
 
 
         cadPointSelection
           .clearSelection();
-
-
-        return;
-
-      }
-
-
-      if (
-        designSelection
-          .getSelectedIds()
-          .length > 0
-      ) {
-
-        event.preventDefault();
-
-
-        event.stopPropagation();
 
 
         designSelection
@@ -1755,10 +1843,59 @@ const handleCadKeyDown =
 
       try {
 
-        if (
+        const selectedLineCount =
+          cadLineSelection
+            .getSelectedIds()
+            .length;
+
+
+        const selectedPointCount =
           cadPointSelection
             .getSelectedIds()
-            .length > 0
+            .length;
+
+
+        const selectedPieceCount =
+          designSelection
+            .getSelectedIds()
+            .length;
+
+
+        const selectedTypeCount =
+          Number(
+            selectedLineCount > 0,
+          )
+          + Number(
+              selectedPointCount > 0,
+            )
+          + Number(
+              selectedPieceCount > 0,
+            );
+
+
+        if (
+          selectedTypeCount > 1
+        ) {
+
+          window.alert(
+            "La selección contiene distintos tipos de entidad. DELETE mixto todavía no está habilitado; selecciona un solo tipo.",
+          );
+
+
+          return;
+
+        }
+
+
+        if (
+          selectedLineCount > 0
+        ) {
+
+          deleteCadLineCommand.execute();
+
+        }
+        else if (
+          selectedPointCount > 0
         ) {
 
           deleteCadPointCommand.execute();
@@ -1846,6 +1983,50 @@ const handleCadKeyDown =
 
 
     // ------------------------------------------------------
+    // L = LINE
+    // ------------------------------------------------------
+
+    if (
+      event.key.toLowerCase()
+        === "l"
+      && !event.ctrlKey
+      && !event.metaKey
+      && !event.altKey
+    ) {
+
+      cadWorkPlaneEdit.cancel();
+
+
+      cadNumericInput.hide();
+
+
+      const started =
+        cadCommandManager.start(
+          lineCommand,
+        );
+
+
+      if (
+        started
+      ) {
+
+        cadNumericInput.showLine();
+
+
+        event.preventDefault();
+
+
+        event.stopPropagation();
+
+      }
+
+
+      return;
+
+    }
+
+
+    // ------------------------------------------------------
     // M = MOVE
     // ------------------------------------------------------
 
@@ -1863,6 +2044,12 @@ const handleCadKeyDown =
       cadNumericInput.hide();
 
 
+      const selectedLineCount =
+        cadLineSelection
+          .getSelectedIds()
+          .length;
+
+
       const selectedPointCount =
         cadPointSelection
           .getSelectedIds()
@@ -1875,13 +2062,24 @@ const handleCadKeyDown =
           .length;
 
 
+      const selectedTypeCount =
+        Number(
+          selectedLineCount > 0,
+        )
+        + Number(
+            selectedPointCount > 0,
+          )
+        + Number(
+            selectedPieceCount > 0,
+          );
+
+
       if (
-        selectedPointCount > 0
-        && selectedPieceCount > 0
+        selectedTypeCount > 1
       ) {
 
         window.alert(
-          "La selección contiene piezas y puntos CAD. MOVE mixto se integrará en el siguiente paso; por ahora selecciona un solo tipo de entidad.",
+          "La selección contiene distintos tipos de entidad. MOVE mixto todavía no está habilitado; selecciona un solo tipo.",
         );
 
 
@@ -1891,13 +2089,17 @@ const handleCadKeyDown =
 
 
       const started =
-        selectedPointCount > 0
+        selectedLineCount > 0
           ? cadCommandManager.start(
-              moveCadPointCommand,
+              moveCadLineCommand,
             )
-          : cadCommandManager.start(
-              moveCommand,
-            );
+          : selectedPointCount > 0
+            ? cadCommandManager.start(
+                moveCadPointCommand,
+              )
+            : cadCommandManager.start(
+                moveCommand,
+              );
 
 
       if (
@@ -2099,6 +2301,11 @@ canvas.addEventListener(
 
 
       cadPointMove.setCamera(
+        camera.three,
+      );
+
+
+      cadLineMove.setCamera(
         camera.three,
       );
 
@@ -3133,6 +3340,28 @@ function cancelDesignPiecePlacement(): void {
         designModel
           .updateCadPointLayer(
             pointId,
+            layerId,
+          )
+      ) {
+
+        updated +=
+          1;
+
+      }
+
+    }
+
+
+    for (
+      const lineId
+      of cadLineSelection
+        .getSelectedIds()
+    ) {
+
+      if (
+        designModel
+          .updateCadLineLayer(
+            lineId,
             layerId,
           )
       ) {
