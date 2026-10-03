@@ -1066,6 +1066,26 @@ export class DesignSelectionController {
   // ISOLATION
   // ==========================================================
 
+  isInstanceVisibleByIsolation(
+    instanceId: string,
+  ): boolean {
+
+    if (
+      !this.isolationSnapshot
+    ) {
+
+      return true;
+
+    }
+
+
+    return this.selectedIds.has(
+      instanceId,
+    );
+
+  }
+
+
   isolateSelection(): boolean {
 
     if (
@@ -1177,6 +1197,9 @@ export class DesignSelectionController {
 
     this.isolationSnapshot =
       null;
+
+
+    this.designScene.sync();
 
 
     this.refreshHelpers();
