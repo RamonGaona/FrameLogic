@@ -1400,6 +1400,8 @@ Mixed MOVE is atomic:
 
 Single-type MOVE continues to use the existing specialized controller so previously validated PieceInstance, CadPoint and CadLine behavior is preserved.
 
+For CadLine MOVE, the XYZ center handle is pivot-only, matching PieceInstance and mixed MOVE behavior. Dragging the center relocates only the gizmo base point. A short center click arms pivot relocation so the next valid SNAP, including INTERSECTION, places the gizmo exactly without moving the selected CadLine geometry.
+
 The current v1 implementation uses projected object bounds for PieceInstance window/crossing tests. WINDOW containment is conservative: the complete projected bounds must fit inside the selection rectangle. CROSSING uses projected-bound intersection.
 
 ## 15.6 CAD LINE and WorkPlane ORTHO
@@ -1449,7 +1451,10 @@ After a segment is created, its end becomes the start of the next segment.
 CadLine supplies semantic snaps:
 
 - ENDPOINT at each end;
-- MIDPOINT at the segment midpoint.
+- MIDPOINT at the segment midpoint;
+- INTERSECTION at a true 3D intersection between two CadLine segments.
+
+INTERSECTION is geometric, not merely visual: two projected lines that cross on screen but are separated in 3D do not produce an INTERSECTION snap.
 
 CadLine participates in project layers, visibility, lock, snap-enabled state, Window/Crossing selection, MOVE, Delete and Undo/Redo.
 
