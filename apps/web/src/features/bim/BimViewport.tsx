@@ -616,6 +616,28 @@ catch (
   }
 
 
+  function handleStartLine():
+    void {
+
+    const started =
+      bimCoreRef.current
+        ?.startLineCommand()
+      ?? false;
+
+
+    if (
+      !started
+    ) {
+
+      window.alert(
+        "No se pudo iniciar LINE. Revisa que el layer activo no esté bloqueado.",
+      );
+
+    }
+
+  }
+
+
   // ==========================================================
   // INITIALIZE BIM CORE
   // ==========================================================
@@ -1718,6 +1740,17 @@ catch (
           }
         >
           POINT
+        </button>
+
+
+        <button
+          type="button"
+          title="LINE · tecla L · ORTHO 0°/90° sobre WorkPlane"
+          onClick={
+            handleStartLine
+          }
+        >
+          LINE
         </button>
 
 
