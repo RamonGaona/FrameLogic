@@ -1,7 +1,13 @@
 import * as THREE from "three";
 
+import {
+  DEFAULT_DESIGN_LAYER_IDS,
+} from "@framelogic/domain";
+
 import type {
   DesignModel,
+  PieceDefinition,
+  PieceVector3Data,
 } from "@framelogic/domain";
 
 import type {
@@ -13,7 +19,11 @@ export type DesignSnapType =
   | "ENDPOINT"
   | "MIDPOINT"
   | "CENTER"
-  | "POINT";
+  | "POINT"
+  | "ORIGIN"
+  | "CONNECTION"
+  | "REFERENCE"
+  | "CUSTOM";
 
 
 export interface DesignSnapResult {
@@ -452,6 +462,24 @@ export class DesignSnapController {
       this.cameraProvider();
 
 
+    const persistentPieceSnap =
+      this.findPersistentPieceSnap(
+        clientX,
+        clientY,
+        rect,
+        camera,
+      );
+
+
+    if (
+      persistentPieceSnap
+    ) {
+
+      return persistentPieceSnap;
+
+    }
+
+
     const cadPointSnap =
       this.findCadPointSnap(
         clientX,
@@ -722,6 +750,279 @@ export class DesignSnapController {
 
 
     return best;
+
+  }
+
+
+  private findPersistentPieceSnap(
+    clientX:
+      number,
+
+    clientY:
+      number,
+
+    rect:
+      DOMRect,
+
+    camera:
+      THREE.Camera,
+  ):
+    DesignSnapResult
+    | null {
+
+    if (
+      !this.designModel
+    ) {
+
+      return null;
+
+    }
+
+
+    const helperLayer =
+      this.designModel
+        .layers
+        .get(
+          DEFAULT_DESIGN_LAYER_IDS
+            .SNAP_MANUAL,
+        );
+
+
+    if (
+      helperLayer?.snapEnabled
+      === false
+    ) {
+
+      return null;
+
+    }
+
+
+    let best:
+      DesignSnapResult
+      | null =
+        null;
+
+
+    let bestPixels =
+      this.pixelTolerance;
+
+
+    for (
+      const instance
+      of this.designModel
+        .pieceInstances
+        .getAll()
+    ) {
+
+      if (
+        this.excludedInstanceIds.has(
+          instance.id,
+        )
+      ) {
+
+        continue;
+
+      }
+
+
+      const layer =
+        this.designModel
+          .layers
+          .get(
+            instance.layerId,
+          );
+
+
+      if (
+        layer?.visible === false
+        || layer?.snapEnabled === false
+      ) {
+
+        continue;
+
+      }
+
+
+      const object =
+        this.designScene
+          .getInstanceObject(
+            instance.id,
+          );
+
+
+      const definition =
+        this.designModel
+          .pieceDefinitions
+          .get(
+            instance.definitionId,
+          );
+
+
+      if (
+        !object
+        || !object.visible
+        || !definition
+      ) {
+
+        continue;
+
+      }
+
+
+      object.updateMatrixWorld(
+        true,
+      );
+
+
+      for (
+        const snap
+        of definition.snapPoints
+      ) {
+
+        const worldPoint =
+          this.definitionLocalToWorld(
+            snap.position,
+            definition,
+            object,
+          );
+
+
+        const projected =
+          worldPoint
+            .clone()
+            .project(
+              camera,
+            );
+
+
+        if (
+          projected.z < -1
+          || projected.z > 1
+        ) {
+
+          continue;
+
+        }
+
+
+        const screenX =
+          rect.left
+          + (
+            projected.x
+            + 1
+          )
+          * 0.5
+          * rect.width;
+
+
+        const screenY =
+          rect.top
+          + (
+            1
+            - projected.y
+          )
+          * 0.5
+          * rect.height;
+
+
+        const pixels =
+          Math.hypot(
+            clientX
+            - screenX,
+            clientY
+            - screenY,
+          );
+
+
+        if (
+          pixels
+          >= bestPixels
+        ) {
+
+          continue;
+
+        }
+
+
+        bestPixels =
+          pixels;
+
+
+        best = {
+          type:
+            snap.type,
+          point:
+            worldPoint,
+          instanceId:
+            instance.id,
+        };
+
+      }
+
+    }
+
+
+    return best;
+
+  }
+
+
+  private definitionLocalToWorld(
+    local:
+      PieceVector3Data,
+
+    definition:
+      PieceDefinition,
+
+    object:
+      THREE.Object3D,
+  ):
+    THREE.Vector3 {
+
+    const coordinateSystem =
+      definition.coordinateSystem;
+
+
+    const assetPoint =
+      new THREE.Vector3(
+        coordinateSystem.origin.x,
+        coordinateSystem.origin.y,
+        coordinateSystem.origin.z,
+      );
+
+
+    assetPoint
+      .addScaledVector(
+        new THREE.Vector3(
+          coordinateSystem.xAxis.x,
+          coordinateSystem.xAxis.y,
+          coordinateSystem.xAxis.z,
+        ),
+        local.x,
+      )
+      .addScaledVector(
+        new THREE.Vector3(
+          coordinateSystem.yAxis.x,
+          coordinateSystem.yAxis.y,
+          coordinateSystem.yAxis.z,
+        ),
+        local.y,
+      )
+      .addScaledVector(
+        new THREE.Vector3(
+          coordinateSystem.zAxis.x,
+          coordinateSystem.zAxis.y,
+          coordinateSystem.zAxis.z,
+        ),
+        local.z,
+      );
+
+
+    return assetPoint
+      .applyMatrix4(
+        object.matrixWorld,
+      );
 
   }
 
