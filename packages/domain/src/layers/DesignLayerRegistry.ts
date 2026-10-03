@@ -54,9 +54,10 @@ export class DesignLayerRegistry {
     >();
 
 
-  private activeLayerIdValue =
-    DEFAULT_DESIGN_LAYER_IDS
-      .REFERENCE_CAD;
+  private activeLayerIdValue:
+    string =
+      DEFAULT_DESIGN_LAYER_IDS
+        .REFERENCE_CAD;
 
 
   constructor() {
