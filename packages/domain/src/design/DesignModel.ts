@@ -538,6 +538,24 @@ import {
       }
 
 
+      const cadFallbackLayerId =
+        DEFAULT_DESIGN_LAYER_IDS
+          .REFERENCE_CAD;
+
+
+      if (
+        !this.layers.get(
+          cadFallbackLayerId,
+        )
+      ) {
+
+        throw new Error(
+          `Cannot remove layer. CAD fallback layer "${cadFallbackLayerId}" does not exist.`,
+        );
+
+      }
+
+
       for (
         const point
         of this.cadPoints
@@ -549,7 +567,7 @@ import {
         this.cadPoints
           .updateLayerId(
             point.id,
-            fallbackLayerId,
+            cadFallbackLayerId,
           );
 
       }
