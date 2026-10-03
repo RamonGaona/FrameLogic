@@ -1388,6 +1388,9 @@ const handleCadKeyDown =
       && !event.altKey
     ) {
 
+      cadWorkPlaneEdit.cancel();
+
+
       cadNumericInput.hide();
 
 
@@ -1425,6 +1428,9 @@ const handleCadKeyDown =
       && !event.metaKey
       && !event.altKey
     ) {
+
+      cadWorkPlaneEdit.cancel();
+
 
       cadNumericInput.hide();
 
@@ -2380,6 +2386,9 @@ function cancelDesignPiecePlacement(): void {
       CadWorkPlaneMode,
   ): void {
 
+    cadWorkPlaneEdit.cancel();
+
+
     cadWorkPlane.setMode(
       mode,
     );
@@ -2389,6 +2398,9 @@ function cancelDesignPiecePlacement(): void {
 
   function cycleCadWorkPlane():
     CadWorkPlaneMode {
+
+    cadWorkPlaneEdit.cancel();
+
 
     return cadWorkPlane
       .cycleMode();
@@ -2424,6 +2436,19 @@ function cancelDesignPiecePlacement(): void {
     cadCommandManager.cancelActive();
 
     cadNumericInput.hide();
+
+
+    if (
+      cadWorkPlane.mode
+      === "OFF"
+    ) {
+
+      cadWorkPlane.setMode(
+        "XY",
+      );
+
+    }
+
 
     cadWorkPlaneEdit.startOrigin();
 
@@ -3071,6 +3096,9 @@ function setDesignTransformSpace(
 function startMoveCommand():
   boolean {
 
+  cadWorkPlaneEdit.cancel();
+
+
   return cadCommandManager
     .start(
       moveCommand,
@@ -3081,6 +3109,9 @@ function startMoveCommand():
 
 function startRotateCommand():
   boolean {
+
+  cadWorkPlaneEdit.cancel();
+
 
   return cadCommandManager
     .start(
