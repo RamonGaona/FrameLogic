@@ -358,6 +358,70 @@ Processed geometry is the geometry FrameLogic uses for rendering/export and MAY 
 
 The STEP source itself is not required to be opened in the main project model. A piece-editing workflow may process one STEP at a time and store the resulting `PieceDefinition` in the library.
 
+### 5.1.1 PieceDefinition preparation workflow
+
+The initial FrameLogic PieceDefinition preparation workflow uses one placed PieceInstance as the spatial editing context for its reusable definition.
+
+The source PieceInstance is not converted into a unique definition. Its `definitionId` remains authoritative, so preparation changes are shared by every instance of that PieceDefinition.
+
+The preparation workflow currently supports:
+
+```text
+select one PieceInstance
+        ↓
+Preparar pieza
+        ↓
+define local origin from:
+  - one selected CadPoint, or
+  - one direct semantic SNAP click
+
+selected CadPoint(s)
+        ↓
+PieceSnapPoint(s)
+
+selected CadLine(s)
+        ↓
+ReferenceAxisLine(s)
+```
+
+The PieceDefinition coordinate system is stored as an engineering frame relative to the native geometry-asset coordinate system:
+
+```text
+geometry asset coordinates
+        ↓ coordinateSystem
+PieceDefinition local coordinates
+```
+
+Changing the prepared origin MUST NOT move the already placed physical geometry. Existing persistent snap points and reference axes are rebased so they preserve their physical locations when the local origin changes.
+
+Defining a new prepared origin creates or replaces the persistent `ORIGIN` snap at local coordinate `(0,0,0)`.
+
+CadPoint → PieceSnapPoint conversion stores a copy of the selected project point in PieceDefinition-local coordinates. The original CadPoint remains a normal project CAD object.
+
+CadLine → ReferenceAxisLine conversion stores:
+
+- the line start as local axis origin;
+- normalized local direction from start to end;
+- line length;
+- default axis type `REFERENCE`.
+
+The original CadLine remains project reference CAD and is not deleted automatically.
+
+New manually converted points currently use persistent snap type `CUSTOM`. More specific semantic typing such as `CENTER`, `CONNECTION` and `REFERENCE` may be assigned by later PieceDefinition editing UI.
+
+Persistent PieceDefinition snap points participate in normal model SNAP for every PieceInstance. They are transformed through:
+
+```text
+PieceDefinition local
+→ geometry asset coordinates
+→ PieceInstance transform
+→ world
+```
+
+The `Snap Manual` layer controls helper visibility independently from snap existence. Disabling snap on that layer disables persistent-manual snap acquisition, while hiding the layer only hides its helper display.
+
+Reference axes are non-physical helpers and are displayed through the `Reference Axes` helper layer while the definition is being prepared.
+
 ### 5.2 Material
 
 ```ts
