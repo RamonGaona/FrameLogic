@@ -104,6 +104,12 @@ export class DesignSelectionController {
     true;
 
 
+  private externalSelectionClearHandler:
+    (() => void)
+    | null =
+      null;
+
+
   // ==========================================================
   // POINTER STATE
   // ==========================================================
@@ -223,6 +229,19 @@ export class DesignSelectionController {
   }
 
 
+  setExternalSelectionClearHandler(
+    handler:
+      (() => void)
+      | null,
+  ):
+    void {
+
+    this.externalSelectionClearHandler =
+      handler;
+
+  }
+
+
   // ==========================================================
   // GET SELECTION
   // ==========================================================
@@ -335,6 +354,10 @@ export class DesignSelectionController {
       return;
 
     }
+
+
+    this.externalSelectionClearHandler
+      ?.();
 
 
     this.selectedIds.clear();
