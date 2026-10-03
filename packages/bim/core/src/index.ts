@@ -183,3 +183,42 @@ export {
 export {
   CadWindowSelectionController,
 } from "./interaction/CadWindowSelectionController";
+
+
+export {
+  CadLineSceneController,
+} from "./design/CadLineSceneController";
+
+export {
+  CadLineSelectionController,
+} from "./interaction/CadLineSelectionController";
+
+export type {
+  CadLineSelectionListener,
+} from "./interaction/CadLineSelectionController";
+
+export {
+  CadLinePlacementController,
+} from "./interaction/CadLinePlacementController";
+
+export {
+  CadLineMoveController,
+} from "./interaction/CadLineMoveController";
+
+export {
+  LineCommand,
+} from "./commands/LineCommand";
+
+export {
+  MoveCadLineCommand,
+} from "./commands/MoveCadLineCommand";
+
+export {
+  DeleteCadLineCommand,
+} from "./commands/DeleteCadLineCommand";
+
+export type {
+  CadLine,
+  CadLinePosition,
+  RegisterCadLineInput,
+} from "@framelogic/domain";
