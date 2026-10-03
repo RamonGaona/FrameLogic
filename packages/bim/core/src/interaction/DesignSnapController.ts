@@ -1,6 +1,10 @@
 import * as THREE from "three";
 
 import type {
+  DesignModel,
+} from "@framelogic/domain";
+
+import type {
   DesignSceneController,
 } from "../design/DesignSceneController";
 
@@ -78,6 +82,10 @@ export class DesignSnapController {
     DesignSceneController;
 
 
+  private readonly designModel:
+    DesignModel;
+
+
   private readonly raycaster =
     new THREE.Raycaster();
 
@@ -136,6 +144,9 @@ export class DesignSnapController {
 
     designScene:
       DesignSceneController,
+
+    designModel:
+      DesignModel,
   ) {
 
     this.domElement =
@@ -148,6 +159,10 @@ export class DesignSnapController {
 
     this.designScene =
       designScene;
+
+
+    this.designModel =
+      designModel;
 
 
     this.marker =
@@ -530,6 +545,35 @@ export class DesignSnapController {
         || this.excludedInstanceIds.has(
           instanceId,
         )
+      ) {
+
+        continue;
+
+      }
+
+
+      const instance =
+        this.designModel
+          .pieceInstances
+          .get(
+            instanceId,
+          );
+
+
+      const layer =
+        instance
+          ? this.designModel
+              .layers
+              .get(
+                instance.layerId,
+              )
+          : undefined;
+
+
+      if (
+        !instance
+        || layer?.visible === false
+        || layer?.snapEnabled === false
       ) {
 
         continue;
