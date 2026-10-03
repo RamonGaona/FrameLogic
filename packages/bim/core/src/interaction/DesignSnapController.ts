@@ -18,6 +18,7 @@ import type {
 export type DesignSnapType =
   | "ENDPOINT"
   | "MIDPOINT"
+  | "INTERSECTION"
   | "CENTER"
   | "POINT"
   | "ORIGIN"
@@ -494,6 +495,24 @@ export class DesignSnapController {
     ) {
 
       return cadPointSnap;
+
+    }
+
+
+    const cadLineIntersectionSnap =
+      this.findCadLineIntersectionSnap(
+        clientX,
+        clientY,
+        rect,
+        camera,
+      );
+
+
+    if (
+      cadLineIntersectionSnap
+    ) {
+
+      return cadLineIntersectionSnap;
 
     }
 
@@ -1175,6 +1194,467 @@ export class DesignSnapController {
 
 
     return best;
+
+  }
+
+
+  private findCadLineIntersectionSnap(
+    clientX:
+      number,
+
+    clientY:
+      number,
+
+    rect:
+      DOMRect,
+
+    camera:
+      THREE.Camera,
+  ):
+    DesignSnapResult
+    | null {
+
+    if (
+      !this.designModel
+    ) {
+
+      return null;
+
+    }
+
+
+    const lines =
+      this.designModel
+        .cadLines
+        .getAll()
+        .filter(
+          (
+            line,
+          ) => {
+
+            if (
+              this.excludedInstanceIds.has(
+                line.id,
+              )
+            ) {
+
+              return false;
+
+            }
+
+
+            const layer =
+              this.designModel
+                ?.layers
+                .get(
+                  line.layerId,
+                );
+
+
+            return (
+              layer?.visible
+              !== false
+              && layer?.snapEnabled
+                !== false
+            );
+
+          },
+        );
+
+
+    let best:
+      DesignSnapResult
+      | null =
+        null;
+
+
+    let bestPixels =
+      this.pixelTolerance;
+
+
+    for (
+      let firstIndex = 0;
+      firstIndex < lines.length;
+      firstIndex += 1
+    ) {
+
+      const first =
+        lines[
+          firstIndex
+        ];
+
+
+      if (
+        !first
+      ) {
+
+        continue;
+
+      }
+
+
+      const firstStart =
+        new THREE.Vector3(
+          first.start.x,
+          first.start.y,
+          first.start.z,
+        );
+
+
+      const firstEnd =
+        new THREE.Vector3(
+          first.end.x,
+          first.end.y,
+          first.end.z,
+        );
+
+
+      for (
+        let secondIndex =
+          firstIndex + 1;
+        secondIndex < lines.length;
+        secondIndex += 1
+      ) {
+
+        const second =
+          lines[
+            secondIndex
+          ];
+
+
+        if (
+          !second
+        ) {
+
+          continue;
+
+        }
+
+
+        const point =
+          this.getSegmentIntersection3D(
+            firstStart,
+            firstEnd,
+            new THREE.Vector3(
+              second.start.x,
+              second.start.y,
+              second.start.z,
+            ),
+            new THREE.Vector3(
+              second.end.x,
+              second.end.y,
+              second.end.z,
+            ),
+          );
+
+
+        if (
+          !point
+        ) {
+
+          continue;
+
+        }
+
+
+        const projected =
+          point
+            .clone()
+            .project(
+              camera,
+            );
+
+
+        if (
+          projected.z < -1
+          || projected.z > 1
+        ) {
+
+          continue;
+
+        }
+
+
+        const screenX =
+          rect.left
+          + (
+            projected.x
+            + 1
+          )
+          * 0.5
+          * rect.width;
+
+
+        const screenY =
+          rect.top
+          + (
+            1
+            - projected.y
+          )
+          * 0.5
+          * rect.height;
+
+
+        const pixels =
+          Math.hypot(
+            clientX
+            - screenX,
+            clientY
+            - screenY,
+          );
+
+
+        if (
+          pixels
+          >= bestPixels
+        ) {
+
+          continue;
+
+        }
+
+
+        bestPixels =
+          pixels;
+
+
+        best = {
+          type:
+            "INTERSECTION",
+          point,
+          instanceId:
+            first.id,
+        };
+
+      }
+
+    }
+
+
+    return best;
+
+  }
+
+
+  private getSegmentIntersection3D(
+    firstStart:
+      THREE.Vector3,
+
+    firstEnd:
+      THREE.Vector3,
+
+    secondStart:
+      THREE.Vector3,
+
+    secondEnd:
+      THREE.Vector3,
+  ):
+    THREE.Vector3
+    | null {
+
+    const firstDirection =
+      firstEnd
+        .clone()
+        .sub(
+          firstStart,
+        );
+
+
+    const secondDirection =
+      secondEnd
+        .clone()
+        .sub(
+          secondStart,
+        );
+
+
+    const relativeStart =
+      firstStart
+        .clone()
+        .sub(
+          secondStart,
+        );
+
+
+    const firstLengthSquared =
+      firstDirection
+        .lengthSq();
+
+
+    const secondLengthSquared =
+      secondDirection
+        .lengthSq();
+
+
+    if (
+      firstLengthSquared
+      <= 1e-18
+      || secondLengthSquared
+        <= 1e-18
+    ) {
+
+      return null;
+
+    }
+
+
+    const firstSecondDot =
+      firstDirection.dot(
+        secondDirection,
+      );
+
+
+    const firstRelativeDot =
+      firstDirection.dot(
+        relativeStart,
+      );
+
+
+    const secondRelativeDot =
+      secondDirection.dot(
+        relativeStart,
+      );
+
+
+    const denominator =
+      firstLengthSquared
+      * secondLengthSquared
+      - firstSecondDot
+      * firstSecondDot;
+
+
+    /*
+     * Segmentos paralelos/colineales no producen
+     * un único INTERSECTION en esta primera versión.
+     */
+    if (
+      Math.abs(
+        denominator,
+      )
+      <= 1e-14
+      * firstLengthSquared
+      * secondLengthSquared
+    ) {
+
+      return null;
+
+    }
+
+
+    const firstParameter =
+      (
+        firstSecondDot
+        * secondRelativeDot
+        - secondLengthSquared
+        * firstRelativeDot
+      )
+      / denominator;
+
+
+    const secondParameter =
+      (
+        firstLengthSquared
+        * secondRelativeDot
+        - firstSecondDot
+        * firstRelativeDot
+      )
+      / denominator;
+
+
+    const parameterTolerance =
+      1e-9;
+
+
+    if (
+      firstParameter
+      < -parameterTolerance
+      || firstParameter
+        > 1 + parameterTolerance
+      || secondParameter
+        < -parameterTolerance
+      || secondParameter
+        > 1 + parameterTolerance
+    ) {
+
+      return null;
+
+    }
+
+
+    const firstPoint =
+      firstStart
+        .clone()
+        .addScaledVector(
+          firstDirection,
+          THREE.MathUtils.clamp(
+            firstParameter,
+            0,
+            1,
+          ),
+        );
+
+
+    const secondPoint =
+      secondStart
+        .clone()
+        .addScaledVector(
+          secondDirection,
+          THREE.MathUtils.clamp(
+            secondParameter,
+            0,
+            1,
+          ),
+        );
+
+
+    /*
+     * Intersección geométrica 3D real:
+     * no basta con que los segmentos se crucen en pantalla.
+     *
+     * La tolerancia escala suavemente con el tamaño de
+     * los segmentos y mantiene un mínimo absoluto pequeño.
+     */
+    const scale =
+      Math.max(
+        1,
+        Math.sqrt(
+          firstLengthSquared,
+        ),
+        Math.sqrt(
+          secondLengthSquared,
+        ),
+      );
+
+
+    const worldTolerance =
+      Math.max(
+        1e-7,
+        scale
+        * 1e-8,
+      );
+
+
+    if (
+      firstPoint
+        .distanceToSquared(
+          secondPoint,
+        )
+      > worldTolerance
+        * worldTolerance
+    ) {
+
+      return null;
+
+    }
+
+
+    return firstPoint
+      .add(
+        secondPoint,
+      )
+      .multiplyScalar(
+        0.5,
+      );
 
   }
 
