@@ -116,3 +116,14 @@ export type {
   DesignLayerListener,
   UpdateDesignLayerInput,
 } from "@framelogic/domain";
+
+
+export {
+  CadWorkPlaneController,
+} from "./interaction/CadWorkPlaneController";
+
+export type {
+  CadWorkPlaneListener,
+  CadWorkPlaneMode,
+  CadWorkPlaneState,
+} from "./interaction/CadWorkPlaneController";
