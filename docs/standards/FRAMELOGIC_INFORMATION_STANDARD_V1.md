@@ -1125,6 +1125,51 @@ External read-only IFC reference models default to `External References`.
 
 Deleting a user-created layer SHALL first reassign its placed objects to an appropriate valid fallback layer. System layers SHALL NOT be deletable.
 
+## 15.2 CAD WorkPlane
+
+FrameLogic SHALL provide the following initial CAD work planes:
+
+```text
+XY
+XZ
+YZ
+OFF
+```
+
+The active WorkPlane is a model-space construction aid and SHALL be displayed visually as auxiliary grid geometry.
+
+Initial origin:
+
+```text
+(0, 0, 0)
+```
+
+Initial mode:
+
+```text
+XY
+```
+
+The user can cycle:
+
+```text
+XY → XZ → YZ → OFF → XY
+```
+
+The active WorkPlane defines where a free pointer click can produce a 3D construction point.
+
+Rules for future POINT and LINE commands:
+
+- when a WorkPlane is active, a free click is projected/intersected onto the active plane;
+- POINT and LINE may use an exact SNAP located anywhere in 3D even when that SNAP is not on the active WorkPlane;
+- a valid 3D SNAP therefore takes precedence over WorkPlane projection;
+- with WorkPlane `OFF`, free pointer placement is disabled;
+- with WorkPlane `OFF`, LINE construction by pointer requires valid SNAP points;
+- typed coordinate input remains an explicit coordinate method and will be handled separately by the POINT/LINE input controller;
+- the WorkPlane is auxiliary construction geometry and is not part of physical IFC Body geometry.
+
+This rule allows a line to use planar construction for ordinary free placement while still connecting to semantic geometry located anywhere in 3D.
+
 # 16. Identity and uniqueness rules
 
 ## 16.1 Definition identity
