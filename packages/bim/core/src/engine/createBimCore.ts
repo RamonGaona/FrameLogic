@@ -11,11 +11,16 @@ import type {
 } from "../interaction/DesignPlacementController";
 
 import {
+  DEFAULT_DESIGN_LAYER_IDS,
   DesignModel,
 } from "@framelogic/domain";
 
 import type {
+  CreateDesignLayerInput,
+  DesignLayer,
+  DesignLayerListener,
   RegisterPieceInstanceInput,
+  UpdateDesignLayerInput,
 } from "@framelogic/domain";
 
 import {
@@ -639,6 +644,7 @@ const designSnap =
     () =>
       world.camera.three,
     designScene,
+    designModel,
   );
 
 
@@ -658,6 +664,103 @@ const designSelection =
 
     designScene,
 
+    designModel,
+
+  );
+
+
+// ==========================================================
+// DESIGN LAYERS
+// ==========================================================
+
+function applyDesignLayerEffects(): void {
+
+  designScene.sync();
+
+
+  for (
+    const layer
+    of designModel.layers.getAll()
+  ) {
+
+    modelRegistry.setLayerVisible(
+      layer.id,
+      layer.visible,
+    );
+
+  }
+
+
+  const selectableIds =
+    designSelection
+      .getSelectedIds()
+      .filter(
+        (
+          instanceId,
+        ) => {
+
+          const instance =
+            designModel
+              .pieceInstances
+              .get(
+                instanceId,
+              );
+
+
+          if (
+            !instance
+          ) {
+
+            return false;
+
+          }
+
+
+          const layer =
+            designModel
+              .layers
+              .get(
+                instance.layerId,
+              );
+
+
+          return (
+            layer?.visible
+            ?? true
+          )
+            && !(
+              layer?.locked
+              ?? false
+            );
+
+        },
+      );
+
+
+  if (
+    selectableIds.length
+    !== designSelection
+      .getSelectedIds()
+      .length
+  ) {
+
+    designSelection.setSelection(
+      selectableIds,
+    );
+
+  }
+  else {
+
+    designSelection.refreshHelpers();
+
+  }
+
+}
+
+
+const unsubscribeDesignLayers =
+  designModel.layers.subscribe(
+    applyDesignLayerEffects,
   );
 
 
@@ -1500,6 +1603,10 @@ canvas.addEventListener(
         role:
           "REFERENCE",
 
+        layerId:
+          DEFAULT_DESIGN_LAYER_IDS
+            .EXTERNAL_REFERENCES,
+
         visible:
           true,
 
@@ -1543,6 +1650,21 @@ canvas.addEventListener(
           },
 
       });
+
+
+    const externalLayer =
+      designModel.layers.get(
+        DEFAULT_DESIGN_LAYER_IDS
+          .EXTERNAL_REFERENCES,
+      );
+
+
+    modelRegistry.setLayerVisible(
+      DEFAULT_DESIGN_LAYER_IDS
+        .EXTERNAL_REFERENCES,
+      externalLayer?.visible
+      ?? true,
+    );
 
 
     // --------------------------------------------------------
@@ -2095,6 +2217,245 @@ function cancelDesignPiecePlacement(): void {
   }
 
   // ==========================================================
+  // DESIGN LAYERS
+  // ==========================================================
+
+  function getDesignLayers():
+    DesignLayer[] {
+
+    return designModel.layers
+      .getAll();
+
+  }
+
+
+  function getActiveDesignLayerId():
+    string {
+
+    return designModel.layers
+      .activeLayerId;
+
+  }
+
+
+  function createDesignLayer(
+    input:
+      CreateDesignLayerInput,
+  ):
+    DesignLayer {
+
+    return designModel.layers
+      .create(
+        input,
+      );
+
+  }
+
+
+  function updateDesignLayer(
+    layerId: string,
+    input:
+      UpdateDesignLayerInput,
+  ):
+    DesignLayer
+    | undefined {
+
+    return designModel.layers
+      .update(
+        layerId,
+        input,
+      );
+
+  }
+
+
+  function setActiveDesignLayer(
+    layerId: string,
+  ): boolean {
+
+    return designModel.layers
+      .setActiveLayer(
+        layerId,
+      );
+
+  }
+
+
+  function subscribeDesignLayers(
+    listener:
+      DesignLayerListener,
+  ): () => void {
+
+    return designModel.layers
+      .subscribe(
+        listener,
+      );
+
+  }
+
+
+  function assignSelectedPieceInstancesToLayer(
+    layerId: string,
+  ): number {
+
+    const layer =
+      designModel.layers.get(
+        layerId,
+      );
+
+
+    if (
+      !layer
+    ) {
+
+      throw new Error(
+        `Layer "${layerId}" does not exist.`,
+      );
+
+    }
+
+
+    let updated =
+      0;
+
+
+    for (
+      const instanceId
+      of designSelection
+        .getSelectedIds()
+    ) {
+
+      if (
+        designModel
+          .updatePieceInstanceLayer(
+            instanceId,
+            layerId,
+          )
+      ) {
+
+        updated +=
+          1;
+
+      }
+
+    }
+
+
+    applyDesignLayerEffects();
+
+
+    return updated;
+
+  }
+
+
+  function setReferenceModelLayer(
+    modelId: string,
+    layerId: string,
+  ): boolean {
+
+    const layer =
+      designModel.layers.get(
+        layerId,
+      );
+
+
+    if (
+      !layer
+    ) {
+
+      throw new Error(
+        `Layer "${layerId}" does not exist.`,
+      );
+
+    }
+
+
+    const updated =
+      modelRegistry
+        .setModelLayerId(
+          modelId,
+          layerId,
+        );
+
+
+    if (
+      !updated
+    ) {
+
+      return false;
+
+    }
+
+
+    modelRegistry.setLayerVisible(
+      layerId,
+      layer.visible,
+    );
+
+
+    return true;
+
+  }
+
+
+  function removeDesignLayer(
+    layerId: string,
+  ): boolean {
+
+    if (
+      !designModel.layers.get(
+        layerId,
+      )
+    ) {
+
+      return false;
+
+    }
+
+
+    for (
+      const model
+      of modelRegistry
+        .findByLayerId(
+          layerId,
+        )
+    ) {
+
+      modelRegistry
+        .setModelLayerId(
+          model.id,
+          DEFAULT_DESIGN_LAYER_IDS
+            .EXTERNAL_REFERENCES,
+        );
+
+    }
+
+
+    const removed =
+      designModel
+        .removeDesignLayer(
+          layerId,
+          DEFAULT_DESIGN_LAYER_IDS
+            .GEOMETRY,
+        );
+
+
+    if (
+      removed
+    ) {
+
+      applyDesignLayerEffects();
+
+    }
+
+
+    return removed;
+
+  }
+
+
+  // ==========================================================
 // CAMERA PROJECTION MODE
 // ==========================================================
 
@@ -2580,6 +2941,9 @@ function dispose(): void {
   unsubscribeCadSelection();
 
 
+  unsubscribeDesignLayers();
+
+
   cadCommandManager.dispose();
 
 
@@ -2715,6 +3079,29 @@ function dispose(): void {
     removeModel,
 
     clearModels,
+
+    setReferenceModelLayer,
+
+
+    // --------------------------------------------------------
+    // DESIGN LAYERS
+    // --------------------------------------------------------
+
+    getDesignLayers,
+
+    getActiveDesignLayerId,
+
+    createDesignLayer,
+
+    updateDesignLayer,
+
+    setActiveDesignLayer,
+
+    removeDesignLayer,
+
+    subscribeDesignLayers,
+
+    assignSelectedPieceInstancesToLayer,
 
 
     // --------------------------------------------------------
