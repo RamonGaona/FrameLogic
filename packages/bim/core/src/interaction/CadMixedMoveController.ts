@@ -36,6 +36,10 @@ import type {
   DesignSelectionController,
 } from "./DesignSelectionController";
 
+import type {
+  DesignSnapController,
+} from "./DesignSnapController";
+
 
 interface PieceMoveState {
 
@@ -101,6 +105,10 @@ export class CadMixedMoveController {
     THREE.Scene;
 
 
+  private readonly domElement:
+    HTMLElement;
+
+
   private readonly designModel:
     DesignModel;
 
@@ -129,6 +137,10 @@ export class CadMixedMoveController {
     CadHistoryController;
 
 
+  private readonly snap:
+    DesignSnapController;
+
+
   private readonly setCameraEnabled:
     (
       enabled: boolean,
@@ -149,6 +161,32 @@ export class CadMixedMoveController {
 
   private readonly previousPivot =
     new THREE.Vector3();
+
+
+  private readonly dragStartPivot =
+    new THREE.Vector3();
+
+
+  private armedMoveAxis:
+    MoveNumericAxis
+    | null =
+      null;
+
+
+  private armedPivot =
+    false;
+
+
+  private armedPointerDownX =
+    0;
+
+
+  private armedPointerDownY =
+    0;
+
+
+  private armedPointerDownActive =
+    false;
 
 
   private dragStart:
@@ -210,6 +248,9 @@ export class CadMixedMoveController {
     history:
       CadHistoryController,
 
+    snap:
+      DesignSnapController,
+
     setCameraEnabled:
       (
         enabled: boolean,
@@ -218,6 +259,10 @@ export class CadMixedMoveController {
 
     this.scene =
       scene;
+
+
+    this.domElement =
+      domElement;
 
 
     this.designModel =
@@ -246,6 +291,10 @@ export class CadMixedMoveController {
 
     this.history =
       history;
+
+
+    this.snap =
+      snap;
 
 
     this.setCameraEnabled =
@@ -306,6 +355,20 @@ export class CadMixedMoveController {
     this.controls.addEventListener(
       "mouseUp",
       this.handleMoveEnd,
+    );
+
+
+    this.domElement.addEventListener(
+      "pointerdown",
+      this.handleArmedPointerDown,
+      true,
+    );
+
+
+    this.domElement.addEventListener(
+      "pointerup",
+      this.handleArmedPointerUp,
+      true,
     );
 
 
@@ -370,6 +433,21 @@ export class CadMixedMoveController {
       true;
 
 
+    this.armedMoveAxis =
+      null;
+
+
+    this.armedPivot =
+      false;
+
+
+    this.armedPointerDownActive =
+      false;
+
+
+    this.snap.clearExcludedInstanceIds();
+
+
     this.resetPivot();
 
 
@@ -401,6 +479,21 @@ export class CadMixedMoveController {
 
     this.currentAxis =
       null;
+
+
+    this.armedMoveAxis =
+      null;
+
+
+    this.armedPivot =
+      false;
+
+
+    this.armedPointerDownActive =
+      false;
+
+
+    this.snap.clearExcludedInstanceIds();
 
 
     this.controls.detach();
@@ -436,6 +529,9 @@ export class CadMixedMoveController {
       return false;
 
     }
+
+
+    this.clearArmedSnap();
 
 
     const before =
@@ -880,6 +976,26 @@ export class CadMixedMoveController {
       );
 
 
+      this.dragStartPivot.copy(
+        this.pivot.position,
+      );
+
+
+      this.armedMoveAxis =
+        null;
+
+
+      this.armedPivot =
+        false;
+
+
+      this.armedPointerDownActive =
+        false;
+
+
+      this.snap.clearExcludedInstanceIds();
+
+
       this.currentAxis =
         this.controls.axis;
 
@@ -991,12 +1107,97 @@ export class CadMixedMoveController {
         this.currentAxis;
 
 
+      const movedDistance =
+        this.pivot.position
+          .distanceTo(
+            this.dragStartPivot,
+          );
+
+
+      const clickedAxis =
+        (
+          axis === "X"
+          || axis === "Y"
+          || axis === "Z"
+          || axis === "XY"
+          || axis === "XZ"
+          || axis === "YZ"
+        )
+        && movedDistance
+          <= 1e-9;
+
+
+      const clickedPivot =
+        axis === "XYZ"
+        && movedDistance
+          <= 1e-9;
+
+
       this.dragStart =
         null;
 
 
       this.currentAxis =
         null;
+
+
+      if (
+        clickedAxis
+        && axis !== null
+        && axis !== "XYZ"
+      ) {
+
+        this.armedMoveAxis =
+          axis;
+
+
+        this.armedPivot =
+          false;
+
+
+        this.snap.setExcludedInstanceIds(
+          this.selection
+            .getState()
+            .items
+            .map(
+              (
+                item,
+              ) =>
+                item.id,
+            ),
+        );
+
+
+        return;
+
+      }
+
+
+      if (
+        clickedPivot
+      ) {
+
+        this.armedMoveAxis =
+          null;
+
+
+        this.armedPivot =
+          true;
+
+
+        /*
+         * Para mover solo el punto base del gizmo,
+         * sí permitimos SNAP sobre la propia selección.
+         */
+        this.snap.clearExcludedInstanceIds();
+
+
+        return;
+
+      }
+
+
+      this.clearArmedSnap();
 
 
       if (
@@ -1014,6 +1215,303 @@ export class CadMixedMoveController {
       );
 
   };
+
+
+  private readonly handleArmedPointerDown =
+    (
+      event:
+        PointerEvent,
+    ):
+      void => {
+
+      if (
+        !this.active
+        || (
+          !this.armedMoveAxis
+          && !this.armedPivot
+        )
+        || event.button !== 0
+      ) {
+
+        return;
+
+      }
+
+
+      this.armedPointerDownX =
+        event.clientX;
+
+
+      this.armedPointerDownY =
+        event.clientY;
+
+
+      this.armedPointerDownActive =
+        true;
+
+  };
+
+
+  private readonly handleArmedPointerUp =
+    (
+      event:
+        PointerEvent,
+    ):
+      void => {
+
+      if (
+        !this.active
+        || (
+          !this.armedMoveAxis
+          && !this.armedPivot
+        )
+        || event.button !== 0
+        || !this.armedPointerDownActive
+      ) {
+
+        return;
+
+      }
+
+
+      this.armedPointerDownActive =
+        false;
+
+
+      const movement =
+        Math.hypot(
+          event.clientX
+          - this.armedPointerDownX,
+          event.clientY
+          - this.armedPointerDownY,
+        );
+
+
+      /*
+       * Un arrastre se interpreta como navegación de cámara.
+       * El eje/plano permanece armado.
+       */
+      if (
+        movement > 5
+      ) {
+
+        return;
+
+      }
+
+
+      const snap =
+        this.snap.findSnap(
+          event.clientX,
+          event.clientY,
+        );
+
+
+      if (
+        !snap
+      ) {
+
+        return;
+
+      }
+
+
+      event.preventDefault();
+
+      event.stopPropagation();
+
+
+      if (
+        this.armedPivot
+      ) {
+
+        this.pivot.position.copy(
+          snap.point,
+        );
+
+
+        this.pivot.updateMatrixWorld(
+          true,
+        );
+
+
+        this.previousPivot.copy(
+          this.pivot.position,
+        );
+
+
+        this.clearArmedSnap();
+
+
+        return;
+
+      }
+
+
+      const axis =
+        this.armedMoveAxis;
+
+
+      if (
+        !axis
+      ) {
+
+        return;
+
+      }
+
+
+      const before =
+        this.capture();
+
+
+      const correction =
+        this.getConstrainedSnapCorrection(
+          axis,
+          snap.point,
+        );
+
+
+      if (
+        correction.lengthSq()
+        > 1e-18
+      ) {
+
+        this.applyDelta(
+          correction,
+        );
+
+
+        this.pivot.position.add(
+          correction,
+        );
+
+
+        this.pivot.updateMatrixWorld(
+          true,
+        );
+
+
+        this.previousPivot.copy(
+          this.pivot.position,
+        );
+
+
+        this.recordMove(
+          before,
+        );
+
+      }
+
+
+      this.clearArmedSnap();
+
+  };
+
+
+  private getConstrainedSnapCorrection(
+    axis:
+      MoveNumericAxis,
+
+    targetPoint:
+      THREE.Vector3,
+  ):
+    THREE.Vector3 {
+
+    const correction =
+      targetPoint
+        .clone()
+        .sub(
+          this.pivot.position,
+        );
+
+
+    switch (
+      axis
+    ) {
+
+      case "X":
+
+        correction.set(
+          correction.x,
+          0,
+          0,
+        );
+
+        break;
+
+
+      case "Y":
+
+        correction.set(
+          0,
+          correction.y,
+          0,
+        );
+
+        break;
+
+
+      case "Z":
+
+        correction.set(
+          0,
+          0,
+          correction.z,
+        );
+
+        break;
+
+
+      case "XY":
+
+        correction.z =
+          0;
+
+        break;
+
+
+      case "XZ":
+
+        correction.y =
+          0;
+
+        break;
+
+
+      case "YZ":
+
+        correction.x =
+          0;
+
+        break;
+
+    }
+
+
+    return correction;
+
+  }
+
+
+  private clearArmedSnap():
+    void {
+
+    this.armedMoveAxis =
+      null;
+
+
+    this.armedPivot =
+      false;
+
+
+    this.armedPointerDownActive =
+      false;
+
+
+    this.snap.clearExcludedInstanceIds();
+
+  }
 
 
   private applyDelta(
@@ -1716,6 +2214,20 @@ export class CadMixedMoveController {
     this.controls.removeEventListener(
       "mouseUp",
       this.handleMoveEnd,
+    );
+
+
+    this.domElement.removeEventListener(
+      "pointerdown",
+      this.handleArmedPointerDown,
+      true,
+    );
+
+
+    this.domElement.removeEventListener(
+      "pointerup",
+      this.handleArmedPointerUp,
+      true,
     );
 
 
