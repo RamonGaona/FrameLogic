@@ -35,6 +35,7 @@ export class CadNumericInputController {
     "MOVE"
     | "ROTATE"
     | "POINT"
+    | "LINE"
     | null =
       null;
 
@@ -69,6 +70,15 @@ export class CadNumericInputController {
 
 
   private onPointApply:
+    (
+      x: number,
+      y: number,
+      z: number,
+    ) => void =
+      () => {};
+
+
+  private onLineApply:
     (
       x: number,
       y: number,
@@ -289,6 +299,21 @@ export class CadNumericInputController {
   }
 
 
+  setLineApplyHandler(
+    handler:
+      (
+        x: number,
+        y: number,
+        z: number,
+      ) => void,
+  ): void {
+
+    this.onLineApply =
+      handler;
+
+  }
+
+
   showMove(
     axis:
       MoveNumericAxis,
@@ -383,6 +408,43 @@ export class CadNumericInputController {
 
     this.title.textContent =
       "POINT · XYZ";
+
+
+    this.buildInputs(
+      [
+        "X",
+        "Y",
+        "Z",
+      ],
+      "",
+    );
+
+
+    this.root.style.display =
+      "flex";
+
+
+    this.focusFirstInput();
+
+  }
+
+
+  showLine(): void {
+
+    this.mode =
+      "LINE";
+
+
+    this.moveAxis =
+      null;
+
+
+    this.rotateAxis =
+      null;
+
+
+    this.title.textContent =
+      "LINE · XYZ";
 
 
     this.buildInputs(
@@ -671,6 +733,22 @@ export class CadNumericInputController {
       ) {
 
         this.onPointApply(
+          values[0] ?? 0,
+          values[1] ?? 0,
+          values[2] ?? 0,
+        );
+
+
+        return;
+
+      }
+
+
+      if (
+        this.mode === "LINE"
+      ) {
+
+        this.onLineApply(
           values[0] ?? 0,
           values[1] ?? 0,
           values[2] ?? 0,
