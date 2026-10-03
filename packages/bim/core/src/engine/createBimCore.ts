@@ -1493,6 +1493,7 @@ const cadMixedMove =
     cadSelection,
     designSelection,
     cadHistory,
+    designSnap,
     (
       enabled,
     ) => {
