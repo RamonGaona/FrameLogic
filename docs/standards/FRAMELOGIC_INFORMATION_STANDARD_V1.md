@@ -1238,6 +1238,19 @@ A constructed CAD point SHALL itself provide a `POINT` SNAP candidate when its l
 
 POINT is a continuous command: after creating one point it remains active until cancelled. Each created point is a separate Undo/Redo operation.
 
+Constructed CAD points are editable project objects:
+
+- clicking a visible, unlocked CAD point selects it;
+- Ctrl/Shift/Meta may select multiple CAD points;
+- selecting a CAD point clears PieceInstance selection, and selecting a PieceInstance clears CAD point selection;
+- `M` moves the selected CAD point or point set with a world-space translation gizmo;
+- numeric MOVE input applies the same displacement semantics used by PieceInstance MOVE;
+- `Delete` removes selected CAD points and records the operation in CAD history;
+- `Ctrl+Z` / `Ctrl+Y` restore or repeat point creation, movement and deletion;
+- assigning the current selection to the active project layer applies to selected CAD points as well as PieceInstances;
+- points on hidden or locked layers cannot remain selected;
+- points on layers with `snapEnabled = false` remain drawable/visible according to layer visibility but do not provide POINT SNAP candidates.
+
 # 16. Identity and uniqueness rules
 
 ## 16.1 Definition identity
