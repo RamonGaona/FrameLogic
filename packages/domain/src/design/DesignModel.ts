@@ -54,6 +54,19 @@ import {
     DesignLayerRegistry,
   } from "../layers/DesignLayerRegistry";
 
+
+  import {
+    CadPointRegistry,
+  } from "../cad/CadPointRegistry";
+
+  import type {
+    CadPoint,
+  } from "../cad/CadPoint";
+
+  import type {
+    RegisterCadPointInput,
+  } from "../cad/CadPointRegistry";
+
   import {
     DEFAULT_DESIGN_LAYER_IDS,
   } from "../layers/DesignLayer";
@@ -83,6 +96,10 @@ import {
 
     readonly layers =
       new DesignLayerRegistry();
+
+
+    readonly cadPoints =
+      new CadPointRegistry();
   
   
     // ==========================================================
@@ -184,6 +201,73 @@ import {
     }
   
   
+    // ==========================================================
+    // CAD POINTS
+    // ==========================================================
+
+    registerCadPoint(
+      input:
+        RegisterCadPointInput,
+    ):
+      CadPoint {
+
+      const layerId =
+        input.layerId
+        ?? this.layers
+          .activeLayerId;
+
+
+      const layer =
+        this.layers.get(
+          layerId,
+        );
+
+
+      if (
+        !layer
+      ) {
+
+        throw new Error(
+          `Cannot create CAD point. Layer "${layerId}" does not exist.`,
+        );
+
+      }
+
+
+      if (
+        layer.locked
+      ) {
+
+        throw new Error(
+          `Cannot create CAD point. Layer "${layer.name}" is locked.`,
+        );
+
+      }
+
+
+      return this
+        .cadPoints
+        .register({
+          ...input,
+          layerId,
+        });
+
+    }
+
+
+    removeCadPoint(
+      id: string,
+    ): boolean {
+
+      return this
+        .cadPoints
+        .remove(
+          id,
+        );
+
+    }
+
+
     // ==========================================================
     // ASSEMBLIES
     // ==========================================================
@@ -454,6 +538,23 @@ import {
       }
 
 
+      for (
+        const point
+        of this.cadPoints
+          .findByLayerId(
+            layerId,
+          )
+      ) {
+
+        this.cadPoints
+          .updateLayerId(
+            point.id,
+            fallbackLayerId,
+          );
+
+      }
+
+
       return this.layers.remove(
         layerId,
       );
@@ -594,6 +695,9 @@ import {
       this.pieceDefinitions.clear();
   
       this.assets.clear();
+
+
+      this.cadPoints.clear();
 
 
       this.layers.reset();
