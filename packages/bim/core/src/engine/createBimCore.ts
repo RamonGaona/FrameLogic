@@ -459,11 +459,64 @@ async function setCardinalDirection(
 
 
   world.camera.controls.dollySpeed =
-    0.5;
+    0.8;
 
 
   world.camera.controls.minDistance =
     0.02;
+
+
+  /*
+   * Navegación CAD cercana:
+   *
+   * - dollyToCursor hace que el zoom siga el punto que el
+   *   usuario está inspeccionando;
+   * - infinityDolly evita que la cámara quede "apretada"
+   *   contra su target al alcanzar minDistance.
+   */
+  world.camera.controls.dollyToCursor =
+    true;
+
+
+  world.camera.controls.infinityDolly =
+    true;
+
+
+  const updateCloseCameraNavigation =
+    (): void => {
+
+      const distance =
+        Math.max(
+          world.camera.controls.distance,
+          world.camera.controls.minDistance,
+          0.02,
+        );
+
+
+      /*
+       * CameraControls escala el truck/pan con la distancia
+       * al target. Cerca de la geometría eso puede volver el
+       * desplazamiento demasiado lento.
+       *
+       * Compensamos progresivamente solo en distancias cortas.
+       */
+      world.camera.controls.truckSpeed =
+        THREE.MathUtils.clamp(
+          0.5 / distance,
+          2,
+          20,
+        );
+
+    };
+
+
+  world.camera.controls.addEventListener(
+    "update",
+    updateCloseCameraNavigation,
+  );
+
+
+  updateCloseCameraNavigation();
 
 
   world.camera.three.up.set(
@@ -4049,6 +4102,365 @@ async function toggleCameraProjection():
 
 }
 
+// ==========================================================
+// CAMERA FIT / RECOVERY
+// ==========================================================
+
+function getVisiblePhysicalBounds():
+  THREE.Box3
+  | null {
+
+  const bounds =
+    new THREE.Box3();
+
+
+  let hasBounds =
+    false;
+
+
+  const includeObject =
+    (
+      object:
+        THREE.Object3D,
+    ):
+      void => {
+
+      if (
+        !object.visible
+      ) {
+
+        return;
+
+      }
+
+
+      object.updateWorldMatrix(
+        true,
+        true,
+      );
+
+
+      const objectBounds =
+        new THREE.Box3()
+          .setFromObject(
+            object,
+            true,
+          );
+
+
+      if (
+        objectBounds.isEmpty()
+      ) {
+
+        return;
+
+      }
+
+
+      const min =
+        objectBounds.min;
+
+
+      const max =
+        objectBounds.max;
+
+
+      if (
+        !Number.isFinite(
+          min.x,
+        )
+        || !Number.isFinite(
+          min.y,
+        )
+        || !Number.isFinite(
+          min.z,
+        )
+        || !Number.isFinite(
+          max.x,
+        )
+        || !Number.isFinite(
+          max.y,
+        )
+        || !Number.isFinite(
+          max.z,
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      if (
+        !hasBounds
+      ) {
+
+        bounds.copy(
+          objectBounds,
+        );
+
+
+        hasBounds =
+          true;
+
+
+        return;
+
+      }
+
+
+      bounds.union(
+        objectBounds,
+      );
+
+    };
+
+
+  /*
+   * PieceInstance / design geometry.
+   */
+  for (
+    const object
+    of designScene
+      .getInstanceObjects()
+  ) {
+
+    includeObject(
+      object,
+    );
+
+  }
+
+
+  /*
+   * IFC reference models.
+   */
+  for (
+    const [, model]
+    of fragments.list
+  ) {
+
+    includeObject(
+      model.object,
+    );
+
+  }
+
+
+  return hasBounds
+    ? bounds
+    : null;
+
+}
+
+
+async function fitCameraToVisibleGeometry():
+  Promise<void> {
+
+  const controls =
+    world.camera.controls;
+
+
+  const bounds =
+    getVisiblePhysicalBounds();
+
+
+  if (
+    !bounds
+  ) {
+
+    await controls.setLookAt(
+      6,
+      6,
+      6,
+      0,
+      0,
+      0,
+      true,
+    );
+
+
+    return;
+
+  }
+
+
+  const sphere =
+    bounds.getBoundingSphere(
+      new THREE.Sphere(),
+    );
+
+
+  const center =
+    sphere.center;
+
+
+  const radius =
+    Math.max(
+      sphere.radius,
+      0.1,
+    );
+
+
+  const camera =
+    world.camera.three;
+
+
+  const forward =
+    new THREE.Vector3();
+
+
+  camera.getWorldDirection(
+    forward,
+  );
+
+
+  if (
+    forward.lengthSq()
+    <= 1e-12
+  ) {
+
+    forward.set(
+      -1,
+      -1,
+      -1,
+    )
+      .normalize();
+
+  }
+  else {
+
+    forward.normalize();
+
+  }
+
+
+  let distance =
+    Math.max(
+      radius * 2.5,
+      1,
+    );
+
+
+  if (
+    camera
+    instanceof THREE.PerspectiveCamera
+  ) {
+
+    const verticalFov =
+      THREE.MathUtils.degToRad(
+        camera.fov,
+      );
+
+
+    const horizontalFov =
+      2
+      * Math.atan(
+          Math.tan(
+            verticalFov / 2,
+          )
+          * Math.max(
+              camera.aspect,
+              1e-6,
+            ),
+        );
+
+
+    const limitingFov =
+      Math.max(
+        0.01,
+        Math.min(
+          verticalFov,
+          horizontalFov,
+        ),
+      );
+
+
+    distance =
+      Math.max(
+        radius
+        / Math.sin(
+            limitingFov / 2,
+          )
+        * 1.2,
+        radius * 1.5,
+        1,
+      );
+
+  }
+
+
+  const position =
+    center
+      .clone()
+      .addScaledVector(
+        forward,
+        -distance,
+      );
+
+
+  await controls.setLookAt(
+    position.x,
+    position.y,
+    position.z,
+    center.x,
+    center.y,
+    center.z,
+    true,
+  );
+
+
+  if (
+    camera
+    instanceof THREE.OrthographicCamera
+  ) {
+
+    const availableWidth =
+      Math.abs(
+        camera.right
+        - camera.left,
+      );
+
+
+    const availableHeight =
+      Math.abs(
+        camera.top
+        - camera.bottom,
+      );
+
+
+    const diameter =
+      Math.max(
+        radius * 2.4,
+        0.2,
+      );
+
+
+    const desiredZoom =
+      Math.max(
+        0.01,
+        Math.min(
+          availableWidth
+          / diameter,
+          availableHeight
+          / diameter,
+        ),
+      );
+
+
+    await controls.zoomTo(
+      desiredZoom,
+      true,
+    );
+
+  }
+
+
+  updateCloseCameraNavigation();
+
+}
+
+
   // ==========================================================
 // STANDARD CAMERA VIEW
 // ==========================================================
@@ -4106,6 +4518,11 @@ async function setStandardView(
 
     case "ISO":
 
+      /*
+       * ISO también funciona como recuperación de cámara:
+       * reorienta y luego encuadra toda la geometría física
+       * visible para recuperar un target/distancia cómodos.
+       */
       await controls.rotateTo(
         currentAzimuth,
         Math.acos(
@@ -4113,6 +4530,9 @@ async function setStandardView(
         ),
         true,
       );
+
+
+      await fitCameraToVisibleGeometry();
 
       break;
 
@@ -4788,6 +5208,12 @@ function dispose(): void {
   window.removeEventListener(
     "keydown",
     handleCadKeyDown,
+  );
+
+
+  world.camera.controls.removeEventListener(
+    "update",
+    updateCloseCameraNavigation,
   );
 
 
