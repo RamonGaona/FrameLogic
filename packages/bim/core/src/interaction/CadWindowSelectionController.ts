@@ -392,6 +392,7 @@ export class CadWindowSelectionController {
       if (
         !this.designSelection.isEnabled
         || !this.pointSelection.isEnabled
+        || !this.lineSelection.isEnabled
       ) {
 
         return;
