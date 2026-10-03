@@ -22,6 +22,12 @@ type SelectionDirection =
   | "CROSSING";
 
 
+type SelectionOperation =
+  | "REPLACE"
+  | "ADD"
+  | "REMOVE";
+
+
 interface ScreenRect {
 
   left: number;
@@ -97,8 +103,9 @@ export class CadWindowSelectionController {
     0;
 
 
-  private additive =
-    false;
+  private selectionOperation:
+    SelectionOperation =
+      "REPLACE";
 
 
   private disposed =
@@ -324,10 +331,19 @@ export class CadWindowSelectionController {
         event.clientY;
 
 
-      this.additive =
+      const controlModifier =
         event.ctrlKey
-        || event.metaKey
-        || event.shiftKey;
+        || event.metaKey;
+
+
+      this.selectionOperation =
+        controlModifier
+        && event.shiftKey
+          ? "REMOVE"
+          : controlModifier
+            || event.shiftKey
+              ? "ADD"
+              : "REPLACE";
 
 
       this.setCameraEnabled(
@@ -628,24 +644,28 @@ export class CadWindowSelectionController {
     }
 
 
+    const currentPieceIds =
+      this.designSelection
+        .getSelectedIds();
+
+
+    const currentPointIds =
+      this.pointSelection
+        .getSelectedIds();
+
+
     const finalPieceIds =
-      this.additive
-        ? this.mergeIds(
-            this.designSelection
-              .getSelectedIds(),
-            pieceIds,
-          )
-        : pieceIds;
+      this.applySelectionOperation(
+        currentPieceIds,
+        pieceIds,
+      );
 
 
     const finalPointIds =
-      this.additive
-        ? this.mergeIds(
-            this.pointSelection
-              .getSelectedIds(),
-            pointIds,
-          )
-        : pointIds;
+      this.applySelectionOperation(
+        currentPointIds,
+        pointIds,
+      );
 
 
     this.designSelection
@@ -954,6 +974,13 @@ export class CadWindowSelectionController {
       )}px`;
 
 
+    this.overlay.style.boxShadow =
+      this.selectionOperation
+      === "REMOVE"
+        ? "inset 0 0 0 2px rgba(255, 85, 85, 0.95)"
+        : "none";
+
+
     if (
       direction
       === "WINDOW"
@@ -1093,6 +1120,73 @@ export class CadWindowSelectionController {
         < second.top
       || first.top
         > second.bottom
+    );
+
+  }
+
+
+  private applySelectionOperation(
+    current:
+      readonly string[],
+
+    matched:
+      readonly string[],
+  ):
+    string[] {
+
+    switch (
+      this.selectionOperation
+    ) {
+
+      case "ADD":
+
+        return this.mergeIds(
+          current,
+          matched,
+        );
+
+
+      case "REMOVE":
+
+        return this.removeIds(
+          current,
+          matched,
+        );
+
+
+      case "REPLACE":
+
+        return [
+          ...matched,
+        ];
+
+    }
+
+  }
+
+
+  private removeIds(
+    current:
+      readonly string[],
+
+    removed:
+      readonly string[],
+  ):
+    string[] {
+
+    const removedSet =
+      new Set(
+        removed,
+      );
+
+
+    return current.filter(
+      (
+        id,
+      ) =>
+        !removedSet.has(
+          id,
+        ),
     );
 
   }
