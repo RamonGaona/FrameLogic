@@ -1059,19 +1059,39 @@ export class CadMixedMoveController {
 
 
       /*
-       * Igual que MOVE de piezas:
-       * el centro XYZ mueve solo el punto base del gizmo.
+       * El centro XYZ ya no desplaza libremente el pivote.
+       * Se conserva la posición inicial y al soltar queda
+       * armado para que el siguiente clic sobre un SNAP
+       * coloque el gizmo exactamente en ese punto 3D.
        */
       if (
         this.currentAxis
-        !== "XYZ"
+        === "XYZ"
       ) {
 
-        this.applyDelta(
-          delta,
+        this.pivot.position.copy(
+          this.dragStartPivot,
         );
 
+
+        this.pivot.updateMatrixWorld(
+          true,
+        );
+
+
+        this.previousPivot.copy(
+          this.dragStartPivot,
+        );
+
+
+        return;
+
       }
+
+
+      this.applyDelta(
+        delta,
+      );
 
 
       this.previousPivot.copy(
