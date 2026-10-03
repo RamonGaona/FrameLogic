@@ -1950,6 +1950,9 @@ const handleCadKeyDown =
       && !event.altKey
     ) {
 
+      cadWindowSelection.cancel();
+
+
       cadWorkPlaneEdit.cancel();
 
 
@@ -1994,6 +1997,9 @@ const handleCadKeyDown =
       && !event.altKey
     ) {
 
+      cadWindowSelection.cancel();
+
+
       cadWorkPlaneEdit.cancel();
 
 
@@ -2037,6 +2043,9 @@ const handleCadKeyDown =
       && !event.metaKey
       && !event.altKey
     ) {
+
+      cadWindowSelection.cancel();
+
 
       cadWorkPlaneEdit.cancel();
 
@@ -2130,6 +2139,9 @@ const handleCadKeyDown =
       && !event.metaKey
       && !event.altKey
     ) {
+
+      cadWindowSelection.cancel();
+
 
       cadWorkPlaneEdit.cancel();
 
@@ -3150,6 +3162,9 @@ function cancelDesignPiecePlacement(): void {
   function startCadWorkPlaneOriginEdit():
     void {
 
+    cadWindowSelection.cancel();
+
+
     cadCommandManager.cancelActive();
 
     cadNumericInput.hide();
@@ -3174,6 +3189,9 @@ function cancelDesignPiecePlacement(): void {
 
   function startCadWorkPlaneThreePointEdit():
     void {
+
+    cadWindowSelection.cancel();
+
 
     cadCommandManager.cancelActive();
 
@@ -3931,6 +3949,9 @@ function setDesignTransformSpace(
 function startPointCommand():
   boolean {
 
+  cadWindowSelection.cancel();
+
+
   cadWorkPlaneEdit.cancel();
 
 
@@ -3961,6 +3982,9 @@ function startPointCommand():
 function startLineCommand():
   boolean {
 
+  cadWindowSelection.cancel();
+
+
   cadWorkPlaneEdit.cancel();
 
 
@@ -3990,6 +4014,9 @@ function startLineCommand():
 
 function startMoveCommand():
   boolean {
+
+  cadWindowSelection.cancel();
+
 
   cadWorkPlaneEdit.cancel();
 
@@ -4053,6 +4080,9 @@ function startMoveCommand():
 
 function startRotateCommand():
   boolean {
+
+  cadWindowSelection.cancel();
+
 
   cadWorkPlaneEdit.cancel();
 
