@@ -556,6 +556,9 @@ import {
       this.pieceDefinitions.clear();
   
       this.assets.clear();
+
+
+      this.layers.reset();
   
     }
   
