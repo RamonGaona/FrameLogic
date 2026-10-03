@@ -127,6 +127,7 @@ import {
 } from "../interaction/CadUnifiedSelectionController";
 
 import type {
+  CadSelectionState,
   CadUnifiedSelectionListener,
 } from "../interaction/CadUnifiedSelectionController";
 
@@ -3959,6 +3960,42 @@ function subscribePieceSelection(
 
 
 // ==========================================================
+// UNIFIED CAD SELECTION
+// ==========================================================
+
+function getCadSelectionState():
+  CadSelectionState {
+
+  return cadSelection
+    .getState();
+
+}
+
+
+function clearCadSelection():
+  void {
+
+  cadSelection
+    .clearSelection();
+
+}
+
+
+function subscribeCadSelection(
+  listener:
+    CadUnifiedSelectionListener,
+):
+  () => void {
+
+  return cadSelection
+    .subscribe(
+      listener,
+    );
+
+}
+
+
+// ==========================================================
 // CAD POINT SELECTION
 // ==========================================================
 
@@ -4691,6 +4728,12 @@ cadPointSelection,
 cadLineSelection,
 
 cadSelection,
+
+getCadSelectionState,
+
+clearCadSelection,
+
+subscribeCadSelection,
 
 cadWindowSelection,
 
