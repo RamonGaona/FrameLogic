@@ -108,3 +108,11 @@ export type {
   DesignSnapResult,
   DesignSnapType,
 } from "./interaction/DesignSnapController";
+
+
+export type {
+  CreateDesignLayerInput,
+  DesignLayer,
+  DesignLayerListener,
+  UpdateDesignLayerInput,
+} from "@framelogic/domain";
