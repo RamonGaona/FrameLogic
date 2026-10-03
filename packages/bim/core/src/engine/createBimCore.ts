@@ -103,6 +103,10 @@ import {
 } from "../interaction/CadPointMoveController";
 
 import {
+  CadWindowSelectionController,
+} from "../interaction/CadWindowSelectionController";
+
+import {
   DesignSnapController,
 } from "../interaction/DesignSnapController";
 
@@ -829,6 +833,30 @@ const cadPointSelection =
 
 
 // ==========================================================
+// WINDOW / CROSSING SELECTION
+// ==========================================================
+
+const cadWindowSelection =
+  new CadWindowSelectionController(
+    canvas,
+    () =>
+      world.camera.three,
+    designModel,
+    designScene,
+    designSelection,
+    cadPointSelection,
+    (
+      enabled,
+    ) => {
+
+      world.camera.controls.enabled =
+        enabled;
+
+    },
+  );
+
+
+// ==========================================================
 // CAD WORKPLANE EDIT
 // ==========================================================
 
@@ -1243,17 +1271,11 @@ const deleteCommand =
       selectedIds,
     ) => {
 
-      if (
-        selectedIds.length > 0
-      ) {
-
-        cadPointSelection
-          .clearSelection();
-
-      }
-
-
       /*
+       * La selección puede ser mixta cuando se usa ventana
+       * o Ctrl/Shift. Los clics simples siguen reemplazando
+       * la selección mediante los controladores individuales.
+       *
        * MOVE / ROTATE de piezas necesitan selección de piezas.
        * POINT y MOVE_POINT tienen su propia selección.
        */
@@ -1685,10 +1707,35 @@ const handleCadKeyDown =
       cadNumericInput.hide();
 
 
-      const started =
+      const selectedPointCount =
         cadPointSelection
           .getSelectedIds()
-          .length > 0
+          .length;
+
+
+      const selectedPieceCount =
+        designSelection
+          .getSelectedIds()
+          .length;
+
+
+      if (
+        selectedPointCount > 0
+        && selectedPieceCount > 0
+      ) {
+
+        window.alert(
+          "La selección contiene piezas y puntos CAD. MOVE mixto se integrará en el siguiente paso; por ahora selecciona un solo tipo de entidad.",
+        );
+
+
+        return;
+
+      }
+
+
+      const started =
+        selectedPointCount > 0
           ? cadCommandManager.start(
               moveCadPointCommand,
             )
@@ -3497,17 +3544,37 @@ function startMoveCommand():
   cadWorkPlaneEdit.cancel();
 
 
-  return cadPointSelection
-    .getSelectedIds()
-    .length > 0
-      ? cadCommandManager
-          .start(
-            moveCadPointCommand,
-          )
-      : cadCommandManager
-          .start(
-            moveCommand,
-          );
+  const selectedPointCount =
+    cadPointSelection
+      .getSelectedIds()
+      .length;
+
+
+  const selectedPieceCount =
+    designSelection
+      .getSelectedIds()
+      .length;
+
+
+  if (
+    selectedPointCount > 0
+    && selectedPieceCount > 0
+  ) {
+
+    return false;
+
+  }
+
+
+  return selectedPointCount > 0
+    ? cadCommandManager
+        .start(
+          moveCadPointCommand,
+        )
+    : cadCommandManager
+        .start(
+          moveCommand,
+        );
 
 }
 
@@ -3689,6 +3756,9 @@ function dispose(): void {
 
 
   designSnap.dispose();
+
+
+  cadWindowSelection.dispose();
 
 
   cadPointSelection.dispose();
@@ -3886,6 +3956,8 @@ cadPointPlacement,
 designSelection,
 
 cadPointSelection,
+
+cadWindowSelection,
 
 getSelectedCadPointIds,
 
