@@ -501,6 +501,9 @@ export class CadLineMoveController {
     }
 
 
+    this.clearArmedSnap();
+
+
     const selectedIds =
       this.lineSelection
         .getSelectedIds();
