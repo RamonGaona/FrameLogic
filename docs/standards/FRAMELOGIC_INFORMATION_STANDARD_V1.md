@@ -1253,7 +1253,26 @@ Constructed CAD points are editable project objects:
 
 ## 15.5 Window and crossing selection
 
-FrameLogic uses AutoCAD-style directional rectangle selection when the primary pointer starts in empty model space.
+FrameLogic uses AutoCAD-style directional rectangle selection from empty model space.
+
+The rectangle is a two-click interaction so camera navigation remains unambiguous:
+
+```text
+click empty space and release
+→ set first corner
+
+move pointer without holding the button
+→ preview WINDOW / CROSSING rectangle
+
+second click
+→ complete selection
+
+click-and-hold + drag
+→ camera navigation only; no selection rectangle is started
+
+Escape while the rectangle is active
+→ cancel rectangle selection
+```
 
 ```text
 left → right
@@ -1270,7 +1289,7 @@ Visual convention:
 - WINDOW uses a blue translucent rectangle with a solid border;
 - CROSSING uses a green translucent rectangle with a dashed border.
 
-The selection rectangle starts only from empty viewport space. Starting the gesture on an existing selectable entity preserves normal click-selection behavior.
+The first selection corner starts only from empty viewport space. Starting on an existing selectable entity preserves normal click-selection behavior. A drag performed before releasing the first click belongs to camera navigation and does not arm rectangle selection.
 
 Current selectable project entities include:
 
