@@ -16,12 +16,17 @@ import type {
   BimCoreInstance,
   CameraOrientation,
   CardinalDirection,
+  DesignLayer,
   LoadedModelInfo,
 } from "@framelogic/bim-core";
 
 import {
   ModelPanel,
 } from "./components/ModelPanel";
+
+import {
+  LayerPanel,
+} from "./components/LayerPanel";
 
 import {
   ViewCube,
@@ -196,6 +201,24 @@ function handleCardinalDirection(
 
 
   const [
+    layers,
+    setLayers,
+  ] =
+    useState<
+      DesignLayer[]
+    >([]);
+
+
+  const [
+    activeLayerId,
+    setActiveLayerId,
+  ] =
+    useState(
+      "reference-cad",
+    );
+
+
+  const [
     activePiece,
     setActivePiece,
   ] =
@@ -287,6 +310,253 @@ catch (
 
 
   // ==========================================================
+  // REFRESH LAYERS
+  // ==========================================================
+
+  function refreshLayers(): void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      setLayers(
+        [],
+      );
+
+      return;
+
+    }
+
+
+    setLayers(
+      bimCore.getDesignLayers(),
+    );
+
+
+    setActiveLayerId(
+      bimCore.getActiveDesignLayerId(),
+    );
+
+
+    refreshModels();
+
+  }
+
+
+  // ==========================================================
+  // LAYER ACTIONS
+  // ==========================================================
+
+  function handleCreateLayer(): void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      return;
+
+    }
+
+
+    const name =
+      window.prompt(
+        "Nombre del layer:",
+        "",
+      )
+        ?.trim();
+
+
+    if (
+      !name
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      const layer =
+        bimCore.createDesignLayer({
+          name,
+        });
+
+
+      bimCore.setActiveDesignLayer(
+        layer.id,
+      );
+
+    }
+    catch (
+      error
+    ) {
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
+
+    }
+
+  }
+
+
+  function handleSetActiveLayer(
+    layerId: string,
+  ): void {
+
+    bimCoreRef.current
+      ?.setActiveDesignLayer(
+        layerId,
+      );
+
+  }
+
+
+  function handleLayerVisibilityChange(
+    layerId: string,
+    visible: boolean,
+  ): void {
+
+    bimCoreRef.current
+      ?.updateDesignLayer(
+        layerId,
+        {
+          visible,
+        },
+      );
+
+  }
+
+
+  function handleLayerLockChange(
+    layerId: string,
+    locked: boolean,
+  ): void {
+
+    bimCoreRef.current
+      ?.updateDesignLayer(
+        layerId,
+        {
+          locked,
+        },
+      );
+
+  }
+
+
+  function handleLayerSnapChange(
+    layerId: string,
+    snapEnabled: boolean,
+  ): void {
+
+    bimCoreRef.current
+      ?.updateDesignLayer(
+        layerId,
+        {
+          snapEnabled,
+        },
+      );
+
+  }
+
+
+  function handleRemoveLayer(
+    layerId: string,
+  ): void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      bimCore.removeDesignLayer(
+        layerId,
+      );
+
+    }
+    catch (
+      error
+    ) {
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
+
+    }
+
+  }
+
+
+  function handleAssignSelectionToLayer(
+    layerId: string,
+  ): void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      bimCore
+        .assignSelectedPieceInstancesToLayer(
+          layerId,
+        );
+
+    }
+    catch (
+      error
+    ) {
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
+
+    }
+
+  }
+
+
+  // ==========================================================
   // INITIALIZE BIM CORE
   // ==========================================================
 
@@ -311,6 +581,12 @@ catch (
   
   
       let unsubscribeCamera:
+        (() => void)
+        | null =
+          null;
+
+
+      let unsubscribeLayers:
         (() => void)
         | null =
           null;
@@ -342,6 +618,48 @@ catch (
             setModels(
               instance.getLoadedModels(),
             );
+
+
+            setLayers(
+              instance.getDesignLayers(),
+            );
+
+
+            setActiveLayerId(
+              instance.getActiveDesignLayerId(),
+            );
+
+
+            unsubscribeLayers =
+              instance.subscribeDesignLayers(
+                () => {
+
+                  if (
+                    disposed
+                  ) {
+
+                    return;
+
+                  }
+
+
+                  setLayers(
+                    instance.getDesignLayers(),
+                  );
+
+
+                  setActiveLayerId(
+                    instance.getActiveDesignLayerId(),
+                  );
+
+
+                  setModels(
+                    instance.getLoadedModels(),
+                  );
+
+                },
+              );
+
 
             setProjectionMode(
               instance.getCameraProjectionMode(),
@@ -397,6 +715,10 @@ catch (
   
   
         unsubscribeCamera
+          ?.();
+
+
+        unsubscribeLayers
           ?.();
   
   
@@ -1023,6 +1345,56 @@ catch (
 
 
   // ==========================================================
+  // REFERENCE MODEL LAYER
+  // ==========================================================
+
+  function handleModelLayerChange(
+    id: string,
+    layerId: string,
+  ): void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      bimCore.setReferenceModelLayer(
+        id,
+        layerId,
+      );
+
+
+      refreshModels();
+
+    }
+    catch (
+      error
+    ) {
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
+
+    }
+
+  }
+
+
+  // ==========================================================
   // REMOVE REFERENCE MODEL
   // ==========================================================
 
@@ -1273,6 +1645,51 @@ catch (
 
 
       {/* ====================================================
+          LAYER PANEL
+          ==================================================== */}
+
+      <LayerPanel
+
+        layers={
+          layers
+        }
+
+        activeLayerId={
+          activeLayerId
+        }
+
+        onSetActive={
+          handleSetActiveLayer
+        }
+
+        onVisibilityChange={
+          handleLayerVisibilityChange
+        }
+
+        onLockChange={
+          handleLayerLockChange
+        }
+
+        onSnapChange={
+          handleLayerSnapChange
+        }
+
+        onCreate={
+          handleCreateLayer
+        }
+
+        onRemove={
+          handleRemoveLayer
+        }
+
+        onAssignSelection={
+          handleAssignSelectionToLayer
+        }
+
+      />
+
+
+      {/* ====================================================
           REFERENCE MODEL PANEL
           ==================================================== */}
 
@@ -1282,8 +1699,16 @@ catch (
           models
         }
 
+        layers={
+          layers
+        }
+
         onVisibilityChange={
           handleVisibilityChange
+        }
+
+        onLayerChange={
+          handleModelLayerChange
         }
 
         onRemove={
