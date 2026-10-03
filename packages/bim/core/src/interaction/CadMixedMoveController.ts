@@ -32,6 +32,10 @@ import type {
   CadUnifiedSelectionController,
 } from "./CadUnifiedSelectionController";
 
+import type {
+  DesignSelectionController,
+} from "./DesignSelectionController";
+
 
 interface PieceMoveState {
 
@@ -117,6 +121,10 @@ export class CadMixedMoveController {
     CadUnifiedSelectionController;
 
 
+  private readonly designSelection:
+    DesignSelectionController;
+
+
   private readonly history:
     CadHistoryController;
 
@@ -196,6 +204,9 @@ export class CadMixedMoveController {
     selection:
       CadUnifiedSelectionController,
 
+    designSelection:
+      DesignSelectionController,
+
     history:
       CadHistoryController,
 
@@ -227,6 +238,10 @@ export class CadMixedMoveController {
 
     this.selection =
       selection;
+
+
+    this.designSelection =
+      designSelection;
 
 
     this.history =
@@ -1181,7 +1196,8 @@ export class CadMixedMoveController {
     this.lineScene.sync();
 
 
-    this.designScene.sync();
+    this.designSelection
+      .refreshHelpers();
 
   }
 
@@ -1502,11 +1518,13 @@ export class CadMixedMoveController {
     }
 
 
-    this.designScene.sync();
-
     this.pointScene.sync();
 
     this.lineScene.sync();
+
+
+    this.designSelection
+      .refreshHelpers();
 
 
     if (
