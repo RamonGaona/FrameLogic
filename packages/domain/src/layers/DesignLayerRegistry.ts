@@ -1,7 +1,5 @@
 import type {
   DesignLayer,
-  DesignLayerMember,
-  DesignLayerMemberType,
 } from "./DesignLayer";
 
 import {
@@ -41,29 +39,12 @@ export type DesignLayerListener =
   () => void;
 
 
-function memberKey(
-  type: DesignLayerMemberType,
-  id: string,
-): string {
-
-  return `${type}:${id}`;
-
-}
-
-
 export class DesignLayerRegistry {
 
   private readonly layers =
     new Map<
       string,
       DesignLayer
-    >();
-
-
-  private readonly memberLayers =
-    new Map<
-      string,
-      string
     >();
 
 
@@ -96,19 +77,14 @@ export class DesignLayerRegistry {
       {
         id:
           DEFAULT_DESIGN_LAYER_IDS.GEOMETRY,
-
         name:
           "Geometry",
-
         visible:
           true,
-
         locked:
           false,
-
         snapEnabled:
           true,
-
         system:
           true,
       },
@@ -120,19 +96,14 @@ export class DesignLayerRegistry {
       {
         id:
           DEFAULT_DESIGN_LAYER_IDS.REFERENCE_CAD,
-
         name:
           "Reference CAD",
-
         visible:
           true,
-
         locked:
           false,
-
         snapEnabled:
           true,
-
         system:
           true,
       },
@@ -144,19 +115,14 @@ export class DesignLayerRegistry {
       {
         id:
           DEFAULT_DESIGN_LAYER_IDS.SNAP_MANUAL,
-
         name:
           "Snap Manual",
-
         visible:
           true,
-
         locked:
           false,
-
         snapEnabled:
           true,
-
         system:
           true,
       },
@@ -168,19 +134,14 @@ export class DesignLayerRegistry {
       {
         id:
           DEFAULT_DESIGN_LAYER_IDS.REFERENCE_AXES,
-
         name:
           "Reference Axes",
-
         visible:
           true,
-
         locked:
           false,
-
         snapEnabled:
           true,
-
         system:
           true,
       },
@@ -192,19 +153,14 @@ export class DesignLayerRegistry {
       {
         id:
           DEFAULT_DESIGN_LAYER_IDS.EXTERNAL_REFERENCES,
-
         name:
           "External References",
-
         visible:
           true,
-
         locked:
           true,
-
         snapEnabled:
           true,
-
         system:
           true,
       },
@@ -523,235 +479,11 @@ export class DesignLayerRegistry {
 
 
   // ==========================================================
-  // MEMBERSHIP
-  // ==========================================================
-
-  assign(
-    member: DesignLayerMember,
-    layerId: string,
-  ): void {
-
-    if (
-      !this.layers.has(
-        layerId,
-      )
-    ) {
-
-      throw new Error(
-        `Cannot assign object to layer "${layerId}" because the layer does not exist.`,
-      );
-
-    }
-
-
-    this.memberLayers.set(
-      memberKey(
-        member.type,
-        member.id,
-      ),
-      layerId,
-    );
-
-
-    this.notify();
-
-  }
-
-
-  unassign(
-    type: DesignLayerMemberType,
-    id: string,
-  ): boolean {
-
-    const removed =
-      this.memberLayers.delete(
-        memberKey(
-          type,
-          id,
-        ),
-      );
-
-
-    if (
-      removed
-    ) {
-
-      this.notify();
-
-    }
-
-
-    return removed;
-
-  }
-
-
-  getLayerIdFor(
-    type: DesignLayerMemberType,
-    id: string,
-  ):
-    string
-    | undefined {
-
-    return this.memberLayers.get(
-      memberKey(
-        type,
-        id,
-      ),
-    );
-
-  }
-
-
-  getLayerFor(
-    type: DesignLayerMemberType,
-    id: string,
-  ):
-    DesignLayer
-    | undefined {
-
-    const layerId =
-      this.getLayerIdFor(
-        type,
-        id,
-      );
-
-
-    if (
-      !layerId
-    ) {
-
-      return undefined;
-
-    }
-
-
-    return this.layers.get(
-      layerId,
-    );
-
-  }
-
-
-  getMembers(
-    layerId: string,
-  ):
-    DesignLayerMember[] {
-
-    const members:
-      DesignLayerMember[] =
-        [];
-
-
-    for (
-      const [
-        key,
-        currentLayerId,
-      ]
-      of this.memberLayers
-    ) {
-
-      if (
-        currentLayerId
-        !== layerId
-      ) {
-
-        continue;
-
-      }
-
-
-      const separator =
-        key.indexOf(
-          ":",
-        );
-
-
-      if (
-        separator <= 0
-      ) {
-
-        continue;
-
-      }
-
-
-      members.push({
-        type:
-          key.slice(
-            0,
-            separator,
-          ) as DesignLayerMemberType,
-
-        id:
-          key.slice(
-            separator + 1,
-          ),
-      });
-
-    }
-
-
-    return members;
-
-  }
-
-
-  // ==========================================================
-  // EFFECTIVE FLAGS
-  // ==========================================================
-
-  isVisible(
-    type: DesignLayerMemberType,
-    id: string,
-  ): boolean {
-
-    return this.getLayerFor(
-      type,
-      id,
-    )?.visible
-      ?? true;
-
-  }
-
-
-  isLocked(
-    type: DesignLayerMemberType,
-    id: string,
-  ): boolean {
-
-    return this.getLayerFor(
-      type,
-      id,
-    )?.locked
-      ?? false;
-
-  }
-
-
-  isSnapEnabled(
-    type: DesignLayerMemberType,
-    id: string,
-  ): boolean {
-
-    return this.getLayerFor(
-      type,
-      id,
-    )?.snapEnabled
-      ?? true;
-
-  }
-
-
-  // ==========================================================
-  // REMOVE LAYER
+  // REMOVE
   // ==========================================================
 
   remove(
     id: string,
-    fallbackLayerId =
-      DEFAULT_DESIGN_LAYER_IDS
-        .GEOMETRY,
   ): boolean {
 
     const layer =
@@ -781,47 +513,13 @@ export class DesignLayerRegistry {
 
 
     if (
-      !this.layers.has(
-        fallbackLayerId,
-      )
-    ) {
-
-      throw new Error(
-        `Fallback layer "${fallbackLayerId}" does not exist.`,
-      );
-
-    }
-
-
-    for (
-      const [
-        key,
-        currentLayerId,
-      ]
-      of this.memberLayers
-    ) {
-
-      if (
-        currentLayerId === id
-      ) {
-
-        this.memberLayers.set(
-          key,
-          fallbackLayerId,
-        );
-
-      }
-
-    }
-
-
-    if (
       this.activeLayerIdValue
       === id
     ) {
 
       this.activeLayerIdValue =
-        fallbackLayerId;
+        DEFAULT_DESIGN_LAYER_IDS
+          .REFERENCE_CAD;
 
     }
 
@@ -888,7 +586,6 @@ export class DesignLayerRegistry {
 
     this.layers.clear();
 
-    this.memberLayers.clear();
 
     this.activeLayerIdValue =
       DEFAULT_DESIGN_LAYER_IDS
