@@ -594,6 +594,28 @@ catch (
   }
 
 
+  function handleStartPoint():
+    void {
+
+    const started =
+      bimCoreRef.current
+        ?.startPointCommand()
+      ?? false;
+
+
+    if (
+      !started
+    ) {
+
+      window.alert(
+        "No se pudo iniciar POINT. Revisa que el layer activo no esté bloqueado.",
+      );
+
+    }
+
+  }
+
+
   // ==========================================================
   // INITIALIZE BIM CORE
   // ==========================================================
@@ -1681,6 +1703,21 @@ catch (
               : "Importar pieza IFC"
           }
 
+        </button>
+
+
+        {/* --------------------------------------------------
+            POINT
+            -------------------------------------------------- */}
+
+        <button
+          type="button"
+          title="POINT · tecla P"
+          onClick={
+            handleStartPoint
+          }
+        >
+          POINT
         </button>
 
 
