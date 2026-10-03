@@ -1,6 +1,10 @@
 import * as THREE from "three";
 
 import type {
+  DesignModel,
+} from "@framelogic/domain";
+
+import type {
   DesignSceneController,
 } from "../design/DesignSceneController";
 
@@ -40,6 +44,10 @@ export class DesignSelectionController {
 
   private readonly designScene:
     DesignSceneController;
+
+
+  private readonly designModel:
+    DesignModel;
 
 
   // ==========================================================
@@ -135,6 +143,7 @@ export class DesignSelectionController {
     domElement: HTMLElement,
     cameraProvider: () => THREE.Camera,
     designScene: DesignSceneController,
+    designModel: DesignModel,
   ) {
 
     this.scene =
@@ -151,6 +160,10 @@ export class DesignSelectionController {
 
     this.designScene =
       designScene;
+
+
+    this.designModel =
+      designModel;
 
 
     this.domElement.addEventListener(
@@ -300,6 +313,17 @@ export class DesignSelectionController {
   ): void {
 
     if (
+      !this.isInstanceSelectable(
+        instanceId,
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    if (
       this.selectedIds.size === 1
       && this.selectedIds.has(
         instanceId,
@@ -333,6 +357,20 @@ export class DesignSelectionController {
   toggle(
     instanceId: string,
   ): void {
+
+    if (
+      !this.selectedIds.has(
+        instanceId,
+      )
+      && !this.isInstanceSelectable(
+        instanceId,
+      )
+    ) {
+
+      return;
+
+    }
+
 
     if (
       this.selectedIds.has(
@@ -412,6 +450,9 @@ export class DesignSelectionController {
 
       if (
         object
+        && this.isInstanceSelectable(
+          instanceId,
+        )
       ) {
 
         this.selectedIds.add(
@@ -602,9 +643,20 @@ export class DesignSelectionController {
     }
 
 
-    return this.findInstanceId(
-      intersections[0].object,
-    );
+    const instanceId =
+      this.findInstanceId(
+        intersections[0].object,
+      );
+
+
+    return (
+      instanceId
+      && this.isInstanceSelectable(
+        instanceId,
+      )
+    )
+      ? instanceId
+      : null;
 
   }
 
@@ -726,6 +778,9 @@ export class DesignSelectionController {
 
     if (
       !instanceId
+      || !this.isInstanceSelectable(
+        instanceId,
+      )
     ) {
 
       return;
@@ -760,6 +815,51 @@ export class DesignSelectionController {
     this.selectSingle(
       instanceId,
     );
+
+  }
+
+
+  // ==========================================================
+  // LAYER SELECTABILITY
+  // ==========================================================
+
+  private isInstanceSelectable(
+    instanceId: string,
+  ): boolean {
+
+    const instance =
+      this.designModel
+        .pieceInstances
+        .get(
+          instanceId,
+        );
+
+
+    if (
+      !instance
+    ) {
+
+      return false;
+
+    }
+
+
+    const layer =
+      this.designModel
+        .layers
+        .get(
+          instance.layerId,
+        );
+
+
+    return (
+      layer?.visible
+      ?? true
+    )
+      && !(
+        layer?.locked
+        ?? false
+      );
 
   }
 
