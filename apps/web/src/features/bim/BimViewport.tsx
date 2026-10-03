@@ -525,7 +525,7 @@ catch (
     try {
 
       bimCore
-        .assignSelectedPieceInstancesToLayer(
+        .assignCadSelectionToLayer(
           layerId,
         );
 
