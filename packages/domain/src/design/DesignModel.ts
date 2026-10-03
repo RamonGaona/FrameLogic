@@ -369,6 +369,44 @@ import {
           .GEOMETRY,
     ): boolean {
 
+      const layer =
+        this.layers.get(
+          layerId,
+        );
+
+
+      if (
+        !layer
+      ) {
+
+        return false;
+
+      }
+
+
+      if (
+        layer.system
+      ) {
+
+        throw new Error(
+          `System layer "${layer.name}" cannot be removed.`,
+        );
+
+      }
+
+
+      if (
+        layerId
+        === fallbackLayerId
+      ) {
+
+        throw new Error(
+          "A layer cannot use itself as its removal fallback.",
+        );
+
+      }
+
+
       if (
         !this.layers.get(
           fallbackLayerId,
