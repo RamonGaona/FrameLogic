@@ -83,7 +83,8 @@ export class DesignSnapController {
 
 
   private readonly designModel:
-    DesignModel;
+    DesignModel
+    | null;
 
 
   private readonly raycaster =
@@ -145,7 +146,7 @@ export class DesignSnapController {
     designScene:
       DesignSceneController,
 
-    designModel:
+    designModel?:
       DesignModel,
   ) {
 
@@ -162,7 +163,8 @@ export class DesignSnapController {
 
 
     this.designModel =
-      designModel;
+      designModel
+      ?? null;
 
 
     this.marker =
@@ -552,31 +554,37 @@ export class DesignSnapController {
       }
 
 
-      const instance =
-        this.designModel
-          .pieceInstances
-          .get(
-            instanceId,
-          );
-
-
-      const layer =
-        instance
-          ? this.designModel
-              .layers
-              .get(
-                instance.layerId,
-              )
-          : undefined;
-
-
       if (
-        !instance
-        || layer?.visible === false
-        || layer?.snapEnabled === false
+        this.designModel
       ) {
 
-        continue;
+        const instance =
+          this.designModel
+            .pieceInstances
+            .get(
+              instanceId,
+            );
+
+
+        const layer =
+          instance
+            ? this.designModel
+                .layers
+                .get(
+                  instance.layerId,
+                )
+            : undefined;
+
+
+        if (
+          !instance
+          || layer?.visible === false
+          || layer?.snapEnabled === false
+        ) {
+
+          continue;
+
+        }
 
       }
 
