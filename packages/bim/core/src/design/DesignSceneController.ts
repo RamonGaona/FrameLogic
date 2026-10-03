@@ -19,6 +19,16 @@ export class DesignSceneController {
     DesignModel;
 
 
+  private visibilityFilter:
+    (
+      (
+        instanceId: string,
+      ) => boolean
+    )
+    | null =
+      null;
+
+
   // ==========================================================
   // VISUAL PROTOTYPES
   //
@@ -60,6 +70,29 @@ export class DesignSceneController {
 
     this.designModel =
       designModel;
+
+  }
+
+
+  // ==========================================================
+  // VISIBILITY FILTER
+  // ==========================================================
+
+  setVisibilityFilter(
+    filter:
+      (
+        (
+          instanceId: string,
+        ) => boolean
+      )
+      | null,
+  ): void {
+
+    this.visibilityFilter =
+      filter;
+
+
+    this.sync();
 
   }
 
@@ -385,8 +418,17 @@ return Array.from(
 
 
       object.visible =
-        layer?.visible
-        ?? true;
+        (
+          layer?.visible
+          ?? true
+        )
+        && (
+          this.visibilityFilter
+            ?.(
+              instance.id,
+            )
+          ?? true
+        );
 
 
       // ------------------------------------------------------
