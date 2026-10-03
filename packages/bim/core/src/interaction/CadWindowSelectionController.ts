@@ -277,6 +277,20 @@ export class CadWindowSelectionController {
       }
 
 
+      /*
+       * Shift solo no inicia ninguna operación
+       * de selección.
+       */
+      if (
+        event.shiftKey
+        && !event.ctrlKey
+      ) {
+
+        return;
+
+      }
+
+
       const pieceId =
         this.designSelection
           .getInstanceIdAt(
