@@ -123,6 +123,18 @@ import {
 } from "../interaction/CadLineMoveController";
 
 import {
+  CadUnifiedSelectionController,
+} from "../interaction/CadUnifiedSelectionController";
+
+import type {
+  CadUnifiedSelectionListener,
+} from "../interaction/CadUnifiedSelectionController";
+
+import {
+  CadMixedMoveController,
+} from "../interaction/CadMixedMoveController";
+
+import {
   CadWindowSelectionController,
 } from "../interaction/CadWindowSelectionController";
 
@@ -169,6 +181,14 @@ import {
 import {
   DeleteCadLineCommand,
 } from "../commands/DeleteCadLineCommand";
+
+import {
+  MoveMixedSelectionCommand,
+} from "../commands/MoveMixedSelectionCommand";
+
+import {
+  DeleteMixedSelectionCommand,
+} from "../commands/DeleteMixedSelectionCommand";
 
 export type StandardView =
   | "TOP"
@@ -883,6 +903,14 @@ const cadLineSelection =
   );
 
 
+const cadSelection =
+  new CadUnifiedSelectionController(
+    designSelection,
+    cadPointSelection,
+    cadLineSelection,
+  );
+
+
 designSelection
   .setExternalSelectionClearHandler(
     () => {
@@ -1168,6 +1196,33 @@ const cadLineMove =
   );
 
 
+// ==========================================================
+// MIXED CAD MOVE
+// ==========================================================
+
+const cadMixedMove =
+  new CadMixedMoveController(
+    world.scene.three,
+    world.camera.three,
+    canvas,
+    designModel,
+    designScene,
+    cadPointScene,
+    cadLineScene,
+    cadSelection,
+    designSelection,
+    cadHistory,
+    (
+      enabled,
+    ) => {
+
+      world.camera.controls.enabled =
+        enabled;
+
+    },
+  );
+
+
   // ==========================================================
 // DESIGN TRANSFORM
 // ==========================================================
@@ -1287,6 +1342,19 @@ cadLineMove.setNumericAxisHandler(
 );
 
 
+cadMixedMove.setNumericAxisHandler(
+  (
+    axis,
+  ) => {
+
+    cadNumericInput.showMove(
+      axis,
+    );
+
+  },
+);
+
+
 designRotate.setNumericAxisHandler(
   (
     axis,
@@ -1306,6 +1374,22 @@ cadNumericInput.setMoveApplyHandler(
     first,
     second,
   ) => {
+
+    if (
+      cadMixedMove.isActive
+    ) {
+
+      cadMixedMove.applyNumericMove(
+        axis,
+        first,
+        second,
+      );
+
+
+      return;
+
+    }
+
 
     if (
       cadPointMove.isActive
@@ -1445,6 +1529,12 @@ const moveCadLineCommand =
   );
 
 
+const moveMixedSelectionCommand =
+  new MoveMixedSelectionCommand(
+    cadMixedMove,
+  );
+
+
 const deleteCadPointCommand =
   new DeleteCadPointCommand(
     designModel,
@@ -1458,6 +1548,20 @@ const deleteCadLineCommand =
   new DeleteCadLineCommand(
     designModel,
     cadLineScene,
+    cadLineSelection,
+    cadHistory,
+  );
+
+
+const deleteMixedSelectionCommand =
+  new DeleteMixedSelectionCommand(
+    designModel,
+    designScene,
+    cadPointScene,
+    cadLineScene,
+    cadSelection,
+    designSelection,
+    cadPointSelection,
     cadLineSelection,
     cadHistory,
   );
@@ -1539,6 +1643,32 @@ const unsubscribeCadLineSelection =
         selectedIds.length === 0
         && cadCommandManager.activeCommandId
           === "MOVE_LINE"
+      ) {
+
+        cadCommandManager.cancelActive();
+
+
+        cadNumericInput.hide();
+
+      }
+
+    },
+  );
+
+
+const unsubscribeCadUnifiedSelection =
+  cadSelection.subscribe(
+    (
+      state,
+    ) => {
+
+      if (
+        (
+          state.items.length === 0
+          || state.selectedTypeCount < 2
+        )
+        && cadCommandManager.activeCommandId
+          === "MOVE_MIXED"
       ) {
 
         cadCommandManager.cancelActive();
@@ -1877,9 +2007,8 @@ const handleCadKeyDown =
           selectedTypeCount > 1
         ) {
 
-          window.alert(
-            "La selección contiene distintos tipos de entidad. DELETE mixto todavía no está habilitado; selecciona un solo tipo.",
-          );
+          deleteMixedSelectionCommand
+            .execute();
 
 
           return;
@@ -2083,22 +2212,12 @@ const handleCadKeyDown =
           );
 
 
-      if (
-        selectedTypeCount > 1
-      ) {
-
-        window.alert(
-          "La selección contiene distintos tipos de entidad. MOVE mixto todavía no está habilitado; selecciona un solo tipo.",
-        );
-
-
-        return;
-
-      }
-
-
       const started =
-        selectedLineCount > 0
+        selectedTypeCount > 1
+          ? cadCommandManager.start(
+              moveMixedSelectionCommand,
+            )
+          : selectedLineCount > 0
           ? cadCommandManager.start(
               moveCadLineCommand,
             )
@@ -2337,6 +2456,11 @@ canvas.addEventListener(
 
 
       cadLineMove.setCamera(
+        camera.three,
+      );
+
+
+      cadMixedMove.setCamera(
         camera.three,
       );
 
@@ -4070,20 +4194,16 @@ function startMoveCommand():
       );
 
 
-  if (
-    selectedTypeCount > 1
-  ) {
-
-    return false;
-
-  }
-
-
-  return selectedLineCount > 0
+  return selectedTypeCount > 1
     ? cadCommandManager
         .start(
-          moveCadLineCommand,
+          moveMixedSelectionCommand,
         )
+    : selectedLineCount > 0
+      ? cadCommandManager
+          .start(
+            moveCadLineCommand,
+          )
     : selectedPointCount > 0
       ? cadCommandManager
           .start(
@@ -4179,7 +4299,8 @@ function deleteSelectedPieceInstances():
     selectedTypeCount > 1
   ) {
 
-    return false;
+    return deleteMixedSelectionCommand
+      .execute();
 
   }
 
@@ -4291,6 +4412,9 @@ function dispose(): void {
   unsubscribeCadLineSelection();
 
 
+  unsubscribeCadUnifiedSelection();
+
+
   unsubscribeDesignLayers();
 
 
@@ -4337,6 +4461,9 @@ function dispose(): void {
   cadLineMove.dispose();
 
 
+  cadMixedMove.dispose();
+
+
   cadWorkPlaneEdit.dispose();
 
 
@@ -4350,6 +4477,9 @@ function dispose(): void {
 
 
   cadWindowSelection.dispose();
+
+
+  cadSelection.dispose();
 
 
   cadLineSelection.dispose();
@@ -4560,6 +4690,8 @@ cadPointSelection,
 
 cadLineSelection,
 
+cadSelection,
+
 cadWindowSelection,
 
 getSelectedCadLineIds,
@@ -4613,6 +4745,8 @@ designTransform,
 cadPointMove,
 
 cadLineMove,
+
+cadMixedMove,
 
 designRotate,
 
