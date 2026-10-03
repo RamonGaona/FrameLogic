@@ -664,6 +664,37 @@ export class DesignTransformController {
       of selectedIds
     ) {
 
+      const instance =
+        this.designModel
+          .pieceInstances
+          .get(
+            instanceId,
+          );
+
+
+      const layer =
+        instance
+          ? this.designModel
+              .layers
+              .get(
+                instance.layerId,
+              )
+          : undefined;
+
+
+      if (
+        !instance
+        || layer?.visible === false
+        || layer?.locked === true
+      ) {
+
+        this.transformedObjects.clear();
+
+        return false;
+
+      }
+
+
       const object =
         this.designScene
           .getInstanceObject(
