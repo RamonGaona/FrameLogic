@@ -19,6 +19,17 @@ export interface LoadedModelInfo {
 
   readonly role: ModelRole;
 
+  /**
+   * Capa del proyecto a la que pertenece
+   * este modelo colocado.
+   */
+  readonly layerId: string;
+
+  /**
+   * Visibilidad individual del modelo.
+   * La visibilidad efectiva también depende
+   * de la capa.
+   */
   readonly visible: boolean;
 
 }
