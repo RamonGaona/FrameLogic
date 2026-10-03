@@ -157,3 +157,24 @@ export type {
   CadPointPosition,
   RegisterCadPointInput,
 } from "@framelogic/domain";
+
+
+export {
+  CadPointSelectionController,
+} from "./interaction/CadPointSelectionController";
+
+export type {
+  CadPointSelectionListener,
+} from "./interaction/CadPointSelectionController";
+
+export {
+  CadPointMoveController,
+} from "./interaction/CadPointMoveController";
+
+export {
+  MoveCadPointCommand,
+} from "./commands/MoveCadPointCommand";
+
+export {
+  DeleteCadPointCommand,
+} from "./commands/DeleteCadPointCommand";
