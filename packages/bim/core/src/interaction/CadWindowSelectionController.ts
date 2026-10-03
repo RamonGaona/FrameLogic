@@ -13,6 +13,10 @@ import type {
 } from "./CadPointSelectionController";
 
 import type {
+  CadLineSelectionController,
+} from "./CadLineSelectionController";
+
+import type {
   DesignSelectionController,
 } from "./DesignSelectionController";
 
@@ -65,6 +69,10 @@ export class CadWindowSelectionController {
 
   private readonly pointSelection:
     CadPointSelectionController;
+
+
+  private readonly lineSelection:
+    CadLineSelectionController;
 
 
   private readonly setCameraEnabled:
@@ -162,6 +170,9 @@ export class CadWindowSelectionController {
     pointSelection:
       CadPointSelectionController,
 
+    lineSelection:
+      CadLineSelectionController,
+
     setCameraEnabled:
       (
         enabled: boolean,
@@ -190,6 +201,10 @@ export class CadWindowSelectionController {
 
     this.pointSelection =
       pointSelection;
+
+
+    this.lineSelection =
+      lineSelection;
 
 
     this.setCameraEnabled =
@@ -284,6 +299,12 @@ export class CadWindowSelectionController {
       );
 
 
+    this.lineSelection
+      .setEnabled(
+        true,
+      );
+
+
     this.setCameraEnabled(
       true,
     );
@@ -352,6 +373,12 @@ export class CadWindowSelectionController {
           );
 
 
+        this.lineSelection
+          .setEnabled(
+            true,
+          );
+
+
         this.setCameraEnabled(
           true,
         );
@@ -402,6 +429,14 @@ export class CadWindowSelectionController {
           );
 
 
+      const lineId =
+        this.lineSelection
+          .getLineIdAt(
+            event.clientX,
+            event.clientY,
+          );
+
+
       /*
        * La primera esquina solo puede empezar
        * desde espacio vacío.
@@ -409,6 +444,7 @@ export class CadWindowSelectionController {
       if (
         pieceId
         || pointId
+        || lineId
       ) {
 
         return;
@@ -637,6 +673,12 @@ export class CadWindowSelectionController {
         );
 
 
+      this.lineSelection
+        .setEnabled(
+          false,
+        );
+
+
       this.setCameraEnabled(
         false,
       );
@@ -811,6 +853,106 @@ export class CadWindowSelectionController {
     }
 
 
+    const lineIds:
+      string[] =
+        [];
+
+
+    for (
+      const line
+      of this.designModel
+        .cadLines
+        .getAll()
+    ) {
+
+      const layer =
+        this.designModel
+          .layers
+          .get(
+            line.layerId,
+          );
+
+
+      if (
+        layer?.visible === false
+        || layer?.locked === true
+      ) {
+
+        continue;
+
+      }
+
+
+      const start =
+        this.projectPoint(
+          new THREE.Vector3(
+            line.start.x,
+            line.start.y,
+            line.start.z,
+          ),
+          camera,
+          viewportRect,
+        );
+
+
+      const end =
+        this.projectPoint(
+          new THREE.Vector3(
+            line.end.x,
+            line.end.y,
+            line.end.z,
+          ),
+          camera,
+          viewportRect,
+        );
+
+
+      if (
+        !start
+        || !end
+      ) {
+
+        continue;
+
+      }
+
+
+      const matches =
+        direction === "WINDOW"
+          ? (
+              this.containsPoint(
+                selectionRect,
+                start.x,
+                start.y,
+              )
+              && this.containsPoint(
+                selectionRect,
+                end.x,
+                end.y,
+              )
+            )
+          : this.segmentIntersectsRect(
+              selectionRect,
+              start.x,
+              start.y,
+              end.x,
+              end.y,
+            );
+
+
+      if (
+        matches
+      ) {
+
+        lineIds.push(
+          line.id,
+        );
+
+      }
+
+    }
+
+
     const currentPieceIds =
       this.designSelection
         .getSelectedIds();
@@ -818,6 +960,11 @@ export class CadWindowSelectionController {
 
     const currentPointIds =
       this.pointSelection
+        .getSelectedIds();
+
+
+    const currentLineIds =
+      this.lineSelection
         .getSelectedIds();
 
 
@@ -835,6 +982,13 @@ export class CadWindowSelectionController {
       );
 
 
+    const finalLineIds =
+      this.applySelectionOperation(
+        currentLineIds,
+        lineIds,
+      );
+
+
     this.designSelection
       .setSelection(
         finalPieceIds,
@@ -844,6 +998,13 @@ export class CadWindowSelectionController {
     this.pointSelection
       .setSelection(
         finalPointIds,
+        true,
+      );
+
+
+    this.lineSelection
+      .setSelection(
+        finalLineIds,
         true,
       );
 
@@ -1287,6 +1448,175 @@ export class CadWindowSelectionController {
         < second.top
       || first.top
         > second.bottom
+    );
+
+  }
+
+
+  private segmentIntersectsRect(
+    rect:
+      ScreenRect,
+
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+  ):
+    boolean {
+
+    if (
+      this.containsPoint(
+        rect,
+        ax,
+        ay,
+      )
+      || this.containsPoint(
+        rect,
+        bx,
+        by,
+      )
+    ) {
+
+      return true;
+
+    }
+
+
+    return (
+      this.segmentsIntersect(
+        ax,
+        ay,
+        bx,
+        by,
+        rect.left,
+        rect.top,
+        rect.right,
+        rect.top,
+      )
+      || this.segmentsIntersect(
+        ax,
+        ay,
+        bx,
+        by,
+        rect.right,
+        rect.top,
+        rect.right,
+        rect.bottom,
+      )
+      || this.segmentsIntersect(
+        ax,
+        ay,
+        bx,
+        by,
+        rect.right,
+        rect.bottom,
+        rect.left,
+        rect.bottom,
+      )
+      || this.segmentsIntersect(
+        ax,
+        ay,
+        bx,
+        by,
+        rect.left,
+        rect.bottom,
+        rect.left,
+        rect.top,
+      )
+    );
+
+  }
+
+
+  private segmentsIntersect(
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    cx: number,
+    cy: number,
+    dx: number,
+    dy: number,
+  ):
+    boolean {
+
+    const cross =
+      (
+        ux: number,
+        uy: number,
+        vx: number,
+        vy: number,
+      ):
+        number =>
+          ux * vy
+          - uy * vx;
+
+
+    const rX =
+      bx - ax;
+
+    const rY =
+      by - ay;
+
+    const sX =
+      dx - cx;
+
+    const sY =
+      dy - cy;
+
+
+    const denominator =
+      cross(
+        rX,
+        rY,
+        sX,
+        sY,
+      );
+
+
+    const qX =
+      cx - ax;
+
+    const qY =
+      cy - ay;
+
+
+    if (
+      Math.abs(
+        denominator,
+      ) <= 1e-12
+    ) {
+
+      return false;
+
+    }
+
+
+    const t =
+      cross(
+        qX,
+        qY,
+        sX,
+        sY,
+      )
+      / denominator;
+
+
+    const u =
+      cross(
+        qX,
+        qY,
+        rX,
+        rY,
+      )
+      / denominator;
+
+
+    return (
+      t >= 0
+      && t <= 1
+      && u >= 0
+      && u <= 1
     );
 
   }
