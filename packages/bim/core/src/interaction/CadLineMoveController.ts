@@ -885,21 +885,41 @@ export class CadLineMoveController {
 
 
       /*
-       * El centro XYZ mueve únicamente el punto base
-       * del gizmo. No traslada las CadLine seleccionadas.
+       * El centro XYZ ya no desplaza libremente el pivote.
+       * Se conserva la posición inicial y al soltar queda
+       * armado para que el siguiente clic sobre un SNAP
+       * coloque el gizmo exactamente en ese punto 3D.
        */
       if (
         this.currentAxis
-        !== "XYZ"
+        === "XYZ"
       ) {
 
-        this.applyDelta(
-          this.lineSelection
-            .getSelectedIds(),
-          delta,
+        this.pivot.position.copy(
+          this.dragStartPivot,
         );
 
+
+        this.pivot.updateMatrixWorld(
+          true,
+        );
+
+
+        this.previousPivot.copy(
+          this.dragStartPivot,
+        );
+
+
+        return;
+
       }
+
+
+      this.applyDelta(
+        this.lineSelection
+          .getSelectedIds(),
+        delta,
+      );
 
 
       this.previousPivot.copy(
