@@ -1366,6 +1366,24 @@ const handleCadKeyDown =
     ) {
 
       if (
+        cadWindowSelection.isActive
+      ) {
+
+        event.preventDefault();
+
+
+        event.stopPropagation();
+
+
+        cadWindowSelection.cancel();
+
+
+        return;
+
+      }
+
+
+      if (
         cadWorkPlaneEdit.isActive
       ) {
 
