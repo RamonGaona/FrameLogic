@@ -21,6 +21,10 @@ import type {
 } from "./DesignSelectionController";
 
 import type {
+  CadPointSelectionController,
+} from "./CadPointSelectionController";
+
+import type {
   DesignSnapController,
 } from "./DesignSnapController";
 
@@ -57,6 +61,10 @@ export class CadPointPlacementController {
 
   private readonly selection:
     DesignSelectionController;
+
+
+  private readonly pointSelection:
+    CadPointSelectionController;
 
 
   private active =
@@ -103,6 +111,9 @@ export class CadPointPlacementController {
 
     selection:
       DesignSelectionController,
+
+    pointSelection:
+      CadPointSelectionController,
   ) {
 
     this.domElement =
@@ -135,6 +146,10 @@ export class CadPointPlacementController {
 
     this.selection =
       selection;
+
+
+    this.pointSelection =
+      pointSelection;
 
 
     this.domElement.addEventListener(
@@ -201,6 +216,11 @@ export class CadPointPlacementController {
     );
 
 
+    this.pointSelection.setEnabled(
+      false,
+    );
+
+
     return true;
 
   }
@@ -218,6 +238,11 @@ export class CadPointPlacementController {
 
 
     this.selection.setEnabled(
+      true,
+    );
+
+
+    this.pointSelection.setEnabled(
       true,
     );
 
