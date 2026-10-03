@@ -20,6 +20,7 @@ import type {
   CardinalDirection,
   DesignLayer,
   LoadedModelInfo,
+  PieceDefinitionPreparationState,
 } from "@framelogic/bim-core";
 
 import {
@@ -255,6 +256,30 @@ function handleCardinalDirection(
       ActivePieceInfo
       | null
     >(null);
+
+
+  const [
+    piecePreparation,
+    setPiecePreparation,
+  ] =
+    useState<
+      PieceDefinitionPreparationState
+    >({
+      active:
+        false,
+      instanceId:
+        null,
+      definitionId:
+        null,
+      code:
+        null,
+      name:
+        null,
+      snapCount:
+        0,
+      axisCount:
+        0,
+    });
 
     const [
       placingPiece,
@@ -548,6 +573,203 @@ catch (
 
 
   // ==========================================================
+  // PIECE DEFINITION PREPARATION
+  // ==========================================================
+
+  function handleStartPiecePreparation():
+    void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      setPiecePreparation(
+        bimCore
+          .startPieceDefinitionPreparation(),
+      );
+
+    }
+    catch (
+      error
+    ) {
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
+
+    }
+
+  }
+
+
+  function handleStopPiecePreparation():
+    void {
+
+    bimCoreRef.current
+      ?.stopPieceDefinitionPreparation();
+
+  }
+
+
+  function handleSetPreparedPieceOrigin():
+    void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      setPiecePreparation(
+        bimCore
+          .setPreparedPieceOriginFromSelectedPoint(),
+      );
+
+    }
+    catch (
+      error
+    ) {
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
+
+    }
+
+  }
+
+
+  function handleAddPreparedPieceSnaps():
+    void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      const added =
+        bimCore
+          .addPreparedPieceSnapsFromSelection();
+
+
+      if (
+        added < 1
+      ) {
+
+        window.alert(
+          "No se agregó ningún SNAP nuevo. Puede que el punto ya exista en la definición.",
+        );
+
+      }
+
+    }
+    catch (
+      error
+    ) {
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
+
+    }
+
+  }
+
+
+  function handleAddPreparedPieceAxes():
+    void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      const added =
+        bimCore
+          .addPreparedPieceAxesFromSelection();
+
+
+      if (
+        added < 1
+      ) {
+
+        window.alert(
+          "No se agregó ningún eje de referencia.",
+        );
+
+      }
+
+    }
+    catch (
+      error
+    ) {
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
+
+    }
+
+  }
+
+
+  // ==========================================================
   // CAD WORKPLANE
   // ==========================================================
 
@@ -684,6 +906,12 @@ catch (
         (() => void)
         | null =
           null;
+
+
+      let unsubscribePiecePreparation:
+        (() => void)
+        | null =
+          null;
   
   
       void createBimCore(
@@ -814,6 +1042,36 @@ catch (
               );
 
 
+            setPiecePreparation(
+              instance
+                .getPieceDefinitionPreparationState(),
+            );
+
+
+            unsubscribePiecePreparation =
+              instance
+                .subscribePieceDefinitionPreparation(
+                  (
+                    state,
+                  ) => {
+
+                    if (
+                      disposed
+                    ) {
+
+                      return;
+
+                    }
+
+
+                    setPiecePreparation(
+                      state,
+                    );
+
+                  },
+                );
+
+
             setProjectionMode(
               instance.getCameraProjectionMode(),
             );
@@ -880,6 +1138,10 @@ catch (
 
 
         unsubscribeWorkPlaneEdit
+          ?.();
+
+
+        unsubscribePiecePreparation
           ?.();
   
   
@@ -1726,6 +1988,83 @@ catch (
           }
 
         </button>
+
+
+        {/* --------------------------------------------------
+            PIECE DEFINITION PREPARATION
+            -------------------------------------------------- */}
+
+        <button
+          type="button"
+          title="Selecciona una sola pieza y entra en modo de preparación"
+          onClick={
+            handleStartPiecePreparation
+          }
+        >
+          Preparar pieza
+        </button>
+
+
+        {
+          piecePreparation.active
+          && (
+            <>
+              <span
+                title={
+                  piecePreparation.name
+                  ?? undefined
+                }
+              >
+                {
+                  `Prep: ${piecePreparation.code ?? ""} · ${piecePreparation.snapCount} SNAP · ${piecePreparation.axisCount} ejes`
+                }
+              </span>
+
+
+              <button
+                type="button"
+                title="Selecciona exactamente un CadPoint y úsalo como origen local de la pieza"
+                onClick={
+                  handleSetPreparedPieceOrigin
+                }
+              >
+                Origen ← punto
+              </button>
+
+
+              <button
+                type="button"
+                title="Convierte los CadPoint seleccionados en SNAPs persistentes de la pieza"
+                onClick={
+                  handleAddPreparedPieceSnaps
+                }
+              >
+                Punto → SNAP
+              </button>
+
+
+              <button
+                type="button"
+                title="Convierte las CadLine seleccionadas en ejes de referencia persistentes"
+                onClick={
+                  handleAddPreparedPieceAxes
+                }
+              >
+                Línea → eje
+              </button>
+
+
+              <button
+                type="button"
+                onClick={
+                  handleStopPiecePreparation
+                }
+              >
+                Salir prep
+              </button>
+            </>
+          )
+        }
 
 
         {/* --------------------------------------------------
