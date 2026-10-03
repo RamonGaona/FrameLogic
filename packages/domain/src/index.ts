@@ -67,8 +67,6 @@ export type {
 
 export type {
   DesignLayer,
-  DesignLayerMember,
-  DesignLayerMemberType,
 } from "./layers/DesignLayer";
 
 export {
