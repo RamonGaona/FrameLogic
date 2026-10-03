@@ -489,12 +489,28 @@ export class CadWorkPlaneEditController {
       "";
 
 
-    this.selection.setEnabled(
-      true,
-    );
-
-
     this.notify();
+
+
+    window.setTimeout(
+      () => {
+
+        if (
+          this.disposed
+        ) {
+
+          return;
+
+        }
+
+
+        this.selection.setEnabled(
+          true,
+        );
+
+      },
+      0,
+    );
 
   }
 
