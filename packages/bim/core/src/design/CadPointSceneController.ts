@@ -22,6 +22,12 @@ export class CadPointSceneController {
     >();
 
 
+  private readonly selectedIds =
+    new Set<
+      string
+    >();
+
+
   constructor(
     scene:
       THREE.Scene,
@@ -36,6 +42,54 @@ export class CadPointSceneController {
 
     this.designModel =
       designModel;
+
+  }
+
+
+  getPointObject(
+    id: string,
+  ):
+    THREE.Points
+    | undefined {
+
+    return this.pointObjects.get(
+      id,
+    );
+
+  }
+
+
+  getPointObjects():
+    THREE.Points[] {
+
+    return Array.from(
+      this.pointObjects.values(),
+    );
+
+  }
+
+
+  setSelectedIds(
+    ids:
+      readonly string[],
+  ): void {
+
+    this.selectedIds.clear();
+
+
+    for (
+      const id
+      of ids
+    ) {
+
+      this.selectedIds.add(
+        id,
+      );
+
+    }
+
+
+    this.updateSelectionAppearance();
 
   }
 
@@ -216,6 +270,59 @@ export class CadPointSceneController {
       object.updateMatrixWorld(
         true,
       );
+
+    }
+
+
+    this.updateSelectionAppearance();
+
+  }
+
+
+  private updateSelectionAppearance():
+    void {
+
+    for (
+      const [
+        id,
+        object,
+      ]
+      of this.pointObjects
+    ) {
+
+      const materials =
+        Array.isArray(
+          object.material,
+        )
+          ? object.material
+          : [
+              object.material,
+            ];
+
+
+      for (
+        const material
+        of materials
+      ) {
+
+        if (
+          material
+          instanceof THREE.PointsMaterial
+        ) {
+
+          material.size =
+            this.selectedIds.has(
+              id,
+            )
+              ? 14
+              : 8;
+
+          material.needsUpdate =
+            true;
+
+        }
+
+      }
 
     }
 
