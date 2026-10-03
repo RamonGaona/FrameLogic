@@ -371,6 +371,15 @@ async function setCardinalDirection(
     );
 
 
+  /*
+   * La rejilla visible del espacio CAD la controla
+   * CadWorkPlaneController. Ocultamos la antigua rejilla
+   * fija XZ para no mostrar dos planos simultáneamente.
+   */
+  helpers.grid.visible =
+    false;
+
+
   // ==========================================================
   // CAD WORKPLANE
   // ==========================================================
