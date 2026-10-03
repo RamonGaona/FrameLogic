@@ -91,6 +91,18 @@ import {
 } from "../interaction/CadPointPlacementController";
 
 import {
+  CadPointSelectionController,
+} from "../interaction/CadPointSelectionController";
+
+import type {
+  CadPointSelectionListener,
+} from "../interaction/CadPointSelectionController";
+
+import {
+  CadPointMoveController,
+} from "../interaction/CadPointMoveController";
+
+import {
   DesignSnapController,
 } from "../interaction/DesignSnapController";
 
@@ -113,6 +125,14 @@ import {
 import {
   PointCommand,
 } from "../commands/PointCommand";
+
+import {
+  MoveCadPointCommand,
+} from "../commands/MoveCadPointCommand";
+
+import {
+  DeleteCadPointCommand,
+} from "../commands/DeleteCadPointCommand";
 
 export type StandardView =
   | "TOP"
@@ -794,6 +814,21 @@ designScene.setVisibilityFilter(
 
 
 // ==========================================================
+// CAD POINT SELECTION
+// ==========================================================
+
+const cadPointSelection =
+  new CadPointSelectionController(
+    canvas,
+    () =>
+      world.camera.three,
+    designModel,
+    cadPointScene,
+    designSelection,
+  );
+
+
+// ==========================================================
 // CAD WORKPLANE EDIT
 // ==========================================================
 
@@ -803,6 +838,7 @@ const cadWorkPlaneEdit =
     cadWorkPlane,
     designSnap,
     designSelection,
+    cadPointSelection,
   );
 
 
@@ -895,6 +931,12 @@ function applyDesignLayerEffects(): void {
 
   }
 
+
+  cadPointSelection.setSelection(
+    cadPointSelection
+      .getSelectedIds(),
+  );
+
 }
 
 
@@ -931,6 +973,32 @@ const cadPointPlacement =
     cadWorkPlane,
     cadHistory,
     designSelection,
+    cadPointSelection,
+  );
+
+
+// ==========================================================
+// CAD POINT MOVE
+// ==========================================================
+
+const cadPointMove =
+  new CadPointMoveController(
+    world.scene.three,
+    world.camera.three,
+    canvas,
+    designModel,
+    cadPointScene,
+    cadPointSelection,
+    designSelection,
+    cadHistory,
+    (
+      enabled,
+    ) => {
+
+      world.camera.controls.enabled =
+        enabled;
+
+    },
   );
 
 
@@ -1027,6 +1095,19 @@ designTransform.setNumericAxisHandler(
 );
 
 
+cadPointMove.setNumericAxisHandler(
+  (
+    axis,
+  ) => {
+
+    cadNumericInput.showMove(
+      axis,
+    );
+
+  },
+);
+
+
 designRotate.setNumericAxisHandler(
   (
     axis,
@@ -1046,6 +1127,22 @@ cadNumericInput.setMoveApplyHandler(
     first,
     second,
   ) => {
+
+    if (
+      cadPointMove.isActive
+    ) {
+
+      cadPointMove.applyNumericMove(
+        axis,
+        first,
+        second,
+      );
+
+
+      return;
+
+    }
+
 
     designTransform.applyNumericMove(
       axis,
@@ -1117,6 +1214,21 @@ const pointCommand =
   );
 
 
+const moveCadPointCommand =
+  new MoveCadPointCommand(
+    cadPointMove,
+  );
+
+
+const deleteCadPointCommand =
+  new DeleteCadPointCommand(
+    designModel,
+    cadPointScene,
+    cadPointSelection,
+    cadHistory,
+  );
+
+
 const deleteCommand =
   new DeleteCommand(
     designModel,
@@ -1131,14 +1243,51 @@ const deleteCommand =
       selectedIds,
     ) => {
 
+      if (
+        selectedIds.length > 0
+      ) {
+
+        cadPointSelection
+          .clearSelection();
+
+      }
+
+
       /*
-       * Si desaparece la selección mientras
-       * existe una orden CAD activa,
-       * la orden también debe terminar.
+       * MOVE / ROTATE de piezas necesitan selección de piezas.
+       * POINT y MOVE_POINT tienen su propia selección.
        */
       if (
         selectedIds.length === 0
-        && cadCommandManager.hasActiveCommand
+        && (
+          cadCommandManager.activeCommandId
+            === "MOVE"
+          || cadCommandManager.activeCommandId
+            === "ROTATE"
+        )
+      ) {
+
+        cadCommandManager.cancelActive();
+
+
+        cadNumericInput.hide();
+
+      }
+
+    },
+  );
+
+
+const unsubscribeCadPointSelection =
+  cadPointSelection.subscribe(
+    (
+      selectedIds,
+    ) => {
+
+      if (
+        selectedIds.length === 0
+        && cadCommandManager.activeCommandId
+          === "MOVE_POINT"
       ) {
 
         cadCommandManager.cancelActive();
@@ -1247,6 +1396,27 @@ const handleCadKeyDown =
        * si no existe ningún comando,
        * limpia la selección.
        */
+
+      if (
+        cadPointSelection
+          .getSelectedIds()
+          .length > 0
+      ) {
+
+        event.preventDefault();
+
+
+        event.stopPropagation();
+
+
+        cadPointSelection
+          .clearSelection();
+
+
+        return;
+
+      }
+
 
       if (
         designSelection
@@ -1407,7 +1577,20 @@ const handleCadKeyDown =
 
       try {
 
-        deleteCommand.execute();
+        if (
+          cadPointSelection
+            .getSelectedIds()
+            .length > 0
+        ) {
+
+          deleteCadPointCommand.execute();
+
+        }
+        else {
+
+          deleteCommand.execute();
+
+        }
 
       }
       catch (
@@ -1503,9 +1686,15 @@ const handleCadKeyDown =
 
 
       const started =
-        cadCommandManager.start(
-          moveCommand,
-        );
+        cadPointSelection
+          .getSelectedIds()
+          .length > 0
+          ? cadCommandManager.start(
+              moveCadPointCommand,
+            )
+          : cadCommandManager.start(
+              moveCommand,
+            );
 
 
       if (
@@ -1702,6 +1891,11 @@ canvas.addEventListener(
 
 
       designTransform.setCamera(
+        camera.three,
+      );
+
+
+      cadPointMove.setCamera(
         camera.three,
       );
 
@@ -2726,6 +2920,28 @@ function cancelDesignPiecePlacement(): void {
     }
 
 
+    for (
+      const pointId
+      of cadPointSelection
+        .getSelectedIds()
+    ) {
+
+      if (
+        designModel
+          .updateCadPointLayer(
+            pointId,
+            layerId,
+          )
+      ) {
+
+        updated +=
+          1;
+
+      }
+
+    }
+
+
     applyDesignLayerEffects();
 
 
@@ -3108,6 +3324,10 @@ function selectPieceInstance(
   instanceId: string,
 ): void {
 
+  cadPointSelection
+    .clearSelection();
+
+
   designSelection
     .selectSingle(
       instanceId,
@@ -3138,6 +3358,41 @@ function subscribePieceSelection(
 ): () => void {
 
   return designSelection
+    .subscribe(
+      listener,
+    );
+
+}
+
+
+// ==========================================================
+// CAD POINT SELECTION
+// ==========================================================
+
+function getSelectedCadPointIds():
+  readonly string[] {
+
+  return cadPointSelection
+    .getSelectedIds();
+
+}
+
+
+function clearCadPointSelection():
+  void {
+
+  cadPointSelection
+    .clearSelection();
+
+}
+
+
+function subscribeCadPointSelection(
+  listener:
+    CadPointSelectionListener,
+): () => void {
+
+  return cadPointSelection
     .subscribe(
       listener,
     );
@@ -3242,10 +3497,17 @@ function startMoveCommand():
   cadWorkPlaneEdit.cancel();
 
 
-  return cadCommandManager
-    .start(
-      moveCommand,
-    );
+  return cadPointSelection
+    .getSelectedIds()
+    .length > 0
+      ? cadCommandManager
+          .start(
+            moveCadPointCommand,
+          )
+      : cadCommandManager
+          .start(
+            moveCommand,
+          );
 
 }
 
@@ -3277,6 +3539,18 @@ function deleteSelectedPieceInstances():
 
 
     cadNumericInput.hide();
+
+  }
+
+
+  if (
+    cadPointSelection
+      .getSelectedIds()
+      .length > 0
+  ) {
+
+    return deleteCadPointCommand
+      .execute();
 
   }
 
@@ -3362,6 +3636,9 @@ function dispose(): void {
   unsubscribeCadSelection();
 
 
+  unsubscribeCadPointSelection();
+
+
   unsubscribeDesignLayers();
 
 
@@ -3402,6 +3679,9 @@ function dispose(): void {
   designRotate.dispose();
 
 
+  cadPointMove.dispose();
+
+
   cadWorkPlaneEdit.dispose();
 
 
@@ -3409,6 +3689,9 @@ function dispose(): void {
 
 
   designSnap.dispose();
+
+
+  cadPointSelection.dispose();
 
 
   designSelection.dispose();
@@ -3602,6 +3885,14 @@ cadPointPlacement,
 // Selection
 designSelection,
 
+cadPointSelection,
+
+getSelectedCadPointIds,
+
+clearCadPointSelection,
+
+subscribeCadPointSelection,
+
 getSelectedPieceInstanceIds,
 
 selectPieceInstance,
@@ -3635,6 +3926,8 @@ cadHistory,
 
 // Transform
 designTransform,
+
+cadPointMove,
 
 designRotate,
 
