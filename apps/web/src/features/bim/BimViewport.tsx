@@ -14,6 +14,7 @@ import {
 
 import type {
   BimCoreInstance,
+  CadWorkPlaneMode,
   CameraOrientation,
   CardinalDirection,
   DesignLayer,
@@ -215,6 +216,17 @@ function handleCardinalDirection(
   ] =
     useState(
       "reference-cad",
+    );
+
+
+  const [
+    workPlaneMode,
+    setWorkPlaneMode,
+  ] =
+    useState<
+      CadWorkPlaneMode
+    >(
+      "XY",
     );
 
 
@@ -519,6 +531,32 @@ catch (
 
 
   // ==========================================================
+  // CAD WORKPLANE
+  // ==========================================================
+
+  function handleCycleWorkPlane(): void {
+
+    const bimCore =
+      bimCoreRef.current;
+
+
+    if (
+      !bimCore
+    ) {
+
+      return;
+
+    }
+
+
+    setWorkPlaneMode(
+      bimCore.cycleCadWorkPlane(),
+    );
+
+  }
+
+
+  // ==========================================================
   // INITIALIZE BIM CORE
   // ==========================================================
 
@@ -549,6 +587,12 @@ catch (
 
 
       let unsubscribeLayers:
+        (() => void)
+        | null =
+          null;
+
+
+      let unsubscribeWorkPlane:
         (() => void)
         | null =
           null;
@@ -623,6 +667,36 @@ catch (
               );
 
 
+            setWorkPlaneMode(
+              instance
+                .getCadWorkPlaneState()
+                .mode,
+            );
+
+
+            unsubscribeWorkPlane =
+              instance.subscribeCadWorkPlane(
+                (
+                  state,
+                ) => {
+
+                  if (
+                    disposed
+                  ) {
+
+                    return;
+
+                  }
+
+
+                  setWorkPlaneMode(
+                    state.mode,
+                  );
+
+                },
+              );
+
+
             setProjectionMode(
               instance.getCameraProjectionMode(),
             );
@@ -681,6 +755,10 @@ catch (
 
 
         unsubscribeLayers
+          ?.();
+
+
+        unsubscribeWorkPlane
           ?.();
   
   
@@ -1526,6 +1604,28 @@ catch (
               : "Importar pieza IFC"
           }
 
+        </button>
+
+
+        {/* --------------------------------------------------
+            WORKPLANE
+            -------------------------------------------------- */}
+
+        <button
+          type="button"
+          className={
+            workPlaneMode === "OFF"
+              ? "workplane-button workplane-button-off"
+              : "workplane-button"
+          }
+          title="Cambiar WorkPlane: XY → XZ → YZ → OFF"
+          onClick={
+            handleCycleWorkPlane
+          }
+        >
+          {
+            `WorkPlane: ${workPlaneMode}`
+          }
         </button>
 
 
