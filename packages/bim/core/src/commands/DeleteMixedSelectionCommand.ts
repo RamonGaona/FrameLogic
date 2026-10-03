@@ -1,4 +1,6 @@
 import type {
+  CadLine,
+  CadPoint,
   DesignModel,
   PieceInstance,
 } from "@framelogic/domain";
@@ -309,8 +311,9 @@ export class DeleteMixedSelectionCommand {
             .filter(
               (
                 point,
-              ) =>
-                point !== undefined,
+              ):
+                point is CadPoint =>
+                  point !== undefined,
             )
             .map(
               (
@@ -346,8 +349,9 @@ export class DeleteMixedSelectionCommand {
             .filter(
               (
                 line,
-              ) =>
-                line !== undefined,
+              ):
+                line is CadLine =>
+                  line !== undefined,
             )
             .map(
               (
