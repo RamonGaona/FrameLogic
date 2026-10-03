@@ -129,6 +129,39 @@ export class DeleteCommand {
       of selectedIds
     ) {
 
+      const instance =
+        this.designModel
+          .pieceInstances
+          .get(
+            instanceId,
+          );
+
+
+      if (
+        instance
+      ) {
+
+        const layer =
+          this.designModel
+            .layers
+            .get(
+              instance.layerId,
+            );
+
+
+        if (
+          layer?.locked
+        ) {
+
+          throw new Error(
+            `Cannot delete piece instance "${instanceId}" because layer "${layer.name}" is locked.`,
+          );
+
+        }
+
+      }
+
+
       const usedBy =
         this.designModel
           .assemblies
