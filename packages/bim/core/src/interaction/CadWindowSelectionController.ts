@@ -81,10 +81,37 @@ export class CadWindowSelectionController {
     false;
 
 
-  private pointerId:
+  /*
+   * Primer clic vacío:
+   * se registra como candidato.
+   *
+   * Si el usuario arrastra antes de soltar,
+   * el gesto pertenece a la cámara.
+   *
+   * Si hace clic y suelta sin arrastrar,
+   * queda fijada la primera esquina de selección.
+   */
+  private candidatePointerId:
     number
     | null =
       null;
+
+
+  private candidateStartX =
+    0;
+
+
+  private candidateStartY =
+    0;
+
+
+  private candidateDragged =
+    false;
+
+
+  private candidateOperation:
+    SelectionOperation =
+      "REPLACE";
 
 
   private startX =
@@ -230,26 +257,31 @@ export class CadWindowSelectionController {
   cancel():
     void {
 
-    if (
-      !this.active
-    ) {
-
-      this.hideOverlay();
-
-      return;
-
-    }
-
-
     this.active =
       false;
 
 
-    this.pointerId =
+    this.candidatePointerId =
       null;
 
 
+    this.candidateDragged =
+      false;
+
+
     this.hideOverlay();
+
+
+    this.designSelection
+      .setEnabled(
+        true,
+      );
+
+
+    this.pointSelection
+      .setEnabled(
+        true,
+      );
 
 
     this.setCameraEnabled(
@@ -268,7 +300,70 @@ export class CadWindowSelectionController {
       if (
         this.disposed
         || event.button !== 0
-        || !this.designSelection.isEnabled
+      ) {
+
+        return;
+
+      }
+
+
+      /*
+       * Segunda esquina:
+       *
+       * cuando la ventana ya está activa, un clic
+       * termina inmediatamente la operación.
+       */
+      if (
+        this.active
+      ) {
+
+        this.currentX =
+          event.clientX;
+
+
+        this.currentY =
+          event.clientY;
+
+
+        event.preventDefault();
+
+        event.stopPropagation();
+
+
+        this.applySelection();
+
+
+        this.active =
+          false;
+
+
+        this.hideOverlay();
+
+
+        this.designSelection
+          .setEnabled(
+            true,
+          );
+
+
+        this.pointSelection
+          .setEnabled(
+            true,
+          );
+
+
+        this.setCameraEnabled(
+          true,
+        );
+
+
+        return;
+
+      }
+
+
+      if (
+        !this.designSelection.isEnabled
         || !this.pointSelection.isEnabled
       ) {
 
@@ -278,7 +373,7 @@ export class CadWindowSelectionController {
 
 
       /*
-       * Shift solo no inicia ninguna operación
+       * Shift solo no ejecuta ninguna operación
        * de selección.
        */
       if (
@@ -308,8 +403,8 @@ export class CadWindowSelectionController {
 
 
       /*
-       * La ventana solo nace desde espacio vacío.
-       * Clic sobre entidad conserva el flujo normal.
+       * La primera esquina solo puede empezar
+       * desde espacio vacío.
        */
       if (
         pieceId
@@ -321,42 +416,37 @@ export class CadWindowSelectionController {
       }
 
 
-      this.active =
-        true;
-
-
-      this.pointerId =
+      /*
+       * IMPORTANTE:
+       * todavía NO deshabilitamos la cámara.
+       *
+       * Si desde aquí el usuario mantiene el botón
+       * y arrastra, el gesto debe seguir siendo
+       * navegación de cámara.
+       */
+      this.candidatePointerId =
         event.pointerId;
 
 
-      this.startX =
+      this.candidateStartX =
         event.clientX;
 
 
-      this.startY =
+      this.candidateStartY =
         event.clientY;
 
 
-      this.currentX =
-        event.clientX;
+      this.candidateDragged =
+        false;
 
 
-      this.currentY =
-        event.clientY;
-
-
-      this.selectionOperation =
+      this.candidateOperation =
         event.ctrlKey
         && event.shiftKey
           ? "REMOVE"
           : event.ctrlKey
             ? "ADD"
             : "REPLACE";
-
-
-      this.setCameraEnabled(
-        false,
-      );
 
   };
 
@@ -367,13 +457,45 @@ export class CadWindowSelectionController {
         PointerEvent,
     ): void => {
 
+      /*
+       * Antes de fijar la primera esquina,
+       * un arrastre con el botón pulsado pertenece
+       * exclusivamente a la cámara.
+       */
+      if (
+        this.candidatePointerId
+        !== null
+        && event.pointerId
+          === this.candidatePointerId
+      ) {
+
+        const movement =
+          Math.hypot(
+            event.clientX
+            - this.candidateStartX,
+            event.clientY
+            - this.candidateStartY,
+          );
+
+
+        if (
+          movement
+          > this.dragThreshold
+        ) {
+
+          this.candidateDragged =
+            true;
+
+        }
+
+
+        return;
+
+      }
+
+
       if (
         !this.active
-        || (
-          this.pointerId !== null
-          && event.pointerId
-            !== this.pointerId
-        )
       ) {
 
         return;
@@ -422,18 +544,73 @@ export class CadWindowSelectionController {
     ): void => {
 
       if (
-        !this.active
-        || (
-          this.pointerId !== null
-          && event.pointerId
-            !== this.pointerId
-        )
+        this.candidatePointerId
+        === null
+        || event.pointerId
+          !== this.candidatePointerId
         || event.button !== 0
       ) {
 
         return;
 
       }
+
+
+      const movement =
+        Math.hypot(
+          event.clientX
+          - this.candidateStartX,
+          event.clientY
+          - this.candidateStartY,
+        );
+
+
+      const wasCameraDrag =
+        this.candidateDragged
+        || movement
+          > this.dragThreshold;
+
+
+      this.candidatePointerId =
+        null;
+
+
+      this.candidateDragged =
+        false;
+
+
+      /*
+       * Clic sostenido + arrastre:
+       * no inicia selección; la cámara conserva
+       * completamente ese gesto.
+       */
+      if (
+        wasCameraDrag
+      ) {
+
+        return;
+
+      }
+
+
+      /*
+       * Clic vacío y soltar:
+       * fija la primera esquina.
+       *
+       * Desde aquí la cámara y los selectores por clic
+       * quedan temporalmente suspendidos hasta el
+       * segundo clic o Escape.
+       */
+      this.active =
+        true;
+
+
+      this.startX =
+        this.candidateStartX;
+
+
+      this.startY =
+        this.candidateStartY;
 
 
       this.currentX =
@@ -444,48 +621,30 @@ export class CadWindowSelectionController {
         event.clientY;
 
 
-      const movement =
-        Math.hypot(
-          this.currentX
-          - this.startX,
-          this.currentY
-          - this.startY,
+      this.selectionOperation =
+        this.candidateOperation;
+
+
+      this.designSelection
+        .setEnabled(
+          false,
         );
 
 
-      const shouldSelect =
-        movement
-        > this.dragThreshold;
-
-
-      if (
-        shouldSelect
-      ) {
-
-        event.preventDefault();
-
-        event.stopPropagation();
-
-
-        this.applySelection();
-
-      }
-
-
-      this.active =
-        false;
-
-
-      this.pointerId =
-        null;
-
-
-      this.hideOverlay();
+      this.pointSelection
+        .setEnabled(
+          false,
+        );
 
 
       this.setCameraEnabled(
-        true,
+        false,
       );
+
+
+      event.preventDefault();
+
+      event.stopPropagation();
 
   };
 
