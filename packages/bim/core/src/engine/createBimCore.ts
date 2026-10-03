@@ -2149,6 +2149,25 @@ const handleCadKeyDown =
       cadNumericInput.hide();
 
 
+      if (
+        cadPointSelection
+          .getSelectedIds()
+          .length > 0
+        || cadLineSelection
+          .getSelectedIds()
+          .length > 0
+      ) {
+
+        window.alert(
+          "ROTATE actualmente aplica a PieceInstance. Deselecciona puntos y líneas CAD antes de rotar.",
+        );
+
+
+        return;
+
+      }
+
+
       const started =
         cadCommandManager.start(
           rotateCommand,
@@ -4085,6 +4104,20 @@ function startRotateCommand():
 
 
   cadWorkPlaneEdit.cancel();
+
+
+  if (
+    cadPointSelection
+      .getSelectedIds()
+      .length > 0
+    || cadLineSelection
+      .getSelectedIds()
+      .length > 0
+  ) {
+
+    return false;
+
+  }
 
 
   return cadCommandManager
