@@ -143,6 +143,15 @@ import {
   PieceDefinitionPreparationController,
 } from "../interaction/PieceDefinitionPreparationController";
 
+import {
+  PieceDefinitionOriginEditController,
+} from "../interaction/PieceDefinitionOriginEditController";
+
+import type {
+  PieceDefinitionOriginEditListener,
+  PieceDefinitionOriginEditState,
+} from "../interaction/PieceDefinitionOriginEditController";
+
 import type {
   PieceDefinitionPreparationListener,
   PieceDefinitionPreparationState,
@@ -614,8 +623,59 @@ async function setCardinalDirection(
   }
 
 
+  function getPieceDefinitionOriginEditState():
+    PieceDefinitionOriginEditState {
+
+    return pieceOriginEdit
+      .getState();
+
+  }
+
+
+  function startPreparedPieceOriginSnapEdit():
+    void {
+
+    cadWindowSelection.cancel();
+
+    cadCommandManager.cancelActive();
+
+    cadNumericInput.hide();
+
+    cadWorkPlaneEdit.cancel();
+
+
+    pieceOriginEdit.start();
+
+  }
+
+
+  function cancelPreparedPieceOriginSnapEdit():
+    void {
+
+    pieceOriginEdit.cancel();
+
+  }
+
+
+  function subscribePieceDefinitionOriginEdit(
+    listener:
+      PieceDefinitionOriginEditListener,
+  ):
+    () => void {
+
+    return pieceOriginEdit
+      .subscribe(
+        listener,
+      );
+
+  }
+
+
   function stopPieceDefinitionPreparation():
     void {
+
+    pieceOriginEdit.cancel();
+
 
     piecePreparation.stop();
 
@@ -1154,6 +1214,32 @@ const cadWorkPlaneEdit =
     designSelection,
     cadPointSelection,
     cadLineSelection,
+  );
+
+
+const pieceOriginEdit =
+  new PieceDefinitionOriginEditController(
+    canvas,
+    designSnap,
+    piecePreparation,
+    designSelection,
+    cadPointSelection,
+    cadLineSelection,
+  );
+
+
+const unsubscribePiecePreparationHelpers =
+  piecePreparation.subscribe(
+    (
+      state,
+    ) => {
+
+      pieceDefinitionHelpers
+        .setActiveInstanceId(
+          state.instanceId,
+        );
+
+    },
   );
 
 
@@ -1908,6 +1994,24 @@ const handleCadKeyDown =
     ) {
 
       if (
+        pieceOriginEdit.isActive
+      ) {
+
+        event.preventDefault();
+
+
+        event.stopPropagation();
+
+
+        pieceOriginEdit.cancel();
+
+
+        return;
+
+      }
+
+
+      if (
         cadWindowSelection.isActive
       ) {
 
@@ -2262,6 +2366,9 @@ const handleCadKeyDown =
       && !event.altKey
     ) {
 
+      pieceOriginEdit.cancel();
+
+
       cadWindowSelection.cancel();
 
 
@@ -2309,6 +2416,9 @@ const handleCadKeyDown =
       && !event.altKey
     ) {
 
+      pieceOriginEdit.cancel();
+
+
       cadWindowSelection.cancel();
 
 
@@ -2355,6 +2465,9 @@ const handleCadKeyDown =
       && !event.metaKey
       && !event.altKey
     ) {
+
+      pieceOriginEdit.cancel();
+
 
       cadWindowSelection.cancel();
 
@@ -2441,6 +2554,9 @@ const handleCadKeyDown =
       && !event.metaKey
       && !event.altKey
     ) {
+
+      pieceOriginEdit.cancel();
+
 
       cadWindowSelection.cancel();
 
@@ -3488,6 +3604,9 @@ function cancelDesignPiecePlacement(): void {
   function startCadWorkPlaneOriginEdit():
     void {
 
+    pieceOriginEdit.cancel();
+
+
     cadWindowSelection.cancel();
 
 
@@ -3515,6 +3634,9 @@ function cancelDesignPiecePlacement(): void {
 
   function startCadWorkPlaneThreePointEdit():
     void {
+
+    pieceOriginEdit.cancel();
+
 
     cadWindowSelection.cancel();
 
@@ -4323,6 +4445,9 @@ function setDesignTransformSpace(
 function startPointCommand():
   boolean {
 
+  pieceOriginEdit.cancel();
+
+
   cadWindowSelection.cancel();
 
 
@@ -4356,6 +4481,9 @@ function startPointCommand():
 function startLineCommand():
   boolean {
 
+  pieceOriginEdit.cancel();
+
+
   cadWindowSelection.cancel();
 
 
@@ -4388,6 +4516,9 @@ function startLineCommand():
 
 function startMoveCommand():
   boolean {
+
+  pieceOriginEdit.cancel();
+
 
   cadWindowSelection.cancel();
 
@@ -4450,6 +4581,9 @@ function startMoveCommand():
 
 function startRotateCommand():
   boolean {
+
+  pieceOriginEdit.cancel();
+
 
   cadWindowSelection.cancel();
 
@@ -4654,6 +4788,9 @@ function dispose(): void {
   unsubscribeCadUnifiedSelection();
 
 
+  unsubscribePiecePreparationHelpers();
+
+
   unsubscribeDesignLayers();
 
 
@@ -4704,6 +4841,9 @@ function dispose(): void {
 
 
   cadWorkPlaneEdit.dispose();
+
+
+  pieceOriginEdit.dispose();
 
 
   cadPointPlacement.dispose();
@@ -4860,6 +5000,16 @@ function dispose(): void {
     stopPieceDefinitionPreparation,
 
     setPreparedPieceOriginFromSelectedPoint,
+
+    pieceOriginEdit,
+
+    getPieceDefinitionOriginEditState,
+
+    startPreparedPieceOriginSnapEdit,
+
+    cancelPreparedPieceOriginSnapEdit,
+
+    subscribePieceDefinitionOriginEdit,
 
     addPreparedPieceSnapsFromSelection,
 
