@@ -449,6 +449,30 @@ for (
   }
 
 
+  const loadedReference =
+    modelRegistry.getModel(
+      model.modelId,
+    );
+
+
+  const referenceLayer =
+    loadedReference
+      ? designModel.layers.get(
+          loadedReference.layerId,
+        )
+      : undefined;
+
+
+  if (
+    referenceLayer?.snapEnabled
+    === false
+  ) {
+
+    continue;
+
+  }
+
+
   try {
 
     const hit =
@@ -1593,6 +1617,9 @@ canvas.addEventListener(
 
     const loadedModel =
       modelRegistry.register({
+
+        id:
+          referenceModelId,
 
         name:
           file.name,
