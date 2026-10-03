@@ -230,6 +230,9 @@ export class CadPointSelectionController {
   toggle(
     pointId:
       string,
+
+    preserveDesignSelection =
+      false,
   ): void {
 
     if (
@@ -246,8 +249,14 @@ export class CadPointSelectionController {
     }
 
 
-    this.designSelection
-      .clearSelection();
+    if (
+      !preserveDesignSelection
+    ) {
+
+      this.designSelection
+        .clearSelection();
+
+    }
 
 
     if (
@@ -303,6 +312,9 @@ export class CadPointSelectionController {
   setSelection(
     pointIds:
       readonly string[],
+
+    preserveDesignSelection =
+      false,
   ): void {
 
     this.selectedIds.clear();
@@ -330,6 +342,7 @@ export class CadPointSelectionController {
 
     if (
       this.selectedIds.size > 0
+      && !preserveDesignSelection
     ) {
 
       this.designSelection
@@ -661,6 +674,7 @@ export class CadPointSelectionController {
 
         this.toggle(
           pointId,
+          true,
         );
 
       }
