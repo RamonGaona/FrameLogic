@@ -331,19 +331,13 @@ export class CadWindowSelectionController {
         event.clientY;
 
 
-      const controlModifier =
-        event.ctrlKey
-        || event.metaKey;
-
-
       this.selectionOperation =
-        controlModifier
+        event.ctrlKey
         && event.shiftKey
           ? "REMOVE"
-          : controlModifier
-            || event.shiftKey
-              ? "ADD"
-              : "REPLACE";
+          : event.ctrlKey
+            ? "ADD"
+            : "REPLACE";
 
 
       this.setCameraEnabled(
