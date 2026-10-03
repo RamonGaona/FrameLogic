@@ -693,6 +693,17 @@ const designSelection =
   );
 
 
+designScene.setVisibilityFilter(
+  (
+    instanceId,
+  ) =>
+    designSelection
+      .isInstanceVisibleByIsolation(
+        instanceId,
+      ),
+);
+
+
 // ==========================================================
 // DESIGN LAYERS
 // ==========================================================
