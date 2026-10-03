@@ -64,3 +64,23 @@ export type {
   export {
     DesignModel,
   } from "./design/DesignModel";
+
+export type {
+  DesignLayer,
+  DesignLayerMember,
+  DesignLayerMemberType,
+} from "./layers/DesignLayer";
+
+export {
+  DEFAULT_DESIGN_LAYER_IDS,
+} from "./layers/DesignLayer";
+
+export {
+  DesignLayerRegistry,
+} from "./layers/DesignLayerRegistry";
+
+export type {
+  CreateDesignLayerInput,
+  UpdateDesignLayerInput,
+  DesignLayerListener,
+} from "./layers/DesignLayerRegistry";
