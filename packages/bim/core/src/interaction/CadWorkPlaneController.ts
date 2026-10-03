@@ -5,6 +5,7 @@ export type CadWorkPlaneMode =
   | "XY"
   | "XZ"
   | "YZ"
+  | "CUSTOM"
   | "OFF";
 
 
@@ -220,9 +221,24 @@ export class CadWorkPlaneController {
 
     if (
       this.disposed
-      || mode
-        === this.modeValue
     ) {
+
+      return;
+
+    }
+
+
+    if (
+      mode
+      === "CUSTOM"
+    ) {
+
+      this.modeValue =
+        "CUSTOM";
+
+      this.updateVisual();
+
+      this.notify();
 
       return;
 
@@ -267,6 +283,7 @@ export class CadWorkPlaneController {
 
 
       case "YZ":
+      case "CUSTOM":
 
         this.setMode(
           "OFF",
@@ -314,10 +331,138 @@ export class CadWorkPlaneController {
     );
 
 
-    this.applyMode();
+    this.updateVisual();
 
 
     this.notify();
+
+  }
+
+
+  // ==========================================================
+  // CUSTOM PLANE FROM 3 POINTS
+  // ==========================================================
+
+  setFromThreePoints(
+    first:
+      THREE.Vector3,
+
+    second:
+      THREE.Vector3,
+
+    third:
+      THREE.Vector3,
+  ): boolean {
+
+    if (
+      this.disposed
+    ) {
+
+      return false;
+
+    }
+
+
+    const xAxis =
+      second
+        .clone()
+        .sub(
+          first,
+        );
+
+
+    if (
+      xAxis.lengthSq()
+      <= 1e-12
+    ) {
+
+      return false;
+
+    }
+
+
+    xAxis.normalize();
+
+
+    const thirdDirection =
+      third
+        .clone()
+        .sub(
+          first,
+        );
+
+
+    if (
+      thirdDirection.lengthSq()
+      <= 1e-12
+    ) {
+
+      return false;
+
+    }
+
+
+    const normal =
+      new THREE.Vector3()
+        .crossVectors(
+          xAxis,
+          thirdDirection,
+        );
+
+
+    if (
+      normal.lengthSq()
+      <= 1e-12
+    ) {
+
+      return false;
+
+    }
+
+
+    normal.normalize();
+
+
+    const yAxis =
+      new THREE.Vector3()
+        .crossVectors(
+          normal,
+          xAxis,
+        )
+        .normalize();
+
+
+    this.origin.copy(
+      first,
+    );
+
+
+    this.xAxis.copy(
+      xAxis,
+    );
+
+
+    this.yAxis.copy(
+      yAxis,
+    );
+
+
+    this.normal.copy(
+      normal,
+    );
+
+
+    this.modeValue =
+      "CUSTOM";
+
+
+    this.updateVisual();
+
+
+    this.notify();
+
+
+    return true;
 
   }
 
@@ -455,26 +600,10 @@ export class CadWorkPlaneController {
 
 
   // ==========================================================
-  // VISUAL / BASIS
+  // STANDARD BASIS
   // ==========================================================
 
   private applyMode(): void {
-
-    this.grid.visible =
-      this.enabled;
-
-
-    this.grid.position.copy(
-      this.origin,
-    );
-
-
-    this.grid.rotation.set(
-      0,
-      0,
-      0,
-    );
-
 
     switch (
       this.modeValue
@@ -500,9 +629,6 @@ export class CadWorkPlaneController {
           1,
         );
 
-        this.grid.rotation.x =
-          Math.PI / 2;
-
         break;
 
 
@@ -522,7 +648,7 @@ export class CadWorkPlaneController {
 
         this.normal.set(
           0,
-          1,
+          -1,
           0,
         );
 
@@ -549,17 +675,73 @@ export class CadWorkPlaneController {
           0,
         );
 
-        this.grid.rotation.z =
-          -Math.PI / 2;
-
         break;
 
 
+      case "CUSTOM":
       case "OFF":
 
         break;
 
     }
+
+
+    this.updateVisual();
+
+  }
+
+
+  // ==========================================================
+  // VISUAL
+  // ==========================================================
+
+  private updateVisual(): void {
+
+    this.grid.visible =
+      this.enabled;
+
+
+    this.grid.position.copy(
+      this.origin,
+    );
+
+
+    if (
+      !this.enabled
+    ) {
+
+      this.grid.updateMatrixWorld(
+        true,
+      );
+
+      return;
+
+    }
+
+
+    /*
+     * THREE.GridHelper vive localmente sobre XZ.
+     *
+     * Lo orientamos así:
+     * local X -> WorkPlane X
+     * local Z -> WorkPlane Y
+     * local Y -> -WorkPlane normal
+     */
+    const basis =
+      new THREE.Matrix4()
+        .makeBasis(
+          this.xAxis,
+          this.normal
+            .clone()
+            .negate(),
+          this.yAxis,
+        );
+
+
+    this.grid.quaternion
+      .setFromRotationMatrix(
+        basis,
+      );
 
 
     this.grid.updateMatrixWorld(
