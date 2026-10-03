@@ -21,8 +21,19 @@ export interface PieceInstance {
 
 
   /**
+   * Capa del proyecto a la que pertenece
+   * esta instancia concreta.
+   *
+   * La capa pertenece a la instancia,
+   * no a PieceDefinition.
+   */
+  readonly layerId: string;
+
+
+  /**
    * Posición y orientación de esta
-   * colocación concreta.
+   * colocación concreta respecto
+   * a su contenedor/padre.
    */
   readonly transform: Transform3D;
 
