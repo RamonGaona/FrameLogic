@@ -1400,7 +1400,7 @@ Mixed MOVE is atomic:
 
 Single-type MOVE continues to use the existing specialized controller so previously validated PieceInstance, CadPoint and CadLine behavior is preserved.
 
-For CadLine MOVE, the XYZ center handle is pivot-only, matching PieceInstance and mixed MOVE behavior. Dragging the center relocates only the gizmo base point. A short center click arms pivot relocation so the next valid SNAP, including INTERSECTION, places the gizmo exactly without moving the selected CadLine geometry.
+For PieceInstance, CadLine and mixed MOVE, the XYZ center handle is pivot-only and uses exact SNAP placement. A short center click arms pivot relocation; the next valid SNAP, including INTERSECTION, places the gizmo exactly at that 3D point without moving selected geometry. Free dragging of the XYZ center does not relocate the pivot, preventing screen-space or perspective-aligned placement that only appears correct from one camera angle.
 
 The current v1 implementation uses projected object bounds for PieceInstance window/crossing tests. WINDOW containment is conservative: the complete projected bounds must fit inside the selection rectangle. CROSSING uses projected-bound intersection.
 
