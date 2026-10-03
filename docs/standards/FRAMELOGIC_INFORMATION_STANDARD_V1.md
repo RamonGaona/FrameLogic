@@ -1125,7 +1125,20 @@ External read-only IFC reference models default to `External References`.
 
 Deleting a user-created layer SHALL first reassign its placed objects to an appropriate valid fallback layer. System layers SHALL NOT be deletable.
 
-## 15.2 CAD WorkPlane
+## 15.2 Global coordinate convention
+
+FrameLogic uses a right-handed global model coordinate system with **Z as the vertical/up axis**.
+
+```text
+X / Y = global horizontal plane
+Z     = global vertical axis
+```
+
+Three.js cameras and CAD navigation SHALL use the same Z-up convention so visual orientation, coordinates, WorkPlanes and future CAD commands do not disagree.
+
+This convention applies to model-space interpretation. It does not mean that reusable definitions store duplicated world coordinates; placed instances still derive world transforms from their placement hierarchy.
+
+## 15.3 CAD WorkPlane
 
 FrameLogic SHALL provide the following initial CAD work planes:
 
@@ -1133,10 +1146,23 @@ FrameLogic SHALL provide the following initial CAD work planes:
 XY
 XZ
 YZ
+CUSTOM
 OFF
 ```
 
 The active WorkPlane is a model-space construction aid and SHALL be displayed visually as auxiliary grid geometry.
+
+In addition to the three global orthogonal modes, FrameLogic supports a `CUSTOM` WorkPlane defined by three SNAP points anywhere in 3D.
+
+```text
+P1 = local origin
+P2 = local +X direction
+P3 = defines plane orientation and local +Y side
+```
+
+The three points SHALL be distinct and non-collinear.
+
+The WorkPlane origin may also be moved independently to any valid SNAP while preserving the current plane orientation.
 
 Initial origin:
 
