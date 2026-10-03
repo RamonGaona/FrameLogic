@@ -246,3 +246,29 @@ export {
 export {
   DeleteMixedSelectionCommand,
 } from "./commands/DeleteMixedSelectionCommand";
+
+
+export {
+  PieceDefinitionPreparationController,
+} from "./interaction/PieceDefinitionPreparationController";
+
+export type {
+  PieceDefinitionPreparationListener,
+  PieceDefinitionPreparationState,
+} from "./interaction/PieceDefinitionPreparationController";
+
+export {
+  PieceDefinitionHelperSceneController,
+} from "./design/PieceDefinitionHelperSceneController";
+
+export type {
+  LocalCoordinateSystem,
+  PersistentSnapType,
+  PieceReferenceGeometry,
+  PieceSnapPoint,
+  PieceVector3Data,
+  ReferenceAxisLine,
+  ReferenceAxisType,
+  AddPieceSnapPointInput,
+  AddReferenceAxisLineInput,
+} from "@framelogic/domain";
