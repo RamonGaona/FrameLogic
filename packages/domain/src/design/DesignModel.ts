@@ -409,6 +409,40 @@ import {
 
 
     // ==========================================================
+    // UPDATE CAD POINT LAYER
+    // ==========================================================
+
+    updateCadPointLayer(
+      pointId: string,
+      layerId: string,
+    ):
+      CadPoint
+      | undefined {
+
+      if (
+        !this.layers.get(
+          layerId,
+        )
+      ) {
+
+        throw new Error(
+          `Cannot move CAD point to layer "${layerId}" because the layer does not exist.`,
+        );
+
+      }
+
+
+      return this
+        .cadPoints
+        .updateLayerId(
+          pointId,
+          layerId,
+        );
+
+    }
+
+
+    // ==========================================================
     // UPDATE ASSEMBLY LAYER
     // ==========================================================
 
