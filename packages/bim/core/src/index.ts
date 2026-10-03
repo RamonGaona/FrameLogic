@@ -222,3 +222,27 @@ export type {
   CadLinePosition,
   RegisterCadLineInput,
 } from "@framelogic/domain";
+
+
+export {
+  CadUnifiedSelectionController,
+} from "./interaction/CadUnifiedSelectionController";
+
+export type {
+  CadSelectableEntityType,
+  CadSelectionItem,
+  CadSelectionState,
+  CadUnifiedSelectionListener,
+} from "./interaction/CadUnifiedSelectionController";
+
+export {
+  CadMixedMoveController,
+} from "./interaction/CadMixedMoveController";
+
+export {
+  MoveMixedSelectionCommand,
+} from "./commands/MoveMixedSelectionCommand";
+
+export {
+  DeleteMixedSelectionCommand,
+} from "./commands/DeleteMixedSelectionCommand";
