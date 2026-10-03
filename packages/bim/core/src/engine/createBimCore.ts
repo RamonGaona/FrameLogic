@@ -40,6 +40,10 @@ import {
 } from "../design/CadPointSceneController";
 
 import {
+  CadLineSceneController,
+} from "../design/CadLineSceneController";
+
+import {
   DesignSelectionController,
 } from "../interaction/DesignSelectionController";
 
@@ -103,6 +107,22 @@ import {
 } from "../interaction/CadPointMoveController";
 
 import {
+  CadLineSelectionController,
+} from "../interaction/CadLineSelectionController";
+
+import type {
+  CadLineSelectionListener,
+} from "../interaction/CadLineSelectionController";
+
+import {
+  CadLinePlacementController,
+} from "../interaction/CadLinePlacementController";
+
+import {
+  CadLineMoveController,
+} from "../interaction/CadLineMoveController";
+
+import {
   CadWindowSelectionController,
 } from "../interaction/CadWindowSelectionController";
 
@@ -137,6 +157,18 @@ import {
 import {
   DeleteCadPointCommand,
 } from "../commands/DeleteCadPointCommand";
+
+import {
+  LineCommand,
+} from "../commands/LineCommand";
+
+import {
+  MoveCadLineCommand,
+} from "../commands/MoveCadLineCommand";
+
+import {
+  DeleteCadLineCommand,
+} from "../commands/DeleteCadLineCommand";
 
 export type StandardView =
   | "TOP"
@@ -330,6 +362,13 @@ async function setCardinalDirection(
 
   const cadPointScene =
     new CadPointSceneController(
+      world.scene.three,
+      designModel,
+    );
+
+
+  const cadLineScene =
+    new CadLineSceneController(
       world.scene.three,
       designModel,
     );
@@ -832,6 +871,44 @@ const cadPointSelection =
   );
 
 
+const cadLineSelection =
+  new CadLineSelectionController(
+    canvas,
+    () =>
+      world.camera.three,
+    designModel,
+    cadLineScene,
+    designSelection,
+    cadPointSelection,
+  );
+
+
+designSelection
+  .setExternalSelectionClearHandler(
+    () => {
+
+      cadPointSelection
+        .clearSelection();
+
+
+      cadLineSelection
+        .clearSelection();
+
+    },
+  );
+
+
+cadPointSelection
+  .setExternalSelectionClearHandler(
+    () => {
+
+      cadLineSelection
+        .clearSelection();
+
+    },
+  );
+
+
 // ==========================================================
 // WINDOW / CROSSING SELECTION
 // ==========================================================
@@ -845,6 +922,7 @@ const cadWindowSelection =
     designScene,
     designSelection,
     cadPointSelection,
+    cadLineSelection,
     (
       enabled,
     ) => {
@@ -867,6 +945,7 @@ const cadWorkPlaneEdit =
     designSnap,
     designSelection,
     cadPointSelection,
+    cadLineSelection,
   );
 
 
@@ -880,6 +959,9 @@ function applyDesignLayerEffects(): void {
 
 
   cadPointScene.sync();
+
+
+  cadLineScene.sync();
 
 
   for (
@@ -963,6 +1045,14 @@ function applyDesignLayerEffects(): void {
   cadPointSelection.setSelection(
     cadPointSelection
       .getSelectedIds(),
+    true,
+  );
+
+
+  cadLineSelection.setSelection(
+    cadLineSelection
+      .getSelectedIds(),
+    true,
   );
 
 }
@@ -1002,6 +1092,28 @@ const cadPointPlacement =
     cadHistory,
     designSelection,
     cadPointSelection,
+    cadLineSelection,
+  );
+
+
+// ==========================================================
+// CAD LINE PLACEMENT
+// ==========================================================
+
+const cadLinePlacement =
+  new CadLinePlacementController(
+    world.scene.three,
+    canvas,
+    () =>
+      world.camera.three,
+    designModel,
+    cadLineScene,
+    designSnap,
+    cadWorkPlane,
+    cadHistory,
+    designSelection,
+    cadPointSelection,
+    cadLineSelection,
   );
 
 
@@ -1016,6 +1128,32 @@ const cadPointMove =
     canvas,
     designModel,
     cadPointScene,
+    cadPointSelection,
+    designSelection,
+    cadHistory,
+    (
+      enabled,
+    ) => {
+
+      world.camera.controls.enabled =
+        enabled;
+
+    },
+  );
+
+
+// ==========================================================
+// CAD LINE MOVE
+// ==========================================================
+
+const cadLineMove =
+  new CadLineMoveController(
+    world.scene.three,
+    world.camera.three,
+    canvas,
+    designModel,
+    cadLineScene,
+    cadLineSelection,
     cadPointSelection,
     designSelection,
     cadHistory,
