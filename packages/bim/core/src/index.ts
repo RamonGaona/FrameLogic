@@ -272,3 +272,13 @@ export type {
   AddPieceSnapPointInput,
   AddReferenceAxisLineInput,
 } from "@framelogic/domain";
+
+
+export {
+  PieceDefinitionOriginEditController,
+} from "./interaction/PieceDefinitionOriginEditController";
+
+export type {
+  PieceDefinitionOriginEditListener,
+  PieceDefinitionOriginEditState,
+} from "./interaction/PieceDefinitionOriginEditController";
