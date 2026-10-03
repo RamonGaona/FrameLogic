@@ -48,6 +48,15 @@ import {
   import type {
     RegisterAssemblyInput,
   } from "../assemblies/AssemblyRegistry";
+
+
+  import {
+    DesignLayerRegistry,
+  } from "../layers/DesignLayerRegistry";
+
+  import {
+    DEFAULT_DESIGN_LAYER_IDS,
+  } from "../layers/DesignLayer";
   
   
   export class DesignModel {
@@ -70,6 +79,10 @@ import {
   
     readonly assemblies =
       new AssemblyRegistry();
+
+
+    readonly layers =
+      new DesignLayerRegistry();
   
   
     // ==========================================================
