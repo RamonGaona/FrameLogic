@@ -1251,6 +1251,43 @@ Constructed CAD points are editable project objects:
 - points on hidden or locked layers cannot remain selected;
 - points on layers with `snapEnabled = false` remain drawable/visible according to layer visibility but do not provide POINT SNAP candidates.
 
+## 15.5 Window and crossing selection
+
+FrameLogic uses AutoCAD-style directional rectangle selection when the primary pointer starts in empty model space.
+
+```text
+left → right
+WINDOW
+select only entities whose full projected bounds are contained by the rectangle
+
+right → left
+CROSSING
+select entities whose projected bounds intersect the rectangle
+```
+
+Visual convention:
+
+- WINDOW uses a blue translucent rectangle with a solid border;
+- CROSSING uses a green translucent rectangle with a dashed border.
+
+The selection rectangle starts only from empty viewport space. Starting the gesture on an existing selectable entity preserves normal click-selection behavior.
+
+Current selectable project entities include:
+
+- PieceInstance;
+- CadPoint.
+
+Layer rules remain authoritative:
+
+- hidden entities are not selected;
+- locked entities are not selected.
+
+A plain selection window replaces the current selection. Holding Ctrl, Shift or Meta adds the window result to the existing selection.
+
+PieceInstances and CadPoints may coexist in the selection set. Until the transform layer is unified for heterogeneous entities, mixed PieceInstance + CadPoint MOVE is intentionally rejected rather than partially moving the selection.
+
+The current v1 implementation uses projected object bounds for PieceInstance window/crossing tests. WINDOW containment is conservative: the complete projected bounds must fit inside the selection rectangle. CROSSING uses projected-bound intersection.
+
 # 16. Identity and uniqueness rules
 
 ## 16.1 Definition identity
