@@ -655,3 +655,21 @@ body {
 .workplane-button-off {
   opacity: 0.62;
 }
+
+
+.workplane-edit-button-active {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.workplane-edit-status {
+  display: inline-block;
+  max-width: 360px;
+  margin-left: 8px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  background: rgba(31, 41, 51, 0.92);
+  color: white;
+  font-size: 12px;
+  vertical-align: middle;
+}
