@@ -1,11 +1,3 @@
-export type DesignLayerMemberType =
-  | "PIECE_INSTANCE"
-  | "ASSEMBLY_INSTANCE"
-  | "CAD_POINT"
-  | "CAD_LINE"
-  | "EXTERNAL_REFERENCE";
-
-
 export interface DesignLayer {
 
   /**
@@ -45,17 +37,6 @@ export interface DesignLayer {
    * Las capas del sistema no pueden eliminarse.
    */
   readonly system: boolean;
-
-}
-
-
-export interface DesignLayerMember {
-
-  readonly type:
-    DesignLayerMemberType;
-
-  readonly id:
-    string;
 
 }
 
