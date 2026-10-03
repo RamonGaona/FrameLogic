@@ -127,3 +127,14 @@ export type {
   CadWorkPlaneMode,
   CadWorkPlaneState,
 } from "./interaction/CadWorkPlaneController";
+
+
+export {
+  CadWorkPlaneEditController,
+} from "./interaction/CadWorkPlaneEditController";
+
+export type {
+  CadWorkPlaneEditListener,
+  CadWorkPlaneEditMode,
+  CadWorkPlaneEditState,
+} from "./interaction/CadWorkPlaneEditController";
