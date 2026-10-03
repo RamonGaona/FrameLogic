@@ -1144,7 +1144,6 @@ export class CadMixedMoveController {
       if (
         clickedAxis
         && axis !== null
-        && axis !== "XYZ"
       ) {
 
         this.armedMoveAxis =
