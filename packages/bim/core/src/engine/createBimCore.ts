@@ -3544,6 +3544,18 @@ function cancelDesignPiecePlacement(): void {
   }
 
 
+  function assignCadSelectionToLayer(
+    layerId: string,
+  ):
+    number {
+
+    return assignSelectedPieceInstancesToLayer(
+      layerId,
+    );
+
+  }
+
+
   function setReferenceModelLayer(
     modelId: string,
     layerId: string,
@@ -4367,6 +4379,14 @@ function deleteSelectedPieceInstances():
 }
 
 
+function deleteCadSelection():
+  boolean {
+
+  return deleteSelectedPieceInstances();
+
+}
+
+
 function cancelActiveCadCommand():
   void {
 
@@ -4684,6 +4704,8 @@ function dispose(): void {
 
     assignSelectedPieceInstancesToLayer,
 
+assignCadSelectionToLayer,
+
 
     // --------------------------------------------------------
     // DESIGN PIECES
@@ -4773,6 +4795,8 @@ startMoveCommand,
 startRotateCommand,
 
 deleteSelectedPieceInstances,
+
+deleteCadSelection,
 
 cancelActiveCadCommand,
 
