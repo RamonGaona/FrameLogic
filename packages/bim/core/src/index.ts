@@ -138,3 +138,22 @@ export type {
   CadWorkPlaneEditMode,
   CadWorkPlaneEditState,
 } from "./interaction/CadWorkPlaneEditController";
+
+
+export {
+  CadPointSceneController,
+} from "./design/CadPointSceneController";
+
+export {
+  CadPointPlacementController,
+} from "./interaction/CadPointPlacementController";
+
+export {
+  PointCommand,
+} from "./commands/PointCommand";
+
+export type {
+  CadPoint,
+  CadPointPosition,
+  RegisterCadPointInput,
+} from "@framelogic/domain";
