@@ -680,6 +680,7 @@ export class CadWindowSelectionController {
       new THREE.Box3()
         .setFromObject(
           object,
+          true,
         );
 
 
