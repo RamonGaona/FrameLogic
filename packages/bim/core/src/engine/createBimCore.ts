@@ -70,6 +70,15 @@ import type {
 } from "../interaction/CadWorkPlaneController";
 
 import {
+  CadWorkPlaneEditController,
+} from "../interaction/CadWorkPlaneEditController";
+
+import type {
+  CadWorkPlaneEditListener,
+  CadWorkPlaneEditState,
+} from "../interaction/CadWorkPlaneEditController";
+
+import {
   CadHistoryController,
 } from "../interaction/CadHistoryController";
 
@@ -136,6 +145,17 @@ export interface ImportDesignPieceIfcInput {
 export async function createBimCore(
   container: HTMLElement,
 ) {
+
+  /*
+   * FrameLogic usa Z como eje vertical global.
+   * Se define antes de crear cámaras/controles Three.js.
+   */
+  THREE.Object3D.DEFAULT_UP.set(
+    0,
+    0,
+    1,
+  );
+
 
   // ==========================================================
   // COMPONENTS
@@ -311,6 +331,27 @@ async function setCardinalDirection(
 
   world.camera.controls.minDistance =
     0.02;
+
+
+  world.camera.three.up.set(
+    0,
+    0,
+    1,
+  );
+
+
+  const cameraControlsWithUp =
+    world.camera.controls as
+      typeof world.camera.controls
+      & {
+        updateCameraUp?:
+          () => void;
+      };
+
+
+  cameraControlsWithUp
+    .updateCameraUp
+    ?.();
 
 
   // ==========================================================
@@ -734,6 +775,19 @@ designScene.setVisibilityFilter(
 
 
 // ==========================================================
+// CAD WORKPLANE EDIT
+// ==========================================================
+
+const cadWorkPlaneEdit =
+  new CadWorkPlaneEditController(
+    canvas,
+    cadWorkPlane,
+    designSnap,
+    designSelection,
+  );
+
+
+// ==========================================================
 // DESIGN LAYERS
 // ==========================================================
 
@@ -1075,6 +1129,24 @@ const handleCadKeyDown =
     if (
       event.key === "Escape"
     ) {
+
+      if (
+        cadWorkPlaneEdit.isActive
+      ) {
+
+        event.preventDefault();
+
+
+        event.stopPropagation();
+
+
+        cadWorkPlaneEdit.cancel();
+
+
+        return;
+
+      }
+
 
       /*
        * Primer Escape:
@@ -1503,6 +1575,13 @@ canvas.addEventListener(
        * su raycast de ejes/anillos siga coincidiendo con lo
        * que el usuario ve.
        */
+      camera.three.up.set(
+        0,
+        0,
+        1,
+      );
+
+
       designTransform.setCamera(
         camera.three,
       );
@@ -2330,6 +2409,60 @@ function cancelDesignPiecePlacement(): void {
   }
 
 
+  function getCadWorkPlaneEditState():
+    CadWorkPlaneEditState {
+
+    return cadWorkPlaneEdit
+      .getState();
+
+  }
+
+
+  function startCadWorkPlaneOriginEdit():
+    void {
+
+    cadCommandManager.cancelActive();
+
+    cadNumericInput.hide();
+
+    cadWorkPlaneEdit.startOrigin();
+
+  }
+
+
+  function startCadWorkPlaneThreePointEdit():
+    void {
+
+    cadCommandManager.cancelActive();
+
+    cadNumericInput.hide();
+
+    cadWorkPlaneEdit.startThreePoints();
+
+  }
+
+
+  function cancelCadWorkPlaneEdit():
+    void {
+
+    cadWorkPlaneEdit.cancel();
+
+  }
+
+
+  function subscribeCadWorkPlaneEdit(
+    listener:
+      CadWorkPlaneEditListener,
+  ): () => void {
+
+    return cadWorkPlaneEdit
+      .subscribe(
+        listener,
+      );
+
+  }
+
+
   // ==========================================================
   // DESIGN LAYERS
   // ==========================================================
@@ -3101,6 +3234,9 @@ function dispose(): void {
   designSelection.dispose();
 
 
+  cadWorkPlaneEdit.dispose();
+
+
   cadWorkPlane.dispose();
 
 
@@ -3213,6 +3349,18 @@ function dispose(): void {
     cycleCadWorkPlane,
 
     subscribeCadWorkPlane,
+
+    cadWorkPlaneEdit,
+
+    getCadWorkPlaneEditState,
+
+    startCadWorkPlaneOriginEdit,
+
+    startCadWorkPlaneThreePointEdit,
+
+    cancelCadWorkPlaneEdit,
+
+    subscribeCadWorkPlaneEdit,
 
 
     // --------------------------------------------------------
