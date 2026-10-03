@@ -344,6 +344,10 @@ export class DesignSelectionController {
     }
 
 
+    this.externalSelectionClearHandler
+      ?.();
+
+
     if (
       this.selectedIds.size === 1
       && this.selectedIds.has(
@@ -354,10 +358,6 @@ export class DesignSelectionController {
       return;
 
     }
-
-
-    this.externalSelectionClearHandler
-      ?.();
 
 
     this.selectedIds.clear();
