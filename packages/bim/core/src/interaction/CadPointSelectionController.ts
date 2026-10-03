@@ -662,14 +662,47 @@ export class CadPointSelectionController {
       }
 
 
-      const multiSelection =
-        event.ctrlKey
-        || event.metaKey
-        || event.shiftKey;
+      /*
+       * Ctrl         = add / toggle
+       * Ctrl + Shift = remove only
+       * Shift only   = no-op
+       */
+      if (
+        event.shiftKey
+        && !event.ctrlKey
+      ) {
+
+        return;
+
+      }
 
 
       if (
-        multiSelection
+        event.ctrlKey
+        && event.shiftKey
+      ) {
+
+        if (
+          this.isSelected(
+            pointId,
+          )
+        ) {
+
+          this.toggle(
+            pointId,
+            true,
+          );
+
+        }
+
+
+        return;
+
+      }
+
+
+      if (
+        event.ctrlKey
       ) {
 
         this.toggle(
@@ -677,14 +710,15 @@ export class CadPointSelectionController {
           true,
         );
 
-      }
-      else {
 
-        this.selectSingle(
-          pointId,
-        );
+        return;
 
       }
+
+
+      this.selectSingle(
+        pointId,
+      );
 
   };
 
