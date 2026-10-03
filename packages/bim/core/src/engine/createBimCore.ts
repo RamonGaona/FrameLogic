@@ -573,6 +573,9 @@ async function setCardinalDirection(
   ):
     PieceDefinitionPreparationState {
 
+    pieceOriginEdit.cancel();
+
+
     cadWindowSelection.cancel();
 
 
@@ -691,6 +694,9 @@ async function setCardinalDirection(
   function setPreparedPieceOriginFromSelectedPoint():
     PieceDefinitionPreparationState {
 
+    pieceOriginEdit.cancel();
+
+
     piecePreparation
       .setOriginFromSelectedCadPoint();
 
@@ -706,6 +712,9 @@ async function setCardinalDirection(
 
   function addPreparedPieceSnapsFromSelection():
     number {
+
+    pieceOriginEdit.cancel();
+
 
     const added =
       piecePreparation
@@ -724,6 +733,9 @@ async function setCardinalDirection(
 
   function addPreparedPieceAxesFromSelection():
     number {
+
+    pieceOriginEdit.cancel();
+
 
     const added =
       piecePreparation
@@ -3557,6 +3569,9 @@ function cancelDesignPiecePlacement(): void {
       CadWorkPlaneMode,
   ): void {
 
+    pieceOriginEdit.cancel();
+
+
     cadWorkPlaneEdit.cancel();
 
 
@@ -3569,6 +3584,9 @@ function cancelDesignPiecePlacement(): void {
 
   function cycleCadWorkPlane():
     CadWorkPlaneMode {
+
+    pieceOriginEdit.cancel();
+
 
     cadWorkPlaneEdit.cancel();
 
