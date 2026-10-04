@@ -30,6 +30,27 @@ export class DesignSceneController {
 
 
   // ==========================================================
+  // PIECE VISUAL STYLE
+  //
+  // Colores pastel de contraste medio pensados para un visor
+  // CAD oscuro. MeshLambertMaterial conserva lectura de volumen
+  // mediante iluminación difusa, pero evita el aspecto metálico,
+  // los reflejos y los highlights especulares fuertes.
+  // ==========================================================
+
+  private readonly piecePastelPalette = [
+    0x9db7c7, // azul grisáceo
+    0xa8bfa3, // verde salvia
+    0xc4b5d6, // lavanda
+    0xd7c7a3, // arena
+    0xd6a6ad, // rosa apagado
+    0xa8c9bf, // menta
+    0xd9b38c, // durazno suave
+    0xa7bfd9, // celeste
+  ] as const;
+
+
+  // ==========================================================
   // VISUAL PROTOTYPES
   //
   // AssetDefinition.id -> THREE.Object3D reutilizable
@@ -124,10 +145,181 @@ export class DesignSceneController {
     }
 
 
+    this.applyMattePastelStyle(
+      assetId,
+      prototype,
+    );
+
+
     this.assetPrototypes.set(
       assetId,
       prototype,
     );
+
+  }
+
+
+  // ==========================================================
+  // MATTE PASTEL PIECE STYLE
+  // ==========================================================
+
+  private applyMattePastelStyle(
+    assetId: string,
+    prototype: THREE.Object3D,
+  ): void {
+
+    const color =
+      this.getPastelColorForAsset(
+        assetId,
+      );
+
+
+    prototype.traverse(
+      (
+        child,
+      ) => {
+
+        if (
+          !(child instanceof THREE.Mesh)
+        ) {
+
+          return;
+
+        }
+
+
+        const createMatteMaterial =
+          (
+            source:
+              THREE.Material,
+          ):
+            THREE.MeshLambertMaterial => {
+
+            /*
+             * Conservamos únicamente propiedades de render
+             * necesarias para no romper geometría/transparencia.
+             * Deliberadamente NO copiamos envMap, metalness,
+             * roughness, specular ni clearcoat.
+             */
+            const material =
+              new THREE.MeshLambertMaterial({
+                color,
+                side:
+                  source.side,
+                transparent:
+                  source.transparent,
+                opacity:
+                  source.opacity,
+                depthTest:
+                  source.depthTest,
+                depthWrite:
+                  source.depthWrite,
+                alphaTest:
+                  source.alphaTest,
+                vertexColors:
+                  false,
+                flatShading:
+                  false,
+              });
+
+
+            material.name =
+              `FrameLogicPastel:${assetId}`;
+
+
+            material.polygonOffset =
+              source.polygonOffset;
+
+
+            material.polygonOffsetFactor =
+              source.polygonOffsetFactor;
+
+
+            material.polygonOffsetUnits =
+              source.polygonOffsetUnits;
+
+
+            return material;
+
+          };
+
+
+        if (
+          Array.isArray(
+            child.material,
+          )
+        ) {
+
+          child.material =
+            child.material.map(
+              createMatteMaterial,
+            );
+
+        }
+        else {
+
+          child.material =
+            createMatteMaterial(
+              child.material,
+            );
+
+        }
+
+
+        child.castShadow =
+          false;
+
+
+        child.receiveShadow =
+          false;
+
+      },
+    );
+
+  }
+
+
+  private getPastelColorForAsset(
+    assetId: string,
+  ):
+    number {
+
+    let hash =
+      2166136261;
+
+
+    for (
+      let index = 0;
+      index < assetId.length;
+      index += 1
+    ) {
+
+      hash ^=
+        assetId.charCodeAt(
+          index,
+        );
+
+
+      hash =
+        Math.imul(
+          hash,
+          16777619,
+        );
+
+    }
+
+
+    const paletteIndex =
+      (
+        hash >>> 0
+      )
+      % this.piecePastelPalette.length;
+
+
+    return this.piecePastelPalette[
+      paletteIndex
+    ]
+      ?? this.piecePastelPalette[0];
 
   }
 
