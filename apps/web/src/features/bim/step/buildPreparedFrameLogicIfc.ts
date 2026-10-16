@@ -18,6 +18,10 @@ export interface PreparedFrameLogicIfcInput {
 }
 
 
+type Vector3Tuple =
+  readonly [number, number, number];
+
+
 function formatIfcNumber(
   value: number,
 ): string {
@@ -79,6 +83,15 @@ function formatIfcNumber(
 }
 
 
+function formatIfcVector(
+  vector: Vector3Tuple,
+): string {
+
+  return `(${formatIfcNumber(vector[0])},${formatIfcNumber(vector[1])},${formatIfcNumber(vector[2])})`;
+
+}
+
+
 function escapeIfcString(
   value: string,
 ): string {
@@ -136,159 +149,224 @@ function createIfcGuid(): string {
 }
 
 
-function transformPointToDefinitionLocal(
-  x: number,
-  y: number,
-  z: number,
-  coordinateSystem: LocalCoordinateSystem,
-): readonly [number, number, number] {
+function getNextEntityId(
+  ifcText: string,
+): number {
 
-  const dx =
-    x - coordinateSystem.origin.x;
-
-  const dy =
-    y - coordinateSystem.origin.y;
-
-  const dz =
-    z - coordinateSystem.origin.z;
+  let nextId =
+    1;
 
 
-  return [
-    coordinateSystem.xAxis.x * dx
-      + coordinateSystem.xAxis.y * dy
-      + coordinateSystem.xAxis.z * dz,
+  for (
+    const entityMatch
+    of ifcText.matchAll(
+      /#(\d+)=/g,
+    )
+  ) {
 
-    coordinateSystem.yAxis.x * dx
-      + coordinateSystem.yAxis.y * dy
-      + coordinateSystem.yAxis.z * dz,
+    const current =
+      Number(
+        entityMatch[1],
+      );
 
-    coordinateSystem.zAxis.x * dx
-      + coordinateSystem.zAxis.y * dy
-      + coordinateSystem.zAxis.z * dz,
-  ];
+
+    if (
+      Number.isFinite(
+        current,
+      )
+    ) {
+
+      nextId =
+        Math.max(
+          nextId,
+          current + 1,
+        );
+
+    }
+
+  }
+
+
+  return nextId;
 
 }
 
 
-function transformPointList(
+function insertBeforeDataEnd(
+  ifcText: string,
+  lines: readonly string[],
+): string {
+
+  const dataEndIndex =
+    ifcText.lastIndexOf(
+      "ENDSEC;",
+    );
+
+
+  if (
+    dataEndIndex < 0
+  ) {
+
+    throw new Error(
+      "El IFC base no contiene una sección DATA válida.",
+    );
+
+  }
+
+
+  return [
+    ifcText.slice(
+      0,
+      dataEndIndex,
+    ),
+    lines.join(
+      "\n",
+    ),
+    "\n",
+    ifcText.slice(
+      dataEndIndex,
+    ),
+  ].join(
+    "",
+  );
+
+}
+
+
+/**
+ * PieceDefinition.coordinateSystem expresa los ejes locales de
+ * FrameLogic dentro de las coordenadas originales del STEP.
+ *
+ * El workspace de preparación usa:
+ *
+ *   local = A * (asset - origin)
+ *
+ * donde las filas de A son xAxis, yAxis y zAxis.
+ *
+ * En IFC, IfcAxis2Placement3D expresa en cambio las columnas de
+ * la transformación local -> padre. Por eso las direcciones que
+ * escribimos aquí son las columnas de A y la traslación es
+ * -A * origin.
+ */
+function applyPreparedIfcPlacement(
   ifcText: string,
   coordinateSystem: LocalCoordinateSystem,
 ): string {
 
-  const pointListPattern =
-    /#\d+=IFCCARTESIANPOINTLIST3D\(\(([^;]*)\)\);/i;
+  const origin =
+    coordinateSystem.origin;
+
+  const xAxis =
+    coordinateSystem.xAxis;
+
+  const yAxis =
+    coordinateSystem.yAxis;
+
+  const zAxis =
+    coordinateSystem.zAxis;
 
 
-  const match =
-    ifcText.match(
-      pointListPattern,
-    );
+  const location: Vector3Tuple = [
+    -(
+      xAxis.x * origin.x
+      + xAxis.y * origin.y
+      + xAxis.z * origin.z
+    ),
+    -(
+      yAxis.x * origin.x
+      + yAxis.y * origin.y
+      + yAxis.z * origin.z
+    ),
+    -(
+      zAxis.x * origin.x
+      + zAxis.y * origin.y
+      + zAxis.z * origin.z
+    ),
+  ];
+
+
+  /*
+   * Columnas de A:
+   * - columna 1 = dirección X del STEP transformado;
+   * - columna 3 = dirección Z del STEP transformado.
+   * IFC calcula Y = Z × X.
+   */
+  const refDirection: Vector3Tuple = [
+    xAxis.x,
+    yAxis.x,
+    zAxis.x,
+  ];
+
+  const axisDirection: Vector3Tuple = [
+    xAxis.z,
+    yAxis.z,
+    zAxis.z,
+  ];
+
+
+  const pointPattern =
+    /#12=IFCCARTESIANPOINT\(\([^;]*\)\);/i;
+
+  const axisPlacementPattern =
+    /#13=IFCAXIS2PLACEMENT3D\(#12,[^;]*\);/i;
 
 
   if (
-    !match
-    || match[1] === undefined
-  ) {
-
-    throw new Error(
-      "No se encontró la geometría triangulada del IFC base.",
-    );
-
-  }
-
-
-  const tuples: string[] = [];
-
-  const tuplePattern =
-    /\(([^()]*)\)/g;
-
-
-  for (
-    const tupleMatch
-    of match[1].matchAll(
-      tuplePattern,
+    !pointPattern.test(
+      ifcText,
+    )
+    || !axisPlacementPattern.test(
+      ifcText,
     )
   ) {
 
-    const values =
-      tupleMatch[1]
-        ?.split(
-          ",",
-        )
-        .map(
-          (
-            value,
-          ) =>
-            Number(
-              value.trim(),
-            ),
-        );
-
-
-    if (
-      !values
-      || values.length !== 3
-      || values.some(
-        (
-          value,
-        ) =>
-          !Number.isFinite(
-            value,
-          ),
-      )
-    ) {
-
-      throw new Error(
-        "El IFC base contiene un punto que no se pudo interpretar.",
-      );
-
-    }
-
-
-    const transformed =
-      transformPointToDefinitionLocal(
-        values[0]!,
-        values[1]!,
-        values[2]!,
-        coordinateSystem,
-      );
-
-
-    tuples.push(
-      `(${formatIfcNumber(transformed[0])},${formatIfcNumber(transformed[1])},${formatIfcNumber(transformed[2])})`,
-    );
-
-  }
-
-
-  if (
-    tuples.length < 1
-  ) {
-
     throw new Error(
-      "El IFC base no contiene puntos de geometría.",
+      "El IFC de trabajo no contiene la colocación esperada de la pieza FrameLogic.",
     );
 
   }
 
 
-  return ifcText.replace(
-    pointListPattern,
-    (
-      original,
-    ) => {
+  let nextId =
+    getNextEntityId(
+      ifcText,
+    );
 
-      const prefix =
-        original.slice(
-          0,
-          original.indexOf("((") + 2,
-        );
+  const axisDirectionId =
+    nextId;
+
+  nextId +=
+    1;
+
+  const refDirectionId =
+    nextId;
 
 
-      return `${prefix}${tuples.join(",")}));`;
+  let result =
+    ifcText.replace(
+      pointPattern,
+      `#12=IFCCARTESIANPOINT(${formatIfcVector(location)});`,
+    );
 
-    },
-  );
+
+  result =
+    result.replace(
+      axisPlacementPattern,
+      `#13=IFCAXIS2PLACEMENT3D(#12,#${axisDirectionId},#${refDirectionId});`,
+    );
+
+
+  result =
+    insertBeforeDataEnd(
+      result,
+      [
+        `#${axisDirectionId}=IFCDIRECTION(${formatIfcVector(axisDirection)});`,
+        `#${refDirectionId}=IFCDIRECTION(${formatIfcVector(refDirection)});`,
+      ],
+    );
+
+
+  return result;
 
 }
 
@@ -323,37 +401,9 @@ function appendFrameLogicPropertySets(
 
 
   let nextId =
-    1;
-
-
-  for (
-    const entityMatch
-    of ifcText.matchAll(
-      /#(\d+)=/g,
-    )
-  ) {
-
-    const current =
-      Number(
-        entityMatch[1],
-      );
-
-
-    if (
-      Number.isFinite(
-        current,
-      )
-    ) {
-
-      nextId =
-        Math.max(
-          nextId,
-          current + 1,
-        );
-
-    }
-
-  }
+    getNextEntityId(
+      ifcText,
+    );
 
 
   const allocate =
@@ -406,30 +456,40 @@ function appendFrameLogicPropertySets(
 
   const identityValueId =
     allocate();
+
   const sourceCoordinateSystemValueId =
     allocate();
-  const localGeometryValueId =
+
+  const geometryCoordinateSystemValueId =
     allocate();
+
   const snapValueId =
     allocate();
+
   const axisValueId =
     allocate();
 
   const identityPsetId =
     allocate();
+
   const coordinatePsetId =
     allocate();
+
   const snapPsetId =
     allocate();
+
   const axisPsetId =
     allocate();
 
   const identityRelId =
     allocate();
+
   const coordinateRelId =
     allocate();
+
   const snapRelId =
     allocate();
+
   const axisRelId =
     allocate();
 
@@ -437,12 +497,12 @@ function appendFrameLogicPropertySets(
   const extraLines = [
     `#${identityValueId}=IFCPROPERTYSINGLEVALUE('Data',$,IFCTEXT('${escapeIfcString(identity)}'),$);`,
     `#${sourceCoordinateSystemValueId}=IFCPROPERTYSINGLEVALUE('SourceCoordinateSystem',$,IFCTEXT('${escapeIfcString(sourceCoordinateSystem)}'),$);`,
-    `#${localGeometryValueId}=IFCPROPERTYSINGLEVALUE('GeometryCoordinateSystem',$,IFCLABEL('PieceDefinitionLocal'),$);`,
+    `#${geometryCoordinateSystemValueId}=IFCPROPERTYSINGLEVALUE('GeometryCoordinateSystem',$,IFCLABEL('PreparedIfcLocalPlacement'),$);`,
     `#${snapValueId}=IFCPROPERTYSINGLEVALUE('Data',$,IFCTEXT('${escapeIfcString(snaps)}'),$);`,
     `#${axisValueId}=IFCPROPERTYSINGLEVALUE('AxisLines',$,IFCTEXT('${escapeIfcString(axes)}'),$);`,
 
     `#${identityPsetId}=IFCPROPERTYSET('${createIfcGuid()}',$,'FrameLogic_Identity',$,(#${identityValueId}));`,
-    `#${coordinatePsetId}=IFCPROPERTYSET('${createIfcGuid()}',$,'FrameLogic_CoordinateSystem',$,(#${sourceCoordinateSystemValueId},#${localGeometryValueId}));`,
+    `#${coordinatePsetId}=IFCPROPERTYSET('${createIfcGuid()}',$,'FrameLogic_CoordinateSystem',$,(#${sourceCoordinateSystemValueId},#${geometryCoordinateSystemValueId}));`,
     `#${snapPsetId}=IFCPROPERTYSET('${createIfcGuid()}',$,'FrameLogic_SnapPoints',$,(#${snapValueId}));`,
     `#${axisPsetId}=IFCPROPERTYSET('${createIfcGuid()}',$,'FrameLogic_ReferenceGeometry',$,(#${axisValueId}));`,
 
@@ -453,37 +513,9 @@ function appendFrameLogicPropertySets(
   ];
 
 
-  const dataEndIndex =
-    ifcText.lastIndexOf(
-      "ENDSEC;",
-    );
-
-
-  if (
-    dataEndIndex < 0
-  ) {
-
-    throw new Error(
-      "El IFC base no contiene una sección DATA válida.",
-    );
-
-  }
-
-
-  return [
-    ifcText.slice(
-      0,
-      dataEndIndex,
-    ),
-    extraLines.join(
-      "\n",
-    ),
-    "\n",
-    ifcText.slice(
-      dataEndIndex,
-    ),
-  ].join(
-    "",
+  return insertBeforeDataEnd(
+    ifcText,
+    extraLines,
   );
 
 }
@@ -497,8 +529,14 @@ export async function buildPreparedFrameLogicIfc(
     await input.baseIfcFile.text();
 
 
-  const transformedText =
-    transformPointList(
+  /*
+   * La geometría STEP permanece intacta. La preparación se
+   * expresa mediante la colocación IFC del producto, que es el
+   * mecanismo estándar para origen + orientación y es respetado
+   * por Web-IFC/Mesher al volver a importar la pieza.
+   */
+  const placedText =
+    applyPreparedIfcPlacement(
       baseText,
       input.coordinateSystem,
     );
@@ -506,7 +544,7 @@ export async function buildPreparedFrameLogicIfc(
 
   const finalText =
     appendFrameLogicPropertySets(
-      transformedText,
+      placedText,
       input,
     );
 
