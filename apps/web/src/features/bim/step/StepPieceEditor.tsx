@@ -14,7 +14,15 @@ import {
 
 import type {
   BimCoreInstance,
+  CameraOrientation,
+  CameraProjectionMode,
+  CardinalDirection,
+  StandardView,
 } from "@framelogic/bim-core";
+
+import {
+  ViewCube,
+} from "../components/ViewCube";
 
 import {
   convertStepToFrameLogicIfc,
@@ -172,6 +180,27 @@ export function StepPieceEditor({
     );
 
 
+  const [
+    cameraOrientation,
+    setCameraOrientation,
+  ] =
+    useState<CameraOrientation>({
+      azimuth:
+        Math.PI / 4,
+      polar:
+        Math.PI / 3,
+    });
+
+
+  const [
+    projectionMode,
+    setProjectionMode,
+  ] =
+    useState<CameraProjectionMode>(
+      "PERSPECTIVE",
+    );
+
+
   useEffect(
     () => {
 
@@ -190,6 +219,12 @@ export function StepPieceEditor({
 
       let disposed =
         false;
+
+
+      let unsubscribeCamera:
+        (() => void)
+        | null =
+          null;
 
 
       void createBimCore(
@@ -213,6 +248,34 @@ export function StepPieceEditor({
 
             coreRef.current =
               core;
+
+
+            setProjectionMode(
+              core.getCameraProjectionMode(),
+            );
+
+
+            unsubscribeCamera =
+              core.subscribeCameraOrientation(
+                (
+                  orientation,
+                ) => {
+
+                  if (
+                    disposed
+                  ) {
+
+                    return;
+
+                  }
+
+
+                  setCameraOrientation(
+                    orientation,
+                  );
+
+                },
+              );
 
 
             setReady(
@@ -250,6 +313,10 @@ export function StepPieceEditor({
           true;
 
 
+        unsubscribeCamera
+          ?.();
+
+
         coreRef.current
           ?.dispose();
 
@@ -262,6 +329,74 @@ export function StepPieceEditor({
     },
     [],
   );
+
+
+  function handleStandardView(
+    view:
+      StandardView,
+  ): void {
+
+    void coreRef.current
+      ?.setStandardView(
+        view,
+      );
+
+  }
+
+
+  function handleCardinalDirection(
+    direction:
+      CardinalDirection,
+  ): void {
+
+    void coreRef.current
+      ?.setCardinalDirection(
+        direction,
+      );
+
+  }
+
+
+  async function handleToggleProjection():
+    Promise<void> {
+
+    const core =
+      coreRef.current;
+
+
+    if (
+      !core
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      const mode =
+        await core
+          .toggleCameraProjection();
+
+
+      setProjectionMode(
+        mode,
+      );
+
+    }
+    catch (
+      error
+    ) {
+
+      console.error(
+        "Error changing STEP editor camera projection:",
+        error,
+      );
+
+    }
+
+  }
 
 
   function resetIdentityForFile(
@@ -622,6 +757,65 @@ export function StepPieceEditor({
   } as const;
 
 
+  const compactButtonStyle = {
+    ...buttonStyle,
+    padding:
+      "6px 8px",
+    fontSize:
+      "11px",
+  } as const;
+
+
+  const standardViews:
+    readonly {
+      readonly label: string;
+      readonly view: StandardView;
+    }[] = [
+      {
+        label:
+          "TOP",
+        view:
+          "TOP",
+      },
+      {
+        label:
+          "FRONT",
+        view:
+          "FRONT",
+      },
+      {
+        label:
+          "RIGHT",
+        view:
+          "RIGHT",
+      },
+      {
+        label:
+          "LEFT",
+        view:
+          "LEFT",
+      },
+      {
+        label:
+          "BACK",
+        view:
+          "BACK",
+      },
+      {
+        label:
+          "BOTTOM",
+        view:
+          "BOTTOM",
+      },
+      {
+        label:
+          "ISO",
+        view:
+          "ISO",
+      },
+    ];
+
+
   return (
     <div
       style={{
@@ -645,6 +839,29 @@ export function StepPieceEditor({
           inset:
             0,
         }}
+      />
+
+
+      <ViewCube
+        orientation={
+          cameraOrientation
+        }
+        projectionMode={
+          projectionMode
+        }
+        onViewChange={
+          handleStandardView
+        }
+        onCardinalChange={
+          handleCardinalDirection
+        }
+        onToggleProjection={
+          () => {
+
+            void handleToggleProjection();
+
+          }
+        }
       />
 
 
@@ -932,6 +1149,86 @@ export function StepPieceEditor({
                 }}
               />
 
+
+              <div
+                style={{
+                  marginBottom:
+                    "8px",
+                  fontWeight:
+                    700,
+                  fontSize:
+                    "12px",
+                }}
+              >
+                Vistas
+              </div>
+
+
+              <div
+                style={{
+                  display:
+                    "flex",
+                  gap:
+                    "5px",
+                  flexWrap:
+                    "wrap",
+                  marginBottom:
+                    "12px",
+                }}
+              >
+                {
+                  standardViews.map(
+                    (
+                      item,
+                    ) => (
+                      <button
+                        key={
+                          item.view
+                        }
+                        type="button"
+                        style={compactButtonStyle}
+                        onClick={
+                          () => {
+
+                            handleStandardView(
+                              item.view,
+                            );
+
+                          }
+                        }
+                      >
+                        {item.label}
+                      </button>
+                    ),
+                  )
+                }
+
+
+                <button
+                  type="button"
+                  style={compactButtonStyle}
+                  onClick={
+                    () => {
+
+                      void handleToggleProjection();
+
+                    }
+                  }
+                  title={
+                    projectionMode === "PERSPECTIVE"
+                      ? "Cambiar a ortográfica"
+                      : "Cambiar a perspectiva"
+                  }
+                >
+                  {
+                    projectionMode === "PERSPECTIVE"
+                      ? "ORTO"
+                      : "PERS"
+                  }
+                </button>
+              </div>
+
+
               <div
                 style={{
                   marginBottom:
@@ -944,6 +1241,7 @@ export function StepPieceEditor({
               >
                 Preparación 3D
               </div>
+
 
               <div
                 style={{
@@ -970,6 +1268,7 @@ export function StepPieceEditor({
                   Origen ← SNAP
                 </button>
 
+
                 <button
                   type="button"
                   style={buttonStyle}
@@ -985,6 +1284,7 @@ export function StepPieceEditor({
                   POINT
                 </button>
 
+
                 <button
                   type="button"
                   style={buttonStyle}
@@ -999,6 +1299,7 @@ export function StepPieceEditor({
                 >
                   LINE
                 </button>
+
 
                 <button
                   type="button"
@@ -1032,6 +1333,7 @@ export function StepPieceEditor({
                   Punto → SNAP
                 </button>
 
+
                 <button
                   type="button"
                   style={buttonStyle}
@@ -1064,16 +1366,16 @@ export function StepPieceEditor({
                   Línea → eje
                 </button>
 
+
                 <button
                   type="button"
                   style={buttonStyle}
                   onClick={
                     () => {
 
-                      void coreRef.current
-                        ?.setStandardView(
-                          "ISO",
-                        );
+                      handleStandardView(
+                        "ISO",
+                      );
 
                     }
                   }
@@ -1112,6 +1414,7 @@ export function StepPieceEditor({
               >
                 Descargar IFC base
               </button>
+
 
               <div
                 style={{
