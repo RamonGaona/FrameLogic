@@ -13,6 +13,7 @@
   "dependencies": {
     "@framelogic/bim-core": "^0.1.0",
     "@framelogic/geometry": "0.1.0",
+    "@sunbox/occt-import-js": "^0.0.29",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
