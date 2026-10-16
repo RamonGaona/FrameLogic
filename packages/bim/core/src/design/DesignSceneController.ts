@@ -4,6 +4,10 @@ import type {
   DesignModel,
 } from "@framelogic/domain";
 
+import {
+  preparePiecePrototypeGeometry,
+} from "./preparePiecePrototypeGeometry";
+
 
 export class DesignSceneController {
 
@@ -143,6 +147,16 @@ export class DesignSceneController {
       );
 
     }
+
+
+    /*
+     * Primero preparamos las normales de la geometría.
+     * Esto elimina diagonales de triangulación visibles en caras planas
+     * y suaviza visualmente facetas de curvas sin redondear aristas duras.
+     */
+    preparePiecePrototypeGeometry(
+      prototype,
+    );
 
 
     this.applyMattePastelStyle(
