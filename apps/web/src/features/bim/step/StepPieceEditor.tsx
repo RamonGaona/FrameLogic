@@ -39,6 +39,13 @@ export interface StepPieceEditorProps {
 }
 
 
+type Matrix3 = readonly [
+  number, number, number,
+  number, number, number,
+  number, number, number,
+];
+
+
 function fileBaseName(
   fileName: string,
 ): string {
@@ -69,6 +76,168 @@ function defaultCodeForFile(
 }
 
 
+function multiplyMatrix3(
+  a: Matrix3,
+  b: Matrix3,
+): Matrix3 {
+
+  return [
+    a[0] * b[0] + a[1] * b[3] + a[2] * b[6],
+    a[0] * b[1] + a[1] * b[4] + a[2] * b[7],
+    a[0] * b[2] + a[1] * b[5] + a[2] * b[8],
+
+    a[3] * b[0] + a[4] * b[3] + a[5] * b[6],
+    a[3] * b[1] + a[4] * b[4] + a[5] * b[7],
+    a[3] * b[2] + a[4] * b[5] + a[5] * b[8],
+
+    a[6] * b[0] + a[7] * b[3] + a[8] * b[6],
+    a[6] * b[1] + a[7] * b[4] + a[8] * b[7],
+    a[6] * b[2] + a[7] * b[5] + a[8] * b[8],
+  ];
+
+}
+
+
+/**
+ * Matriz de orientación visual absoluta respecto a los ejes
+ * originales del STEP. El orden aplicado es X -> Y -> Z.
+ */
+function createEulerRotationMatrix(
+  xDegrees: number,
+  yDegrees: number,
+  zDegrees: number,
+): Matrix3 {
+
+  const toRadians =
+    Math.PI / 180;
+
+
+  const x =
+    xDegrees * toRadians;
+
+  const y =
+    yDegrees * toRadians;
+
+  const z =
+    zDegrees * toRadians;
+
+
+  const cx = Math.cos(x);
+  const sx = Math.sin(x);
+  const cy = Math.cos(y);
+  const sy = Math.sin(y);
+  const cz = Math.cos(z);
+  const sz = Math.sin(z);
+
+
+  const rotateX: Matrix3 = [
+    1, 0, 0,
+    0, cx, -sx,
+    0, sx, cx,
+  ];
+
+
+  const rotateY: Matrix3 = [
+    cy, 0, sy,
+    0, 1, 0,
+    -sy, 0, cy,
+  ];
+
+
+  const rotateZ: Matrix3 = [
+    cz, -sz, 0,
+    sz, cz, 0,
+    0, 0, 1,
+  ];
+
+
+  return multiplyMatrix3(
+    multiplyMatrix3(
+      rotateZ,
+      rotateY,
+    ),
+    rotateX,
+  );
+
+}
+
+
+function installStepCameraTuning(
+  core: BimCoreInstance,
+): () => void {
+
+  const controls =
+    core.world.camera.controls as
+      typeof core.world.camera.controls
+      & {
+        azimuthRotateSpeed: number;
+        polarRotateSpeed: number;
+        smoothTime: number;
+        draggingSmoothTime: number;
+      };
+
+
+  /*
+   * El editor de pieza necesita una navegación más directa que
+   * el espacio general, sobre todo al inspeccionar detalles en
+   * ortográfica.
+   */
+  controls.azimuthRotateSpeed =
+    1.8;
+
+  controls.polarRotateSpeed =
+    1.8;
+
+  controls.dollySpeed =
+    1.15;
+
+  controls.smoothTime =
+    0.12;
+
+  controls.draggingSmoothTime =
+    0.07;
+
+
+  const update =
+    (): void => {
+
+      const minimumTruckSpeed =
+        core.getCameraProjectionMode()
+        === "ORTHOGRAPHIC"
+          ? 6
+          : 2.5;
+
+
+      controls.truckSpeed =
+        Math.max(
+          controls.truckSpeed,
+          minimumTruckSpeed,
+        );
+
+    };
+
+
+  controls.addEventListener(
+    "update",
+    update,
+  );
+
+
+  update();
+
+
+  return () => {
+
+    controls.removeEventListener(
+      "update",
+      update,
+    );
+
+  };
+
+}
+
+
 export function StepPieceEditor({
   initialFile,
   onExit,
@@ -79,111 +248,83 @@ export function StepPieceEditor({
       null,
     );
 
-
   const replacementInputRef =
     useRef<HTMLInputElement>(
       null,
     );
-
 
   const coreRef =
     useRef<BimCoreInstance | null>(
       null,
     );
 
+  const preparedInstanceIdRef =
+    useRef<string | null>(
+      null,
+    );
 
-  const [
-    sourceFile,
-    setSourceFile,
-  ] =
+  const preparedDefinitionIdRef =
+    useRef<string | null>(
+      null,
+    );
+
+
+  const [sourceFile, setSourceFile] =
     useState<File>(
       initialFile,
     );
 
-
-  const [
-    code,
-    setCode,
-  ] =
+  const [code, setCode] =
     useState(
       defaultCodeForFile(
         initialFile.name,
       ),
     );
 
-
-  const [
-    name,
-    setName,
-  ] =
+  const [name, setName] =
     useState(
       fileBaseName(
         initialFile.name,
       ),
     );
 
+  const [classification, setClassification] =
+    useState("");
 
-  const [
-    classification,
-    setClassification,
-  ] =
-    useState(
-      "",
-    );
+  const [tagsText, setTagsText] =
+    useState("");
 
-
-  const [
-    tagsText,
-    setTagsText,
-  ] =
-    useState(
-      "",
-    );
-
-
-  const [
-    ready,
-    setReady,
-  ] =
+  const [ready, setReady] =
     useState(false);
 
-
-  const [
-    loading,
-    setLoading,
-  ] =
+  const [loading, setLoading] =
     useState(false);
 
-
-  const [
-    prepared,
-    setPrepared,
-  ] =
+  const [prepared, setPrepared] =
     useState(false);
 
-
-  const [
-    conversion,
-    setConversion,
-  ] =
+  const [conversion, setConversion] =
     useState<StepConversionResult | null>(
       null,
     );
 
-
-  const [
-    message,
-    setMessage,
-  ] =
+  const [message, setMessage] =
     useState(
       "Completa los datos básicos y pulsa Cargar STEP y preparar.",
     );
 
 
-  const [
-    cameraOrientation,
-    setCameraOrientation,
-  ] =
+  const [rotationX, setRotationX] =
+    useState("0");
+
+  const [rotationY, setRotationY] =
+    useState("0");
+
+  const [rotationZ, setRotationZ] =
+    useState("0");
+
+
+  const [cameraOrientation, setCameraOrientation] =
     useState<CameraOrientation>({
       azimuth:
         Math.PI / 4,
@@ -191,11 +332,7 @@ export function StepPieceEditor({
         Math.PI / 3,
     });
 
-
-  const [
-    projectionMode,
-    setProjectionMode,
-  ] =
+  const [projectionMode, setProjectionMode] =
     useState<CameraProjectionMode>(
       "PERSPECTIVE",
     );
@@ -220,8 +357,12 @@ export function StepPieceEditor({
       let disposed =
         false;
 
-
       let unsubscribeCamera:
+        (() => void)
+        | null =
+          null;
+
+      let removeStepCameraTuning:
         (() => void)
         | null =
           null;
@@ -248,6 +389,12 @@ export function StepPieceEditor({
 
             coreRef.current =
               core;
+
+
+            removeStepCameraTuning =
+              installStepCameraTuning(
+                core,
+              );
 
 
             setProjectionMode(
@@ -316,10 +463,11 @@ export function StepPieceEditor({
         unsubscribeCamera
           ?.();
 
+        removeStepCameraTuning
+          ?.();
 
         coreRef.current
           ?.dispose();
-
 
         coreRef.current =
           null;
@@ -332,8 +480,7 @@ export function StepPieceEditor({
 
 
   function handleStandardView(
-    view:
-      StandardView,
+    view: StandardView,
   ): void {
 
     void coreRef.current
@@ -345,8 +492,7 @@ export function StepPieceEditor({
 
 
   function handleCardinalDirection(
-    direction:
-      CardinalDirection,
+    direction: CardinalDirection,
   ): void {
 
     void coreRef.current
@@ -376,13 +522,21 @@ export function StepPieceEditor({
     try {
 
       const mode =
-        await core
-          .toggleCameraProjection();
+        await core.toggleCameraProjection();
 
 
       setProjectionMode(
         mode,
       );
+
+
+      core.world.camera.controls.truckSpeed =
+        Math.max(
+          core.world.camera.controls.truckSpeed,
+          mode === "ORTHOGRAPHIC"
+            ? 6
+            : 2.5,
+        );
 
     }
     catch (
@@ -407,13 +561,11 @@ export function StepPieceEditor({
       file,
     );
 
-
     setCode(
       defaultCodeForFile(
         file.name,
       ),
     );
-
 
     setName(
       fileBaseName(
@@ -421,25 +573,19 @@ export function StepPieceEditor({
       ),
     );
 
+    setClassification("");
+    setTagsText("");
+    setConversion(null);
+    setPrepared(false);
+    setRotationX("0");
+    setRotationY("0");
+    setRotationZ("0");
 
-    setClassification(
-      "",
-    );
+    preparedInstanceIdRef.current =
+      null;
 
-
-    setTagsText(
-      "",
-    );
-
-
-    setConversion(
-      null,
-    );
-
-
-    setPrepared(
-      false,
-    );
+    preparedDefinitionIdRef.current =
+      null;
 
 
     setMessage(
@@ -450,8 +596,7 @@ export function StepPieceEditor({
 
 
   function handleReplacementFile(
-    event:
-      ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<HTMLInputElement>,
   ): void {
 
     const file =
@@ -500,7 +645,6 @@ export function StepPieceEditor({
     const normalizedCode =
       code.trim();
 
-
     const normalizedName =
       name.trim()
       || normalizedCode;
@@ -521,26 +665,19 @@ export function StepPieceEditor({
 
     const tags =
       tagsText
-        .split(
-          ",",
-        )
+        .split(",")
         .map(
           (
             tag,
           ) =>
             tag.trim(),
         )
-        .filter(
-          Boolean,
-        );
+        .filter(Boolean);
 
 
     try {
 
-      setLoading(
-        true,
-      );
-
+      setLoading(true);
 
       setMessage(
         "Leyendo STEP con OpenCascade y generando IFC base...",
@@ -606,6 +743,13 @@ export function StepPieceEditor({
         });
 
 
+      preparedInstanceIdRef.current =
+        instance.id;
+
+      preparedDefinitionIdRef.current =
+        definition.id;
+
+
       core.startPieceDefinitionPreparation(
         instance.id,
       );
@@ -620,11 +764,7 @@ export function StepPieceEditor({
         result,
       );
 
-
-      setPrepared(
-        true,
-      );
-
+      setPrepared(true);
 
       setMessage(
         `STEP cargado · ${result.sourceMeshCount} mesh · ${result.vertexCount.toLocaleString()} vértices · ${result.triangleCount.toLocaleString()} triángulos.`,
@@ -653,7 +793,6 @@ export function StepPieceEditor({
         errorMessage,
       );
 
-
       window.alert(
         `No se pudo preparar el STEP.\n\n${errorMessage}`,
       );
@@ -661,11 +800,264 @@ export function StepPieceEditor({
     }
     finally {
 
-      setLoading(
-        false,
-      );
+      setLoading(false);
 
     }
+
+  }
+
+
+  function applyPieceOrientation(
+    xDegrees: number,
+    yDegrees: number,
+    zDegrees: number,
+  ): void {
+
+    const core =
+      coreRef.current;
+
+    const instanceId =
+      preparedInstanceIdRef.current;
+
+    const definitionId =
+      preparedDefinitionIdRef.current;
+
+
+    if (
+      !core
+      || !instanceId
+      || !definitionId
+    ) {
+
+      return;
+
+    }
+
+
+    if (
+      !Number.isFinite(xDegrees)
+      || !Number.isFinite(yDegrees)
+      || !Number.isFinite(zDegrees)
+    ) {
+
+      window.alert(
+        "Los ángulos Rx, Ry y Rz deben ser números válidos.",
+      );
+
+      return;
+
+    }
+
+
+    const currentDefinition =
+      core.designModel
+        .pieceDefinitions
+        .get(
+          definitionId,
+        );
+
+
+    if (
+      !currentDefinition
+    ) {
+
+      window.alert(
+        "La PieceDefinition ya no está disponible.",
+      );
+
+      return;
+
+    }
+
+
+    const rotation =
+      createEulerRotationMatrix(
+        xDegrees,
+        yDegrees,
+        zDegrees,
+      );
+
+
+    const updated =
+      core.designModel
+        .pieceDefinitions
+        .updateCoordinateSystem(
+          definitionId,
+          {
+            origin:
+              currentDefinition.coordinateSystem.origin,
+            xAxis: {
+              x: rotation[0],
+              y: rotation[1],
+              z: rotation[2],
+            },
+            yAxis: {
+              x: rotation[3],
+              y: rotation[4],
+              z: rotation[5],
+            },
+            zAxis: {
+              x: rotation[6],
+              y: rotation[7],
+              z: rotation[8],
+            },
+          },
+          true,
+        );
+
+
+    if (
+      !updated
+    ) {
+
+      window.alert(
+        "No se pudo actualizar la orientación local de la pieza.",
+      );
+
+      return;
+
+    }
+
+
+    const object =
+      core.designScene
+        .getInstanceObject(
+          instanceId,
+        );
+
+
+    if (
+      !object
+    ) {
+
+      return;
+
+    }
+
+
+    const coordinateSystem =
+      updated.coordinateSystem;
+
+    const origin =
+      coordinateSystem.origin;
+
+    const xAxis =
+      coordinateSystem.xAxis;
+
+    const yAxis =
+      coordinateSystem.yAxis;
+
+    const zAxis =
+      coordinateSystem.zAxis;
+
+
+    object.matrixAutoUpdate =
+      false;
+
+    object.matrix.set(
+      xAxis.x,
+      xAxis.y,
+      xAxis.z,
+      -(
+        xAxis.x * origin.x
+        + xAxis.y * origin.y
+        + xAxis.z * origin.z
+      ),
+
+      yAxis.x,
+      yAxis.y,
+      yAxis.z,
+      -(
+        yAxis.x * origin.x
+        + yAxis.y * origin.y
+        + yAxis.z * origin.z
+      ),
+
+      zAxis.x,
+      zAxis.y,
+      zAxis.z,
+      -(
+        zAxis.x * origin.x
+        + zAxis.y * origin.y
+        + zAxis.z * origin.z
+      ),
+
+      0,
+      0,
+      0,
+      1,
+    );
+
+    object.matrixWorldNeedsUpdate =
+      true;
+
+    object.updateMatrixWorld(
+      true,
+    );
+
+
+    core.designSelection
+      .refreshHelpers();
+
+    core.pieceDefinitionHelpers
+      .sync();
+
+
+    setMessage(
+      `Orientación local aplicada · Rx ${xDegrees}° · Ry ${yDegrees}° · Rz ${zDegrees}°.`,
+    );
+
+  }
+
+
+  function setOrientationPreset(
+    xDegrees: number,
+    yDegrees: number,
+    zDegrees: number,
+  ): void {
+
+    setRotationX(
+      String(
+        xDegrees,
+      ),
+    );
+
+    setRotationY(
+      String(
+        yDegrees,
+      ),
+    );
+
+    setRotationZ(
+      String(
+        zDegrees,
+      ),
+    );
+
+
+    applyPieceOrientation(
+      xDegrees,
+      yDegrees,
+      zDegrees,
+    );
+
+  }
+
+
+  function handleApplyManualOrientation():
+    void {
+
+    applyPieceOrientation(
+      Number(
+        rotationX,
+      ),
+      Number(
+        rotationY,
+      ),
+      Number(
+        rotationZ,
+      ),
+    );
 
   }
 
@@ -686,7 +1078,6 @@ export function StepPieceEditor({
         conversion.ifcFile,
       );
 
-
     const link =
       document.createElement(
         "a",
@@ -703,7 +1094,6 @@ export function StepPieceEditor({
     document.body.appendChild(
       link,
     );
-
 
     link.click();
     link.remove();
@@ -766,52 +1156,47 @@ export function StepPieceEditor({
   } as const;
 
 
+  const angleInputStyle = {
+    ...controlStyle,
+    width:
+      "64px",
+    boxSizing:
+      "border-box",
+  } as const;
+
+
   const standardViews:
     readonly {
       readonly label: string;
       readonly view: StandardView;
     }[] = [
       {
-        label:
-          "TOP",
-        view:
-          "TOP",
+        label: "TOP",
+        view: "TOP",
       },
       {
-        label:
-          "FRONT",
-        view:
-          "FRONT",
+        label: "FRONT",
+        view: "FRONT",
       },
       {
-        label:
-          "RIGHT",
-        view:
-          "RIGHT",
+        label: "RIGHT",
+        view: "RIGHT",
       },
       {
-        label:
-          "LEFT",
-        view:
-          "LEFT",
+        label: "LEFT",
+        view: "LEFT",
       },
       {
-        label:
-          "BACK",
-        view:
-          "BACK",
+        label: "BACK",
+        view: "BACK",
       },
       {
-        label:
-          "BOTTOM",
-        view:
-          "BOTTOM",
+        label: "BOTTOM",
+        view: "BOTTOM",
       },
       {
-        label:
-          "ISO",
-        view:
-          "ISO",
+        label: "ISO",
+        view: "ISO",
       },
     ];
 
@@ -876,7 +1261,7 @@ export function StepPieceEditor({
           zIndex:
             80,
           width:
-            "370px",
+            "390px",
           maxHeight:
             "calc(100vh - 32px)",
           overflowY:
@@ -1113,7 +1498,6 @@ export function StepPieceEditor({
                 }
               </button>
 
-
               <button
                 type="button"
                 style={buttonStyle}
@@ -1163,7 +1547,6 @@ export function StepPieceEditor({
                 Vistas
               </div>
 
-
               <div
                 style={{
                   display:
@@ -1182,9 +1565,7 @@ export function StepPieceEditor({
                       item,
                     ) => (
                       <button
-                        key={
-                          item.view
-                        }
+                        key={item.view}
                         type="button"
                         style={compactButtonStyle}
                         onClick={
@@ -1202,7 +1583,6 @@ export function StepPieceEditor({
                     ),
                   )
                 }
-
 
                 <button
                   type="button"
@@ -1239,9 +1619,224 @@ export function StepPieceEditor({
                     "12px",
                 }}
               >
-                Preparación 3D
+                Orientación de la pieza
               </div>
 
+              <div
+                style={{
+                  display:
+                    "flex",
+                  gap:
+                    "5px",
+                  flexWrap:
+                    "wrap",
+                  marginBottom:
+                    "8px",
+                }}
+              >
+                <button
+                  type="button"
+                  style={compactButtonStyle}
+                  title="El eje Z original del STEP pasa a ser el eje X local de FrameLogic"
+                  onClick={
+                    () => {
+
+                      setOrientationPreset(
+                        0,
+                        90,
+                        0,
+                      );
+
+                    }
+                  }
+                >
+                  Z STEP → X
+                </button>
+
+                <button
+                  type="button"
+                  style={compactButtonStyle}
+                  title="El eje Z original del STEP pasa a ser el eje Y local de FrameLogic"
+                  onClick={
+                    () => {
+
+                      setOrientationPreset(
+                        -90,
+                        0,
+                        0,
+                      );
+
+                    }
+                  }
+                >
+                  Z STEP → Y
+                </button>
+
+                <button
+                  type="button"
+                  style={compactButtonStyle}
+                  title="Restaurar la orientación original del STEP"
+                  onClick={
+                    () => {
+
+                      setOrientationPreset(
+                        0,
+                        0,
+                        0,
+                      );
+
+                    }
+                  }
+                >
+                  Z STEP → Z
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display:
+                    "flex",
+                  alignItems:
+                    "end",
+                  gap:
+                    "6px",
+                  flexWrap:
+                    "wrap",
+                  marginBottom:
+                    "12px",
+                }}
+              >
+                <label
+                  style={{
+                    display:
+                      "grid",
+                    gap:
+                      "3px",
+                    fontSize:
+                      "11px",
+                  }}
+                >
+                  Rx °
+                  <input
+                    type="number"
+                    step="1"
+                    value={rotationX}
+                    onChange={
+                      (
+                        event,
+                      ) => {
+
+                        setRotationX(
+                          event.target.value,
+                        );
+
+                      }
+                    }
+                    style={angleInputStyle}
+                  />
+                </label>
+
+                <label
+                  style={{
+                    display:
+                      "grid",
+                    gap:
+                      "3px",
+                    fontSize:
+                      "11px",
+                  }}
+                >
+                  Ry °
+                  <input
+                    type="number"
+                    step="1"
+                    value={rotationY}
+                    onChange={
+                      (
+                        event,
+                      ) => {
+
+                        setRotationY(
+                          event.target.value,
+                        );
+
+                      }
+                    }
+                    style={angleInputStyle}
+                  />
+                </label>
+
+                <label
+                  style={{
+                    display:
+                      "grid",
+                    gap:
+                      "3px",
+                    fontSize:
+                      "11px",
+                  }}
+                >
+                  Rz °
+                  <input
+                    type="number"
+                    step="1"
+                    value={rotationZ}
+                    onChange={
+                      (
+                        event,
+                      ) => {
+
+                        setRotationZ(
+                          event.target.value,
+                        );
+
+                      }
+                    }
+                    style={angleInputStyle}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  style={compactButtonStyle}
+                  onClick={
+                    handleApplyManualOrientation
+                  }
+                >
+                  Aplicar giro
+                </button>
+              </div>
+
+              <div
+                style={{
+                  marginTop:
+                    "-5px",
+                  marginBottom:
+                    "12px",
+                  fontSize:
+                    "10px",
+                  color:
+                    "#9ca3af",
+                  lineHeight:
+                    1.35,
+                }}
+              >
+                Los ángulos son absolutos respecto al STEP original y se aplican en orden X → Y → Z. Cambian el sistema local de la PieceDefinition, no la colocación de una instancia del proyecto.
+              </div>
+
+
+              <div
+                style={{
+                  marginBottom:
+                    "8px",
+                  fontWeight:
+                    700,
+                  fontSize:
+                    "12px",
+                }}
+              >
+                Preparación 3D
+              </div>
 
               <div
                 style={{
@@ -1268,7 +1863,6 @@ export function StepPieceEditor({
                   Origen ← SNAP
                 </button>
 
-
                 <button
                   type="button"
                   style={buttonStyle}
@@ -1284,7 +1878,6 @@ export function StepPieceEditor({
                   POINT
                 </button>
 
-
                 <button
                   type="button"
                   style={buttonStyle}
@@ -1299,7 +1892,6 @@ export function StepPieceEditor({
                 >
                   LINE
                 </button>
-
 
                 <button
                   type="button"
@@ -1333,7 +1925,6 @@ export function StepPieceEditor({
                   Punto → SNAP
                 </button>
 
-
                 <button
                   type="button"
                   style={buttonStyle}
@@ -1366,7 +1957,6 @@ export function StepPieceEditor({
                   Línea → eje
                 </button>
 
-
                 <button
                   type="button"
                   style={buttonStyle}
@@ -1384,7 +1974,6 @@ export function StepPieceEditor({
                 </button>
               </div>
 
-
               <div
                 style={{
                   marginTop:
@@ -1400,7 +1989,6 @@ export function StepPieceEditor({
                 Selecciona la pieza y usa M si necesitas el gizmo. Los SNAPs y ejes persistentes se administran en el panel de preparación.
               </div>
 
-
               <button
                 type="button"
                 style={{
@@ -1415,7 +2003,6 @@ export function StepPieceEditor({
                 Descargar IFC base
               </button>
 
-
               <div
                 style={{
                   marginTop:
@@ -1426,7 +2013,7 @@ export function StepPieceEditor({
                     "#9ca3af",
                 }}
               >
-                Este IFC ya contiene la geometría STEP y la identidad básica. La exportación final con SNAPs/ejes FrameLogic se conectará después al guardado de PieceDefinition.
+                Este IFC ya contiene la geometría STEP y la identidad básica. La exportación final con orientación, SNAPs y ejes FrameLogic se conectará después al guardado de PieceDefinition.
               </div>
             </>
           )
