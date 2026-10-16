@@ -1,5 +1,9 @@
 import * as THREE from "three";
 
+import {
+  DEFAULT_DESIGN_LAYER_IDS,
+} from "@framelogic/domain";
+
 import type {
   DesignModel,
   PersistentSnapType,
@@ -58,7 +62,26 @@ export type PieceDefinitionPreparationListener =
   ) => void;
 
 
+interface PreparationLayerState {
+
+  readonly visible:
+    boolean;
+
+  readonly snapEnabled:
+    boolean;
+
+}
+
+
 export class PieceDefinitionPreparationController {
+
+  private static readonly PREPARATION_LAYER_ID =
+    "__framelogic-piece-preparation__";
+
+
+  private static readonly PREPARATION_LAYER_NAME =
+    "Piece Preparation";
+
 
   private readonly designModel:
     DesignModel;
@@ -82,7 +105,26 @@ export class PieceDefinitionPreparationController {
     >();
 
 
+  private readonly previousLayerStates =
+    new Map<
+      string,
+      PreparationLayerState
+    >();
+
+
   private activeInstanceId:
+    string
+    | null =
+      null;
+
+
+  private previousActiveLayerId:
+    string
+    | null =
+      null;
+
+
+  private originalPieceLayerId:
     string
     | null =
       null;
@@ -202,6 +244,16 @@ export class PieceDefinitionPreparationController {
   ):
     PieceDefinitionPreparationState {
 
+    if (
+      this.activeInstanceId
+      !== null
+    ) {
+
+      this.stop();
+
+    }
+
+
     const instance =
       this.designModel
         .pieceInstances
@@ -262,6 +314,35 @@ export class PieceDefinitionPreparationController {
       instanceId;
 
 
+    try {
+
+      this.enterPreparationWorkspace(
+        instanceId,
+        instance.layerId,
+      );
+
+
+      this.applyPreparationTransform();
+
+    }
+    catch (
+      error
+    ) {
+
+      this.activeInstanceId =
+        null;
+
+
+      this.leavePreparationWorkspace(
+        instanceId,
+      );
+
+
+      throw error;
+
+    }
+
+
     this.notify();
 
 
@@ -273,8 +354,12 @@ export class PieceDefinitionPreparationController {
   stop():
     void {
 
+    const instanceId =
+      this.activeInstanceId;
+
+
     if (
-      this.activeInstanceId
+      instanceId
       === null
     ) {
 
@@ -285,6 +370,11 @@ export class PieceDefinitionPreparationController {
 
     this.activeInstanceId =
       null;
+
+
+    this.leavePreparationWorkspace(
+      instanceId,
+    );
 
 
     this.notify();
@@ -420,6 +510,9 @@ export class PieceDefinitionPreparationController {
           },
         },
       );
+
+
+    this.applyPreparationTransform();
 
 
     const result =
@@ -1098,6 +1191,478 @@ export class PieceDefinitionPreparationController {
   }
 
 
+  private enterPreparationWorkspace(
+    instanceId:
+      string,
+
+    originalLayerId:
+      string,
+  ):
+    void {
+
+    this.previousLayerStates.clear();
+
+
+    this.previousActiveLayerId =
+      this.designModel
+        .layers
+        .activeLayerId;
+
+
+    this.originalPieceLayerId =
+      originalLayerId;
+
+
+    for (
+      const layer
+      of this.designModel
+        .layers
+        .getAll()
+    ) {
+
+      if (
+        layer.id
+        === PieceDefinitionPreparationController
+          .PREPARATION_LAYER_ID
+      ) {
+
+        continue;
+
+      }
+
+
+      this.previousLayerStates.set(
+        layer.id,
+        {
+          visible:
+            layer.visible,
+          snapEnabled:
+            layer.snapEnabled,
+        },
+      );
+
+    }
+
+
+    const preparationLayer =
+      this.designModel
+        .layers
+        .get(
+          PieceDefinitionPreparationController
+            .PREPARATION_LAYER_ID,
+        );
+
+
+    if (
+      preparationLayer
+    ) {
+
+      this.cleanupPreparationCad();
+
+
+      this.designModel
+        .layers
+        .update(
+          preparationLayer.id,
+          {
+            name:
+              PieceDefinitionPreparationController
+                .PREPARATION_LAYER_NAME,
+            visible:
+              true,
+            locked:
+              false,
+            snapEnabled:
+              true,
+          },
+        );
+
+    }
+    else {
+
+      this.designModel
+        .layers
+        .create({
+          id:
+            PieceDefinitionPreparationController
+              .PREPARATION_LAYER_ID,
+          name:
+            PieceDefinitionPreparationController
+              .PREPARATION_LAYER_NAME,
+          visible:
+            true,
+          locked:
+            false,
+          snapEnabled:
+            true,
+        });
+
+    }
+
+
+    this.designModel
+      .updatePieceInstanceLayer(
+        instanceId,
+        PieceDefinitionPreparationController
+          .PREPARATION_LAYER_ID,
+      );
+
+
+    for (
+      const layer
+      of this.designModel
+        .layers
+        .getAll()
+    ) {
+
+      if (
+        layer.id
+        === PieceDefinitionPreparationController
+          .PREPARATION_LAYER_ID
+      ) {
+
+        this.designModel
+          .layers
+          .update(
+            layer.id,
+            {
+              visible:
+                true,
+              snapEnabled:
+                true,
+            },
+          );
+
+
+        continue;
+
+      }
+
+
+      if (
+        layer.id
+        === DEFAULT_DESIGN_LAYER_IDS
+          .SNAP_MANUAL
+        || layer.id
+          === DEFAULT_DESIGN_LAYER_IDS
+            .REFERENCE_AXES
+      ) {
+
+        this.designModel
+          .layers
+          .update(
+            layer.id,
+            {
+              visible:
+                true,
+              snapEnabled:
+                true,
+            },
+          );
+
+
+        continue;
+
+      }
+
+
+      this.designModel
+        .layers
+        .update(
+          layer.id,
+          {
+            visible:
+              false,
+            snapEnabled:
+              false,
+          },
+        );
+
+    }
+
+
+    this.designModel
+      .layers
+      .setActiveLayer(
+        PieceDefinitionPreparationController
+          .PREPARATION_LAYER_ID,
+      );
+
+
+    this.designScene
+      .setVisibilityFilter(
+        (
+          currentInstanceId,
+        ) =>
+          currentInstanceId
+          === instanceId,
+      );
+
+  }
+
+
+  private leavePreparationWorkspace(
+    instanceId:
+      string,
+  ):
+    void {
+
+    this.cleanupPreparationCad();
+
+
+    if (
+      this.originalPieceLayerId
+      && this.designModel
+        .layers
+        .get(
+          this.originalPieceLayerId,
+        )
+    ) {
+
+      this.designModel
+        .updatePieceInstanceLayer(
+          instanceId,
+          this.originalPieceLayerId,
+        );
+
+    }
+
+
+    for (
+      const [
+        layerId,
+        state,
+      ]
+      of this.previousLayerStates
+    ) {
+
+      if (
+        !this.designModel
+          .layers
+          .get(
+            layerId,
+          )
+      ) {
+
+        continue;
+
+      }
+
+
+      this.designModel
+        .layers
+        .update(
+          layerId,
+          {
+            visible:
+              state.visible,
+            snapEnabled:
+              state.snapEnabled,
+          },
+        );
+
+    }
+
+
+    if (
+      this.previousActiveLayerId
+      && this.designModel
+        .layers
+        .get(
+          this.previousActiveLayerId,
+        )
+    ) {
+
+      this.designModel
+        .layers
+        .setActiveLayer(
+          this.previousActiveLayerId,
+        );
+
+    }
+
+
+    if (
+      this.designModel
+        .layers
+        .get(
+          PieceDefinitionPreparationController
+            .PREPARATION_LAYER_ID,
+        )
+    ) {
+
+      this.designModel
+        .layers
+        .remove(
+          PieceDefinitionPreparationController
+            .PREPARATION_LAYER_ID,
+        );
+
+    }
+
+
+    this.designScene
+      .setVisibilityFilter(
+        null,
+      );
+
+
+    this.previousLayerStates.clear();
+
+
+    this.previousActiveLayerId =
+      null;
+
+
+    this.originalPieceLayerId =
+      null;
+
+  }
+
+
+  private cleanupPreparationCad():
+    void {
+
+    const preparationLayerId =
+      PieceDefinitionPreparationController
+        .PREPARATION_LAYER_ID;
+
+
+    this.pointSelection
+      .clearSelection();
+
+
+    this.lineSelection
+      .clearSelection();
+
+
+    for (
+      const point
+      of [
+        ...this.designModel
+          .cadPoints
+          .findByLayerId(
+            preparationLayerId,
+          ),
+      ]
+    ) {
+
+      this.designModel
+        .removeCadPoint(
+          point.id,
+        );
+
+    }
+
+
+    for (
+      const line
+      of [
+        ...this.designModel
+          .cadLines
+          .findByLayerId(
+            preparationLayerId,
+          ),
+      ]
+    ) {
+
+      this.designModel
+        .removeCadLine(
+          line.id,
+        );
+
+    }
+
+  }
+
+
+  private applyPreparationTransform():
+    void {
+
+    const context =
+      this.requireContext();
+
+
+    const coordinateSystem =
+      context.definition
+        .coordinateSystem;
+
+
+    const origin =
+      this.fromData(
+        coordinateSystem.origin,
+      );
+
+
+    const xAxis =
+      this.fromData(
+        coordinateSystem.xAxis,
+      );
+
+
+    const yAxis =
+      this.fromData(
+        coordinateSystem.yAxis,
+      );
+
+
+    const zAxis =
+      this.fromData(
+        coordinateSystem.zAxis,
+      );
+
+
+    const preparationMatrix =
+      new THREE.Matrix4()
+        .set(
+          xAxis.x,
+          xAxis.y,
+          xAxis.z,
+          -xAxis.dot(
+            origin,
+          ),
+
+          yAxis.x,
+          yAxis.y,
+          yAxis.z,
+          -yAxis.dot(
+            origin,
+          ),
+
+          zAxis.x,
+          zAxis.y,
+          zAxis.z,
+          -zAxis.dot(
+            origin,
+          ),
+
+          0,
+          0,
+          0,
+          1,
+        );
+
+
+    context.object.matrixAutoUpdate =
+      false;
+
+
+    context.object.matrix.copy(
+      preparationMatrix,
+    );
+
+
+    context.object.matrixWorldNeedsUpdate =
+      true;
+
+
+    context.object.updateMatrixWorld(
+      true,
+    );
+
+  }
+
+
   private replaceDefinition(
     updated:
       PieceDefinition,
@@ -1322,7 +1887,7 @@ export class PieceDefinitionPreparationController {
       "1.35";
 
     description.textContent =
-      "Edita la información persistente de la PieceDefinition. Los cambios afectan todas sus instancias.";
+      "Workspace local aislado: (0,0,0) corresponde al origen de la PieceDefinition. POINT y LINE creados aquí son referencias temporales de preparación.";
 
 
     this.editorRoot.appendChild(
@@ -2339,8 +2904,14 @@ export class PieceDefinitionPreparationController {
   dispose():
     void {
 
-    this.activeInstanceId =
-      null;
+    if (
+      this.activeInstanceId
+      !== null
+    ) {
+
+      this.stop();
+
+    }
 
 
     this.listeners.clear();
