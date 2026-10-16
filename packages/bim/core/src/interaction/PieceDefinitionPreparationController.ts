@@ -88,6 +88,10 @@ export class PieceDefinitionPreparationController {
       null;
 
 
+  private readonly editorRoot:
+    HTMLDivElement;
+
+
   constructor(
     designModel:
       DesignModel,
@@ -116,6 +120,13 @@ export class PieceDefinitionPreparationController {
 
     this.lineSelection =
       lineSelection;
+
+
+    this.editorRoot =
+      this.createEditorRoot();
+
+
+    this.renderEditor();
 
   }
 
@@ -689,6 +700,377 @@ export class PieceDefinitionPreparationController {
   }
 
 
+  updateSnap(
+    snapId:
+      string,
+
+    changes: {
+      name?: string;
+      type?: PersistentSnapType;
+    },
+  ):
+    PieceDefinition {
+
+    const context =
+      this.requireContext();
+
+
+    const currentSnap =
+      context.definition
+        .snapPoints
+        .find(
+          (
+            snap,
+          ) =>
+            snap.id
+            === snapId,
+        );
+
+
+    if (
+      !currentSnap
+    ) {
+
+      throw new Error(
+        `Persistent SNAP "${snapId}" does not exist.`,
+      );
+
+    }
+
+
+    if (
+      currentSnap.type
+      === "ORIGIN"
+      && changes.type !== undefined
+      && changes.type !== "ORIGIN"
+    ) {
+
+      throw new Error(
+        "The ORIGIN SNAP cannot change type. Use the origin tool to relocate it.",
+      );
+
+    }
+
+
+    if (
+      currentSnap.type
+      !== "ORIGIN"
+      && changes.type === "ORIGIN"
+    ) {
+
+      throw new Error(
+        "ORIGIN is managed by the piece coordinate system. Use Origen ← SNAP instead.",
+      );
+
+    }
+
+
+    const name =
+      changes.name === undefined
+        ? currentSnap.name
+        : changes.name.trim();
+
+
+    if (
+      name.length === 0
+    ) {
+
+      throw new Error(
+        "Persistent SNAP name cannot be empty.",
+      );
+
+    }
+
+
+    const updated:
+      PieceDefinition = {
+
+        ...context.definition,
+
+        snapPoints:
+          context.definition
+            .snapPoints
+            .map(
+              (
+                snap,
+              ) =>
+                snap.id === snapId
+                  ? {
+                      ...snap,
+                      name,
+                      type:
+                        changes.type
+                        ?? snap.type,
+                    }
+                  : snap,
+            ),
+
+      };
+
+
+    const result =
+      this.replaceDefinition(
+        updated,
+      );
+
+
+    this.notify();
+
+
+    return result;
+
+  }
+
+
+  removeSnap(
+    snapId:
+      string,
+  ):
+    PieceDefinition {
+
+    const context =
+      this.requireContext();
+
+
+    const currentSnap =
+      context.definition
+        .snapPoints
+        .find(
+          (
+            snap,
+          ) =>
+            snap.id
+            === snapId,
+        );
+
+
+    if (
+      !currentSnap
+    ) {
+
+      throw new Error(
+        `Persistent SNAP "${snapId}" does not exist.`,
+      );
+
+    }
+
+
+    if (
+      currentSnap.type
+      === "ORIGIN"
+    ) {
+
+      throw new Error(
+        "The ORIGIN SNAP cannot be deleted. Move it with Origen ← SNAP.",
+      );
+
+    }
+
+
+    const updated:
+      PieceDefinition = {
+
+        ...context.definition,
+
+        snapPoints:
+          context.definition
+            .snapPoints
+            .filter(
+              (
+                snap,
+              ) =>
+                snap.id
+                !== snapId,
+            ),
+
+      };
+
+
+    const result =
+      this.replaceDefinition(
+        updated,
+      );
+
+
+    this.notify();
+
+
+    return result;
+
+  }
+
+
+  updateAxis(
+    axisId:
+      string,
+
+    changes: {
+      name?: string;
+      type?: ReferenceAxisType;
+    },
+  ):
+    PieceDefinition {
+
+    const context =
+      this.requireContext();
+
+
+    const currentAxis =
+      context.definition
+        .referenceGeometry
+        .axisLines
+        .find(
+          (
+            axis,
+          ) =>
+            axis.id
+            === axisId,
+        );
+
+
+    if (
+      !currentAxis
+    ) {
+
+      throw new Error(
+        `Reference axis "${axisId}" does not exist.`,
+      );
+
+    }
+
+
+    const name =
+      changes.name === undefined
+        ? currentAxis.name
+        : changes.name.trim();
+
+
+    if (
+      name.length === 0
+    ) {
+
+      throw new Error(
+        "Reference axis name cannot be empty.",
+      );
+
+    }
+
+
+    const updated:
+      PieceDefinition = {
+
+        ...context.definition,
+
+        referenceGeometry: {
+          ...context.definition
+            .referenceGeometry,
+
+          axisLines:
+            context.definition
+              .referenceGeometry
+              .axisLines
+              .map(
+                (
+                  axis,
+                ) =>
+                  axis.id === axisId
+                    ? {
+                        ...axis,
+                        name,
+                        type:
+                          changes.type
+                          ?? axis.type,
+                      }
+                    : axis,
+              ),
+        },
+
+      };
+
+
+    const result =
+      this.replaceDefinition(
+        updated,
+      );
+
+
+    this.notify();
+
+
+    return result;
+
+  }
+
+
+  removeAxis(
+    axisId:
+      string,
+  ):
+    PieceDefinition {
+
+    const context =
+      this.requireContext();
+
+
+    if (
+      !context.definition
+        .referenceGeometry
+        .axisLines
+        .some(
+          (
+            axis,
+          ) =>
+            axis.id
+            === axisId,
+        )
+    ) {
+
+      throw new Error(
+        `Reference axis "${axisId}" does not exist.`,
+      );
+
+    }
+
+
+    const updated:
+      PieceDefinition = {
+
+        ...context.definition,
+
+        referenceGeometry: {
+          ...context.definition
+            .referenceGeometry,
+
+          axisLines:
+            context.definition
+              .referenceGeometry
+              .axisLines
+              .filter(
+                (
+                  axis,
+                ) =>
+                  axis.id
+                  !== axisId,
+              ),
+        },
+
+      };
+
+
+    const result =
+      this.replaceDefinition(
+        updated,
+      );
+
+
+    this.notify();
+
+
+    return result;
+
+  }
+
+
   subscribe(
     listener:
       PieceDefinitionPreparationListener,
@@ -712,6 +1094,937 @@ export class PieceDefinitionPreparationController {
       );
 
     };
+
+  }
+
+
+  private replaceDefinition(
+    updated:
+      PieceDefinition,
+  ):
+    PieceDefinition {
+
+    const registry =
+      this.designModel
+        .pieceDefinitions;
+
+
+    const previous =
+      registry.get(
+        updated.id,
+      );
+
+
+    if (
+      !previous
+    ) {
+
+      throw new Error(
+        `PieceDefinition "${updated.id}" no longer exists.`,
+      );
+
+    }
+
+
+    registry.remove(
+      updated.id,
+    );
+
+
+    try {
+
+      return registry.register({
+        id:
+          updated.id,
+        code:
+          updated.code,
+        name:
+          updated.name,
+        geometryAssetId:
+          updated.geometryAssetId,
+        classification:
+          updated.classification,
+        tags: [
+          ...updated.tags,
+        ],
+        coordinateSystem:
+          updated.coordinateSystem,
+        snapPoints:
+          updated.snapPoints,
+        referenceGeometry:
+          updated.referenceGeometry,
+      });
+
+    }
+    catch (
+      error
+    ) {
+
+      registry.register({
+        id:
+          previous.id,
+        code:
+          previous.code,
+        name:
+          previous.name,
+        geometryAssetId:
+          previous.geometryAssetId,
+        classification:
+          previous.classification,
+        tags: [
+          ...previous.tags,
+        ],
+        coordinateSystem:
+          previous.coordinateSystem,
+        snapPoints:
+          previous.snapPoints,
+        referenceGeometry:
+          previous.referenceGeometry,
+      });
+
+
+      throw error;
+
+    }
+
+  }
+
+
+  private createEditorRoot():
+    HTMLDivElement {
+
+    const root =
+      document.createElement(
+        "div",
+      );
+
+
+    root.style.position =
+      "fixed";
+
+    root.style.left =
+      "392px";
+
+    root.style.bottom =
+      "16px";
+
+    root.style.width =
+      "360px";
+
+    root.style.maxHeight =
+      "62vh";
+
+    root.style.overflow =
+      "auto";
+
+    root.style.zIndex =
+      "45";
+
+    root.style.border =
+      "1px solid #4b5563";
+
+    root.style.borderRadius =
+      "8px";
+
+    root.style.background =
+      "rgba(31, 41, 51, 0.97)";
+
+    root.style.color =
+      "white";
+
+    root.style.fontFamily =
+      "Arial, sans-serif";
+
+    root.style.fontSize =
+      "12px";
+
+    root.style.boxShadow =
+      "0 8px 24px rgba(0, 0, 0, 0.25)";
+
+    root.style.display =
+      "none";
+
+
+    document.body.appendChild(
+      root,
+    );
+
+
+    return root;
+
+  }
+
+
+  private renderEditor():
+    void {
+
+    this.editorRoot.replaceChildren();
+
+
+    const context =
+      this.getContext();
+
+
+    if (
+      !context
+    ) {
+
+      this.editorRoot.style.display =
+        "none";
+
+
+      return;
+
+    }
+
+
+    this.editorRoot.style.display =
+      "block";
+
+
+    const header =
+      document.createElement(
+        "div",
+      );
+
+
+    header.style.padding =
+      "11px 12px";
+
+    header.style.borderBottom =
+      "1px solid #4b5563";
+
+    header.style.fontWeight =
+      "700";
+
+    header.textContent =
+      `Preparar pieza · ${context.definition.code}`;
+
+
+    this.editorRoot.appendChild(
+      header,
+    );
+
+
+    const description =
+      document.createElement(
+        "div",
+      );
+
+
+    description.style.padding =
+      "8px 12px";
+
+    description.style.color =
+      "#b8c0c8";
+
+    description.style.lineHeight =
+      "1.35";
+
+    description.textContent =
+      "Edita la información persistente de la PieceDefinition. Los cambios afectan todas sus instancias.";
+
+
+    this.editorRoot.appendChild(
+      description,
+    );
+
+
+    this.appendSectionTitle(
+      `SNAPs (${context.definition.snapPoints.length})`,
+    );
+
+
+    if (
+      context.definition
+        .snapPoints
+        .length === 0
+    ) {
+
+      this.appendEmptyMessage(
+        "No hay SNAPs persistentes.",
+      );
+
+    }
+    else {
+
+      for (
+        const snap
+        of context.definition
+          .snapPoints
+      ) {
+
+        const row =
+          this.createRow();
+
+
+        const nameButton =
+          this.createNameButton(
+            snap.name,
+            () => {
+
+              const nextName =
+                window.prompt(
+                  "Nombre del SNAP:",
+                  snap.name,
+                );
+
+
+              if (
+                nextName === null
+              ) {
+
+                return;
+
+              }
+
+
+              this.runEditorAction(
+                () => {
+
+                  this.updateSnap(
+                    snap.id,
+                    {
+                      name:
+                        nextName,
+                    },
+                  );
+
+                },
+              );
+
+            },
+          );
+
+
+        row.appendChild(
+          nameButton,
+        );
+
+
+        const typeSelect =
+          this.createSelect(
+            snap.type === "ORIGIN"
+              ? [
+                  "ORIGIN",
+                ]
+              : [
+                  "CENTER",
+                  "CONNECTION",
+                  "REFERENCE",
+                  "CUSTOM",
+                ],
+            snap.type,
+            snap.type === "ORIGIN",
+            (
+              value,
+            ) => {
+
+              this.runEditorAction(
+                () => {
+
+                  this.updateSnap(
+                    snap.id,
+                    {
+                      type:
+                        value as PersistentSnapType,
+                    },
+                  );
+
+                },
+              );
+
+            },
+          );
+
+
+        row.appendChild(
+          typeSelect,
+        );
+
+
+        const removeButton =
+          this.createRemoveButton(
+            snap.type === "ORIGIN"
+              ? "El origen se mueve con Origen ← SNAP"
+              : "Eliminar SNAP persistente",
+            snap.type === "ORIGIN",
+            () => {
+
+              if (
+                !window.confirm(
+                  `¿Eliminar SNAP "${snap.name}"?`,
+                )
+              ) {
+
+                return;
+
+              }
+
+
+              this.runEditorAction(
+                () => {
+
+                  this.removeSnap(
+                    snap.id,
+                  );
+
+                },
+              );
+
+            },
+          );
+
+
+        row.appendChild(
+          removeButton,
+        );
+
+
+        this.editorRoot.appendChild(
+          row,
+        );
+
+      }
+
+    }
+
+
+    this.appendSectionTitle(
+      `Ejes (${context.definition.referenceGeometry.axisLines.length})`,
+    );
+
+
+    if (
+      context.definition
+        .referenceGeometry
+        .axisLines
+        .length === 0
+    ) {
+
+      this.appendEmptyMessage(
+        "No hay ejes de referencia persistentes.",
+      );
+
+    }
+    else {
+
+      for (
+        const axis
+        of context.definition
+          .referenceGeometry
+          .axisLines
+      ) {
+
+        const row =
+          this.createRow();
+
+
+        const nameButton =
+          this.createNameButton(
+            axis.name,
+            () => {
+
+              const nextName =
+                window.prompt(
+                  "Nombre del eje:",
+                  axis.name,
+                );
+
+
+              if (
+                nextName === null
+              ) {
+
+                return;
+
+              }
+
+
+              this.runEditorAction(
+                () => {
+
+                  this.updateAxis(
+                    axis.id,
+                    {
+                      name:
+                        nextName,
+                    },
+                  );
+
+                },
+              );
+
+            },
+          );
+
+
+        row.appendChild(
+          nameButton,
+        );
+
+
+        const typeSelect =
+          this.createSelect(
+            [
+              "MAIN",
+              "HOLE",
+              "CONNECTION",
+              "REFERENCE",
+            ],
+            axis.type,
+            false,
+            (
+              value,
+            ) => {
+
+              this.runEditorAction(
+                () => {
+
+                  this.updateAxis(
+                    axis.id,
+                    {
+                      type:
+                        value as ReferenceAxisType,
+                    },
+                  );
+
+                },
+              );
+
+            },
+          );
+
+
+        row.appendChild(
+          typeSelect,
+        );
+
+
+        const removeButton =
+          this.createRemoveButton(
+            "Eliminar eje persistente",
+            false,
+            () => {
+
+              if (
+                !window.confirm(
+                  `¿Eliminar eje "${axis.name}"?`,
+                )
+              ) {
+
+                return;
+
+              }
+
+
+              this.runEditorAction(
+                () => {
+
+                  this.removeAxis(
+                    axis.id,
+                  );
+
+                },
+              );
+
+            },
+          );
+
+
+        row.appendChild(
+          removeButton,
+        );
+
+
+        this.editorRoot.appendChild(
+          row,
+        );
+
+      }
+
+    }
+
+
+    const footer =
+      document.createElement(
+        "div",
+      );
+
+
+    footer.style.padding =
+      "9px 12px";
+
+    footer.style.borderTop =
+      "1px solid #4b5563";
+
+    footer.style.color =
+      "#9ca3af";
+
+    footer.textContent =
+      "Clic en el nombre para renombrar · selector para cambiar tipo · × para eliminar";
+
+
+    this.editorRoot.appendChild(
+      footer,
+    );
+
+  }
+
+
+  private appendSectionTitle(
+    title:
+      string,
+  ):
+    void {
+
+    const element =
+      document.createElement(
+        "div",
+      );
+
+
+    element.style.padding =
+      "9px 12px 6px";
+
+    element.style.fontWeight =
+      "700";
+
+    element.style.color =
+      "#e5e7eb";
+
+    element.textContent =
+      title;
+
+
+    this.editorRoot.appendChild(
+      element,
+    );
+
+  }
+
+
+  private appendEmptyMessage(
+    message:
+      string,
+  ):
+    void {
+
+    const element =
+      document.createElement(
+        "div",
+      );
+
+
+    element.style.padding =
+      "6px 12px 10px";
+
+    element.style.color =
+      "#9ca3af";
+
+    element.textContent =
+      message;
+
+
+    this.editorRoot.appendChild(
+      element,
+    );
+
+  }
+
+
+  private createRow():
+    HTMLDivElement {
+
+    const row =
+      document.createElement(
+        "div",
+      );
+
+
+    row.style.display =
+      "grid";
+
+    row.style.gridTemplateColumns =
+      "1fr 118px 30px";
+
+    row.style.gap =
+      "6px";
+
+    row.style.alignItems =
+      "center";
+
+    row.style.padding =
+      "5px 8px";
+
+    row.style.borderTop =
+      "1px solid rgba(75, 85, 99, 0.55)";
+
+
+    return row;
+
+  }
+
+
+  private createNameButton(
+    name:
+      string,
+
+    onClick:
+      () => void,
+  ):
+    HTMLButtonElement {
+
+    const button =
+      document.createElement(
+        "button",
+      );
+
+
+    button.type =
+      "button";
+
+    button.textContent =
+      name;
+
+    button.title =
+      "Renombrar";
+
+    button.style.minWidth =
+      "0";
+
+    button.style.overflow =
+      "hidden";
+
+    button.style.textOverflow =
+      "ellipsis";
+
+    button.style.whiteSpace =
+      "nowrap";
+
+    button.style.padding =
+      "6px 7px";
+
+    button.style.border =
+      "none";
+
+    button.style.borderRadius =
+      "4px";
+
+    button.style.background =
+      "transparent";
+
+    button.style.color =
+      "white";
+
+    button.style.textAlign =
+      "left";
+
+    button.style.cursor =
+      "pointer";
+
+
+    button.addEventListener(
+      "click",
+      onClick,
+    );
+
+
+    return button;
+
+  }
+
+
+  private createSelect(
+    values:
+      readonly string[],
+
+    current:
+      string,
+
+    disabled:
+      boolean,
+
+    onChange:
+      (
+        value: string,
+      ) => void,
+  ):
+    HTMLSelectElement {
+
+    const select =
+      document.createElement(
+        "select",
+      );
+
+
+    select.disabled =
+      disabled;
+
+    select.style.width =
+      "100%";
+
+    select.style.padding =
+      "5px";
+
+    select.style.border =
+      "1px solid #596875";
+
+    select.style.borderRadius =
+      "4px";
+
+    select.style.background =
+      "#111827";
+
+    select.style.color =
+      "white";
+
+    select.style.fontSize =
+      "11px";
+
+
+    for (
+      const value
+      of values
+    ) {
+
+      const option =
+        document.createElement(
+          "option",
+        );
+
+
+      option.value =
+        value;
+
+      option.textContent =
+        value;
+
+      option.selected =
+        value === current;
+
+
+      select.appendChild(
+        option,
+      );
+
+    }
+
+
+    select.addEventListener(
+      "change",
+      () => {
+
+        onChange(
+          select.value,
+        );
+
+      },
+    );
+
+
+    return select;
+
+  }
+
+
+  private createRemoveButton(
+    title:
+      string,
+
+    disabled:
+      boolean,
+
+    onClick:
+      () => void,
+  ):
+    HTMLButtonElement {
+
+    const button =
+      document.createElement(
+        "button",
+      );
+
+
+    button.type =
+      "button";
+
+    button.textContent =
+      "×";
+
+    button.title =
+      title;
+
+    button.disabled =
+      disabled;
+
+    button.style.width =
+      "28px";
+
+    button.style.height =
+      "28px";
+
+    button.style.border =
+      "none";
+
+    button.style.borderRadius =
+      "4px";
+
+    button.style.background =
+      "transparent";
+
+    button.style.color =
+      disabled
+        ? "#6b7280"
+        : "#f3f4f6";
+
+    button.style.fontSize =
+      "18px";
+
+    button.style.cursor =
+      disabled
+        ? "default"
+        : "pointer";
+
+
+    button.addEventListener(
+      "click",
+      onClick,
+    );
+
+
+    return button;
+
+  }
+
+
+  private runEditorAction(
+    action:
+      () => void,
+  ):
+    void {
+
+    try {
+
+      action();
+
+    }
+    catch (
+      error
+    ) {
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
+
+
+      this.renderEditor();
+
+    }
 
   }
 
@@ -1002,6 +2315,9 @@ export class PieceDefinitionPreparationController {
   private notify():
     void {
 
+    this.renderEditor();
+
+
     const state =
       this.getState();
 
@@ -1028,6 +2344,9 @@ export class PieceDefinitionPreparationController {
 
 
     this.listeners.clear();
+
+
+    this.editorRoot.remove();
 
   }
 
