@@ -198,7 +198,45 @@ export class PieceDefinitionOriginEditController {
     }
 
 
-    this.cancel();
+    /*
+     * No emitimos un estado inactivo cuando start() se invoca
+     * desde reposo. El editor STEP usa la transición real
+     * active -> inactive para cerrar la operación de historial
+     * del origen. El antiguo this.cancel() emitía false antes
+     * incluso de comenzar y hacía que Ctrl+Z perdiera el cambio
+     * de origen.
+     */
+    if (
+      this.activeValue
+    ) {
+
+      this.cancel();
+
+    }
+    else {
+
+      this.pointerDownActive =
+        false;
+
+      this.messageValue =
+        "";
+
+      this.designSelection
+        .setEnabled(
+          true,
+        );
+
+      this.pointSelection
+        .setEnabled(
+          true,
+        );
+
+      this.lineSelection
+        .setEnabled(
+          true,
+        );
+
+    }
 
 
     this.activeValue =
