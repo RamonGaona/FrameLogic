@@ -17,6 +17,9 @@ import type {
   CameraOrientation,
   CameraProjectionMode,
   CardinalDirection,
+  LocalCoordinateSystem,
+  PieceSnapPoint,
+  ReferenceAxisLine,
   StandardView,
 } from "@framelogic/bim-core";
 
@@ -32,6 +35,10 @@ import type {
   StepConversionResult,
 } from "./stepToFrameLogicIfc";
 
+import {
+  buildPreparedFrameLogicIfc,
+} from "./buildPreparedFrameLogicIfc";
+
 
 export interface StepPieceEditorProps {
   initialFile: File;
@@ -44,6 +51,21 @@ type Matrix3 = readonly [
   number, number, number,
   number, number, number,
 ];
+
+
+interface PreparedDefinitionSnapshot {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+  readonly geometryAssetId: string;
+  readonly classification?: string;
+  readonly tags: readonly string[];
+  readonly coordinateSystem: LocalCoordinateSystem;
+  readonly snapPoints: readonly PieceSnapPoint[];
+  readonly referenceGeometry: {
+    readonly axisLines: readonly ReferenceAxisLine[];
+  };
+}
 
 
 function fileBaseName(
@@ -98,10 +120,6 @@ function multiplyMatrix3(
 }
 
 
-/**
- * Matriz de orientación visual absoluta respecto a los ejes
- * originales del STEP. El orden aplicado es X -> Y -> Z.
- */
 function createEulerRotationMatrix(
   xDegrees: number,
   yDegrees: number,
@@ -111,16 +129,12 @@ function createEulerRotationMatrix(
   const toRadians =
     Math.PI / 180;
 
-
   const x =
     xDegrees * toRadians;
-
   const y =
     yDegrees * toRadians;
-
   const z =
     zDegrees * toRadians;
-
 
   const cx = Math.cos(x);
   const sx = Math.sin(x);
@@ -129,13 +143,11 @@ function createEulerRotationMatrix(
   const cz = Math.cos(z);
   const sz = Math.sin(z);
 
-
   const rotateX: Matrix3 = [
     1, 0, 0,
     0, cx, -sx,
     0, sx, cx,
   ];
-
 
   const rotateY: Matrix3 = [
     cy, 0, sy,
@@ -143,13 +155,11 @@ function createEulerRotationMatrix(
     -sy, 0, cy,
   ];
 
-
   const rotateZ: Matrix3 = [
     cz, -sz, 0,
     sz, cz, 0,
     0, 0, 1,
   ];
-
 
   return multiplyMatrix3(
     multiplyMatrix3(
@@ -176,27 +186,16 @@ function installStepCameraTuning(
         draggingSmoothTime: number;
       };
 
-
-  /*
-   * El editor de pieza necesita una navegación más directa que
-   * el espacio general, sobre todo al inspeccionar detalles en
-   * ortográfica.
-   */
   controls.azimuthRotateSpeed =
     1.8;
-
   controls.polarRotateSpeed =
     1.8;
-
   controls.dollySpeed =
     1.15;
-
   controls.smoothTime =
     0.12;
-
   controls.draggingSmoothTime =
     0.07;
-
 
   const update =
     (): void => {
@@ -207,7 +206,6 @@ function installStepCameraTuning(
           ? 6
           : 2.5;
 
-
       controls.truckSpeed =
         Math.max(
           controls.truckSpeed,
@@ -216,15 +214,12 @@ function installStepCameraTuning(
 
     };
 
-
   controls.addEventListener(
     "update",
     update,
   );
 
-
   update();
-
 
   return () => {
 
@@ -234,6 +229,374 @@ function installStepCameraTuning(
     );
 
   };
+
+}
+
+
+function cloneCoordinateSystem(
+  source: LocalCoordinateSystem,
+): LocalCoordinateSystem {
+
+  return {
+    origin: {
+      ...source.origin,
+    },
+    xAxis: {
+      ...source.xAxis,
+    },
+    yAxis: {
+      ...source.yAxis,
+    },
+    zAxis: {
+      ...source.zAxis,
+    },
+  };
+
+}
+
+
+function captureDefinitionSnapshot(
+  core: BimCoreInstance,
+  definitionId: string,
+): PreparedDefinitionSnapshot | null {
+
+  const definition =
+    core.designModel
+      .pieceDefinitions
+      .get(
+        definitionId,
+      );
+
+  if (
+    !definition
+  ) {
+
+    return null;
+
+  }
+
+  return {
+    id:
+      definition.id,
+    code:
+      definition.code,
+    name:
+      definition.name,
+    geometryAssetId:
+      definition.geometryAssetId,
+    classification:
+      definition.classification,
+    tags: [
+      ...definition.tags,
+    ],
+    coordinateSystem:
+      cloneCoordinateSystem(
+        definition.coordinateSystem,
+      ),
+    snapPoints:
+      definition.snapPoints.map(
+        (
+          snap,
+        ) => ({
+          ...snap,
+          position: {
+            ...snap.position,
+          },
+        }),
+      ),
+    referenceGeometry: {
+      axisLines:
+        definition.referenceGeometry
+          .axisLines
+          .map(
+            (
+              axis,
+            ) => ({
+              ...axis,
+              origin: {
+                ...axis.origin,
+              },
+              direction: {
+                ...axis.direction,
+              },
+            }),
+          ),
+    },
+  };
+
+}
+
+
+function definitionsEqual(
+  first: PreparedDefinitionSnapshot,
+  second: PreparedDefinitionSnapshot,
+): boolean {
+
+  return JSON.stringify(
+    first,
+  ) === JSON.stringify(
+    second,
+  );
+
+}
+
+
+function applyDefinitionWorkspaceTransform(
+  core: BimCoreInstance,
+  instanceId: string,
+  coordinateSystem: LocalCoordinateSystem,
+): void {
+
+  const object =
+    core.designScene
+      .getInstanceObject(
+        instanceId,
+      );
+
+  if (
+    !object
+  ) {
+
+    return;
+
+  }
+
+  const origin =
+    coordinateSystem.origin;
+  const xAxis =
+    coordinateSystem.xAxis;
+  const yAxis =
+    coordinateSystem.yAxis;
+  const zAxis =
+    coordinateSystem.zAxis;
+
+  object.matrixAutoUpdate =
+    false;
+
+  object.matrix.set(
+    xAxis.x,
+    xAxis.y,
+    xAxis.z,
+    -(
+      xAxis.x * origin.x
+      + xAxis.y * origin.y
+      + xAxis.z * origin.z
+    ),
+
+    yAxis.x,
+    yAxis.y,
+    yAxis.z,
+    -(
+      yAxis.x * origin.x
+      + yAxis.y * origin.y
+      + yAxis.z * origin.z
+    ),
+
+    zAxis.x,
+    zAxis.y,
+    zAxis.z,
+    -(
+      zAxis.x * origin.x
+      + zAxis.y * origin.y
+      + zAxis.z * origin.z
+    ),
+
+    0,
+    0,
+    0,
+    1,
+  );
+
+  object.matrixWorldNeedsUpdate =
+    true;
+
+  object.updateMatrixWorld(
+    true,
+  );
+
+  core.designSelection
+    .refreshHelpers();
+
+  core.pieceDefinitionHelpers
+    .sync();
+
+}
+
+
+function restoreDefinitionSnapshot(
+  core: BimCoreInstance,
+  instanceId: string,
+  snapshot: PreparedDefinitionSnapshot,
+): void {
+
+  const registry =
+    core.designModel
+      .pieceDefinitions;
+
+  const previous =
+    registry.get(
+      snapshot.id,
+    );
+
+  if (
+    !previous
+  ) {
+
+    return;
+
+  }
+
+  registry.remove(
+    snapshot.id,
+  );
+
+  try {
+
+    registry.register({
+      id:
+        snapshot.id,
+      code:
+        snapshot.code,
+      name:
+        snapshot.name,
+      geometryAssetId:
+        snapshot.geometryAssetId,
+      classification:
+        snapshot.classification,
+      tags: [
+        ...snapshot.tags,
+      ],
+      coordinateSystem:
+        cloneCoordinateSystem(
+          snapshot.coordinateSystem,
+        ),
+      snapPoints:
+        snapshot.snapPoints,
+      referenceGeometry:
+        snapshot.referenceGeometry,
+    });
+
+  }
+  catch (
+    error
+  ) {
+
+    registry.register({
+      id:
+        previous.id,
+      code:
+        previous.code,
+      name:
+        previous.name,
+      geometryAssetId:
+        previous.geometryAssetId,
+      classification:
+        previous.classification,
+      tags: [
+        ...previous.tags,
+      ],
+      coordinateSystem:
+        previous.coordinateSystem,
+      snapPoints:
+        previous.snapPoints,
+      referenceGeometry:
+        previous.referenceGeometry,
+    });
+
+    throw error;
+
+  }
+
+  applyDefinitionWorkspaceTransform(
+    core,
+    instanceId,
+    snapshot.coordinateSystem,
+  );
+
+}
+
+
+function recordDefinitionHistory(
+  core: BimCoreInstance,
+  instanceId: string,
+  label: string,
+  before: PreparedDefinitionSnapshot,
+  after: PreparedDefinitionSnapshot,
+): void {
+
+  if (
+    definitionsEqual(
+      before,
+      after,
+    )
+  ) {
+
+    return;
+
+  }
+
+  core.cadHistory
+    .recordOperation(
+      label,
+      () => {
+
+        restoreDefinitionSnapshot(
+          core,
+          instanceId,
+          before,
+        );
+
+      },
+      () => {
+
+        restoreDefinitionSnapshot(
+          core,
+          instanceId,
+          after,
+        );
+
+      },
+    );
+
+}
+
+
+function downloadFile(
+  file: File,
+): void {
+
+  const url =
+    URL.createObjectURL(
+      file,
+    );
+
+  const link =
+    document.createElement(
+      "a",
+    );
+
+  link.href =
+    url;
+  link.download =
+    file.name;
+
+  document.body.appendChild(
+    link,
+  );
+
+  link.click();
+  link.remove();
+
+  window.setTimeout(
+    () => {
+
+      URL.revokeObjectURL(
+        url,
+      );
+
+    },
+    0,
+  );
 
 }
 
@@ -268,6 +631,10 @@ export function StepPieceEditor({
       null,
     );
 
+  const pendingOriginBeforeRef =
+    useRef<PreparedDefinitionSnapshot | null>(
+      null,
+    );
 
   const [sourceFile, setSourceFile] =
     useState<File>(
@@ -300,6 +667,9 @@ export function StepPieceEditor({
   const [loading, setLoading] =
     useState(false);
 
+  const [exporting, setExporting] =
+    useState(false);
+
   const [prepared, setPrepared] =
     useState(false);
 
@@ -313,7 +683,6 @@ export function StepPieceEditor({
       "Completa los datos básicos y pulsa Cargar STEP y preparar.",
     );
 
-
   const [rotationX, setRotationX] =
     useState("0");
 
@@ -322,7 +691,6 @@ export function StepPieceEditor({
 
   const [rotationZ, setRotationZ] =
     useState("0");
-
 
   const [cameraOrientation, setCameraOrientation] =
     useState<CameraOrientation>({
@@ -338,145 +706,217 @@ export function StepPieceEditor({
     );
 
 
+  function finalizePendingOriginHistory(
+    core: BimCoreInstance,
+  ): void {
+
+    const before =
+      pendingOriginBeforeRef.current;
+
+    if (
+      !before
+    ) {
+
+      return;
+
+    }
+
+    pendingOriginBeforeRef.current =
+      null;
+
+    const definitionId =
+      preparedDefinitionIdRef.current;
+
+    const instanceId =
+      preparedInstanceIdRef.current;
+
+    if (
+      !definitionId
+      || !instanceId
+    ) {
+
+      return;
+
+    }
+
+    const after =
+      captureDefinitionSnapshot(
+        core,
+        definitionId,
+      );
+
+    if (
+      !after
+    ) {
+
+      return;
+
+    }
+
+    recordDefinitionHistory(
+      core,
+      instanceId,
+      "PIECE ORIGIN",
+      before,
+      after,
+    );
+
+  }
+
+
   useEffect(
     () => {
 
       const container =
         containerRef.current;
 
+    if (
+      !container
+    ) {
 
-      if (
-        !container
-      ) {
+      return;
 
-        return;
+    }
 
-      }
+    let disposed =
+      false;
 
+    let unsubscribeCamera:
+      (() => void)
+      | null =
+        null;
 
-      let disposed =
-        false;
+    let unsubscribeOriginEdit:
+      (() => void)
+      | null =
+        null;
 
-      let unsubscribeCamera:
-        (() => void)
-        | null =
-          null;
+    let removeStepCameraTuning:
+      (() => void)
+      | null =
+        null;
 
-      let removeStepCameraTuning:
-        (() => void)
-        | null =
-          null;
+    void createBimCore(
+      container,
+    )
+      .then(
+        (
+          core,
+        ) => {
 
+          if (
+            disposed
+          ) {
 
-      void createBimCore(
-        container,
-      )
-        .then(
-          (
-            core,
-          ) => {
+            core.dispose();
+            return;
 
-            if (
-              disposed
-            ) {
+          }
 
-              core.dispose();
+          coreRef.current =
+            core;
 
-              return;
-
-            }
-
-
-            coreRef.current =
-              core;
-
-
-            removeStepCameraTuning =
-              installStepCameraTuning(
-                core,
-              );
-
-
-            setProjectionMode(
-              core.getCameraProjectionMode(),
+          removeStepCameraTuning =
+            installStepCameraTuning(
+              core,
             );
 
+          setProjectionMode(
+            core.getCameraProjectionMode(),
+          );
 
-            unsubscribeCamera =
-              core.subscribeCameraOrientation(
-                (
+          unsubscribeCamera =
+            core.subscribeCameraOrientation(
+              (
+                orientation,
+              ) => {
+
+                if (
+                  disposed
+                ) {
+
+                  return;
+
+                }
+
+                setCameraOrientation(
                   orientation,
-                ) => {
+                );
 
-                  if (
-                    disposed
-                  ) {
-
-                    return;
-
-                  }
-
-
-                  setCameraOrientation(
-                    orientation,
-                  );
-
-                },
-              );
-
-
-            setReady(
-              true,
+              },
             );
 
-          },
-        )
-        .catch(
-          (
-            error: unknown,
-          ) => {
+          unsubscribeOriginEdit =
+            core.subscribePieceDefinitionOriginEdit(
+              (
+                state,
+              ) => {
 
-            console.error(
-              "Error initializing STEP piece editor:",
-              error,
+                if (
+                  disposed
+                  || state.active
+                ) {
+
+                  return;
+
+                }
+
+                finalizePendingOriginHistory(
+                  core,
+                );
+
+              },
             );
 
+          setReady(true);
 
-            setMessage(
-              error instanceof Error
-                ? error.message
-                : String(
-                    error,
-                  ),
-            );
+        },
+      )
+      .catch(
+        (
+          error: unknown,
+        ) => {
 
-          },
-        );
+          console.error(
+            "Error initializing STEP piece editor:",
+            error,
+          );
 
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : String(
+                  error,
+                ),
+          );
 
-      return () => {
+        },
+      );
 
-        disposed =
-          true;
+    return () => {
 
+      disposed =
+        true;
 
-        unsubscribeCamera
-          ?.();
+      unsubscribeCamera
+        ?.();
 
-        removeStepCameraTuning
-          ?.();
+      unsubscribeOriginEdit
+        ?.();
 
-        coreRef.current
-          ?.dispose();
+      removeStepCameraTuning
+        ?.();
 
-        coreRef.current =
-          null;
+      coreRef.current
+        ?.dispose();
 
-      };
+      coreRef.current =
+        null;
 
-    },
-    [],
-  );
+    };
+
+  },
+  []);
 
 
   function handleStandardView(
@@ -509,7 +949,6 @@ export function StepPieceEditor({
     const core =
       coreRef.current;
 
-
     if (
       !core
     ) {
@@ -518,17 +957,14 @@ export function StepPieceEditor({
 
     }
 
-
     try {
 
       const mode =
         await core.toggleCameraProjection();
 
-
       setProjectionMode(
         mode,
       );
-
 
       core.world.camera.controls.truckSpeed =
         Math.max(
@@ -557,22 +993,17 @@ export function StepPieceEditor({
     file: File,
   ): void {
 
-    setSourceFile(
-      file,
-    );
-
+    setSourceFile(file);
     setCode(
       defaultCodeForFile(
         file.name,
       ),
     );
-
     setName(
       fileBaseName(
         file.name,
       ),
     );
-
     setClassification("");
     setTagsText("");
     setConversion(null);
@@ -583,10 +1014,10 @@ export function StepPieceEditor({
 
     preparedInstanceIdRef.current =
       null;
-
     preparedDefinitionIdRef.current =
       null;
-
+    pendingOriginBeforeRef.current =
+      null;
 
     setMessage(
       "Completa los datos básicos y pulsa Cargar STEP y preparar.",
@@ -602,23 +1033,18 @@ export function StepPieceEditor({
     const file =
       event.target.files?.[0];
 
-
     event.target.value =
       "";
 
-
     if (
-      !file
+      file
     ) {
 
-      return;
+      resetIdentityForFile(
+        file,
+      );
 
     }
-
-
-    resetIdentityForFile(
-      file,
-    );
 
   }
 
@@ -628,7 +1054,6 @@ export function StepPieceEditor({
 
     const core =
       coreRef.current;
-
 
     if (
       !core
@@ -641,14 +1066,12 @@ export function StepPieceEditor({
 
     }
 
-
     const normalizedCode =
       code.trim();
 
     const normalizedName =
       name.trim()
       || normalizedCode;
-
 
     if (
       normalizedCode.length === 0
@@ -662,7 +1085,6 @@ export function StepPieceEditor({
 
     }
 
-
     const tags =
       tagsText
         .split(",")
@@ -674,15 +1096,13 @@ export function StepPieceEditor({
         )
         .filter(Boolean);
 
-
     try {
 
       setLoading(true);
 
       setMessage(
-        "Leyendo STEP con OpenCascade y generando IFC base...",
+        "Leyendo STEP con OpenCascade y generando IFC de trabajo...",
       );
-
 
       const result =
         await convertStepToFrameLogicIfc(
@@ -699,11 +1119,9 @@ export function StepPieceEditor({
           },
         );
 
-
       setMessage(
-        "Cargando IFC base en FrameLogic...",
+        "Cargando la pieza en el editor FrameLogic...",
       );
-
 
       const {
         definition,
@@ -721,7 +1139,6 @@ export function StepPieceEditor({
             tags,
           },
         );
-
 
       const instance =
         core.createDesignPieceInstance({
@@ -742,28 +1159,21 @@ export function StepPieceEditor({
           tags: [],
         });
 
-
       preparedInstanceIdRef.current =
         instance.id;
 
       preparedDefinitionIdRef.current =
         definition.id;
 
-
       core.startPieceDefinitionPreparation(
         instance.id,
       );
-
 
       await core.setStandardView(
         "ISO",
       );
 
-
-      setConversion(
-        result,
-      );
-
+      setConversion(result);
       setPrepared(true);
 
       setMessage(
@@ -780,14 +1190,12 @@ export function StepPieceEditor({
         error,
       );
 
-
       const errorMessage =
         error instanceof Error
           ? error.message
           : String(
               error,
             );
-
 
       setMessage(
         errorMessage,
@@ -801,6 +1209,54 @@ export function StepPieceEditor({
     finally {
 
       setLoading(false);
+
+    }
+
+  }
+
+
+  function handleStartOriginEdit(): void {
+
+    const core =
+      coreRef.current;
+
+    const definitionId =
+      preparedDefinitionIdRef.current;
+
+    if (
+      !core
+      || !definitionId
+    ) {
+
+      return;
+
+    }
+
+    pendingOriginBeforeRef.current =
+      captureDefinitionSnapshot(
+        core,
+        definitionId,
+      );
+
+    try {
+
+      core.startPreparedPieceOriginSnapEdit();
+
+    }
+    catch (
+      error
+    ) {
+
+      pendingOriginBeforeRef.current =
+        null;
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
 
     }
 
@@ -822,7 +1278,6 @@ export function StepPieceEditor({
     const definitionId =
       preparedDefinitionIdRef.current;
 
-
     if (
       !core
       || !instanceId
@@ -832,7 +1287,6 @@ export function StepPieceEditor({
       return;
 
     }
-
 
     if (
       !Number.isFinite(xDegrees)
@@ -848,6 +1302,11 @@ export function StepPieceEditor({
 
     }
 
+    const before =
+      captureDefinitionSnapshot(
+        core,
+        definitionId,
+      );
 
     const currentDefinition =
       core.designModel
@@ -856,9 +1315,9 @@ export function StepPieceEditor({
           definitionId,
         );
 
-
     if (
-      !currentDefinition
+      !before
+      || !currentDefinition
     ) {
 
       window.alert(
@@ -869,14 +1328,12 @@ export function StepPieceEditor({
 
     }
 
-
     const rotation =
       createEulerRotationMatrix(
         xDegrees,
         yDegrees,
         zDegrees,
       );
-
 
     const updated =
       core.designModel
@@ -905,7 +1362,6 @@ export function StepPieceEditor({
           true,
         );
 
-
     if (
       !updated
     ) {
@@ -918,93 +1374,34 @@ export function StepPieceEditor({
 
     }
 
+    applyDefinitionWorkspaceTransform(
+      core,
+      instanceId,
+      updated.coordinateSystem,
+    );
 
-    const object =
-      core.designScene
-        .getInstanceObject(
-          instanceId,
-        );
-
+    const after =
+      captureDefinitionSnapshot(
+        core,
+        definitionId,
+      );
 
     if (
-      !object
+      after
     ) {
 
-      return;
+      recordDefinitionHistory(
+        core,
+        instanceId,
+        "PIECE ORIENTATION",
+        before,
+        after,
+      );
 
     }
 
-
-    const coordinateSystem =
-      updated.coordinateSystem;
-
-    const origin =
-      coordinateSystem.origin;
-
-    const xAxis =
-      coordinateSystem.xAxis;
-
-    const yAxis =
-      coordinateSystem.yAxis;
-
-    const zAxis =
-      coordinateSystem.zAxis;
-
-
-    object.matrixAutoUpdate =
-      false;
-
-    object.matrix.set(
-      xAxis.x,
-      xAxis.y,
-      xAxis.z,
-      -(
-        xAxis.x * origin.x
-        + xAxis.y * origin.y
-        + xAxis.z * origin.z
-      ),
-
-      yAxis.x,
-      yAxis.y,
-      yAxis.z,
-      -(
-        yAxis.x * origin.x
-        + yAxis.y * origin.y
-        + yAxis.z * origin.z
-      ),
-
-      zAxis.x,
-      zAxis.y,
-      zAxis.z,
-      -(
-        zAxis.x * origin.x
-        + zAxis.y * origin.y
-        + zAxis.z * origin.z
-      ),
-
-      0,
-      0,
-      0,
-      1,
-    );
-
-    object.matrixWorldNeedsUpdate =
-      true;
-
-    object.updateMatrixWorld(
-      true,
-    );
-
-
-    core.designSelection
-      .refreshHelpers();
-
-    core.pieceDefinitionHelpers
-      .sync();
-
-
     setMessage(
-      `Orientación local aplicada · Rx ${xDegrees}° · Ry ${yDegrees}° · Rz ${zDegrees}°.`,
+      `Orientación local aplicada · Rx ${xDegrees}° · Ry ${yDegrees}° · Rz ${zDegrees}°. Ctrl+Z la restaura.`,
     );
 
   }
@@ -1021,19 +1418,16 @@ export function StepPieceEditor({
         xDegrees,
       ),
     );
-
     setRotationY(
       String(
         yDegrees,
       ),
     );
-
     setRotationZ(
       String(
         zDegrees,
       ),
     );
-
 
     applyPieceOrientation(
       xDegrees,
@@ -1044,8 +1438,7 @@ export function StepPieceEditor({
   }
 
 
-  function handleApplyManualOrientation():
-    void {
+  function handleApplyManualOrientation(): void {
 
     applyPieceOrientation(
       Number(
@@ -1062,53 +1455,115 @@ export function StepPieceEditor({
   }
 
 
-  function handleDownloadBaseIfc(): void {
+  async function handleDownloadPreparedIfc():
+    Promise<void> {
+
+    const core =
+      coreRef.current;
+
+    const definitionId =
+      preparedDefinitionIdRef.current;
 
     if (
-      !conversion
+      !core
+      || !definitionId
+      || !conversion
+      || exporting
     ) {
 
       return;
 
     }
 
-
-    const url =
-      URL.createObjectURL(
-        conversion.ifcFile,
-      );
-
-    const link =
-      document.createElement(
-        "a",
-      );
-
-
-    link.href =
-      url;
-
-    link.download =
-      conversion.ifcFile.name;
-
-
-    document.body.appendChild(
-      link,
-    );
-
-    link.click();
-    link.remove();
-
-
-    window.setTimeout(
-      () => {
-
-        URL.revokeObjectURL(
-          url,
+    const definition =
+      core.designModel
+        .pieceDefinitions
+        .get(
+          definitionId,
         );
 
-      },
-      0,
-    );
+    if (
+      !definition
+    ) {
+
+      window.alert(
+        "La PieceDefinition ya no está disponible.",
+      );
+
+      return;
+
+    }
+
+    try {
+
+      setExporting(true);
+
+      setMessage(
+        "Generando IFC FrameLogic con el origen, orientación, SNAPs y ejes actuales...",
+      );
+
+      const finalIfc =
+        await buildPreparedFrameLogicIfc({
+          baseIfcFile:
+            conversion.ifcFile,
+          sourceStepFileName:
+            sourceFile.name,
+          code:
+            definition.code,
+          name:
+            definition.name,
+          classification:
+            definition.classification,
+          tags:
+            definition.tags,
+          coordinateSystem:
+            definition.coordinateSystem,
+          snapPoints:
+            definition.snapPoints,
+          axisLines:
+            definition.referenceGeometry
+              .axisLines,
+        });
+
+      downloadFile(
+        finalIfc,
+      );
+
+      setMessage(
+        "IFC FrameLogic generado. La geometría ya quedó horneada en el sistema local preparado: el origen definido es (0,0,0) y la orientación elegida pasa a ser la orientación base del IFC.",
+      );
+
+    }
+    catch (
+      error
+    ) {
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            );
+
+      console.error(
+        "Prepared IFC export failed:",
+        error,
+      );
+
+      setMessage(
+        errorMessage,
+      );
+
+      window.alert(
+        `No se pudo generar el IFC FrameLogic.\n\n${errorMessage}`,
+      );
+
+    }
+    finally {
+
+      setExporting(false);
+
+    }
 
   }
 
@@ -1128,7 +1583,6 @@ export function StepPieceEditor({
       "12px",
   } as const;
 
-
   const buttonStyle = {
     padding:
       "8px 11px",
@@ -1146,7 +1600,6 @@ export function StepPieceEditor({
       "12px",
   } as const;
 
-
   const compactButtonStyle = {
     ...buttonStyle,
     padding:
@@ -1155,7 +1608,6 @@ export function StepPieceEditor({
       "11px",
   } as const;
 
-
   const angleInputStyle = {
     ...controlStyle,
     width:
@@ -1163,7 +1615,6 @@ export function StepPieceEditor({
     boxSizing:
       "border-box",
   } as const;
-
 
   const standardViews:
     readonly {
@@ -1226,20 +1677,11 @@ export function StepPieceEditor({
         }}
       />
 
-
       <ViewCube
-        orientation={
-          cameraOrientation
-        }
-        projectionMode={
-          projectionMode
-        }
-        onViewChange={
-          handleStandardView
-        }
-        onCardinalChange={
-          handleCardinalDirection
-        }
+        orientation={cameraOrientation}
+        projectionMode={projectionMode}
+        onViewChange={handleStandardView}
+        onCardinalChange={handleCardinalDirection}
         onToggleProjection={
           () => {
 
@@ -1248,7 +1690,6 @@ export function StepPieceEditor({
           }
         }
       />
-
 
       <div
         style={{
@@ -1309,7 +1750,6 @@ export function StepPieceEditor({
           </button>
         </div>
 
-
         <div
           style={{
             marginBottom:
@@ -1333,7 +1773,6 @@ export function StepPieceEditor({
             Workspace independiente · una sola pieza · origen local (0,0,0).
           </div>
         </div>
-
 
         <label
           style={{
@@ -1366,7 +1805,6 @@ export function StepPieceEditor({
           />
         </label>
 
-
         <label
           style={{
             display:
@@ -1397,7 +1835,6 @@ export function StepPieceEditor({
             style={controlStyle}
           />
         </label>
-
 
         <label
           style={{
@@ -1430,7 +1867,6 @@ export function StepPieceEditor({
           />
         </label>
 
-
         <label
           style={{
             display:
@@ -1462,7 +1898,6 @@ export function StepPieceEditor({
           />
         </label>
 
-
         {
           !prepared
           && (
@@ -1479,10 +1914,7 @@ export function StepPieceEditor({
               <button
                 type="button"
                 style={buttonStyle}
-                disabled={
-                  !ready
-                  || loading
-                }
+                disabled={!ready || loading}
                 onClick={
                   () => {
 
@@ -1517,7 +1949,6 @@ export function StepPieceEditor({
           )
         }
 
-
         {
           prepared
           && (
@@ -1532,7 +1963,6 @@ export function StepPieceEditor({
                     "13px 0",
                 }}
               />
-
 
               <div
                 style={{
@@ -1594,11 +2024,6 @@ export function StepPieceEditor({
 
                     }
                   }
-                  title={
-                    projectionMode === "PERSPECTIVE"
-                      ? "Cambiar a ortográfica"
-                      : "Cambiar a perspectiva"
-                  }
                 >
                   {
                     projectionMode === "PERSPECTIVE"
@@ -1607,7 +2032,6 @@ export function StepPieceEditor({
                   }
                 </button>
               </div>
-
 
               <div
                 style={{
@@ -1637,7 +2061,6 @@ export function StepPieceEditor({
                 <button
                   type="button"
                   style={compactButtonStyle}
-                  title="El eje Z original del STEP pasa a ser el eje X local de FrameLogic"
                   onClick={
                     () => {
 
@@ -1656,7 +2079,6 @@ export function StepPieceEditor({
                 <button
                   type="button"
                   style={compactButtonStyle}
-                  title="El eje Z original del STEP pasa a ser el eje Y local de FrameLogic"
                   onClick={
                     () => {
 
@@ -1675,7 +2097,6 @@ export function StepPieceEditor({
                 <button
                   type="button"
                   style={compactButtonStyle}
-                  title="Restaurar la orientación original del STEP"
                   onClick={
                     () => {
 
@@ -1799,9 +2220,7 @@ export function StepPieceEditor({
                 <button
                   type="button"
                   style={compactButtonStyle}
-                  onClick={
-                    handleApplyManualOrientation
-                  }
+                  onClick={handleApplyManualOrientation}
                 >
                   Aplicar giro
                 </button>
@@ -1821,9 +2240,8 @@ export function StepPieceEditor({
                     1.35,
                 }}
               >
-                Los ángulos son absolutos respecto al STEP original y se aplican en orden X → Y → Z. Cambian el sistema local de la PieceDefinition, no la colocación de una instancia del proyecto.
+                El origen y los cambios de orientación se incorporan al mismo historial de Ctrl+Z/Ctrl+Y que POINT y LINE.
               </div>
-
 
               <div
                 style={{
@@ -1851,14 +2269,7 @@ export function StepPieceEditor({
                 <button
                   type="button"
                   style={buttonStyle}
-                  onClick={
-                    () => {
-
-                      coreRef.current
-                        ?.startPreparedPieceOriginSnapEdit();
-
-                    }
-                  }
+                  onClick={handleStartOriginEdit}
                 >
                   Origen ← SNAP
                 </button>
@@ -1986,7 +2397,7 @@ export function StepPieceEditor({
                     1.4,
                 }}
               >
-                Selecciona la pieza y usa M si necesitas el gizmo. Los SNAPs y ejes persistentes se administran en el panel de preparación.
+                Define el origen, la orientación, los SNAPs y los ejes antes de exportar. El IFC final se genera desde el estado actual de la PieceDefinition.
               </div>
 
               <button
@@ -1996,11 +2407,20 @@ export function StepPieceEditor({
                   marginTop:
                     "12px",
                 }}
+                disabled={exporting}
                 onClick={
-                  handleDownloadBaseIfc
+                  () => {
+
+                    void handleDownloadPreparedIfc();
+
+                  }
                 }
               >
-                Descargar IFC base
+                {
+                  exporting
+                    ? "Generando IFC..."
+                    : "Descargar IFC FrameLogic"
+                }
               </button>
 
               <div
@@ -2011,14 +2431,15 @@ export function StepPieceEditor({
                     "10px",
                   color:
                     "#9ca3af",
+                  lineHeight:
+                    1.35,
                 }}
               >
-                Este IFC ya contiene la geometría STEP y la identidad básica. La exportación final con orientación, SNAPs y ejes FrameLogic se conectará después al guardado de PieceDefinition.
+                La geometría se exporta ya transformada al sistema local preparado. Al volver a importar este IFC, el origen definido queda en (0,0,0) y la orientación preparada se convierte en la orientación base de la pieza. Los SNAPs y ejes también se escriben como datos FrameLogic dentro del IFC.
               </div>
             </>
           )
         }
-
 
         <div
           style={{
@@ -2031,7 +2452,7 @@ export function StepPieceEditor({
             fontSize:
               "11px",
             color:
-              loading
+              loading || exporting
                 ? "#fcd34d"
                 : "#d1d5db",
             lineHeight:
@@ -2042,15 +2463,12 @@ export function StepPieceEditor({
         </div>
       </div>
 
-
       <input
         ref={replacementInputRef}
         type="file"
         accept=".step,.stp"
         hidden
-        onChange={
-          handleReplacementFile
-        }
+        onChange={handleReplacementFile}
       />
     </div>
   );
