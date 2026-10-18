@@ -5,9 +5,15 @@ import type {
 } from "@framelogic/bim-core";
 
 
+export type PreparedIfcBaseGeometrySpace =
+  | "STEP_GENERATED_IFC"
+  | "FRAMELOGIC_LOCAL";
+
+
 export interface PreparedFrameLogicIfcInput {
   baseIfcFile: File;
-  sourceStepFileName: string;
+  baseGeometrySpace?: PreparedIfcBaseGeometrySpace;
+  sourceStepFileName?: string;
   code: string;
   name: string;
   classification?: string;
@@ -224,41 +230,195 @@ function insertBeforeDataEnd(
 }
 
 
+function stripExistingFrameLogicPropertySets(
+  ifcText: string,
+): string {
+
+  const removableIds =
+    new Set<number>();
+
+  const propertySetIds =
+    new Set<number>();
+
+  const propertySetPattern =
+    /#(\d+)=IFCPROPERTYSET\('(?:''|[^'])*',(?:#\d+|\$),'(FrameLogic_(?:Identity|CoordinateSystem|SnapPoints|ReferenceGeometry))',\$,\(([^)]*)\)\);/gi;
+
+  for (
+    const match
+    of ifcText.matchAll(
+      propertySetPattern,
+    )
+  ) {
+
+    const propertySetId =
+      Number(
+        match[1],
+      );
+
+    if (
+      !Number.isFinite(
+        propertySetId,
+      )
+    ) {
+
+      continue;
+
+    }
+
+    propertySetIds.add(
+      propertySetId,
+    );
+
+    removableIds.add(
+      propertySetId,
+    );
+
+    const refs =
+      match[3]
+      ?? "";
+
+    for (
+      const ref
+      of refs.matchAll(
+        /#(\d+)/g,
+      )
+    ) {
+
+      const propertyId =
+        Number(
+          ref[1],
+        );
+
+      if (
+        Number.isFinite(
+          propertyId,
+        )
+      ) {
+
+        removableIds.add(
+          propertyId,
+        );
+
+      }
+
+    }
+
+  }
+
+  if (
+    propertySetIds.size < 1
+  ) {
+
+    return ifcText;
+
+  }
+
+  const relationPattern =
+    /#(\d+)=IFCRELDEFINESBYPROPERTIES\([^;]*,#(\d+)\);/gi;
+
+  for (
+    const match
+    of ifcText.matchAll(
+      relationPattern,
+    )
+  ) {
+
+    const relationId =
+      Number(
+        match[1],
+      );
+
+    const propertySetId =
+      Number(
+        match[2],
+      );
+
+    if (
+      Number.isFinite(
+        relationId,
+      )
+      && propertySetIds.has(
+        propertySetId,
+      )
+    ) {
+
+      removableIds.add(
+        relationId,
+      );
+
+    }
+
+  }
+
+  return ifcText
+    .split(
+      /\r?\n/,
+    )
+    .filter(
+      (
+        line,
+      ) => {
+
+        const entityMatch =
+          line.match(
+            /^#(\d+)=/,
+          );
+
+        if (
+          !entityMatch
+        ) {
+
+          return true;
+
+        }
+
+        return !removableIds.has(
+          Number(
+            entityMatch[1],
+          ),
+        );
+
+      },
+    )
+    .join(
+      "\n",
+    );
+
+}
+
+
 /**
- * Web-IFC / Fragments entrega la geometría IFC al visor usando el cambio
- * de base que FrameLogic ya está editando visualmente:
+ * Un IFC recién generado desde STEP todavía está en la base que Web-IFC
+ * convierte visualmente así al cargarlo en FrameLogic:
  *
  *   IFC (x, y, z) -> FrameLogic asset (x, z, -y)
  *
- * PieceDefinition.coordinateSystem está definido sobre ese asset visual,
- * no directamente sobre las coordenadas crudas del STEP/IFC.
- *
- * Por tanto, al exportar hay que reproducir exactamente el mismo pipeline:
- *
- *   1. IFC crudo -> asset visual FrameLogic
- *   2. asset visual -> PieceDefinition local preparada
- *
- * El paso 2 es:
- *
- *   local = A * (asset - origin)
- *
- * donde las filas de A son xAxis, yAxis y zAxis.
+ * Un IFC FrameLogic ya exportado, en cambio, tiene los vértices horneados
+ * directamente en el espacio local visible y NO debe recibir ese cambio
+ * de base una segunda vez.
  */
 function transformPointToPreparedLocal(
   x: number,
   y: number,
   z: number,
   coordinateSystem: LocalCoordinateSystem,
+  baseGeometrySpace: PreparedIfcBaseGeometrySpace,
 ): Vector3Tuple {
 
   const assetX =
     x;
 
   const assetY =
-    z;
+    baseGeometrySpace
+    === "STEP_GENERATED_IFC"
+      ? z
+      : y;
 
   const assetZ =
-    -y;
+    baseGeometrySpace
+    === "STEP_GENERATED_IFC"
+      ? -y
+      : z;
 
 
   const dx =
@@ -294,6 +454,7 @@ function transformPointToPreparedLocal(
 function bakePreparedGeometry(
   ifcText: string,
   coordinateSystem: LocalCoordinateSystem,
+  baseGeometrySpace: PreparedIfcBaseGeometrySpace,
 ): string {
 
   let transformedListCount =
@@ -380,6 +541,7 @@ function bakePreparedGeometry(
               values[1]!,
               values[2]!,
               coordinateSystem,
+              baseGeometrySpace,
             );
 
 
@@ -542,7 +704,8 @@ function appendFrameLogicPropertySets(
         input.tags
         ?? [],
       sourceStepFile:
-        input.sourceStepFileName,
+        input.sourceStepFileName
+        ?? input.baseIfcFile.name,
     });
 
 
@@ -620,11 +783,17 @@ export async function buildPreparedFrameLogicIfc(
   const baseText =
     await input.baseIfcFile.text();
 
+  const cleanBaseText =
+    stripExistingFrameLogicPropertySets(
+      baseText,
+    );
 
   const preparedGeometryText =
     bakePreparedGeometry(
-      baseText,
+      cleanBaseText,
       input.coordinateSystem,
+      input.baseGeometrySpace
+      ?? "STEP_GENERATED_IFC",
     );
 
 
