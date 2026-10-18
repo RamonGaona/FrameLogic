@@ -18,22 +18,22 @@ import {
 
 function App() {
 
-  const stepInputRef =
+  const pieceInputRef =
     useRef<HTMLInputElement>(
       null,
     );
 
 
   const [
-    stepFile,
-    setStepFile,
+    pieceFile,
+    setPieceFile,
   ] =
     useState<File | null>(
       null,
     );
 
 
-  function handleStepSelected(
+  function handlePieceSelected(
     event:
       ChangeEvent<HTMLInputElement>,
   ): void {
@@ -56,7 +56,7 @@ function App() {
     }
 
 
-    setStepFile(
+    setPieceFile(
       file,
     );
 
@@ -64,16 +64,16 @@ function App() {
 
 
   if (
-    stepFile
+    pieceFile
   ) {
 
     return (
       <StepPieceEditor
-        initialFile={stepFile}
+        initialFile={pieceFile}
         onExit={
           () => {
 
-            setStepFile(
+            setPieceFile(
               null,
             );
 
@@ -91,11 +91,11 @@ function App() {
 
       <button
         type="button"
-        title="Abrir una sola pieza STEP en un workspace independiente de preparación"
+        title="Abrir una pieza STEP o un IFC FrameLogic en el workspace independiente de preparación"
         onClick={
           () => {
 
-            stepInputRef.current
+            pieceInputRef.current
               ?.click();
 
           }
@@ -129,16 +129,16 @@ function App() {
             "0 6px 18px rgba(0,0,0,0.24)",
         }}
       >
-        Abrir STEP
+        Abrir pieza
       </button>
 
       <input
-        ref={stepInputRef}
+        ref={pieceInputRef}
         type="file"
-        accept=".step,.stp"
+        accept=".step,.stp,.ifc"
         hidden
         onChange={
-          handleStepSelected
+          handlePieceSelected
         }
       />
     </>
