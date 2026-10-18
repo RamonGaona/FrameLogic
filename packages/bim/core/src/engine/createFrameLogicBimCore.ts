@@ -301,8 +301,21 @@ function installMoveClickArmGuard(
     BimCoreInstance,
 ): () => void {
 
+  const renderer =
+    core.world.renderer;
+
+
+  if (
+    !renderer
+  ) {
+
+    return () => {};
+
+  }
+
+
   const canvas =
-    core.world.renderer.three.domElement;
+    renderer.three.domElement;
 
   const runtime =
     core.designTransform as unknown as
