@@ -225,19 +225,24 @@ function insertBeforeDataEnd(
 
 
 /**
- * PieceDefinition.coordinateSystem expresa el sistema local de la pieza
- * dentro de las coordenadas originales del asset STEP.
+ * Web-IFC / Fragments entrega la geometría IFC al visor usando el cambio
+ * de base que FrameLogic ya está editando visualmente:
  *
- * El workspace de preparación muestra exactamente:
+ *   IFC (x, y, z) -> FrameLogic asset (x, z, -y)
+ *
+ * PieceDefinition.coordinateSystem está definido sobre ese asset visual,
+ * no directamente sobre las coordenadas crudas del STEP/IFC.
+ *
+ * Por tanto, al exportar hay que reproducir exactamente el mismo pipeline:
+ *
+ *   1. IFC crudo -> asset visual FrameLogic
+ *   2. asset visual -> PieceDefinition local preparada
+ *
+ * El paso 2 es:
  *
  *   local = A * (asset - origin)
  *
  * donde las filas de A son xAxis, yAxis y zAxis.
- *
- * Para una PieceDefinition exportada a IFC horneamos esa misma operación
- * directamente en los vértices. De esta forma el archivo resultante ya
- * tiene como geometría nativa el origen y la orientación preparados y no
- * depende de que un importador conserve IfcLocalPlacement al extraer mesh.
  */
 function transformPointToPreparedLocal(
   x: number,
@@ -246,14 +251,27 @@ function transformPointToPreparedLocal(
   coordinateSystem: LocalCoordinateSystem,
 ): Vector3Tuple {
 
+  const assetX =
+    x;
+
+  const assetY =
+    z;
+
+  const assetZ =
+    -y;
+
+
   const dx =
-    x - coordinateSystem.origin.x;
+    assetX
+    - coordinateSystem.origin.x;
 
   const dy =
-    y - coordinateSystem.origin.y;
+    assetY
+    - coordinateSystem.origin.y;
 
   const dz =
-    z - coordinateSystem.origin.z;
+    assetZ
+    - coordinateSystem.origin.z;
 
 
   return [
@@ -409,12 +427,6 @@ function bakePreparedGeometry(
   }
 
 
-  /*
-   * El IFC de trabajo generado por FrameLogic usa #12/#13/#14 como
-   * ObjectPlacement de la pieza. Como los vértices ya están en el sistema
-   * preparado, la colocación debe quedar en identidad para no transformar
-   * la pieza una segunda vez.
-   */
   const identityLocationPattern =
     /#12=IFCCARTESIANPOINT\(\([^;]*\)\);/i;
 
