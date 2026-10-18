@@ -39,6 +39,14 @@ import {
   buildPreparedFrameLogicIfc,
 } from "./buildPreparedFrameLogicIfc";
 
+import type {
+  PreparedIfcBaseGeometrySpace,
+} from "./buildPreparedFrameLogicIfc";
+
+import {
+  readFrameLogicIfcMetadata,
+} from "./frameLogicIfcMetadata";
+
 
 export interface StepPieceEditorProps {
   initialFile: File;
@@ -51,6 +59,12 @@ type Matrix3 = readonly [
   number, number, number,
   number, number, number,
 ];
+
+
+type LocalRotationAxis =
+  | "X"
+  | "Y"
+  | "Z";
 
 
 interface PreparedDefinitionSnapshot {
@@ -68,13 +82,28 @@ interface PreparedDefinitionSnapshot {
 }
 
 
+function isIfcFile(
+  file: File,
+): boolean {
+
+  return /\.ifc$/i.test(
+    file.name,
+  );
+
+}
+
+
 function fileBaseName(
   fileName: string,
 ): string {
 
   return fileName
     .replace(
-      /\.(?:step|stp)$/i,
+      /\.(?:step|stp|ifc)$/i,
+      "",
+    )
+    .replace(
+      /_FrameLogic$/i,
       "",
     )
     .trim();
@@ -94,6 +123,54 @@ function defaultCodeForFile(
       "_",
     )
     .toUpperCase();
+
+}
+
+
+function identityCoordinateSystem():
+  LocalCoordinateSystem {
+
+  return {
+    origin: {
+      x: 0,
+      y: 0,
+      z: 0,
+    },
+    xAxis: {
+      x: 1,
+      y: 0,
+      z: 0,
+    },
+    yAxis: {
+      x: 0,
+      y: 1,
+      z: 0,
+    },
+    zAxis: {
+      x: 0,
+      y: 0,
+      z: 1,
+    },
+  };
+
+}
+
+
+function coordinateSystemMatrix(
+  coordinateSystem: LocalCoordinateSystem,
+): Matrix3 {
+
+  return [
+    coordinateSystem.xAxis.x,
+    coordinateSystem.xAxis.y,
+    coordinateSystem.xAxis.z,
+    coordinateSystem.yAxis.x,
+    coordinateSystem.yAxis.y,
+    coordinateSystem.yAxis.z,
+    coordinateSystem.zAxis.x,
+    coordinateSystem.zAxis.y,
+    coordinateSystem.zAxis.z,
+  ];
 
 }
 
@@ -168,6 +245,44 @@ function createEulerRotationMatrix(
     ),
     rotateX,
   );
+
+}
+
+
+function createLocalAxisRotationMatrix(
+  axis: LocalRotationAxis,
+  degrees: number,
+): Matrix3 {
+
+  switch (
+    axis
+  ) {
+
+    case "X":
+
+      return createEulerRotationMatrix(
+        degrees,
+        0,
+        0,
+      );
+
+    case "Y":
+
+      return createEulerRotationMatrix(
+        0,
+        degrees,
+        0,
+      );
+
+    case "Z":
+
+      return createEulerRotationMatrix(
+        0,
+        0,
+        degrees,
+      );
+
+  }
 
 }
 
@@ -678,9 +793,31 @@ export function StepPieceEditor({
       null,
     );
 
+  const [baseGeometrySpace, setBaseGeometrySpace] =
+    useState<PreparedIfcBaseGeometrySpace>(
+      isIfcFile(
+        initialFile,
+      )
+        ? "FRAMELOGIC_LOCAL"
+        : "STEP_GENERATED_IFC",
+    );
+
+  const [sourceStepFileName, setSourceStepFileName] =
+    useState<string | undefined>(
+      isIfcFile(
+        initialFile,
+      )
+        ? undefined
+        : initialFile.name,
+    );
+
   const [message, setMessage] =
     useState(
-      "Completa los datos básicos y pulsa Cargar STEP y preparar.",
+      isIfcFile(
+        initialFile,
+      )
+        ? "Pulsa Cargar IFC FrameLogic para continuar editando la pieza."
+        : "Completa los datos básicos y pulsa Cargar STEP y preparar.",
     );
 
   const [rotationX, setRotationX] =
@@ -691,6 +828,14 @@ export function StepPieceEditor({
 
   const [rotationZ, setRotationZ] =
     useState("0");
+
+  const [localRotationAxis, setLocalRotationAxis] =
+    useState<LocalRotationAxis>(
+      "X",
+    );
+
+  const [localRotationDegrees, setLocalRotationDegrees] =
+    useState("90");
 
   const [cameraOrientation, setCameraOrientation] =
     useState<CameraOrientation>({
@@ -878,7 +1023,7 @@ export function StepPieceEditor({
         ) => {
 
           console.error(
-            "Error initializing STEP piece editor:",
+            "Error initializing piece editor:",
             error,
           );
 
@@ -980,7 +1125,7 @@ export function StepPieceEditor({
     ) {
 
       console.error(
-        "Error changing STEP editor camera projection:",
+        "Error changing piece editor camera projection:",
         error,
       );
 
@@ -992,6 +1137,11 @@ export function StepPieceEditor({
   function resetIdentityForFile(
     file: File,
   ): void {
+
+    const fileIsIfc =
+      isIfcFile(
+        file,
+      );
 
     setSourceFile(file);
     setCode(
@@ -1011,6 +1161,18 @@ export function StepPieceEditor({
     setRotationX("0");
     setRotationY("0");
     setRotationZ("0");
+    setLocalRotationAxis("X");
+    setLocalRotationDegrees("90");
+    setBaseGeometrySpace(
+      fileIsIfc
+        ? "FRAMELOGIC_LOCAL"
+        : "STEP_GENERATED_IFC",
+    );
+    setSourceStepFileName(
+      fileIsIfc
+        ? undefined
+        : file.name,
+    );
 
     preparedInstanceIdRef.current =
       null;
@@ -1020,7 +1182,9 @@ export function StepPieceEditor({
       null;
 
     setMessage(
-      "Completa los datos básicos y pulsa Cargar STEP y preparar.",
+      fileIsIfc
+        ? "Pulsa Cargar IFC FrameLogic para continuar editando la pieza."
+        : "Completa los datos básicos y pulsa Cargar STEP y preparar.",
     );
 
   }
@@ -1066,26 +1230,23 @@ export function StepPieceEditor({
 
     }
 
-    const normalizedCode =
+    const sourceIsIfc =
+      isIfcFile(
+        sourceFile,
+      );
+
+    let normalizedCode =
       code.trim();
 
-    const normalizedName =
+    let normalizedName =
       name.trim()
       || normalizedCode;
 
-    if (
-      normalizedCode.length === 0
-    ) {
+    let normalizedClassification =
+      classification.trim()
+      || undefined;
 
-      window.alert(
-        "El código de la pieza es obligatorio.",
-      );
-
-      return;
-
-    }
-
-    const tags =
+    let tags =
       tagsText
         .split(",")
         .map(
@@ -1100,24 +1261,106 @@ export function StepPieceEditor({
 
       setLoading(true);
 
-      setMessage(
-        "Leyendo STEP con OpenCascade y generando IFC de trabajo...",
-      );
+      let result:
+        StepConversionResult;
 
-      const result =
-        await convertStepToFrameLogicIfc(
-          sourceFile,
-          {
-            code:
-              normalizedCode,
-            name:
-              normalizedName,
-            classification:
-              classification.trim()
-              || undefined,
-            tags,
-          },
+      let reopenedMetadata:
+        Awaited<ReturnType<typeof readFrameLogicIfcMetadata>>
+        | null =
+          null;
+
+      if (
+        sourceIsIfc
+      ) {
+
+        setMessage(
+          "Leyendo PieceDefinition guardada dentro del IFC FrameLogic...",
         );
+
+        reopenedMetadata =
+          await readFrameLogicIfcMetadata(
+            sourceFile,
+          );
+
+        normalizedCode =
+          reopenedMetadata.code;
+        normalizedName =
+          reopenedMetadata.name;
+        normalizedClassification =
+          reopenedMetadata.classification;
+        tags = [
+          ...reopenedMetadata.tags,
+        ];
+
+        setCode(
+          normalizedCode,
+        );
+        setName(
+          normalizedName,
+        );
+        setClassification(
+          normalizedClassification
+          ?? "",
+        );
+        setTagsText(
+          tags.join(
+            ", ",
+          ),
+        );
+
+        setSourceStepFileName(
+          reopenedMetadata.sourceStepFileName,
+        );
+
+        result = {
+          ifcFile:
+            sourceFile,
+          vertexCount:
+            0,
+          triangleCount:
+            0,
+          sourceMeshCount:
+            1,
+        };
+
+      }
+      else {
+
+        if (
+          normalizedCode.length === 0
+        ) {
+
+          window.alert(
+            "El código de la pieza es obligatorio.",
+          );
+
+          return;
+
+        }
+
+        setMessage(
+          "Leyendo STEP con OpenCascade y generando IFC de trabajo...",
+        );
+
+        result =
+          await convertStepToFrameLogicIfc(
+            sourceFile,
+            {
+              code:
+                normalizedCode,
+              name:
+                normalizedName,
+              classification:
+                normalizedClassification,
+              tags,
+            },
+          );
+
+        setSourceStepFileName(
+          sourceFile.name,
+        );
+
+      }
 
       setMessage(
         "Cargando la pieza en el editor FrameLogic...",
@@ -1134,8 +1377,7 @@ export function StepPieceEditor({
             name:
               normalizedName,
             classification:
-              classification.trim()
-              || undefined,
+              normalizedClassification,
             tags,
           },
         );
@@ -1159,6 +1401,61 @@ export function StepPieceEditor({
           tags: [],
         });
 
+      if (
+        reopenedMetadata
+      ) {
+
+        restoreDefinitionSnapshot(
+          core,
+          instance.id,
+          {
+            id:
+              definition.id,
+            code:
+              reopenedMetadata.code,
+            name:
+              reopenedMetadata.name,
+            geometryAssetId:
+              definition.geometryAssetId,
+            classification:
+              reopenedMetadata.classification,
+            tags: [
+              ...reopenedMetadata.tags,
+            ],
+            coordinateSystem:
+              identityCoordinateSystem(),
+            snapPoints:
+              reopenedMetadata.snapPoints.map(
+                (
+                  snap,
+                ) => ({
+                  ...snap,
+                  position: {
+                    ...snap.position,
+                  },
+                }),
+              ),
+            referenceGeometry: {
+              axisLines:
+                reopenedMetadata.axisLines.map(
+                  (
+                    axis,
+                  ) => ({
+                    ...axis,
+                    origin: {
+                      ...axis.origin,
+                    },
+                    direction: {
+                      ...axis.direction,
+                    },
+                  }),
+                ),
+            },
+          },
+        );
+
+      }
+
       preparedInstanceIdRef.current =
         instance.id;
 
@@ -1175,10 +1472,28 @@ export function StepPieceEditor({
 
       setConversion(result);
       setPrepared(true);
-
-      setMessage(
-        `STEP cargado · ${result.sourceMeshCount} mesh · ${result.vertexCount.toLocaleString()} vértices · ${result.triangleCount.toLocaleString()} triángulos.`,
+      setBaseGeometrySpace(
+        sourceIsIfc
+          ? "FRAMELOGIC_LOCAL"
+          : "STEP_GENERATED_IFC",
       );
+
+      if (
+        sourceIsIfc
+      ) {
+
+        setMessage(
+          `IFC FrameLogic reabierto · ${reopenedMetadata?.snapPoints.length ?? 0} SNAPs · ${reopenedMetadata?.axisLines.length ?? 0} ejes. Puedes continuar modificando y volver a exportar.`,
+        );
+
+      }
+      else {
+
+        setMessage(
+          `STEP cargado · ${result.sourceMeshCount} mesh · ${result.vertexCount.toLocaleString()} vértices · ${result.triangleCount.toLocaleString()} triángulos.`,
+        );
+
+      }
 
     }
     catch (
@@ -1186,7 +1501,7 @@ export function StepPieceEditor({
     ) {
 
       console.error(
-        "STEP preparation failed:",
+        "Piece preparation failed:",
         error,
       );
 
@@ -1202,7 +1517,7 @@ export function StepPieceEditor({
       );
 
       window.alert(
-        `No se pudo preparar el STEP.\n\n${errorMessage}`,
+        `No se pudo preparar la pieza.\n\n${errorMessage}`,
       );
 
     }
@@ -1263,10 +1578,10 @@ export function StepPieceEditor({
   }
 
 
-  function applyPieceOrientation(
-    xDegrees: number,
-    yDegrees: number,
-    zDegrees: number,
+  function updatePieceCoordinateMatrix(
+    matrix: Matrix3,
+    historyLabel: string,
+    messageText: string,
   ): void {
 
     const core =
@@ -1283,20 +1598,6 @@ export function StepPieceEditor({
       || !instanceId
       || !definitionId
     ) {
-
-      return;
-
-    }
-
-    if (
-      !Number.isFinite(xDegrees)
-      || !Number.isFinite(yDegrees)
-      || !Number.isFinite(zDegrees)
-    ) {
-
-      window.alert(
-        "Los ángulos Rx, Ry y Rz deben ser números válidos.",
-      );
 
       return;
 
@@ -1328,13 +1629,6 @@ export function StepPieceEditor({
 
     }
 
-    const rotation =
-      createEulerRotationMatrix(
-        xDegrees,
-        yDegrees,
-        zDegrees,
-      );
-
     const updated =
       core.designModel
         .pieceDefinitions
@@ -1344,19 +1638,19 @@ export function StepPieceEditor({
             origin:
               currentDefinition.coordinateSystem.origin,
             xAxis: {
-              x: rotation[0],
-              y: rotation[1],
-              z: rotation[2],
+              x: matrix[0],
+              y: matrix[1],
+              z: matrix[2],
             },
             yAxis: {
-              x: rotation[3],
-              y: rotation[4],
-              z: rotation[5],
+              x: matrix[3],
+              y: matrix[4],
+              z: matrix[5],
             },
             zAxis: {
-              x: rotation[6],
-              y: rotation[7],
-              z: rotation[8],
+              x: matrix[6],
+              y: matrix[7],
+              z: matrix[8],
             },
           },
           true,
@@ -1393,7 +1687,7 @@ export function StepPieceEditor({
       recordDefinitionHistory(
         core,
         instanceId,
-        "PIECE ORIENTATION",
+        historyLabel,
         before,
         after,
       );
@@ -1401,7 +1695,120 @@ export function StepPieceEditor({
     }
 
     setMessage(
+      messageText,
+    );
+
+  }
+
+
+  function applyPieceOrientation(
+    xDegrees: number,
+    yDegrees: number,
+    zDegrees: number,
+  ): void {
+
+    if (
+      !Number.isFinite(xDegrees)
+      || !Number.isFinite(yDegrees)
+      || !Number.isFinite(zDegrees)
+    ) {
+
+      window.alert(
+        "Los ángulos Rx, Ry y Rz deben ser números válidos.",
+      );
+
+      return;
+
+    }
+
+    updatePieceCoordinateMatrix(
+      createEulerRotationMatrix(
+        xDegrees,
+        yDegrees,
+        zDegrees,
+      ),
+      "PIECE ORIENTATION",
       `Orientación local aplicada · Rx ${xDegrees}° · Ry ${yDegrees}° · Rz ${zDegrees}°. Ctrl+Z la restaura.`,
+    );
+
+  }
+
+
+  function applyLocalAxisRotation(
+    axis: LocalRotationAxis,
+    degrees: number,
+  ): void {
+
+    if (
+      !Number.isFinite(
+        degrees,
+      )
+    ) {
+
+      window.alert(
+        "El ángulo de giro local debe ser un número válido.",
+      );
+
+      return;
+
+    }
+
+    const core =
+      coreRef.current;
+
+    const definitionId =
+      preparedDefinitionIdRef.current;
+
+    if (
+      !core
+      || !definitionId
+    ) {
+
+      return;
+
+    }
+
+    const definition =
+      core.designModel
+        .pieceDefinitions
+        .get(
+          definitionId,
+        );
+
+    if (
+      !definition
+    ) {
+
+      return;
+
+    }
+
+    const currentMatrix =
+      coordinateSystemMatrix(
+        definition.coordinateSystem,
+      );
+
+    const localRotation =
+      createLocalAxisRotationMatrix(
+        axis,
+        degrees,
+      );
+
+    /*
+     * Premultiplicar rota la pieza alrededor de SU eje local actual.
+     * Así, después de orientar la longitud sobre X, un giro local X
+     * conserva la dirección longitudinal y solamente hace roll.
+     */
+    const composed =
+      multiplyMatrix3(
+        localRotation,
+        currentMatrix,
+      );
+
+    updatePieceCoordinateMatrix(
+      composed,
+      `PIECE LOCAL ${axis} ROTATION`,
+      `Giro relativo aplicado alrededor del eje ${axis} local · ${degrees}°. Ctrl+Z lo restaura.`,
     );
 
   }
@@ -1449,6 +1856,18 @@ export function StepPieceEditor({
       ),
       Number(
         rotationZ,
+      ),
+    );
+
+  }
+
+
+  function handleApplyLocalRotation(): void {
+
+    applyLocalAxisRotation(
+      localRotationAxis,
+      Number(
+        localRotationDegrees,
       ),
     );
 
@@ -1506,8 +1925,8 @@ export function StepPieceEditor({
         await buildPreparedFrameLogicIfc({
           baseIfcFile:
             conversion.ifcFile,
-          sourceStepFileName:
-            sourceFile.name,
+          baseGeometrySpace,
+          sourceStepFileName,
           code:
             definition.code,
           name:
@@ -1530,7 +1949,7 @@ export function StepPieceEditor({
       );
 
       setMessage(
-        "IFC FrameLogic generado. La geometría ya quedó horneada en el sistema local preparado: el origen definido es (0,0,0) y la orientación elegida pasa a ser la orientación base del IFC.",
+        "IFC FrameLogic generado. El archivo conserva la pieza preparada y puede volver a abrirse con Abrir pieza para seguir editándola.",
       );
 
     }
@@ -1651,6 +2070,11 @@ export function StepPieceEditor({
       },
     ];
 
+  const sourceIsIfc =
+    isIfcFile(
+      sourceFile,
+    );
+
 
   return (
     <div
@@ -1738,7 +2162,7 @@ export function StepPieceEditor({
           }}
         >
           <strong>
-            Editor STEP → FrameLogic
+            Editor de pieza FrameLogic
           </strong>
 
           <button
@@ -1767,7 +2191,7 @@ export function StepPieceEditor({
           }}
         >
           <div>
-            <strong>STEP:</strong> {sourceFile.name}
+            <strong>{sourceIsIfc ? "IFC FrameLogic" : "STEP"}:</strong> {sourceFile.name}
           </div>
           <div>
             Workspace independiente · una sola pieza · origen local (0,0,0).
@@ -1925,8 +2349,10 @@ export function StepPieceEditor({
               >
                 {
                   loading
-                    ? "Procesando STEP..."
-                    : "Cargar STEP y preparar"
+                    ? "Procesando pieza..."
+                    : sourceIsIfc
+                      ? "Cargar IFC FrameLogic"
+                      : "Cargar STEP y preparar"
                 }
               </button>
 
@@ -1943,7 +2369,7 @@ export function StepPieceEditor({
                   }
                 }
               >
-                Elegir otro STEP
+                Elegir otro archivo
               </button>
             </div>
           )
@@ -2073,7 +2499,7 @@ export function StepPieceEditor({
                     }
                   }
                 >
-                  Z STEP → X
+                  Z base → X
                 </button>
 
                 <button
@@ -2091,7 +2517,7 @@ export function StepPieceEditor({
                     }
                   }
                 >
-                  Z STEP → Y
+                  Z base → Y
                 </button>
 
                 <button
@@ -2109,7 +2535,7 @@ export function StepPieceEditor({
                     }
                   }
                 >
-                  Z STEP → Z
+                  Z base → Z
                 </button>
               </div>
 
@@ -2124,7 +2550,7 @@ export function StepPieceEditor({
                   flexWrap:
                     "wrap",
                   marginBottom:
-                    "12px",
+                    "8px",
                 }}
               >
                 <label
@@ -2222,7 +2648,139 @@ export function StepPieceEditor({
                   style={compactButtonStyle}
                   onClick={handleApplyManualOrientation}
                 >
-                  Aplicar giro
+                  Aplicar orientación
+                </button>
+              </div>
+
+              <div
+                style={{
+                  marginBottom:
+                    "6px",
+                  fontSize:
+                    "11px",
+                  fontWeight:
+                    700,
+                }}
+              >
+                Giro sobre el mismo eje local
+              </div>
+
+              <div
+                style={{
+                  display:
+                    "flex",
+                  alignItems:
+                    "end",
+                  gap:
+                    "6px",
+                  flexWrap:
+                    "wrap",
+                  marginBottom:
+                    "12px",
+                }}
+              >
+                <label
+                  style={{
+                    display:
+                      "grid",
+                    gap:
+                      "3px",
+                    fontSize:
+                      "11px",
+                  }}
+                >
+                  Eje
+                  <select
+                    value={localRotationAxis}
+                    onChange={
+                      (
+                        event,
+                      ) => {
+
+                        setLocalRotationAxis(
+                          event.target.value as LocalRotationAxis,
+                        );
+
+                      }
+                    }
+                    style={controlStyle}
+                  >
+                    <option value="X">X local</option>
+                    <option value="Y">Y local</option>
+                    <option value="Z">Z local</option>
+                  </select>
+                </label>
+
+                <label
+                  style={{
+                    display:
+                      "grid",
+                    gap:
+                      "3px",
+                    fontSize:
+                      "11px",
+                  }}
+                >
+                  Giro °
+                  <input
+                    type="number"
+                    step="1"
+                    value={localRotationDegrees}
+                    onChange={
+                      (
+                        event,
+                      ) => {
+
+                        setLocalRotationDegrees(
+                          event.target.value,
+                        );
+
+                      }
+                    }
+                    style={angleInputStyle}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  style={compactButtonStyle}
+                  onClick={handleApplyLocalRotation}
+                >
+                  Girar sobre eje
+                </button>
+
+                <button
+                  type="button"
+                  style={compactButtonStyle}
+                  onClick={
+                    () => {
+
+                      applyLocalAxisRotation(
+                        localRotationAxis,
+                        90,
+                      );
+
+                    }
+                  }
+                >
+                  +90°
+                </button>
+
+                <button
+                  type="button"
+                  style={compactButtonStyle}
+                  onClick={
+                    () => {
+
+                      applyLocalAxisRotation(
+                        localRotationAxis,
+                        -90,
+                      );
+
+                    }
+                  }
+                >
+                  -90°
                 </button>
               </div>
 
@@ -2240,7 +2798,7 @@ export function StepPieceEditor({
                     1.35,
                 }}
               >
-                El origen y los cambios de orientación se incorporan al mismo historial de Ctrl+Z/Ctrl+Y que POINT y LINE.
+                Rx/Ry/Rz fijan una orientación absoluta. El giro local es relativo: por ejemplo, si la longitud ya está sobre X, usa X local para girar la sección sin sacar la pieza del eje X. Todo entra en Ctrl+Z/Ctrl+Y.
               </div>
 
               <div
@@ -2397,7 +2955,7 @@ export function StepPieceEditor({
                     1.4,
                 }}
               >
-                Define el origen, la orientación, los SNAPs y los ejes antes de exportar. El IFC final se genera desde el estado actual de la PieceDefinition.
+                Define el origen, la orientación, los SNAPs y los ejes antes de exportar. Un IFC FrameLogic exportado puede volver a abrirse aquí para continuar la preparación.
               </div>
 
               <button
@@ -2435,7 +2993,7 @@ export function StepPieceEditor({
                     1.35,
                 }}
               >
-                La geometría se exporta ya transformada al sistema local preparado. Al volver a importar este IFC, el origen definido queda en (0,0,0) y la orientación preparada se convierte en la orientación base de la pieza. Los SNAPs y ejes también se escriben como datos FrameLogic dentro del IFC.
+                La geometría se exporta transformada al sistema local preparado. Los SNAPs y ejes se guardan dentro del IFC y se recuperan al reabrir un IFC FrameLogic.
               </div>
             </>
           )
@@ -2466,7 +3024,7 @@ export function StepPieceEditor({
       <input
         ref={replacementInputRef}
         type="file"
-        accept=".step,.stp"
+        accept=".step,.stp,.ifc"
         hidden
         onChange={handleReplacementFile}
       />
