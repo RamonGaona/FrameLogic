@@ -29,6 +29,13 @@ export class PieceDefinitionHelperSceneController {
     DesignSceneController;
 
 
+  /*
+   * null = modo proyecto normal: mostrar referencias de todas
+   * las PieceInstance visibles.
+   *
+   * string = modo preparación: mostrar únicamente la instancia
+   * que está siendo editada.
+   */
   private activeInstanceId:
     string
     | null =
@@ -115,67 +122,6 @@ export class PieceDefinitionHelperSceneController {
     );
 
 
-    const instanceId =
-      this.activeInstanceId;
-
-
-    if (
-      !instanceId
-    ) {
-
-      return;
-
-    }
-
-
-    const instance =
-      this.designModel
-        .pieceInstances
-        .get(
-          instanceId,
-        );
-
-
-    const object =
-      this.designScene
-        .getInstanceObject(
-          instanceId,
-        );
-
-
-    if (
-      !instance
-      || !object
-      || !object.visible
-    ) {
-
-      return;
-
-    }
-
-
-    const definition =
-      this.designModel
-        .pieceDefinitions
-        .get(
-          instance.definitionId,
-        );
-
-
-    if (
-      !definition
-    ) {
-
-      return;
-
-    }
-
-
-    object.updateMatrixWorld(
-      true,
-    );
-
-
     const snapLayer =
       this.designModel
         .layers
@@ -194,28 +140,101 @@ export class PieceDefinitionHelperSceneController {
         );
 
 
-    if (
-      snapLayer?.visible
-      ?? true
+    const instanceIds =
+      this.activeInstanceId
+        ? [
+            this.activeInstanceId,
+          ]
+        : this.designModel
+            .pieceInstances
+            .getAll()
+            .map(
+              (
+                instance,
+              ) =>
+                instance.id,
+            );
+
+
+    for (
+      const instanceId
+      of instanceIds
     ) {
 
-      this.buildSnapHelpers(
-        definition,
-        object,
+      const instance =
+        this.designModel
+          .pieceInstances
+          .get(
+            instanceId,
+          );
+
+
+      const object =
+        this.designScene
+          .getInstanceObject(
+            instanceId,
+          );
+
+
+      if (
+        !instance
+        || !object
+        || !object.visible
+      ) {
+
+        continue;
+
+      }
+
+
+      const definition =
+        this.designModel
+          .pieceDefinitions
+          .get(
+            instance.definitionId,
+          );
+
+
+      if (
+        !definition
+      ) {
+
+        continue;
+
+      }
+
+
+      object.updateMatrixWorld(
+        true,
       );
 
-    }
+
+      if (
+        snapLayer?.visible
+        ?? true
+      ) {
+
+        this.buildSnapHelpers(
+          definition,
+          object,
+          instanceId,
+        );
+
+      }
 
 
-    if (
-      axisLayer?.visible
-      ?? true
-    ) {
+      if (
+        axisLayer?.visible
+        ?? true
+      ) {
 
-      this.buildAxisHelpers(
-        definition,
-        object,
-      );
+        this.buildAxisHelpers(
+          definition,
+          object,
+          instanceId,
+        );
+
+      }
 
     }
 
@@ -228,6 +247,9 @@ export class PieceDefinitionHelperSceneController {
 
     instanceObject:
       THREE.Object3D,
+
+    instanceId:
+      string,
   ):
     void {
 
@@ -292,13 +314,14 @@ export class PieceDefinitionHelperSceneController {
 
 
       point.name =
-        `PieceSnap:${definition.id}:${snap.id}`;
+        `PieceSnap:${instanceId}:${definition.id}:${snap.id}`;
 
 
       point.userData = {
         frameLogic: {
           entityType:
             "PieceSnapPoint",
+          instanceId,
           definitionId:
             definition.id,
           snapId:
@@ -324,6 +347,9 @@ export class PieceDefinitionHelperSceneController {
 
     instanceObject:
       THREE.Object3D,
+
+    instanceId:
+      string,
   ):
     void {
 
@@ -416,13 +442,14 @@ export class PieceDefinitionHelperSceneController {
 
 
       line.name =
-        `PieceAxis:${definition.id}:${axis.id}`;
+        `PieceAxis:${instanceId}:${definition.id}:${axis.id}`;
 
 
       line.userData = {
         frameLogic: {
           entityType:
             "PieceReferenceAxis",
+          instanceId,
           definitionId:
             definition.id,
           axisId:
