@@ -673,3 +673,19 @@ body {
   font-size: 12px;
   vertical-align: middle;
 }
+
+
+/* ==========================================================
+   PIECE EDITOR LAYOUT
+   ========================================================== */
+
+/*
+ * El editor principal de pieza ocupa 390 px desde x=16. El panel
+ * de PieceDefinitionPreparation era fijo en x=392, por lo que se
+ * solapaban unos píxeles. Solo dentro del editor STEP/IFC movemos
+ * el panel de preparación y dejamos un espacio visible entre ambos.
+ */
+body:has(input[accept=".step,.stp,.ifc"])
+  > div[style*="left: 392px"][style*="width: 360px"][style*="z-index: 45"] {
+  left: 424px !important;
+}
