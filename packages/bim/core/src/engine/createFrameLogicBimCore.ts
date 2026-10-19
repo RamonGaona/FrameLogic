@@ -286,6 +286,16 @@ interface MoveTransformRuntime {
       string | null;
     getMode:
       () => string;
+    addEventListener:
+      (
+        type: string,
+        listener: () => void,
+      ) => void;
+    removeEventListener:
+      (
+        type: string,
+        listener: () => void,
+      ) => void;
   };
   readonly pivot:
     THREE.Object3D;
@@ -293,6 +303,10 @@ interface MoveTransformRuntime {
     unknown;
   readonly armedPivot:
     boolean;
+  readonly previousPivotPosition:
+    THREE.Vector3;
+  dragHistoryStart:
+    unknown;
 }
 
 
@@ -324,6 +338,9 @@ function installMoveClickArmGuard(
   const clickThreshold =
     5;
 
+  let pointerDown =
+    false;
+
   let gestureActive =
     false;
 
@@ -335,6 +352,9 @@ function installMoveClickArmGuard(
     0;
 
   let startY =
+    0;
+
+  let pointerMovement =
     0;
 
   const startPivot =
@@ -360,6 +380,26 @@ function installMoveClickArmGuard(
       || axis === "YZ";
 
 
+  const resetGesture =
+    (): void => {
+
+      pointerDown =
+        false;
+
+      gestureActive =
+        false;
+
+      pointerId =
+        null;
+
+      pointerMovement =
+        0;
+
+      startPositions.clear();
+
+    };
+
+
   const restoreClickStart =
     (): void => {
 
@@ -369,6 +409,11 @@ function installMoveClickArmGuard(
 
       runtime.pivot.updateMatrixWorld(
         true,
+      );
+
+
+      runtime.previousPivotPosition.copy(
+        startPivot,
       );
 
 
@@ -415,6 +460,37 @@ function installMoveClickArmGuard(
     };
 
 
+  const updateMovement =
+    (
+      event:
+        PointerEvent,
+    ): void => {
+
+      if (
+        !pointerDown
+        || pointerId
+          !== event.pointerId
+      ) {
+
+        return;
+
+      }
+
+
+      pointerMovement =
+        Math.max(
+          pointerMovement,
+          Math.hypot(
+            event.clientX
+            - startX,
+            event.clientY
+            - startY,
+          ),
+        );
+
+    };
+
+
   const handlePointerDown =
     (
       event:
@@ -424,6 +500,64 @@ function installMoveClickArmGuard(
       if (
         event.button !== 0
         || !core.designTransform.isActive
+        || runtime.controls.getMode()
+          !== "translate"
+        || runtime.armedMoveAxis
+        || runtime.armedPivot
+      ) {
+
+        return;
+
+      }
+
+
+      pointerDown =
+        true;
+
+      gestureActive =
+        false;
+
+      pointerId =
+        event.pointerId;
+
+      startX =
+        event.clientX;
+
+      startY =
+        event.clientY;
+
+      pointerMovement =
+        0;
+
+      startPositions.clear();
+
+    };
+
+
+  const handlePointerMove =
+    (
+      event:
+        PointerEvent,
+    ): void => {
+
+      updateMovement(
+        event,
+      );
+
+    };
+
+
+  const handleTransformMouseDown =
+    (): void => {
+
+      /*
+       * El eje fiable se conoce aquí, no necesariamente durante
+       * pointerdown. Esto evita que la segunda instancia (o una
+       * selección recién cambiada) salte directamente a drag porque
+       * TransformControls todavía reportaba axis=null en el capture.
+       */
+      if (
+        !pointerDown
         || runtime.controls.getMode()
           !== "translate"
         || !isMoveAxis(
@@ -440,15 +574,6 @@ function installMoveClickArmGuard(
 
       gestureActive =
         true;
-
-      pointerId =
-        event.pointerId;
-
-      startX =
-        event.clientX;
-
-      startY =
-        event.clientY;
 
       startPivot.copy(
         runtime.pivot.position,
@@ -487,6 +612,30 @@ function installMoveClickArmGuard(
     };
 
 
+  const handleTransformObjectChange =
+    (): void => {
+
+      if (
+        !gestureActive
+        || pointerMovement
+          > clickThreshold
+      ) {
+
+        return;
+
+      }
+
+
+      /*
+       * Mientras el gesto siga dentro del umbral de clic, anulamos
+       * cualquier traslación temprana producida por TransformControls.
+       * Si supera 5 px, deja de restaurarse y se convierte en drag real.
+       */
+      restoreClickStart();
+
+    };
+
+
   const handlePointerUp =
     (
       event:
@@ -494,7 +643,7 @@ function installMoveClickArmGuard(
     ): void => {
 
       if (
-        !gestureActive
+        !pointerDown
         || pointerId
           !== event.pointerId
       ) {
@@ -504,41 +653,53 @@ function installMoveClickArmGuard(
       }
 
 
-      const movement =
-        Math.hypot(
-          event.clientX
-          - startX,
-          event.clientY
-          - startY,
-        );
+      updateMovement(
+        event,
+      );
 
 
-      /*
-       * TransformControls puede producir una traslación mínima aun cuando
-       * el usuario solamente hizo clic. Antes se exigía movimiento 0 exacto,
-       * por lo que el eje no quedaba armado después de reubicar el pivote.
-       *
-       * Restauramos la posición ANTES de que TransformControls emita mouseUp.
-       * Así su controlador existente reconoce correctamente el gesto como
-       * clic corto y arma X/Y/Z/planos para el segundo clic SNAP.
-       */
       if (
-        movement
-        <= clickThreshold
+        gestureActive
+        && pointerMovement
+          <= clickThreshold
       ) {
 
+        /*
+         * Este listener corre en capture, antes del mouseUp interno de
+         * TransformControls. Restaurar aquí hace que DesignTransformController
+         * vea desplazamiento cero y arme el eje para el segundo clic SNAP.
+         */
         restoreClickStart();
+
+        /*
+         * Un clic de armado no debe introducir una entrada MOVE vacía
+         * en Undo/Redo.
+         */
+        runtime.dragHistoryStart =
+          null;
 
       }
 
 
-      gestureActive =
-        false;
+      if (
+        !gestureActive
+      ) {
 
-      pointerId =
-        null;
+        resetGesture();
 
-      startPositions.clear();
+      }
+
+    };
+
+
+  const handleTransformMouseUp =
+    (): void => {
+
+      /*
+       * Se ejecuta después del mouseUp del DesignTransformController,
+       * cuando éste ya pudo convertir el clic corto en armedMoveAxis.
+       */
+      resetGesture();
 
     };
 
@@ -550,7 +711,7 @@ function installMoveClickArmGuard(
     ): void => {
 
       if (
-        !gestureActive
+        !pointerDown
         || pointerId
           !== event.pointerId
       ) {
@@ -560,13 +721,18 @@ function installMoveClickArmGuard(
       }
 
 
-      gestureActive =
-        false;
+      if (
+        gestureActive
+        && pointerMovement
+          <= clickThreshold
+      ) {
 
-      pointerId =
-        null;
+        restoreClickStart();
 
-      startPositions.clear();
+      }
+
+
+      resetGesture();
 
     };
 
@@ -574,6 +740,12 @@ function installMoveClickArmGuard(
   canvas.addEventListener(
     "pointerdown",
     handlePointerDown,
+    true,
+  );
+
+  canvas.addEventListener(
+    "pointermove",
+    handlePointerMove,
     true,
   );
 
@@ -590,11 +762,33 @@ function installMoveClickArmGuard(
   );
 
 
+  runtime.controls.addEventListener(
+    "mouseDown",
+    handleTransformMouseDown,
+  );
+
+  runtime.controls.addEventListener(
+    "objectChange",
+    handleTransformObjectChange,
+  );
+
+  runtime.controls.addEventListener(
+    "mouseUp",
+    handleTransformMouseUp,
+  );
+
+
   return () => {
 
     canvas.removeEventListener(
       "pointerdown",
       handlePointerDown,
+      true,
+    );
+
+    canvas.removeEventListener(
+      "pointermove",
+      handlePointerMove,
       true,
     );
 
@@ -608,6 +802,22 @@ function installMoveClickArmGuard(
       "pointercancel",
       handlePointerCancel,
       true,
+    );
+
+
+    runtime.controls.removeEventListener(
+      "mouseDown",
+      handleTransformMouseDown,
+    );
+
+    runtime.controls.removeEventListener(
+      "objectChange",
+      handleTransformObjectChange,
+    );
+
+    runtime.controls.removeEventListener(
+      "mouseUp",
+      handleTransformMouseUp,
     );
 
   };
