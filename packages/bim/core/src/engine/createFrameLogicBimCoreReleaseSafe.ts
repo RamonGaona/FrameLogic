@@ -52,7 +52,7 @@ interface RotateRuntime {
 }
 
 
-function installReleaseNormalization(
+function installArmedReleaseNormalization(
   core:
     BimCoreInstance,
 ): () => void {
@@ -66,10 +66,10 @@ function installReleaseNormalization(
       RotateRuntime;
 
 
-  let movePivotWasArmed =
+  let moveWasArmed =
     false;
 
-  let rotateCenterWasArmed =
+  let rotateWasArmed =
     false;
 
   let disposed =
@@ -78,6 +78,18 @@ function installReleaseNormalization(
   let releaseTimer:
     number | null =
       null;
+
+
+  const resetFlags =
+    (): void => {
+
+      moveWasArmed =
+        false;
+
+      rotateWasArmed =
+        false;
+
+  };
 
 
   const handlePointerDown =
@@ -95,19 +107,33 @@ function installReleaseNormalization(
       }
 
 
-      movePivotWasArmed =
+      /*
+       * Solo intervenimos cuando el clic actual es el SEGUNDO clic de una
+       * operación armada:
+       *
+       * - centro amarillo -> SNAP
+       * - eje X/Y/Z/plano armado -> SNAP destino
+       * - centro de ROTATE armado -> SNAP
+       *
+       * Un clic normal sobre un eje/anillo NO entra aquí. Así conservamos
+       * exactamente el comportamiento que funcionaba antes del último parche.
+       */
+      moveWasArmed =
         core.designTransform.isActive
-        && move.armedPivot;
+        && Boolean(
+          move.armedMoveAxis
+          || move.armedPivot,
+        );
 
 
-      rotateCenterWasArmed =
+      rotateWasArmed =
         core.designRotate.isActive
         && rotate.centerArmed;
 
   };
 
 
-  const normalizeAfterRelease =
+  const normalizeArmedRelease =
     (): void => {
 
       if (
@@ -119,33 +145,21 @@ function installReleaseNormalization(
       }
 
 
-      /*
-       * IMPORTANTE:
-       * Esto corre DESPUÉS del pointerup nativo. TransformControls ya tuvo
-       * oportunidad de emitir mouseUp y nuestros controladores ya pudieron
-       * convertir un clic corto en armedMoveAxis / centerArmed.
-       *
-       * A partir de aquí ningún gizmo debe quedar creyendo que el botón del
-       * mouse sigue presionado. Este era el estado que hacía que una copia o
-       * una pieza cuyo pivot acababa de cambiar entrara directamente a drag.
-       */
-      move.controls.dragging =
-        false;
-
-      rotate.controls.dragging =
-        false;
-
-
-      /*
-       * Si acabamos de completar el segundo clic del cambio de punto base,
-       * limpiamos únicamente el estado transitorio del drag anterior.
-       * No tocamos armedMoveAxis: si el usuario acaba de hacer clic corto
-       * sobre X/Y/Z debe conservarse para el siguiente clic SNAP.
-       */
       if (
-        movePivotWasArmed
-        && !move.armedPivot
+        moveWasArmed
       ) {
+
+        /*
+         * El segundo clic armado puede hacer stopPropagation() antes de que
+         * TransformControls reciba su pointerup. Si eso ocurre, Three.js puede
+         * conservar dragging=true/axis anterior y el próximo eje entra a drag
+         * instantáneamente. Limpiamos SOLO ese estado interno transitorio.
+         *
+         * No modificamos armedMoveAxis/armedPivot: si el clic no encontró SNAP,
+         * la operación sigue armada para que el usuario pueda intentar de nuevo.
+         */
+        move.controls.dragging =
+          false;
 
         move.controls.axis =
           null;
@@ -163,9 +177,11 @@ function installReleaseNormalization(
 
 
       if (
-        rotateCenterWasArmed
-        && !rotate.centerArmed
+        rotateWasArmed
       ) {
+
+        rotate.controls.dragging =
+          false;
 
         rotate.controls.axis =
           null;
@@ -179,13 +195,12 @@ function installReleaseNormalization(
       }
 
 
-      /*
-       * Los helpers de PieceDefinition están expresados en coordenadas de
-       * mundo. Al mover/rotar una instancia hay que reconstruirlos para que
-       * sus SNAPs/ejes visibles sigan exactamente a la pieza.
-       */
       if (
-        !core.getPieceDefinitionPreparationState()
+        (
+          moveWasArmed
+          || rotateWasArmed
+        )
+        && !core.getPieceDefinitionPreparationState()
           .active
       ) {
 
@@ -195,11 +210,7 @@ function installReleaseNormalization(
       }
 
 
-      movePivotWasArmed =
-        false;
-
-      rotateCenterWasArmed =
-        false;
+      resetFlags();
 
       releaseTimer =
         null;
@@ -215,6 +226,10 @@ function installReleaseNormalization(
 
       if (
         event.button !== 0
+        || (
+          !moveWasArmed
+          && !rotateWasArmed
+        )
       ) {
 
         return;
@@ -234,13 +249,12 @@ function installReleaseNormalization(
 
 
       /*
-       * setTimeout(0), no ejecución inmediata: hacerlo durante capture
-       * impediría el mouseUp interno de TransformControls y rompería el
-       * comportamiento clic -> armar eje.
+       * Debe ejecutarse después de los handlers del canvas, porque ahí se
+       * aplica el SNAP y se decide si la operación armada terminó o continúa.
        */
       releaseTimer =
         window.setTimeout(
-          normalizeAfterRelease,
+          normalizeArmedRelease,
           0,
         );
 
@@ -249,6 +263,16 @@ function installReleaseNormalization(
 
   const handlePointerCancel =
     (): void => {
+
+      if (
+        !moveWasArmed
+        && !rotateWasArmed
+      ) {
+
+        return;
+
+      }
+
 
       if (
         releaseTimer !== null
@@ -263,18 +287,13 @@ function installReleaseNormalization(
 
       releaseTimer =
         window.setTimeout(
-          normalizeAfterRelease,
+          normalizeArmedRelease,
           0,
         );
 
   };
 
 
-  /*
-   * Window + capture garantiza que también vemos el release cuando un
-   * controlador CAD hace stopPropagation() en el canvas, por ejemplo el
-   * segundo clic usado para colocar el pivot sobre un SNAP.
-   */
   window.addEventListener(
     "pointerdown",
     handlePointerDown,
@@ -314,6 +333,9 @@ function installReleaseNormalization(
     }
 
 
+    resetFlags();
+
+
     window.removeEventListener(
       "pointerdown",
       handlePointerDown,
@@ -348,8 +370,8 @@ export async function createBimCore(
     );
 
 
-  const uninstallReleaseNormalization =
-    installReleaseNormalization(
+  const uninstallArmedReleaseNormalization =
+    installArmedReleaseNormalization(
       core,
     );
 
@@ -378,7 +400,7 @@ export async function createBimCore(
         disposed =
           true;
 
-        uninstallReleaseNormalization();
+        uninstallArmedReleaseNormalization();
 
         baseDispose();
 
