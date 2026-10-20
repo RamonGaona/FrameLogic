@@ -1,6 +1,6 @@
 export {
   createBimCore,
-} from "./engine/createFrameLogicBimCoreStable";
+} from "./engine/createFrameLogicBimCoreInteraction";
 
 export {
   addSceneHelpers,
