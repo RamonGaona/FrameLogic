@@ -1,3 +1,5 @@
+import * as THREE from "three";
+
 import {
   createBimCore as createReleaseSafeBimCore,
 } from "./createFrameLogicBimCoreReleaseSafe";
@@ -13,12 +15,23 @@ interface MoveControlsRuntime {
 
   dragging:
     boolean;
+
+  attach:
+    (
+      object: THREE.Object3D,
+    ) => void;
+
+  detach:
+    () => void;
 }
 
 
 interface MoveRuntime {
   readonly controls:
     MoveControlsRuntime;
+
+  readonly pivot:
+    THREE.Object3D;
 
   armedMoveAxis:
     unknown;
@@ -34,6 +47,82 @@ interface MoveRuntime {
 
   dragHistoryStart:
     unknown | null;
+}
+
+
+function refreshMoveControls(
+  core:
+    BimCoreInstance,
+): void {
+
+  if (
+    !core.designTransform.isActive
+  ) {
+
+    return;
+
+  }
+
+
+  const move =
+    core.designTransform as unknown as
+      MoveRuntime;
+
+
+  /*
+   * Conservamos cualquier operación que siga armada. detach/attach se usa
+   * únicamente para reconstruir el estado interno/picker de TransformControls
+   * alrededor del pivot ACTUAL después de un movimiento programático por SNAP.
+   */
+  const armedMoveAxis =
+    move.armedMoveAxis;
+
+  const armedPivot =
+    move.armedPivot;
+
+
+  move.controls.dragging =
+    false;
+
+  move.controls.axis =
+    null;
+
+
+  move.controls.detach();
+
+  move.controls.attach(
+    move.pivot,
+  );
+
+
+  move.controls.dragging =
+    false;
+
+  move.controls.axis =
+    null;
+
+
+  move.armedMoveAxis =
+    armedMoveAxis;
+
+  move.armedPivot =
+    armedPivot;
+
+
+  move.pivot.updateMatrixWorld(
+    true,
+  );
+
+
+  /*
+   * Alternar ORTO/PERS o navegar puede reemplazar/actualizar la cámara THREE.
+   * Resincronizarla aquí produce el mismo refresco que antes ocurría solamente
+   * cuando el usuario movía o acercaba la cámara manualmente.
+   */
+  core.designTransform.setCamera(
+    core.world.camera.three,
+  );
+
 }
 
 
@@ -81,6 +170,17 @@ function resetMoveTransientState(
 
   core.world.camera.controls.enabled =
     true;
+
+
+  if (
+    core.designTransform.isActive
+  ) {
+
+    refreshMoveControls(
+      core,
+    );
+
+  }
 
 
   if (
@@ -181,28 +281,59 @@ function installArmedSnapHelperRefresh(
     core.designTransform as unknown as
       MoveRuntime;
 
-  let timer:
+  let frame:
     number | null =
       null;
 
   let disposed =
     false;
 
+  let armedAtPointerDown =
+    false;
+
 
   const refresh =
     (): void => {
 
-      timer =
+      frame =
         null;
 
 
       if (
         disposed
-        || !core.designTransform.isActive
-        || (
-          !move.armedMoveAxis
-          && !move.armedPivot
-        )
+      ) {
+
+        return;
+
+      }
+
+
+      const completedArmedInteraction =
+        armedAtPointerDown;
+
+      armedAtPointerDown =
+        false;
+
+
+      /*
+       * El segundo clic de centro->SNAP o eje->SNAP mueve el pivot/objetos
+       * fuera del drag nativo de TransformControls. Reenganchamos el gizmo
+       * justo antes del siguiente frame para que su picker use la posición
+       * nueva inmediatamente, sin necesitar mover la cámara.
+       */
+      if (
+        completedArmedInteraction
+      ) {
+
+        refreshMoveControls(
+          core,
+        );
+
+      }
+
+
+      if (
+        !core.designTransform.isActive
         || core.getPieceDefinitionPreparationState()
           .active
       ) {
@@ -212,18 +343,96 @@ function installArmedSnapHelperRefresh(
       }
 
 
-      /*
-       * Durante el segundo clic necesitamos ver las referencias persistentes
-       * de TODAS las piezas visibles. La pieza seleccionada puede quedar
-       * excluida del motor SNAP para evitar auto-snap, pero sus helpers y los
-       * de las demás piezas permanecen sincronizados visualmente.
-       */
-      core.pieceDefinitionHelpers
-        .setActiveInstanceId(
-          null,
+      if (
+        move.armedMoveAxis
+        || move.armedPivot
+      ) {
+
+        /*
+         * SNAP debe seguir activo mientras esperamos el segundo clic.
+         * Los IDs de la selección móvil siguen excluidos por el controlador
+         * MOVE para evitar auto-snap, pero las demás piezas continúan siendo
+         * destinos válidos.
+         */
+        core.designSnap.setEnabled(
+          true,
         );
 
-    };
+
+        core.pieceDefinitionHelpers
+          .setActiveInstanceId(
+            null,
+          );
+
+
+        core.designTransform.setCamera(
+          core.world.camera.three,
+        );
+
+        return;
+
+      }
+
+
+      if (
+        completedArmedInteraction
+      ) {
+
+        core.pieceDefinitionHelpers
+          .setActiveInstanceId(
+            null,
+          );
+
+      }
+
+  };
+
+
+  const scheduleRefresh =
+    (): void => {
+
+    if (
+      frame !== null
+    ) {
+
+      window.cancelAnimationFrame(
+        frame,
+      );
+
+    }
+
+
+    frame =
+      window.requestAnimationFrame(
+        refresh,
+      );
+
+  };
+
+
+  const handlePointerDown =
+    (
+      event:
+        PointerEvent,
+    ): void => {
+
+      if (
+        event.button !== 0
+      ) {
+
+        return;
+
+      }
+
+
+      armedAtPointerDown =
+        core.designTransform.isActive
+        && Boolean(
+          move.armedMoveAxis
+          || move.armedPivot,
+        );
+
+  };
 
 
   const handlePointerUp =
@@ -241,33 +450,42 @@ function installArmedSnapHelperRefresh(
       }
 
 
-      if (
-        timer !== null
-      ) {
-
-        window.clearTimeout(
-          timer,
-        );
-
-      }
-
-
       /*
-       * El estado armedMoveAxis se establece en el mouseUp interno del gizmo.
-       * Esperamos al siguiente turno para refrescar después de esa transición.
+       * El primer clic puede armar el eje dentro del mouseUp del gizmo;
+       * el segundo puede completar un SNAP programático. En ambos casos
+       * refrescamos después de que todos los handlers del evento terminaron.
        */
-      timer =
-        window.setTimeout(
-          refresh,
-          0,
-        );
+      scheduleRefresh();
 
-    };
+  };
 
+
+  const handlePointerCancel =
+    (): void => {
+
+      armedAtPointerDown =
+        false;
+
+      scheduleRefresh();
+
+  };
+
+
+  window.addEventListener(
+    "pointerdown",
+    handlePointerDown,
+    true,
+  );
 
   window.addEventListener(
     "pointerup",
     handlePointerUp,
+    true,
+  );
+
+  window.addEventListener(
+    "pointercancel",
+    handlePointerCancel,
     true,
   );
 
@@ -279,22 +497,34 @@ function installArmedSnapHelperRefresh(
 
 
     if (
-      timer !== null
+      frame !== null
     ) {
 
-      window.clearTimeout(
-        timer,
+      window.cancelAnimationFrame(
+        frame,
       );
 
-      timer =
+      frame =
         null;
 
     }
 
 
     window.removeEventListener(
+      "pointerdown",
+      handlePointerDown,
+      true,
+    );
+
+    window.removeEventListener(
       "pointerup",
       handlePointerUp,
+      true,
+    );
+
+    window.removeEventListener(
+      "pointercancel",
+      handlePointerCancel,
       true,
     );
 
