@@ -1,0 +1,13 @@
+{
+  "name": "@framelogic/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "dotenv": "^17.4.2",
+    "prisma": "^7.10.1"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.10.1"
+  }
+}

@@ -3,15 +3,19 @@
     "version": "0.1.0",
     "private": true,
     "workspaces": [
-      "apps/*",
-      "packages/*",
-      "packages/bim/*"
+        "apps/*",
+        "packages/*",
+        "packages/bim/*"
     ],
     "scripts": {
-      "dev": "npm run dev --workspace @framelogic/web",
-      "build": "npm run build --workspace @framelogic/web",
-      "typecheck": "npm run typecheck --workspaces --if-present",
-      "lint": "npm run lint --workspaces --if-present",
-      "test": "npm run test --workspaces --if-present"
+        "dev": "npm run dev --workspace @framelogic/web",
+        "build": "npm run build --workspace @framelogic/web",
+        "typecheck": "npm run typecheck --workspaces --if-present",
+        "lint": "npm run lint --workspaces --if-present",
+        "test": "npm run test --workspaces --if-present"
+    },
+    "allowScripts": {
+        "@prisma/engines@7.10.1": true,
+        "prisma@7.10.1": true
     }
-  }
+}
