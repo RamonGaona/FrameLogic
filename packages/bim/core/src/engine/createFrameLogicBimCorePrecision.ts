@@ -1,5 +1,11 @@
 import {
+  createEngineeringSnapshot,
   FrameLogicEngineeringModel,
+  restoreEngineeringSnapshot,
+} from "@framelogic/domain";
+
+import type {
+  FrameLogicEngineeringSnapshot,
 } from "@framelogic/domain";
 
 import type {
@@ -95,6 +101,16 @@ export type PrecisionBimCoreInstance =
       document: StepGeometryDocument,
       input: ImportStepVisualPieceInput,
     ) => ImportedStepVisualPiece;
+
+    /**
+     * Snapshot persistente de metadata/ensambles/ejes independiente de IFC.
+     */
+    readonly createEngineeringSnapshot: () =>
+      FrameLogicEngineeringSnapshot;
+
+    readonly restoreEngineeringSnapshot: (
+      snapshot: FrameLogicEngineeringSnapshot,
+    ) => void;
   };
 
 
@@ -212,6 +228,19 @@ export async function createBimCore(
     engineeringModel,
     structuralModel,
     importStepPiece,
+    createEngineeringSnapshot: () =>
+      createEngineeringSnapshot(
+        engineeringModel,
+      ),
+    restoreEngineeringSnapshot: (
+      snapshot,
+    ) => {
+      restoreEngineeringSnapshot(
+        engineeringModel,
+        snapshot,
+      );
+      geometryQuery.clearCache();
+    },
     dispose: () => {
       if (disposed) {
         return;
