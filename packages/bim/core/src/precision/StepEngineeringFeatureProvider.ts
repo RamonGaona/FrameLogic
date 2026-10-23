@@ -22,14 +22,31 @@ import type {
 
 export class StepEngineeringFeatureProvider
   implements GeometryQueryProvider {
+  private readonly engineeringModel:
+    FrameLogicEngineeringModel;
+
+  private readonly designModel:
+    DesignModel;
+
+  private readonly designScene:
+    DesignSceneController;
+
+
   constructor(
-    private readonly engineeringModel:
+    engineeringModel:
       FrameLogicEngineeringModel,
-    private readonly designModel:
+    designModel:
       DesignModel,
-    private readonly designScene:
+    designScene:
       DesignSceneController,
-  ) {}
+  ) {
+    this.engineeringModel =
+      engineeringModel;
+    this.designModel =
+      designModel;
+    this.designScene =
+      designScene;
+  }
 
 
   query(
