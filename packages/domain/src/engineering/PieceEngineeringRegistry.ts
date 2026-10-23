@@ -95,20 +95,33 @@ export class PieceEngineeringRegistry {
         pieceDefinitionId,
       );
 
-    return this.upsert({
+    const next:
+      PieceEngineeringData = {
+        pieceDefinitionId,
+        revision:
+          current?.revision,
+        material:
+          current?.material,
+        commercial:
+          current?.commercial,
+        physical:
+          current?.physical,
+        structuralAxis,
+        features: [
+          ...(current?.features ?? []),
+        ],
+      };
+
+    this.assertValid(
+      next,
+    );
+
+    this.data.set(
       pieceDefinitionId,
-      revision:
-        current?.revision,
-      material:
-        current?.material,
-      commercial:
-        current?.commercial,
-      physical:
-        current?.physical,
-      structuralAxis,
-      features:
-        current?.features,
-    });
+      next,
+    );
+
+    return next;
   }
 
 
