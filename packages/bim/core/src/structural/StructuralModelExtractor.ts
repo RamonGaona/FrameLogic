@@ -3,6 +3,8 @@ import * as THREE from "three";
 import type {
   DesignModel,
   FrameLogicEngineeringModel,
+  LocalCoordinateSystem,
+  PieceVector3Data,
   PlacedStructuralAxis,
   StructuralModel,
 } from "@framelogic/domain";
@@ -53,6 +55,10 @@ export class StructuralModelExtractor {
       const instance
       of this.designModel.pieceInstances.getAll()
     ) {
+      const definition =
+        this.designModel.pieceDefinitions.get(
+          instance.definitionId,
+        );
       const engineering =
         this.engineeringModel.pieces.get(
           instance.definitionId,
@@ -60,7 +66,10 @@ export class StructuralModelExtractor {
       const axis =
         engineering?.structuralAxis;
 
-      if (!axis) {
+      if (
+        !definition
+        || !axis
+      ) {
         continue;
       }
 
@@ -82,29 +91,48 @@ export class StructuralModelExtractor {
 
       object.updateMatrixWorld(true);
 
+      const startAsset =
+        localToAssetPoint(
+          axis.start,
+          definition.coordinateSystem,
+        );
+      const endAsset =
+        localToAssetPoint(
+          axis.end,
+          definition.coordinateSystem,
+        );
+
       const start =
         new THREE.Vector3(
-          axis.start.x,
-          axis.start.y,
-          axis.start.z,
+          startAsset.x,
+          startAsset.y,
+          startAsset.z,
         ).applyMatrix4(
           object.matrixWorld,
         );
       const end =
         new THREE.Vector3(
-          axis.end.x,
-          axis.end.y,
-          axis.end.z,
+          endAsset.x,
+          endAsset.y,
+          endAsset.z,
         ).applyMatrix4(
           object.matrixWorld,
         );
 
-      const localYDirection =
+      const localYDirectionAsset =
         axis.localYDirection
+          ? localToAssetDirection(
+              axis.localYDirection,
+              definition.coordinateSystem,
+            )
+          : undefined;
+
+      const localYDirection =
+        localYDirectionAsset
           ? new THREE.Vector3(
-              axis.localYDirection.x,
-              axis.localYDirection.y,
-              axis.localYDirection.z,
+              localYDirectionAsset.x,
+              localYDirectionAsset.y,
+              localYDirectionAsset.z,
             ).transformDirection(
               object.matrixWorld,
             )
@@ -165,4 +193,73 @@ export class StructuralModelExtractor {
       options?.nodeMergeTolerance,
     );
   }
+}
+
+
+function localToAssetPoint(
+  local: PieceVector3Data,
+  coordinateSystem: LocalCoordinateSystem,
+): PieceVector3Data {
+  return {
+    x:
+      coordinateSystem.origin.x
+      + local.x * coordinateSystem.xAxis.x
+      + local.y * coordinateSystem.yAxis.x
+      + local.z * coordinateSystem.zAxis.x,
+    y:
+      coordinateSystem.origin.y
+      + local.x * coordinateSystem.xAxis.y
+      + local.y * coordinateSystem.yAxis.y
+      + local.z * coordinateSystem.zAxis.y,
+    z:
+      coordinateSystem.origin.z
+      + local.x * coordinateSystem.xAxis.z
+      + local.y * coordinateSystem.yAxis.z
+      + local.z * coordinateSystem.zAxis.z,
+  };
+}
+
+
+function localToAssetDirection(
+  local: PieceVector3Data,
+  coordinateSystem: LocalCoordinateSystem,
+): PieceVector3Data {
+  const direction = {
+    x:
+      local.x * coordinateSystem.xAxis.x
+      + local.y * coordinateSystem.yAxis.x
+      + local.z * coordinateSystem.zAxis.x,
+    y:
+      local.x * coordinateSystem.xAxis.y
+      + local.y * coordinateSystem.yAxis.y
+      + local.z * coordinateSystem.zAxis.y,
+    z:
+      local.x * coordinateSystem.xAxis.z
+      + local.y * coordinateSystem.yAxis.z
+      + local.z * coordinateSystem.zAxis.z,
+  };
+
+  const length =
+    Math.hypot(
+      direction.x,
+      direction.y,
+      direction.z,
+    );
+
+  if (
+    length <= 1e-12
+  ) {
+    throw new Error(
+      "Structural local Y direction must be non-zero.",
+    );
+  }
+
+  return {
+    x:
+      direction.x / length,
+    y:
+      direction.y / length,
+    z:
+      direction.z / length,
+  };
 }
