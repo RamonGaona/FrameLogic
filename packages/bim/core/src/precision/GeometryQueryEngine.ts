@@ -10,7 +10,6 @@ import type {
   DesignSceneController,
 } from "../design/DesignSceneController";
 
-
 export type GeometryQueryKind =
   | "VERTEX"
   | "EDGE_MIDPOINT"
@@ -26,12 +25,10 @@ export type GeometryQueryKind =
   | "REFERENCE_AXIS_ORIGIN"
   | "REFERENCE_AXIS_NEAREST";
 
-
 export type GeometryPrecision =
   | "MODEL_EXACT"
   | "DERIVED_MESH"
   | "TRIANGULATED_SURFACE";
-
 
 export interface GeometryQueryResult {
   readonly kind: GeometryQueryKind;
@@ -43,14 +40,12 @@ export interface GeometryQueryResult {
   readonly precision: GeometryPrecision;
 }
 
-
 export interface GeometryQueryOptions {
   readonly pixelTolerance?: number;
   readonly maxResults?: number;
   readonly includeSurface?: boolean;
   readonly excludedSourceIds?: readonly string[];
 }
-
 
 export interface GeometryQueryContext {
   readonly clientX: number;
@@ -69,13 +64,17 @@ export interface GeometryQueryContext {
   };
 }
 
-
+/**
+ * Extension point for exact geometry sources (for example a future
+ * OpenCascade/STEP adapter). Providers are synchronous because snapping
+ * runs inside pointer interaction; expensive CAD parsing must be cached
+ * before query().
+ */
 export interface GeometryQueryProvider {
   query(
     context: GeometryQueryContext,
   ): readonly GeometryQueryResult[];
 }
-
 
 interface EdgeRecord {
   readonly aKey: string;
@@ -85,20 +84,17 @@ interface EdgeRecord {
   readonly normals: THREE.Vector3[];
 }
 
-
 interface MeshFeatureCache {
   readonly vertices: readonly THREE.Vector3[];
   readonly edges: readonly EdgeRecord[];
   readonly centers: readonly THREE.Vector3[];
 }
 
-
 interface NearbyCadLine {
   readonly id: string;
   readonly start: THREE.Vector3;
   readonly end: THREE.Vector3;
 }
-
 
 const QUERY_PRIORITY: Readonly<Record<GeometryQueryKind, number>> = {
   CAD_LINE_INTERSECTION: 0,
@@ -116,7 +112,6 @@ const QUERY_PRIORITY: Readonly<Record<GeometryQueryKind, number>> = {
   FACE_POINT: 7,
 };
 
-
 export class GeometryQueryEngine {
   private readonly domElement: HTMLElement;
   private readonly cameraProvider: () => THREE.Camera;
@@ -126,7 +121,6 @@ export class GeometryQueryEngine {
   private readonly pointer = new THREE.Vector2();
   private readonly geometryCache = new Map<string, MeshFeatureCache>();
   private readonly providers = new Set<GeometryQueryProvider>();
-
 
   constructor(
     domElement: HTMLElement,
@@ -140,22 +134,18 @@ export class GeometryQueryEngine {
     this.designModel = designModel;
   }
 
-
   addProvider(
     provider: GeometryQueryProvider,
   ): () => void {
     this.providers.add(provider);
-
     return () => {
       this.providers.delete(provider);
     };
   }
 
-
   clearCache(): void {
     this.geometryCache.clear();
   }
-
 
   queryAt(
     clientX: number,
@@ -163,37 +153,17 @@ export class GeometryQueryEngine {
     options?: GeometryQueryOptions,
   ): GeometryQueryResult[] {
     const rect = this.domElement.getBoundingClientRect();
-
-    if (
-      rect.width <= 0
-      || rect.height <= 0
-    ) {
+    if (rect.width <= 0 || rect.height <= 0) {
       return [];
     }
 
     const camera = this.cameraProvider();
-    const pixelTolerance = Math.max(
-      1,
-      options?.pixelTolerance ?? 14,
-    );
-    const maxResults = Math.max(
-      1,
-      Math.floor(options?.maxResults ?? 32),
-    );
-    const excludedSourceIds = new Set(
-      options?.excludedSourceIds ?? [],
-    );
+    const pixelTolerance = Math.max(1, options?.pixelTolerance ?? 14);
+    const maxResults = Math.max(1, Math.floor(options?.maxResults ?? 32));
+    const excludedSourceIds = new Set(options?.excludedSourceIds ?? []);
 
-    this.setPointerFromClient(
-      clientX,
-      clientY,
-      rect,
-    );
-    this.raycaster.setFromCamera(
-      this.pointer,
-      camera,
-    );
-
+    this.setPointerFromClient(clientX, clientY, rect);
+    this.raycaster.setFromCamera(this.pointer, camera);
     const ray = this.raycaster.ray.clone();
     const results: GeometryQueryResult[] = [];
 
@@ -207,7 +177,6 @@ export class GeometryQueryEngine {
       pixelTolerance,
       excludedSourceIds,
     );
-
     this.collectCadCandidates(
       results,
       clientX,
@@ -218,7 +187,6 @@ export class GeometryQueryEngine {
       pixelTolerance,
       excludedSourceIds,
     );
-
     this.collectMeshCandidates(
       results,
       clientX,
@@ -239,23 +207,11 @@ export class GeometryQueryEngine {
       ray: ray.clone(),
       pixelTolerance,
       excludedSourceIds,
-      projectWorldPoint: (
-        point,
-      ) => this.projectWorldPoint(
-        point,
-        rect,
-        camera,
-      ),
+      projectWorldPoint: (point) => this.projectWorldPoint(point, rect, camera),
     };
 
-    for (
-      const provider
-      of this.providers
-    ) {
-      for (
-        const result
-        of provider.query(context)
-      ) {
+    for (const provider of this.providers) {
+      for (const result of provider.query(context)) {
         if (
           excludedSourceIds.has(result.sourceId)
           || !Number.isFinite(result.screenDistancePx)
@@ -263,7 +219,6 @@ export class GeometryQueryEngine {
         ) {
           continue;
         }
-
         results.push({
           ...result,
           point: result.point.clone(),
@@ -271,46 +226,26 @@ export class GeometryQueryEngine {
       }
     }
 
-    results.sort(
-      (
-        first,
-        second,
-      ) => {
-        const priorityDelta =
-          QUERY_PRIORITY[first.kind]
-          - QUERY_PRIORITY[second.kind];
+    results.sort((first, second) => {
+      const priorityDelta = QUERY_PRIORITY[first.kind] - QUERY_PRIORITY[second.kind];
+      return priorityDelta !== 0
+        ? priorityDelta
+        : first.screenDistancePx - second.screenDistancePx;
+    });
 
-        if (
-          priorityDelta !== 0
-        ) {
-          return priorityDelta;
-        }
-
-        return first.screenDistancePx
-          - second.screenDistancePx;
-      },
-    );
-
-    return this.dedupeResults(results)
-      .slice(0, maxResults);
+    return this.dedupeResults(results).slice(0, maxResults);
   }
-
 
   findBest(
     clientX: number,
     clientY: number,
     options?: GeometryQueryOptions,
   ): GeometryQueryResult | null {
-    return this.queryAt(
-      clientX,
-      clientY,
-      {
-        ...options,
-        maxResults: 1,
-      },
-    )[0] ?? null;
+    return this.queryAt(clientX, clientY, {
+      ...options,
+      maxResults: 1,
+    })[0] ?? null;
   }
-
 
   private collectReferenceCandidates(
     results: GeometryQueryResult[],
@@ -322,53 +257,26 @@ export class GeometryQueryEngine {
     pixelTolerance: number,
     excludedSourceIds: ReadonlySet<string>,
   ): void {
-    for (
-      const instance
-      of this.designModel.pieceInstances.getAll()
-    ) {
-      if (
-        excludedSourceIds.has(instance.id)
-      ) {
+    for (const instance of this.designModel.pieceInstances.getAll()) {
+      if (excludedSourceIds.has(instance.id)) {
         continue;
       }
 
-      const layer = this.designModel.layers.get(
-        instance.layerId,
-      );
-
-      if (
-        layer?.visible === false
-        || layer?.snapEnabled === false
-      ) {
+      const layer = this.designModel.layers.get(instance.layerId);
+      if (layer?.visible === false || layer?.snapEnabled === false) {
         continue;
       }
 
-      const object = this.designScene.getInstanceObject(
-        instance.id,
-      );
-      const definition = this.designModel.pieceDefinitions.get(
-        instance.definitionId,
-      );
-
-      if (
-        !object
-        || !object.visible
-        || !definition
-      ) {
+      const object = this.designScene.getInstanceObject(instance.id);
+      const definition = this.designModel.pieceDefinitions.get(instance.definitionId);
+      if (!object || !object.visible || !definition) {
         continue;
       }
 
       object.updateMatrixWorld(true);
 
-      for (
-        const snap
-        of definition.snapPoints
-      ) {
-        const point = this.definitionLocalToWorld(
-          snap.position,
-          definition,
-          object,
-        );
+      for (const snap of definition.snapPoints) {
+        const point = this.definitionLocalToWorld(snap.position, definition, object);
         const screenDistancePx = this.screenDistance(
           point,
           clientX,
@@ -376,43 +284,27 @@ export class GeometryQueryEngine {
           rect,
           camera,
         );
-
-        if (
-          screenDistancePx > pixelTolerance
-        ) {
-          continue;
+        if (screenDistancePx <= pixelTolerance) {
+          results.push({
+            kind: "REFERENCE_POINT",
+            point,
+            sourceId: instance.id,
+            object,
+            screenDistancePx,
+            precision: "MODEL_EXACT",
+          });
         }
-
-        results.push({
-          kind: "REFERENCE_POINT",
-          point,
-          sourceId: instance.id,
-          object,
-          screenDistancePx,
-          precision: "MODEL_EXACT",
-        });
       }
 
-      for (
-        const axis
-        of definition.referenceGeometry.axisLines
-      ) {
-        const axisOrigin = this.definitionLocalToWorld(
-          axis.origin,
-          definition,
-          object,
-        );
+      for (const axis of definition.referenceGeometry.axisLines) {
+        const axisOrigin = this.definitionLocalToWorld(axis.origin, definition, object);
+        const axisLength = axis.length ?? 1000;
         const axisEndLocal: PieceVector3Data = {
-          x: axis.origin.x + axis.direction.x * axis.length,
-          y: axis.origin.y + axis.direction.y * axis.length,
-          z: axis.origin.z + axis.direction.z * axis.length,
+          x: axis.origin.x + axis.direction.x * axisLength,
+          y: axis.origin.y + axis.direction.y * axisLength,
+          z: axis.origin.z + axis.direction.z * axisLength,
         };
-        const axisEnd = this.definitionLocalToWorld(
-          axisEndLocal,
-          definition,
-          object,
-        );
-
+        const axisEnd = this.definitionLocalToWorld(axisEndLocal, definition, object);
         const originDistance = this.screenDistance(
           axisOrigin,
           clientX,
@@ -421,9 +313,7 @@ export class GeometryQueryEngine {
           camera,
         );
 
-        if (
-          originDistance <= pixelTolerance
-        ) {
+        if (originDistance <= pixelTolerance) {
           results.push({
             kind: "REFERENCE_AXIS_ORIGIN",
             point: axisOrigin,
@@ -435,12 +325,7 @@ export class GeometryQueryEngine {
         }
 
         const nearest = new THREE.Vector3();
-        ray.distanceSqToSegment(
-          axisOrigin,
-          axisEnd,
-          undefined,
-          nearest,
-        );
+        ray.distanceSqToSegment(axisOrigin, axisEnd, undefined, nearest);
         const nearestDistance = this.screenDistance(
           nearest,
           clientX,
@@ -448,10 +333,7 @@ export class GeometryQueryEngine {
           rect,
           camera,
         );
-
-        if (
-          nearestDistance <= pixelTolerance
-        ) {
+        if (nearestDistance <= pixelTolerance) {
           results.push({
             kind: "REFERENCE_AXIS_NEAREST",
             point: nearest,
@@ -465,7 +347,6 @@ export class GeometryQueryEngine {
     }
   }
 
-
   private collectCadCandidates(
     results: GeometryQueryResult[],
     clientX: number,
@@ -476,24 +357,12 @@ export class GeometryQueryEngine {
     pixelTolerance: number,
     excludedSourceIds: ReadonlySet<string>,
   ): void {
-    for (
-      const cadPoint
-      of this.designModel.cadPoints.getAll()
-    ) {
-      if (
-        excludedSourceIds.has(cadPoint.id)
-      ) {
+    for (const cadPoint of this.designModel.cadPoints.getAll()) {
+      if (excludedSourceIds.has(cadPoint.id)) {
         continue;
       }
-
-      const layer = this.designModel.layers.get(
-        cadPoint.layerId,
-      );
-
-      if (
-        layer?.visible === false
-        || layer?.snapEnabled === false
-      ) {
+      const layer = this.designModel.layers.get(cadPoint.layerId);
+      if (layer?.visible === false || layer?.snapEnabled === false) {
         continue;
       }
 
@@ -509,10 +378,7 @@ export class GeometryQueryEngine {
         rect,
         camera,
       );
-
-      if (
-        screenDistancePx <= pixelTolerance
-      ) {
+      if (screenDistancePx <= pixelTolerance) {
         results.push({
           kind: "CAD_POINT",
           point,
@@ -525,51 +391,20 @@ export class GeometryQueryEngine {
 
     const nearbyLines: NearbyCadLine[] = [];
 
-    for (
-      const line
-      of this.designModel.cadLines.getAll()
-    ) {
-      if (
-        excludedSourceIds.has(line.id)
-      ) {
+    for (const line of this.designModel.cadLines.getAll()) {
+      if (excludedSourceIds.has(line.id)) {
+        continue;
+      }
+      const layer = this.designModel.layers.get(line.layerId);
+      if (layer?.visible === false || layer?.snapEnabled === false) {
         continue;
       }
 
-      const layer = this.designModel.layers.get(
-        line.layerId,
-      );
-
-      if (
-        layer?.visible === false
-        || layer?.snapEnabled === false
-      ) {
-        continue;
-      }
-
-      const start = new THREE.Vector3(
-        line.start.x,
-        line.start.y,
-        line.start.z,
-      );
-      const end = new THREE.Vector3(
-        line.end.x,
-        line.end.y,
-        line.end.z,
-      );
-      const midpoint = start.clone()
-        .add(end)
-        .multiplyScalar(0.5);
-
-      const projectedStart = this.projectWorldPoint(
-        start,
-        rect,
-        camera,
-      );
-      const projectedEnd = this.projectWorldPoint(
-        end,
-        rect,
-        camera,
-      );
+      const start = new THREE.Vector3(line.start.x, line.start.y, line.start.z);
+      const end = new THREE.Vector3(line.end.x, line.end.y, line.end.z);
+      const midpoint = start.clone().add(end).multiplyScalar(0.5);
+      const projectedStart = this.projectWorldPoint(start, rect, camera);
+      const projectedEnd = this.projectWorldPoint(end, rect, camera);
 
       if (
         projectedStart.visible
@@ -583,17 +418,10 @@ export class GeometryQueryEngine {
           projectedEnd.y,
         ) <= pixelTolerance * 2
       ) {
-        nearbyLines.push({
-          id: line.id,
-          start,
-          end,
-        });
+        nearbyLines.push({ id: line.id, start, end });
       }
 
-      for (
-        const point
-        of [start, end]
-      ) {
+      for (const point of [start, end]) {
         const screenDistancePx = this.screenDistance(
           point,
           clientX,
@@ -601,10 +429,7 @@ export class GeometryQueryEngine {
           rect,
           camera,
         );
-
-        if (
-          screenDistancePx <= pixelTolerance
-        ) {
+        if (screenDistancePx <= pixelTolerance) {
           results.push({
             kind: "CAD_LINE_ENDPOINT",
             point,
@@ -622,10 +447,7 @@ export class GeometryQueryEngine {
         rect,
         camera,
       );
-
-      if (
-        midpointDistance <= pixelTolerance
-      ) {
+      if (midpointDistance <= pixelTolerance) {
         results.push({
           kind: "CAD_LINE_MIDPOINT",
           point: midpoint,
@@ -636,12 +458,7 @@ export class GeometryQueryEngine {
       }
 
       const nearest = new THREE.Vector3();
-      ray.distanceSqToSegment(
-        start,
-        end,
-        undefined,
-        nearest,
-      );
+      ray.distanceSqToSegment(start, end, undefined, nearest);
       const nearestDistance = this.screenDistance(
         nearest,
         clientX,
@@ -649,10 +466,7 @@ export class GeometryQueryEngine {
         rect,
         camera,
       );
-
-      if (
-        nearestDistance <= pixelTolerance
-      ) {
+      if (nearestDistance <= pixelTolerance) {
         results.push({
           kind: "CAD_LINE_NEAREST",
           point: nearest,
@@ -663,45 +477,29 @@ export class GeometryQueryEngine {
       }
     }
 
-    for (
-      let firstIndex = 0;
-      firstIndex < nearbyLines.length;
-      firstIndex += 1
-    ) {
+    for (let firstIndex = 0; firstIndex < nearbyLines.length; firstIndex += 1) {
       const first = nearbyLines[firstIndex];
-
-      if (
-        !first
-      ) {
+      if (!first) {
         continue;
       }
-
       for (
         let secondIndex = firstIndex + 1;
         secondIndex < nearbyLines.length;
         secondIndex += 1
       ) {
         const second = nearbyLines[secondIndex];
-
-        if (
-          !second
-        ) {
+        if (!second) {
           continue;
         }
-
         const point = this.getSegmentIntersection3D(
           first.start,
           first.end,
           second.start,
           second.end,
         );
-
-        if (
-          !point
-        ) {
+        if (!point) {
           continue;
         }
-
         const screenDistancePx = this.screenDistance(
           point,
           clientX,
@@ -709,18 +507,12 @@ export class GeometryQueryEngine {
           rect,
           camera,
         );
-
-        if (
-          screenDistancePx <= pixelTolerance
-        ) {
+        if (screenDistancePx <= pixelTolerance) {
           results.push({
             kind: "CAD_LINE_INTERSECTION",
             point,
             sourceId: first.id,
-            relatedSourceIds: [
-              first.id,
-              second.id,
-            ],
+            relatedSourceIds: [first.id, second.id],
             screenDistancePx,
             precision: "MODEL_EXACT",
           });
@@ -728,7 +520,6 @@ export class GeometryQueryEngine {
       }
     }
   }
-
 
   private collectMeshCandidates(
     results: GeometryQueryResult[],
@@ -741,32 +532,16 @@ export class GeometryQueryEngine {
     excludedSourceIds: ReadonlySet<string>,
     includeSurface: boolean,
   ): void {
-    this.setPointerFromClient(
-      clientX,
-      clientY,
-      rect,
-    );
-    this.raycaster.setFromCamera(
-      this.pointer,
-      camera,
-    );
+    this.setPointerFromClient(clientX, clientY, rect);
+    this.raycaster.setFromCamera(this.pointer, camera);
 
-    if (
-      includeSurface
-    ) {
+    if (includeSurface) {
       const directIntersections = this.raycaster.intersectObjects(
         this.designScene.getInstanceObjects(),
         true,
       );
-
-      for (
-        const intersection
-        of directIntersections.slice(0, 3)
-      ) {
-        const sourceId = this.findInstanceId(
-          intersection.object,
-        );
-
+      for (const intersection of directIntersections.slice(0, 3)) {
+        const sourceId = this.findInstanceId(intersection.object);
         if (
           !sourceId
           || excludedSourceIds.has(sourceId)
@@ -774,7 +549,6 @@ export class GeometryQueryEngine {
         ) {
           continue;
         }
-
         results.push({
           kind: "FACE_POINT",
           point: intersection.point.clone(),
@@ -794,12 +568,8 @@ export class GeometryQueryEngine {
       pixelTolerance,
     );
 
-    for (
-      const mesh
-      of meshes
-    ) {
+    for (const mesh of meshes) {
       const sourceId = this.findInstanceId(mesh);
-
       if (
         !sourceId
         || excludedSourceIds.has(sourceId)
@@ -807,27 +577,15 @@ export class GeometryQueryEngine {
       ) {
         continue;
       }
-
-      const geometry = mesh.geometry;
-
-      if (
-        !(geometry instanceof THREE.BufferGeometry)
-      ) {
+      if (!(mesh.geometry instanceof THREE.BufferGeometry)) {
         continue;
       }
 
       mesh.updateMatrixWorld(true);
+      const cached = this.getMeshFeatures(mesh.geometry);
 
-      const cached = this.getMeshFeatures(
-        geometry,
-      );
-
-      for (
-        const localPoint
-        of cached.vertices
-      ) {
-        const point = localPoint.clone()
-          .applyMatrix4(mesh.matrixWorld);
+      for (const localPoint of cached.vertices) {
+        const point = localPoint.clone().applyMatrix4(mesh.matrixWorld);
         const screenDistancePx = this.screenDistance(
           point,
           clientX,
@@ -835,10 +593,7 @@ export class GeometryQueryEngine {
           rect,
           camera,
         );
-
-        if (
-          screenDistancePx <= pixelTolerance
-        ) {
+        if (screenDistancePx <= pixelTolerance) {
           results.push({
             kind: "VERTEX",
             point,
@@ -850,12 +605,8 @@ export class GeometryQueryEngine {
         }
       }
 
-      for (
-        const localCenter
-        of cached.centers
-      ) {
-        const point = localCenter.clone()
-          .applyMatrix4(mesh.matrixWorld);
+      for (const localCenter of cached.centers) {
+        const point = localCenter.clone().applyMatrix4(mesh.matrixWorld);
         const screenDistancePx = this.screenDistance(
           point,
           clientX,
@@ -863,10 +614,7 @@ export class GeometryQueryEngine {
           rect,
           camera,
         );
-
-        if (
-          screenDistancePx <= pixelTolerance
-        ) {
+        if (screenDistancePx <= pixelTolerance) {
           results.push({
             kind: "CIRCLE_CENTER",
             point,
@@ -878,17 +626,10 @@ export class GeometryQueryEngine {
         }
       }
 
-      for (
-        const edge
-        of cached.edges
-      ) {
-        const a = edge.a.clone()
-          .applyMatrix4(mesh.matrixWorld);
-        const b = edge.b.clone()
-          .applyMatrix4(mesh.matrixWorld);
-        const midpoint = a.clone()
-          .add(b)
-          .multiplyScalar(0.5);
+      for (const edge of cached.edges) {
+        const a = edge.a.clone().applyMatrix4(mesh.matrixWorld);
+        const b = edge.b.clone().applyMatrix4(mesh.matrixWorld);
+        const midpoint = a.clone().add(b).multiplyScalar(0.5);
         const midpointDistance = this.screenDistance(
           midpoint,
           clientX,
@@ -896,10 +637,7 @@ export class GeometryQueryEngine {
           rect,
           camera,
         );
-
-        if (
-          midpointDistance <= pixelTolerance
-        ) {
+        if (midpointDistance <= pixelTolerance) {
           results.push({
             kind: "EDGE_MIDPOINT",
             point: midpoint,
@@ -911,12 +649,7 @@ export class GeometryQueryEngine {
         }
 
         const nearest = new THREE.Vector3();
-        ray.distanceSqToSegment(
-          a,
-          b,
-          undefined,
-          nearest,
-        );
+        ray.distanceSqToSegment(a, b, undefined, nearest);
         const nearestDistance = this.screenDistance(
           nearest,
           clientX,
@@ -924,10 +657,7 @@ export class GeometryQueryEngine {
           rect,
           camera,
         );
-
-        if (
-          nearestDistance <= pixelTolerance
-        ) {
+        if (nearestDistance <= pixelTolerance) {
           results.push({
             kind: "EDGE_NEAREST",
             point: nearest,
@@ -941,7 +671,6 @@ export class GeometryQueryEngine {
     }
   }
 
-
   private collectNearbyMeshes(
     clientX: number,
     clientY: number,
@@ -950,100 +679,54 @@ export class GeometryQueryEngine {
     pixelTolerance: number,
   ): Set<THREE.Mesh> {
     const meshes = new Set<THREE.Mesh>();
-    const sampleRadius = Math.max(
-      4,
-      pixelTolerance * 0.8,
-    );
-    const diagonal = sampleRadius * 0.70710678118;
+    const radius = Math.max(4, pixelTolerance * 0.8);
+    const diagonal = radius * Math.SQRT1_2;
     const offsets: readonly [number, number][] = [
       [0, 0],
-      [sampleRadius, 0],
-      [-sampleRadius, 0],
-      [0, sampleRadius],
-      [0, -sampleRadius],
+      [radius, 0],
+      [-radius, 0],
+      [0, radius],
+      [0, -radius],
       [diagonal, diagonal],
       [-diagonal, diagonal],
       [diagonal, -diagonal],
       [-diagonal, -diagonal],
     ];
 
-    for (
-      const [offsetX, offsetY]
-      of offsets
-    ) {
-      this.setPointerFromClient(
-        clientX + offsetX,
-        clientY + offsetY,
-        rect,
-      );
-      this.raycaster.setFromCamera(
-        this.pointer,
-        camera,
-      );
-
+    for (const [offsetX, offsetY] of offsets) {
+      this.setPointerFromClient(clientX + offsetX, clientY + offsetY, rect);
+      this.raycaster.setFromCamera(this.pointer, camera);
       const intersections = this.raycaster.intersectObjects(
         this.designScene.getInstanceObjects(),
         true,
       );
-
-      for (
-        const intersection
-        of intersections.slice(0, 6)
-      ) {
-        if (
-          intersection.object instanceof THREE.Mesh
-        ) {
+      for (const intersection of intersections.slice(0, 6)) {
+        if (intersection.object instanceof THREE.Mesh) {
           meshes.add(intersection.object);
         }
       }
     }
-
     return meshes;
   }
-
 
   private getMeshFeatures(
     geometry: THREE.BufferGeometry,
   ): MeshFeatureCache {
-    const cached = this.geometryCache.get(
-      geometry.uuid,
-    );
-
-    if (
-      cached
-    ) {
+    const cached = this.geometryCache.get(geometry.uuid);
+    if (cached) {
       return cached;
     }
-
-    const built = this.buildMeshFeatures(
-      geometry,
-    );
-    this.geometryCache.set(
-      geometry.uuid,
-      built,
-    );
-
+    const built = this.buildMeshFeatures(geometry);
+    this.geometryCache.set(geometry.uuid, built);
     return built;
   }
-
 
   private buildMeshFeatures(
     geometry: THREE.BufferGeometry,
   ): MeshFeatureCache {
-    const position = geometry.getAttribute(
-      "position",
-    );
-
-    if (
-      !position
-      || position.itemSize < 3
-      || position.count < 3
-    ) {
-      return {
-        vertices: [],
-        edges: [],
-        centers: [],
-      };
+    const position = geometry.getAttribute("position");
+    if (!position || position.itemSize < 3 || position.count < 3) {
+      return { vertices: [], edges: [], centers: [] };
     }
 
     const vertices = new Map<string, THREE.Vector3>();
@@ -1052,95 +735,43 @@ export class GeometryQueryEngine {
     const triangleCount = index
       ? Math.floor(index.count / 3)
       : Math.floor(position.count / 3);
-
-    const readVertex = (
-      vertexIndex: number,
-    ): THREE.Vector3 => new THREE.Vector3(
+    const readVertex = (vertexIndex: number): THREE.Vector3 => new THREE.Vector3(
       position.getX(vertexIndex),
       position.getY(vertexIndex),
       position.getZ(vertexIndex),
     );
 
-    for (
-      let triangleIndex = 0;
-      triangleIndex < triangleCount;
-      triangleIndex += 1
-    ) {
-      const ia = index
-        ? index.getX(triangleIndex * 3)
-        : triangleIndex * 3;
-      const ib = index
-        ? index.getX(triangleIndex * 3 + 1)
-        : triangleIndex * 3 + 1;
-      const ic = index
-        ? index.getX(triangleIndex * 3 + 2)
-        : triangleIndex * 3 + 2;
-
+    for (let triangleIndex = 0; triangleIndex < triangleCount; triangleIndex += 1) {
+      const ia = index ? index.getX(triangleIndex * 3) : triangleIndex * 3;
+      const ib = index ? index.getX(triangleIndex * 3 + 1) : triangleIndex * 3 + 1;
+      const ic = index ? index.getX(triangleIndex * 3 + 2) : triangleIndex * 3 + 2;
       const a = readVertex(ia);
       const b = readVertex(ib);
       const c = readVertex(ic);
       const aKey = this.vertexKey(a);
       const bKey = this.vertexKey(b);
       const cKey = this.vertexKey(c);
-
       vertices.set(aKey, a);
       vertices.set(bKey, b);
       vertices.set(cKey, c);
 
-      const normal = b.clone()
-        .sub(a)
-        .cross(
-          c.clone().sub(a),
-        );
-
-      if (
-        normal.lengthSq() > 1e-20
-      ) {
+      const normal = b.clone().sub(a).cross(c.clone().sub(a));
+      if (normal.lengthSq() > 1e-20) {
         normal.normalize();
       }
-
-      this.addEdge(
-        edges,
-        aKey,
-        bKey,
-        a,
-        b,
-        normal,
-      );
-      this.addEdge(
-        edges,
-        bKey,
-        cKey,
-        b,
-        c,
-        normal,
-      );
-      this.addEdge(
-        edges,
-        cKey,
-        aKey,
-        c,
-        a,
-        normal,
-      );
+      this.addEdge(edges, aKey, bKey, a, b, normal);
+      this.addEdge(edges, bKey, cKey, b, c, normal);
+      this.addEdge(edges, cKey, aKey, c, a, normal);
     }
 
     const creaseThreshold = THREE.MathUtils.degToRad(20);
     const semanticEdges: EdgeRecord[] = [];
-
-    for (
-      const edge
-      of edges.values()
-    ) {
-      if (
-        edge.normals.length === 1
-      ) {
+    for (const edge of edges.values()) {
+      if (edge.normals.length === 1) {
         semanticEdges.push(edge);
         continue;
       }
-
       let isCrease = false;
-
       for (
         let firstIndex = 0;
         firstIndex < edge.normals.length && !isCrease;
@@ -1153,73 +784,40 @@ export class GeometryQueryEngine {
         ) {
           const first = edge.normals[firstIndex];
           const second = edge.normals[secondIndex];
-
-          if (
-            !first
-            || !second
-          ) {
+          if (!first || !second) {
             continue;
           }
-
-          const dot = THREE.MathUtils.clamp(
-            first.dot(second),
-            -1,
-            1,
-          );
-
-          if (
-            Math.acos(dot) >= creaseThreshold
-          ) {
+          const dot = THREE.MathUtils.clamp(first.dot(second), -1, 1);
+          if (Math.acos(dot) >= creaseThreshold) {
             isCrease = true;
             break;
           }
         }
       }
-
-      if (
-        isCrease
-      ) {
+      if (isCrease) {
         semanticEdges.push(edge);
       }
     }
 
     const endpointKeys = new Set<string>();
-
-    for (
-      const edge
-      of semanticEdges
-    ) {
+    for (const edge of semanticEdges) {
       endpointKeys.add(edge.aKey);
       endpointKeys.add(edge.bKey);
     }
-
     const semanticVertices: THREE.Vector3[] = [];
-
-    for (
-      const key
-      of endpointKeys
-    ) {
+    for (const key of endpointKeys) {
       const point = vertices.get(key);
-
-      if (
-        point
-      ) {
-        semanticVertices.push(
-          point.clone(),
-        );
+      if (point) {
+        semanticVertices.push(point.clone());
       }
     }
 
     return {
       vertices: semanticVertices,
       edges: semanticEdges,
-      centers: this.findCircularCenters(
-        semanticEdges,
-        vertices,
-      ),
+      centers: this.findCircularCenters(semanticEdges, vertices),
     };
   }
-
 
   private addEdge(
     edges: Map<string, EdgeRecord>,
@@ -1229,107 +827,52 @@ export class GeometryQueryEngine {
     b: THREE.Vector3,
     normal: THREE.Vector3,
   ): void {
-    const firstKey = aKey < bKey
-      ? aKey
-      : bKey;
-    const secondKey = aKey < bKey
-      ? bKey
-      : aKey;
+    const firstKey = aKey < bKey ? aKey : bKey;
+    const secondKey = aKey < bKey ? bKey : aKey;
     const key = `${firstKey}|${secondKey}`;
     const current = edges.get(key);
-
-    if (
-      current
-    ) {
-      if (
-        normal.lengthSq() > 0
-      ) {
-        current.normals.push(
-          normal.clone(),
-        );
+    if (current) {
+      if (normal.lengthSq() > 0) {
+        current.normals.push(normal.clone());
       }
       return;
     }
-
-    edges.set(
-      key,
-      {
-        aKey: firstKey,
-        bKey: secondKey,
-        a: firstKey === aKey
-          ? a.clone()
-          : b.clone(),
-        b: secondKey === bKey
-          ? b.clone()
-          : a.clone(),
-        normals: normal.lengthSq() > 0
-          ? [normal.clone()]
-          : [],
-      },
-    );
+    edges.set(key, {
+      aKey: firstKey,
+      bKey: secondKey,
+      a: firstKey === aKey ? a.clone() : b.clone(),
+      b: secondKey === bKey ? b.clone() : a.clone(),
+      normals: normal.lengthSq() > 0 ? [normal.clone()] : [],
+    });
   }
-
 
   private findCircularCenters(
     edges: readonly EdgeRecord[],
     vertices: ReadonlyMap<string, THREE.Vector3>,
   ): THREE.Vector3[] {
     const adjacency = new Map<string, Set<string>>();
-
-    for (
-      const edge
-      of edges
-    ) {
-      this.addNeighbor(
-        adjacency,
-        edge.aKey,
-        edge.bKey,
-      );
-      this.addNeighbor(
-        adjacency,
-        edge.bKey,
-        edge.aKey,
-      );
+    for (const edge of edges) {
+      this.addNeighbor(adjacency, edge.aKey, edge.bKey);
+      this.addNeighbor(adjacency, edge.bKey, edge.aKey);
     }
 
     const visited = new Set<string>();
     const centers: THREE.Vector3[] = [];
-
-    for (
-      const start
-      of adjacency.keys()
-    ) {
-      if (
-        visited.has(start)
-      ) {
+    for (const start of adjacency.keys()) {
+      if (visited.has(start)) {
         continue;
       }
-
       const component: string[] = [];
       const stack = [start];
-
-      while (
-        stack.length > 0
-      ) {
+      while (stack.length > 0) {
         const current = stack.pop();
-
-        if (
-          !current
-          || visited.has(current)
-        ) {
+        if (!current || visited.has(current)) {
           continue;
         }
-
         visited.add(current);
         component.push(current);
-
-        for (
-          const neighbor
-          of adjacency.get(current) ?? []
-        ) {
-          if (
-            !visited.has(neighbor)
-          ) {
+        for (const neighbor of adjacency.get(current) ?? []) {
+          if (!visited.has(neighbor)) {
             stack.push(neighbor);
           }
         }
@@ -1337,177 +880,87 @@ export class GeometryQueryEngine {
 
       if (
         component.length < 6
-        || !component.every(
-          (
-            key,
-          ) => (
-            adjacency.get(key)?.size ?? 0
-          ) === 2,
-        )
+        || !component.every((key) => (adjacency.get(key)?.size ?? 0) === 2)
       ) {
         continue;
       }
-
       const points = component
-        .map(
-          (
-            key,
-          ) => vertices.get(key),
-        )
-        .filter(
-          (
-            point,
-          ): point is THREE.Vector3 => point !== undefined,
-        );
+        .map((key) => vertices.get(key))
+        .filter((point): point is THREE.Vector3 => point !== undefined);
       const center = this.fitCircularLoop(points);
-
-      if (
-        center
-      ) {
+      if (center) {
         centers.push(center);
       }
     }
-
     return centers;
   }
-
 
   private fitCircularLoop(
     points: readonly THREE.Vector3[],
   ): THREE.Vector3 | null {
-    if (
-      points.length < 6
-    ) {
+    if (points.length < 6) {
       return null;
     }
-
     const center = new THREE.Vector3();
-
-    for (
-      const point
-      of points
-    ) {
+    for (const point of points) {
       center.add(point);
     }
-
-    center.multiplyScalar(
-      1 / points.length,
-    );
+    center.multiplyScalar(1 / points.length);
 
     let radius = 0;
     const distances: number[] = [];
-
-    for (
-      const point
-      of points
-    ) {
+    for (const point of points) {
       const distance = point.distanceTo(center);
       distances.push(distance);
       radius += distance;
     }
-
     radius /= points.length;
-
-    if (
-      radius <= 1e-9
-    ) {
+    if (radius <= 1e-9) {
       return null;
     }
 
     let maxRadialError = 0;
-
-    for (
-      const distance
-      of distances
-    ) {
-      maxRadialError = Math.max(
-        maxRadialError,
-        Math.abs(distance - radius),
-      );
+    for (const distance of distances) {
+      maxRadialError = Math.max(maxRadialError, Math.abs(distance - radius));
     }
-
-    if (
-      maxRadialError / radius > 0.02
-    ) {
+    if (maxRadialError / radius > 0.02) {
       return null;
     }
 
     const normal = this.findPlaneNormal(points);
-
-    if (
-      !normal
-    ) {
+    if (!normal) {
       return null;
     }
-
     let maxPlaneError = 0;
-
-    for (
-      const point
-      of points
-    ) {
+    for (const point of points) {
       maxPlaneError = Math.max(
         maxPlaneError,
-        Math.abs(
-          point.clone()
-            .sub(center)
-            .dot(normal),
-        ),
+        Math.abs(point.clone().sub(center).dot(normal)),
       );
     }
-
-    if (
-      maxPlaneError / radius > 0.01
-    ) {
-      return null;
-    }
-
-    return center;
+    return maxPlaneError / radius <= 0.01 ? center : null;
   }
-
 
   private findPlaneNormal(
     points: readonly THREE.Vector3[],
   ): THREE.Vector3 | null {
     const origin = points[0];
-
-    if (
-      !origin
-    ) {
+    if (!origin) {
       return null;
     }
-
-    for (
-      let index = 1;
-      index < points.length - 1;
-      index += 1
-    ) {
+    for (let index = 1; index < points.length - 1; index += 1) {
       const first = points[index];
       const second = points[index + 1];
-
-      if (
-        !first
-        || !second
-      ) {
+      if (!first || !second) {
         continue;
       }
-
-      const normal = first.clone()
-        .sub(origin)
-        .cross(
-          second.clone().sub(origin),
-        );
-
-      if (
-        normal.lengthSq() > 1e-12
-      ) {
+      const normal = first.clone().sub(origin).cross(second.clone().sub(origin));
+      if (normal.lengthSq() > 1e-12) {
         return normal.normalize();
       }
     }
-
     return null;
   }
-
 
   private getSegmentIntersection3D(
     firstStart: THREE.Vector3,
@@ -1515,41 +968,23 @@ export class GeometryQueryEngine {
     secondStart: THREE.Vector3,
     secondEnd: THREE.Vector3,
   ): THREE.Vector3 | null {
-    const firstDirection = firstEnd.clone()
-      .sub(firstStart);
-    const secondDirection = secondEnd.clone()
-      .sub(secondStart);
-    const relativeStart = firstStart.clone()
-      .sub(secondStart);
+    const firstDirection = firstEnd.clone().sub(firstStart);
+    const secondDirection = secondEnd.clone().sub(secondStart);
+    const relativeStart = firstStart.clone().sub(secondStart);
     const firstLengthSquared = firstDirection.lengthSq();
     const secondLengthSquared = secondDirection.lengthSq();
-
-    if (
-      firstLengthSquared <= 1e-18
-      || secondLengthSquared <= 1e-18
-    ) {
+    if (firstLengthSquared <= 1e-18 || secondLengthSquared <= 1e-18) {
       return null;
     }
 
-    const firstSecondDot = firstDirection.dot(
-      secondDirection,
-    );
-    const firstRelativeDot = firstDirection.dot(
-      relativeStart,
-    );
-    const secondRelativeDot = secondDirection.dot(
-      relativeStart,
-    );
-    const denominator = firstLengthSquared
-      * secondLengthSquared
-      - firstSecondDot
-      * firstSecondDot;
-
+    const firstSecondDot = firstDirection.dot(secondDirection);
+    const firstRelativeDot = firstDirection.dot(relativeStart);
+    const secondRelativeDot = secondDirection.dot(relativeStart);
+    const denominator = firstLengthSquared * secondLengthSquared
+      - firstSecondDot * firstSecondDot;
     if (
       Math.abs(denominator)
-      <= 1e-14
-        * firstLengthSquared
-        * secondLengthSquared
+      <= 1e-14 * firstLengthSquared * secondLengthSquared
     ) {
       return null;
     }
@@ -1563,7 +998,6 @@ export class GeometryQueryEngine {
       - firstSecondDot * firstRelativeDot
     ) / denominator;
     const parameterTolerance = 1e-9;
-
     if (
       firstParameter < -parameterTolerance
       || firstParameter > 1 + parameterTolerance
@@ -1573,45 +1007,28 @@ export class GeometryQueryEngine {
       return null;
     }
 
-    const firstPoint = firstStart.clone()
-      .addScaledVector(
-        firstDirection,
-        THREE.MathUtils.clamp(
-          firstParameter,
-          0,
-          1,
-        ),
-      );
-    const secondPoint = secondStart.clone()
-      .addScaledVector(
-        secondDirection,
-        THREE.MathUtils.clamp(
-          secondParameter,
-          0,
-          1,
-        ),
-      );
+    const firstPoint = firstStart.clone().addScaledVector(
+      firstDirection,
+      THREE.MathUtils.clamp(firstParameter, 0, 1),
+    );
+    const secondPoint = secondStart.clone().addScaledVector(
+      secondDirection,
+      THREE.MathUtils.clamp(secondParameter, 0, 1),
+    );
     const scale = Math.max(
       1,
       Math.sqrt(firstLengthSquared),
       Math.sqrt(secondLengthSquared),
     );
-    const worldTolerance = Math.max(
-      1e-8,
-      scale * 1e-9,
-    );
-
+    const worldTolerance = Math.max(1e-8, scale * 1e-9);
     if (
       firstPoint.distanceToSquared(secondPoint)
       > worldTolerance * worldTolerance
     ) {
       return null;
     }
-
-    return firstPoint.add(secondPoint)
-      .multiplyScalar(0.5);
+    return firstPoint.add(secondPoint).multiplyScalar(0.5);
   }
-
 
   private definitionLocalToWorld(
     local: PieceVector3Data,
@@ -1624,7 +1041,6 @@ export class GeometryQueryEngine {
       coordinateSystem.origin.y,
       coordinateSystem.origin.z,
     );
-
     point
       .addScaledVector(
         new THREE.Vector3(
@@ -1650,34 +1066,19 @@ export class GeometryQueryEngine {
         ),
         local.z,
       );
-
-    return point.applyMatrix4(
-      object.matrixWorld,
-    );
+    return point.applyMatrix4(object.matrixWorld);
   }
-
 
   private isPieceSnapEnabled(
     instanceId: string,
   ): boolean {
-    const instance = this.designModel.pieceInstances.get(
-      instanceId,
-    );
-
-    if (
-      !instance
-    ) {
+    const instance = this.designModel.pieceInstances.get(instanceId);
+    if (!instance) {
       return false;
     }
-
-    const layer = this.designModel.layers.get(
-      instance.layerId,
-    );
-
-    return layer?.visible !== false
-      && layer?.snapEnabled !== false;
+    const layer = this.designModel.layers.get(instance.layerId);
+    return layer?.visible !== false && layer?.snapEnabled !== false;
   }
-
 
   private screenDistance(
     point: THREE.Vector3,
@@ -1686,24 +1087,12 @@ export class GeometryQueryEngine {
     rect: DOMRect,
     camera: THREE.Camera,
   ): number {
-    const projected = this.projectWorldPoint(
-      point,
-      rect,
-      camera,
-    );
-
-    if (
-      !projected.visible
-    ) {
+    const projected = this.projectWorldPoint(point, rect, camera);
+    if (!projected.visible) {
       return Number.POSITIVE_INFINITY;
     }
-
-    return Math.hypot(
-      clientX - projected.x,
-      clientY - projected.y,
-    );
+    return Math.hypot(clientX - projected.x, clientY - projected.y);
   }
-
 
   private projectWorldPoint(
     point: THREE.Vector3,
@@ -1714,27 +1103,14 @@ export class GeometryQueryEngine {
     readonly y: number;
     readonly visible: boolean;
   } {
-    const cameraPoint = point.clone()
-      .applyMatrix4(camera.matrixWorldInverse);
-    const projected = point.clone()
-      .project(camera);
-    const visible = cameraPoint.z < 0
-      && projected.z >= -1
-      && projected.z <= 1;
-
+    const cameraPoint = point.clone().applyMatrix4(camera.matrixWorldInverse);
+    const projected = point.clone().project(camera);
     return {
-      x: rect.left
-        + (projected.x + 1)
-        * 0.5
-        * rect.width,
-      y: rect.top
-        + (1 - projected.y)
-        * 0.5
-        * rect.height,
-      visible,
+      x: rect.left + (projected.x + 1) * 0.5 * rect.width,
+      y: rect.top + (1 - projected.y) * 0.5 * rect.height,
+      visible: cameraPoint.z < 0 && projected.z >= -1 && projected.z <= 1,
     };
   }
-
 
   private screenDistanceToSegment(
     x: number,
@@ -1747,60 +1123,35 @@ export class GeometryQueryEngine {
     const dx = bx - ax;
     const dy = by - ay;
     const lengthSquared = dx * dx + dy * dy;
-
-    if (
-      lengthSquared <= 1e-12
-    ) {
-      return Math.hypot(
-        x - ax,
-        y - ay,
-      );
+    if (lengthSquared <= 1e-12) {
+      return Math.hypot(x - ax, y - ay);
     }
-
     const parameter = THREE.MathUtils.clamp(
-      (
-        (x - ax) * dx
-        + (y - ay) * dy
-      ) / lengthSquared,
+      ((x - ax) * dx + (y - ay) * dy) / lengthSquared,
       0,
       1,
     );
-
     return Math.hypot(
       x - (ax + parameter * dx),
       y - (ay + parameter * dy),
     );
   }
 
-
   private setPointerFromClient(
     clientX: number,
     clientY: number,
     rect: DOMRect,
   ): void {
-    this.pointer.x = (
-      (clientX - rect.left)
-      / rect.width
-    ) * 2 - 1;
-    this.pointer.y = -(
-      (clientY - rect.top)
-      / rect.height
-    ) * 2 + 1;
+    this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
   }
-
 
   private findInstanceId(
     object: THREE.Object3D,
   ): string | null {
     let current: THREE.Object3D | null = object;
-
-    while (
-      current
-    ) {
-      const frameLogic = current.userData[
-        "frameLogic"
-      ];
-
+    while (current) {
+      const frameLogic = current.userData["frameLogic"];
       if (
         frameLogic
         && frameLogic.entityType === "PieceInstance"
@@ -1808,30 +1159,18 @@ export class GeometryQueryEngine {
       ) {
         return frameLogic.instanceId;
       }
-
       current = current.parent;
     }
-
     return null;
   }
-
 
   private vertexKey(
     point: THREE.Vector3,
   ): string {
-    return [
-      point.x,
-      point.y,
-      point.z,
-    ]
-      .map(
-        (
-          value,
-        ) => value.toFixed(8),
-      )
+    return [point.x, point.y, point.z]
+      .map((value) => value.toFixed(8))
       .join(",");
   }
-
 
   private addNeighbor(
     adjacency: Map<string, Set<string>>,
@@ -1839,48 +1178,29 @@ export class GeometryQueryEngine {
     neighbor: string,
   ): void {
     let neighbors = adjacency.get(key);
-
-    if (
-      !neighbors
-    ) {
+    if (!neighbors) {
       neighbors = new Set<string>();
-      adjacency.set(
-        key,
-        neighbors,
-      );
+      adjacency.set(key, neighbors);
     }
-
     neighbors.add(neighbor);
   }
-
 
   private dedupeResults(
     results: readonly GeometryQueryResult[],
   ): GeometryQueryResult[] {
     const output: GeometryQueryResult[] = [];
-
-    for (
-      const result
-      of results
-    ) {
+    for (const result of results) {
       const duplicate = output.some(
-        (
-          current,
-        ) => current.kind === result.kind
+        (current) => current.kind === result.kind
           && current.sourceId === result.sourceId
           && current.point.distanceToSquared(result.point) <= 1e-16,
       );
-
-      if (
-        !duplicate
-      ) {
+      if (!duplicate) {
         output.push(result);
       }
     }
-
     return output;
   }
-
 
   dispose(): void {
     this.geometryCache.clear();
