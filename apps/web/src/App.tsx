@@ -15,6 +15,10 @@ import {
   StepPieceEditor,
 } from "./features/bim/step/StepPieceEditor";
 
+import {
+  StepPieceEditorDirect,
+} from "./features/bim/step/StepPieceEditorDirect";
+
 
 function App() {
 
@@ -67,18 +71,36 @@ function App() {
     pieceFile
   ) {
 
+    const handleExit =
+      (): void => {
+
+        setPieceFile(
+          null,
+        );
+
+      };
+
+
+    if (
+      /\.ifc$/i.test(
+        pieceFile.name,
+      )
+    ) {
+
+      return (
+        <StepPieceEditor
+          initialFile={pieceFile}
+          onExit={handleExit}
+        />
+      );
+
+    }
+
+
     return (
-      <StepPieceEditor
+      <StepPieceEditorDirect
         initialFile={pieceFile}
-        onExit={
-          () => {
-
-            setPieceFile(
-              null,
-            );
-
-          }
-        }
+        onExit={handleExit}
       />
     );
 
@@ -91,7 +113,7 @@ function App() {
 
       <button
         type="button"
-        title="Abrir una pieza STEP o un IFC FrameLogic en el workspace independiente de preparación"
+        title="Abrir una pieza STEP directamente o un IFC FrameLogic legado"
         onClick={
           () => {
 
