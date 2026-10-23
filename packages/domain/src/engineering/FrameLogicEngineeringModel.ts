@@ -85,6 +85,8 @@ export class FrameLogicEngineeringModel {
     let currency:
       string | undefined =
         assembly.currency;
+    let currencyConflict =
+      false;
 
     for (
       const component
@@ -119,17 +121,24 @@ export class FrameLogicEngineeringModel {
         engineering?.commercial?.currency;
 
       if (
-        currency === undefined
+        !currencyConflict
         && componentCurrency !== undefined
       ) {
-        currency = componentCurrency;
-      }
-      else if (
-        currency !== undefined
-        && componentCurrency !== undefined
-        && componentCurrency !== currency
-      ) {
-        currency = undefined;
+        if (
+          currency === undefined
+        ) {
+          currency =
+            componentCurrency;
+        }
+        else if (
+          componentCurrency
+          !== currency
+        ) {
+          currency =
+            undefined;
+          currencyConflict =
+            true;
+        }
       }
     }
 
@@ -150,7 +159,10 @@ export class FrameLogicEngineeringModel {
         hasMass
           ? mass
           : undefined,
-      currency,
+      currency:
+        currencyConflict
+          ? undefined
+          : currency,
       totalPieceCost:
         hasPieceCost
           ? pieceCost
