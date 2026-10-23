@@ -4,6 +4,7 @@ import type {
   DesignModel,
   EngineeringDataSource,
   FrameLogicEngineeringModel,
+  LocalCoordinateSystem,
   PieceEngineeringFeature,
   PieceVector3Data,
 } from "@framelogic/domain";
@@ -67,12 +68,19 @@ export class StepEngineeringFeatureProvider
         continue;
       }
 
+      const definition =
+        this.designModel.pieceDefinitions.get(
+          instance.definitionId,
+        );
       const engineering =
         this.engineeringModel.pieces.get(
           instance.definitionId,
         );
 
-      if (!engineering) {
+      if (
+        !definition
+        || !engineering
+      ) {
         continue;
       }
 
@@ -87,6 +95,10 @@ export class StepEngineeringFeatureProvider
 
       object.updateMatrixWorld(true);
 
+      /*
+       * Las features importadas del STEP se conservan en el sistema nativo
+       * del asset. La matrixWorld del objeto lleva ese sistema al workspace.
+       */
       for (
         const feature
         of engineering.features
@@ -100,12 +112,21 @@ export class StepEngineeringFeatureProvider
         );
       }
 
+      /*
+       * El eje estructural, en cambio, pertenece al sistema LOCAL de
+       * PieceDefinition. Primero lo convertimos a coordenadas del asset y
+       * luego aplicamos matrixWorld. Esto mantiene el eje coincidente con la
+       * pieza incluso si el usuario redefine origen u orientación local.
+       */
       const structuralAxis =
         engineering.structuralAxis;
 
       if (structuralAxis) {
         this.pushPointCandidate(
-          structuralAxis.start,
+          localToAssetPoint(
+            structuralAxis.start,
+            definition.coordinateSystem,
+          ),
           `structural-axis:${structuralAxis.id}:start`,
           instance.id,
           object,
@@ -118,7 +139,10 @@ export class StepEngineeringFeatureProvider
         );
 
         this.pushPointCandidate(
-          structuralAxis.end,
+          localToAssetPoint(
+            structuralAxis.end,
+            definition.coordinateSystem,
+          ),
           `structural-axis:${structuralAxis.id}:end`,
           instance.id,
           object,
@@ -223,7 +247,7 @@ export class StepEngineeringFeatureProvider
 
 
   private pushPointCandidate(
-    localPoint: PieceVector3Data,
+    assetPoint: PieceVector3Data,
     featureId: string,
     instanceId: string,
     object: THREE.Object3D,
@@ -234,9 +258,9 @@ export class StepEngineeringFeatureProvider
   ): void {
     const worldPoint =
       new THREE.Vector3(
-        localPoint.x,
-        localPoint.y,
-        localPoint.z,
+        assetPoint.x,
+        assetPoint.y,
+        assetPoint.z,
       ).applyMatrix4(
         object.matrixWorld,
       );
@@ -278,6 +302,30 @@ export class StepEngineeringFeatureProvider
       precision,
     });
   }
+}
+
+
+function localToAssetPoint(
+  local: PieceVector3Data,
+  coordinateSystem: LocalCoordinateSystem,
+): PieceVector3Data {
+  return {
+    x:
+      coordinateSystem.origin.x
+      + local.x * coordinateSystem.xAxis.x
+      + local.y * coordinateSystem.yAxis.x
+      + local.z * coordinateSystem.zAxis.x,
+    y:
+      coordinateSystem.origin.y
+      + local.x * coordinateSystem.xAxis.y
+      + local.y * coordinateSystem.yAxis.y
+      + local.z * coordinateSystem.zAxis.y,
+    z:
+      coordinateSystem.origin.z
+      + local.x * coordinateSystem.xAxis.z
+      + local.y * coordinateSystem.yAxis.z
+      + local.z * coordinateSystem.zAxis.z,
+  };
 }
 
 
