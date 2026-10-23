@@ -15,6 +15,10 @@ import {
 } from "../precision/MeasurementEngine";
 
 import {
+  MeshAnalyticFeatureProvider,
+} from "../precision/MeshAnalyticFeatureProvider";
+
+import {
   PrecisionCameraController,
 } from "../precision/PrecisionCameraController";
 
@@ -67,6 +71,13 @@ export async function createBimCore(
     core.designScene,
     core.designModel,
   );
+  const meshAnalyticProvider = new MeshAnalyticFeatureProvider(
+    core.designModel,
+    core.designScene,
+  );
+  const removeMeshAnalyticProvider = geometryQuery.addProvider(
+    meshAnalyticProvider,
+  );
   const snapRuntime = core.designSnap as unknown as DesignSnapRuntime;
   const legacyFindSnap = core.designSnap.findSnap.bind(core.designSnap);
   const snapEngine = new PrecisionSnapEngine(
@@ -104,6 +115,8 @@ export async function createBimCore(
       disposed = true;
       snapRuntime.findSnap = legacyFindSnap;
       precisionCamera.dispose();
+      removeMeshAnalyticProvider();
+      meshAnalyticProvider.dispose();
       geometryQuery.dispose();
       baseDispose();
     },
