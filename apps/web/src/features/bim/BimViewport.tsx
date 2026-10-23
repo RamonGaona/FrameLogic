@@ -13,7 +13,6 @@ import {
 } from "@framelogic/bim-core";
 
 import type {
-  BimCoreInstance,
   CadWorkPlaneEditState,
   CadWorkPlaneMode,
   CameraOrientation,
@@ -22,6 +21,8 @@ import type {
   LoadedModelInfo,
   PieceDefinitionOriginEditState,
   PieceDefinitionPreparationState,
+  PrecisionBimCoreInstance,
+  StandardView,
 } from "@framelogic/bim-core";
 
 import {
@@ -36,210 +37,101 @@ import {
   ViewCube,
 } from "./components/ViewCube";
 
+import {
+  OcctStepGeometryAdapter,
+} from "./step/OcctStepGeometryAdapter";
 
-// ============================================================
-// TYPES
-// ============================================================
 
 interface ActivePieceInfo {
-
   definitionId: string;
-
   code: string;
-
   name: string;
-
   instanceCount: number;
-
 }
 
 
-// ============================================================
-// BIM VIEWPORT
-// ============================================================
+function defaultPieceCode(
+  fileName: string,
+): string {
+  return fileName
+    .replace(
+      /\.(?:step|stp)$/i,
+      "",
+    )
+    .trim()
+    .replace(
+      /\s+/g,
+      "_",
+    )
+    .toUpperCase();
+}
+
 
 export function BimViewport() {
-
-  // ==========================================================
-  // REFERENCES
-  // ==========================================================
-
   const containerRef =
     useRef<HTMLDivElement>(
       null,
     );
-
-    // ==========================================================
-// CARDINAL VIEW
-// ==========================================================
-
-function handleCardinalDirection(
-  direction:
-    CardinalDirection,
-): void {
-
-  const bimCore =
-    bimCoreRef.current;
-
-
-  if (
-    !bimCore
-  ) {
-
-    return;
-
-  }
-
-
-  void bimCore
-    .setCardinalDirection(
-      direction,
-    );
-
-}
-
-    function handleStandardView(
-      view:
-        import("@framelogic/bim-core").StandardView,
-    ): void {
-    
-      const bimCore =
-        bimCoreRef.current;
-    
-    
-      if (
-        !bimCore
-      ) {
-    
-        return;
-    
-      }
-    
-    
-      void bimCore.setStandardView(
-        view,
-      );
-    
-    }
-
-    const [
-      cameraOrientation,
-      setCameraOrientation,
-    ] =
-      useState<CameraOrientation>({
-    
-        azimuth:
-          Math.PI / 4,
-    
-        polar:
-          Math.PI / 3,
-    
-      });
-
-      const [
-        projectionMode,
-        setProjectionMode,
-      ] =
-        useState<
-          "PERSPECTIVE"
-          | "ORTHOGRAPHIC"
-        >(
-          "PERSPECTIVE",
-        );
-
-  // ----------------------------------------------------------
-  // REFERENCE IFC INPUT
-  // ----------------------------------------------------------
 
   const referenceFileInputRef =
     useRef<HTMLInputElement>(
       null,
     );
 
-
-  // ----------------------------------------------------------
-  // DESIGN PIECE IFC INPUT
-  // ----------------------------------------------------------
-
   const pieceFileInputRef =
     useRef<HTMLInputElement>(
       null,
     );
 
-
-  // ----------------------------------------------------------
-  // BIM CORE
-  // ----------------------------------------------------------
-
   const bimCoreRef =
-    useRef<BimCoreInstance | null>(
+    useRef<PrecisionBimCoreInstance | null>(
       null,
     );
 
+  const [cameraOrientation, setCameraOrientation] =
+    useState<CameraOrientation>({
+      azimuth:
+        Math.PI / 4,
+      polar:
+        Math.PI / 3,
+    });
 
-  // ==========================================================
-  // STATE
-  // ==========================================================
+  const [projectionMode, setProjectionMode] =
+    useState<
+      "PERSPECTIVE"
+      | "ORTHOGRAPHIC"
+    >(
+      "PERSPECTIVE",
+    );
 
-  const [
-    loadingReference,
-    setLoadingReference,
-  ] =
+  const [loadingReference, setLoadingReference] =
     useState(false);
 
-
-  const [
-    loadingPiece,
-    setLoadingPiece,
-  ] =
+  const [loadingPiece, setLoadingPiece] =
     useState(false);
 
+  const [models, setModels] =
+    useState<LoadedModelInfo[]>(
+      [],
+    );
 
-  const [
-    models,
-    setModels,
-  ] =
-    useState<
-      LoadedModelInfo[]
-    >([]);
+  const [layers, setLayers] =
+    useState<DesignLayer[]>(
+      [],
+    );
 
-
-  const [
-    layers,
-    setLayers,
-  ] =
-    useState<
-      DesignLayer[]
-    >([]);
-
-
-  const [
-    activeLayerId,
-    setActiveLayerId,
-  ] =
+  const [activeLayerId, setActiveLayerId] =
     useState(
       "reference-cad",
     );
 
-
-  const [
-    workPlaneMode,
-    setWorkPlaneMode,
-  ] =
-    useState<
-      CadWorkPlaneMode
-    >(
+  const [workPlaneMode, setWorkPlaneMode] =
+    useState<CadWorkPlaneMode>(
       "XY",
     );
 
-
-  const [
-    workPlaneEdit,
-    setWorkPlaneEdit,
-  ] =
-    useState<
-      CadWorkPlaneEditState
-    >({
+  const [workPlaneEdit, setWorkPlaneEdit] =
+    useState<CadWorkPlaneEditState>({
       mode:
         "NONE",
       pointCount:
@@ -248,24 +140,13 @@ function handleCardinalDirection(
         "",
     });
 
+  const [activePiece, setActivePiece] =
+    useState<ActivePieceInfo | null>(
+      null,
+    );
 
-  const [
-    activePiece,
-    setActivePiece,
-  ] =
-    useState<
-      ActivePieceInfo
-      | null
-    >(null);
-
-
-  const [
-    piecePreparation,
-    setPiecePreparation,
-  ] =
-    useState<
-      PieceDefinitionPreparationState
-    >({
+  const [piecePreparation, setPiecePreparation] =
+    useState<PieceDefinitionPreparationState>({
       active:
         false,
       instanceId:
@@ -282,120 +163,103 @@ function handleCardinalDirection(
         0,
     });
 
-
-  const [
-    pieceOriginEdit,
-    setPieceOriginEdit,
-  ] =
-    useState<
-      PieceDefinitionOriginEditState
-    >({
+  const [pieceOriginEdit, setPieceOriginEdit] =
+    useState<PieceDefinitionOriginEditState>({
       active:
         false,
       message:
         "",
     });
 
-    const [
-      placingPiece,
-      setPlacingPiece,
-    ] =
-      useState(false);
+  const [placingPiece, setPlacingPiece] =
+    useState(false);
 
 
-      // ==========================================================
-// CAMERA PROJECTION
-// ==========================================================
-
-async function handleToggleProjection():
-Promise<void> {
-
-const bimCore =
-  bimCoreRef.current;
-
-
-if (
-  !bimCore
-) {
-
-  return;
-
-}
-
-
-try {
-
-  const mode =
-    await bimCore
-      .toggleCameraProjection();
-
-
-  setProjectionMode(
-    mode,
-  );
-
-}
-catch (
-  error
-) {
-
-  console.error(
-    "Error changing camera projection:",
-    error,
-  );
-
-}
-
-}
-
-  // ==========================================================
-  // REFRESH REFERENCE MODEL LIST
-  // ==========================================================
-
-  function refreshModels(): void {
-
-    const bimCore =
-      bimCoreRef.current;
-
-
-    if (
-      !bimCore
-    ) {
-
-      setModels(
-        [],
+  function handleCardinalDirection(
+    direction: CardinalDirection,
+  ): void {
+    void bimCoreRef.current
+      ?.setCardinalDirection(
+        direction,
       );
-
-      return;
-
-    }
-
-
-    setModels(
-      bimCore.getLoadedModels(),
-    );
-
   }
 
 
-  // ==========================================================
-  // LAYER ACTIONS
-  // ==========================================================
+  function handleStandardView(
+    view: StandardView,
+  ): void {
+    void bimCoreRef.current
+      ?.setStandardView(
+        view,
+      );
+  }
 
-  function handleCreateLayer(): void {
 
+  async function handleToggleProjection():
+    Promise<void> {
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
 
+    try {
+      const mode =
+        await bimCore.toggleCameraProjection();
+
+      setProjectionMode(
+        mode,
+      );
+    }
+    catch (
+      error
+    ) {
+      console.error(
+        "Error changing camera projection:",
+        error,
+      );
+    }
+  }
+
+
+  function refreshModels(): void {
+    const bimCore =
+      bimCoreRef.current;
+
+    setModels(
+      bimCore
+        ? bimCore.getLoadedModels()
+        : [],
+    );
+  }
+
+
+  function refreshLayers(): void {
+    const bimCore =
+      bimCoreRef.current;
+
+    if (!bimCore) {
+      setLayers([]);
+      return;
+    }
+
+    setLayers(
+      bimCore.getDesignLayers(),
+    );
+    setActiveLayerId(
+      bimCore.getActiveDesignLayerId(),
+    );
+  }
+
+
+  function handleCreateLayer(): void {
+    const bimCore =
+      bimCoreRef.current;
+
+    if (!bimCore) {
+      return;
+    }
 
     const name =
       window.prompt(
@@ -404,55 +268,39 @@ catch (
       )
         ?.trim();
 
-
-    if (
-      !name
-    ) {
-
+    if (!name) {
       return;
-
     }
 
-
     try {
-
       const layer =
         bimCore.createDesignLayer({
           name,
         });
 
-
       bimCore.setActiveDesignLayer(
         layer.id,
       );
-
     }
     catch (
       error
     ) {
-
       window.alert(
         error instanceof Error
           ? error.message
-          : String(
-              error,
-            ),
+          : String(error),
       );
-
     }
-
   }
 
 
   function handleSetActiveLayer(
     layerId: string,
   ): void {
-
     bimCoreRef.current
       ?.setActiveDesignLayer(
         layerId,
       );
-
   }
 
 
@@ -460,7 +308,6 @@ catch (
     layerId: string,
     visible: boolean,
   ): void {
-
     bimCoreRef.current
       ?.updateDesignLayer(
         layerId,
@@ -468,7 +315,6 @@ catch (
           visible,
         },
       );
-
   }
 
 
@@ -476,7 +322,6 @@ catch (
     layerId: string,
     locked: boolean,
   ): void {
-
     bimCoreRef.current
       ?.updateDesignLayer(
         layerId,
@@ -484,7 +329,6 @@ catch (
           locked,
         },
       );
-
   }
 
 
@@ -492,7 +336,6 @@ catch (
     layerId: string,
     snapEnabled: boolean,
   ): void {
-
     bimCoreRef.current
       ?.updateDesignLayer(
         layerId,
@@ -500,480 +343,294 @@ catch (
           snapEnabled,
         },
       );
-
   }
 
 
   function handleRemoveLayer(
     layerId: string,
   ): void {
-
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
 
-
     try {
-
       bimCore.removeDesignLayer(
         layerId,
       );
-
     }
     catch (
       error
     ) {
-
       window.alert(
         error instanceof Error
           ? error.message
-          : String(
-              error,
-            ),
+          : String(error),
       );
-
     }
-
   }
 
 
   function handleAssignSelectionToLayer(
     layerId: string,
   ): void {
-
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
 
-
     try {
-
-      bimCore
-        .assignCadSelectionToLayer(
-          layerId,
-        );
-
+      bimCore.assignCadSelectionToLayer(
+        layerId,
+      );
     }
     catch (
       error
     ) {
-
       window.alert(
         error instanceof Error
           ? error.message
-          : String(
-              error,
-            ),
+          : String(error),
       );
-
     }
-
   }
 
 
-  // ==========================================================
-  // PIECE DEFINITION PREPARATION
-  // ==========================================================
-
-  function handleStartPiecePreparation():
-    void {
-
+  function handleStartPiecePreparation(): void {
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
 
-
     try {
-
       setPiecePreparation(
-        bimCore
-          .startPieceDefinitionPreparation(),
+        bimCore.startPieceDefinitionPreparation(),
       );
-
     }
     catch (
       error
     ) {
-
       window.alert(
         error instanceof Error
           ? error.message
-          : String(
-              error,
-            ),
+          : String(error),
       );
-
     }
-
   }
 
 
-  function handleStopPiecePreparation():
-    void {
-
+  function handleStopPiecePreparation(): void {
     bimCoreRef.current
       ?.stopPieceDefinitionPreparation();
-
   }
 
 
-  function handleSetPreparedPieceOrigin():
-    void {
-
+  function handleSetPreparedPieceOrigin(): void {
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
 
-
     try {
-
       setPiecePreparation(
-        bimCore
-          .setPreparedPieceOriginFromSelectedPoint(),
+        bimCore.setPreparedPieceOriginFromSelectedPoint(),
       );
-
     }
     catch (
       error
     ) {
-
       window.alert(
         error instanceof Error
           ? error.message
-          : String(
-              error,
-            ),
+          : String(error),
       );
-
     }
-
   }
 
 
-  function handleStartPreparedPieceOriginSnap():
-    void {
-
+  function handleStartPreparedPieceOriginSnap(): void {
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
 
-
     try {
-
-      bimCore
-        .startPreparedPieceOriginSnapEdit();
-
+      bimCore.startPreparedPieceOriginSnapEdit();
     }
     catch (
       error
     ) {
-
       window.alert(
         error instanceof Error
           ? error.message
-          : String(
-              error,
-            ),
+          : String(error),
       );
-
     }
-
   }
 
 
-  function handleAddPreparedPieceSnaps():
-    void {
-
+  function handleAddPreparedPieceSnaps(): void {
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
 
-
     try {
-
       const added =
-        bimCore
-          .addPreparedPieceSnapsFromSelection();
+        bimCore.addPreparedPieceSnapsFromSelection();
 
-
-      if (
-        added < 1
-      ) {
-
+      if (added < 1) {
         window.alert(
           "No se agregó ningún SNAP nuevo. Puede que el punto ya exista en la definición.",
         );
-
       }
-
     }
     catch (
       error
     ) {
-
       window.alert(
         error instanceof Error
           ? error.message
-          : String(
-              error,
-            ),
+          : String(error),
       );
-
     }
-
   }
 
 
-  function handleAddPreparedPieceAxes():
-    void {
-
+  function handleAddPreparedPieceAxes(): void {
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
 
-
     try {
-
       const added =
-        bimCore
-          .addPreparedPieceAxesFromSelection();
+        bimCore.addPreparedPieceAxesFromSelection();
 
-
-      if (
-        added < 1
-      ) {
-
+      if (added < 1) {
         window.alert(
           "No se agregó ningún eje de referencia.",
         );
-
       }
-
     }
     catch (
       error
     ) {
-
       window.alert(
         error instanceof Error
           ? error.message
-          : String(
-              error,
-            ),
+          : String(error),
       );
-
     }
-
   }
 
 
-  // ==========================================================
-  // CAD WORKPLANE
-  // ==========================================================
-
   function handleCycleWorkPlane(): void {
-
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
 
-
     bimCore.cancelCadWorkPlaneEdit();
-
-
     setWorkPlaneMode(
       bimCore.cycleCadWorkPlane(),
     );
-
   }
 
 
-  function handleSetWorkPlaneOrigin():
-    void {
-
+  function handleSetWorkPlaneOrigin(): void {
     bimCoreRef.current
       ?.startCadWorkPlaneOriginEdit();
-
   }
 
 
-  function handleSetWorkPlaneThreePoints():
-    void {
-
+  function handleSetWorkPlaneThreePoints(): void {
     bimCoreRef.current
       ?.startCadWorkPlaneThreePointEdit();
-
   }
 
 
-  function handleStartPoint():
-    void {
-
+  function handleStartPoint(): void {
     const started =
       bimCoreRef.current
         ?.startPointCommand()
       ?? false;
 
-
-    if (
-      !started
-    ) {
-
+    if (!started) {
       window.alert(
         "No se pudo iniciar POINT. Revisa que el layer activo no esté bloqueado.",
       );
-
     }
-
   }
 
 
-  function handleStartLine():
-    void {
-
+  function handleStartLine(): void {
     const started =
       bimCoreRef.current
         ?.startLineCommand()
       ?? false;
 
-
-    if (
-      !started
-    ) {
-
+    if (!started) {
       window.alert(
         "No se pudo iniciar LINE. Revisa que el layer activo no esté bloqueado.",
       );
-
     }
-
   }
 
 
-  // ==========================================================
-  // INITIALIZE BIM CORE
-  // ==========================================================
-
   useEffect(
     () => {
-  
       const container =
         containerRef.current;
-  
-  
-      if (
-        container === null
-      ) {
-  
+
+      if (!container) {
         return;
-  
       }
-  
-  
+
       let disposed =
         false;
-  
-  
+
       let unsubscribeCamera:
         (() => void)
         | null =
           null;
-
-
       let unsubscribeLayers:
         (() => void)
         | null =
           null;
-
-
       let unsubscribeWorkPlane:
         (() => void)
         | null =
           null;
-
-
       let unsubscribeWorkPlaneEdit:
         (() => void)
         | null =
           null;
-
-
       let unsubscribePiecePreparation:
         (() => void)
         | null =
           null;
-
-
       let unsubscribePieceOriginEdit:
         (() => void)
         | null =
           null;
-  
-  
+
       void createBimCore(
         container,
       )
@@ -981,495 +638,250 @@ catch (
           (
             instance,
           ) => {
-  
-            if (
-              disposed
-            ) {
-  
+            if (disposed) {
               instance.dispose();
-  
               return;
-  
             }
-  
-  
+
             bimCoreRef.current =
               instance;
-  
-  
+
             setModels(
               instance.getLoadedModels(),
             );
-
-
             setLayers(
               instance.getDesignLayers(),
             );
-
-
             setActiveLayerId(
               instance.getActiveDesignLayerId(),
             );
-
+            setWorkPlaneMode(
+              instance.getCadWorkPlaneState().mode,
+            );
+            setWorkPlaneEdit(
+              instance.getCadWorkPlaneEditState(),
+            );
+            setPiecePreparation(
+              instance.getPieceDefinitionPreparationState(),
+            );
+            setPieceOriginEdit(
+              instance.getPieceDefinitionOriginEditState(),
+            );
+            setProjectionMode(
+              instance.getCameraProjectionMode(),
+            );
 
             unsubscribeLayers =
               instance.subscribeDesignLayers(
                 () => {
-
-                  if (
-                    disposed
-                  ) {
-
+                  if (disposed) {
                     return;
-
                   }
 
-
-                  setLayers(
-                    instance.getDesignLayers(),
-                  );
-
-
-                  setActiveLayerId(
-                    instance.getActiveDesignLayerId(),
-                  );
-
-
-                  setModels(
-                    instance.getLoadedModels(),
-                  );
-
+                  refreshLayers();
+                  refreshModels();
                 },
               );
-
-
-            setWorkPlaneMode(
-              instance
-                .getCadWorkPlaneState()
-                .mode,
-            );
-
 
             unsubscribeWorkPlane =
               instance.subscribeCadWorkPlane(
                 (
                   state,
                 ) => {
-
-                  if (
-                    disposed
-                  ) {
-
-                    return;
-
+                  if (!disposed) {
+                    setWorkPlaneMode(
+                      state.mode,
+                    );
                   }
-
-
-                  setWorkPlaneMode(
-                    state.mode,
-                  );
-
                 },
               );
-
-
-            setWorkPlaneEdit(
-              instance
-                .getCadWorkPlaneEditState(),
-            );
-
 
             unsubscribeWorkPlaneEdit =
               instance.subscribeCadWorkPlaneEdit(
                 (
                   state,
                 ) => {
-
-                  if (
-                    disposed
-                  ) {
-
-                    return;
-
+                  if (!disposed) {
+                    setWorkPlaneEdit(
+                      state,
+                    );
                   }
-
-
-                  setWorkPlaneEdit(
-                    state,
-                  );
-
                 },
               );
 
-
-            setPiecePreparation(
-              instance
-                .getPieceDefinitionPreparationState(),
-            );
-
-
             unsubscribePiecePreparation =
-              instance
-                .subscribePieceDefinitionPreparation(
-                  (
-                    state,
-                  ) => {
-
-                    if (
-                      disposed
-                    ) {
-
-                      return;
-
-                    }
-
-
+              instance.subscribePieceDefinitionPreparation(
+                (
+                  state,
+                ) => {
+                  if (!disposed) {
                     setPiecePreparation(
                       state,
                     );
-
-                  },
-                );
-
-
-            setPieceOriginEdit(
-              instance
-                .getPieceDefinitionOriginEditState(),
-            );
-
+                  }
+                },
+              );
 
             unsubscribePieceOriginEdit =
-              instance
-                .subscribePieceDefinitionOriginEdit(
-                  (
-                    state,
-                  ) => {
-
-                    if (
-                      disposed
-                    ) {
-
-                      return;
-
-                    }
-
-
+              instance.subscribePieceDefinitionOriginEdit(
+                (
+                  state,
+                ) => {
+                  if (!disposed) {
                     setPieceOriginEdit(
                       state,
                     );
+                  }
+                },
+              );
 
-                  },
-                );
-
-
-            setProjectionMode(
-              instance.getCameraProjectionMode(),
-            );
-  
-  
-            // ==================================================
-            // CAMERA ORIENTATION SUBSCRIPTION
-            // ==================================================
-  
             unsubscribeCamera =
               instance.subscribeCameraOrientation(
                 (
                   orientation,
                 ) => {
-  
-                  if (
-                    disposed
-                  ) {
-  
-                    return;
-  
+                  if (!disposed) {
+                    setCameraOrientation(
+                      orientation,
+                    );
                   }
-  
-  
-                  setCameraOrientation(
-                    orientation,
-                  );
-  
                 },
               );
-  
           },
         )
         .catch(
           (
             error: unknown,
           ) => {
-  
             console.error(
               "Error initializing FrameLogic BIM Core:",
               error,
             );
-  
           },
         );
-  
-  
+
       return () => {
-  
         disposed =
           true;
-  
-  
-        unsubscribeCamera
-          ?.();
 
+        unsubscribeCamera?.();
+        unsubscribeLayers?.();
+        unsubscribeWorkPlane?.();
+        unsubscribeWorkPlaneEdit?.();
+        unsubscribePiecePreparation?.();
+        unsubscribePieceOriginEdit?.();
 
-        unsubscribeLayers
-          ?.();
-
-
-        unsubscribeWorkPlane
-          ?.();
-
-
-        unsubscribeWorkPlaneEdit
-          ?.();
-
-
-        unsubscribePiecePreparation
-          ?.();
-
-
-        unsubscribePieceOriginEdit
-          ?.();
-  
-  
         bimCoreRef.current
           ?.dispose();
-  
-  
         bimCoreRef.current =
           null;
-  
       };
-  
     },
     [],
   );
 
 
-  // ==========================================================
-  // OPEN REFERENCE IFC
-  // ==========================================================
-
   function handleOpenReferenceIfc(): void {
-
     referenceFileInputRef.current
       ?.click();
-
   }
 
 
-  // ==========================================================
-  // REFERENCE IFC SELECTED
-  // ==========================================================
-
   async function handleReferenceIfcSelected(
-    event:
-      ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<HTMLInputElement>,
   ): Promise<void> {
-
     const file =
-      event.target
-        .files?.[0];
+      event.target.files?.[0];
 
-
-    if (
-      !file
-    ) {
-
+    if (!file) {
       return;
-
     }
-
 
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
-      console.error(
-        "BIM Core is not initialized yet.",
-      );
-
-
+    if (!bimCore) {
       event.target.value =
         "";
-
-
       return;
-
     }
 
-
     try {
-
       setLoadingReference(
         true,
       );
 
-
-      console.log(
-        "Loading reference IFC:",
-        file.name,
+      await bimCore.loadIfcFile(
+        file,
       );
-
-
-      const model =
-        await bimCore.loadIfcFile(
-          file,
-        );
-
-
-      console.log(
-        "Reference IFC loaded:",
-        model,
-      );
-
 
       refreshModels();
-
     }
     catch (
       error
     ) {
-
       console.error(
         "Error loading reference IFC:",
         error,
       );
 
-
       window.alert(
         "No se pudo cargar el IFC de referencia. Revisa la consola.",
       );
-
     }
     finally {
-
       setLoadingReference(
         false,
       );
-
-
       event.target.value =
         "";
-
     }
-
   }
 
 
-  // ==========================================================
-  // IMPORT DESIGN PIECE IFC
-  // ==========================================================
-
-  function handleImportPieceIfc(): void {
-
+  function handleImportPieceStep(): void {
     pieceFileInputRef.current
       ?.click();
-
   }
 
 
-  // ==========================================================
-  // DESIGN PIECE IFC SELECTED
-  // ==========================================================
-
-  async function handlePieceIfcSelected(
-    event:
-      ChangeEvent<HTMLInputElement>,
+  async function handlePieceStepSelected(
+    event: ChangeEvent<HTMLInputElement>,
   ): Promise<void> {
-
     const file =
-      event.target
-        .files?.[0];
+      event.target.files?.[0];
 
-
-    if (
-      !file
-    ) {
-
+    if (!file) {
       return;
-
     }
-
 
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
-      console.error(
-        "BIM Core is not initialized yet.",
-      );
-
-
+    if (!bimCore) {
       event.target.value =
         "";
-
-
       return;
-
     }
 
-
-    // --------------------------------------------------------
-    // DEFAULT PIECE CODE FROM FILE NAME
-    // --------------------------------------------------------
-
     const defaultCode =
-      file.name
-        .replace(
-          /\.ifc$/i,
-          "",
-        )
-        .trim()
-        .toUpperCase();
-
-
-    // --------------------------------------------------------
-    // CODE
-    // --------------------------------------------------------
+      defaultPieceCode(
+        file.name,
+      );
 
     const codeInput =
       window.prompt(
         "Código de la pieza:",
         defaultCode,
       );
-
-
     const code =
-      codeInput
-        ?.trim();
+      codeInput?.trim();
 
-
-    if (
-      !code
-    ) {
-
+    if (!code) {
       event.target.value =
         "";
-
       return;
-
     }
-
-
-    // --------------------------------------------------------
-    // NAME
-    // --------------------------------------------------------
 
     const nameInput =
       window.prompt(
@@ -1477,30 +889,15 @@ catch (
         code,
       );
 
-
-    if (
-      nameInput === null
-    ) {
-
+    if (nameInput === null) {
       event.target.value =
         "";
-
       return;
-
     }
-
 
     const name =
       nameInput.trim()
       || code;
-
-
-    // --------------------------------------------------------
-    // CLASSIFICATION
-    //
-    // Texto libre.
-    // FrameLogic NO interpreta esta clasificación.
-    // --------------------------------------------------------
 
     const classificationInput =
       window.prompt(
@@ -1508,596 +905,337 @@ catch (
         "",
       );
 
-
-    if (
-      classificationInput === null
-    ) {
-
+    if (classificationInput === null) {
       event.target.value =
         "";
-
       return;
-
     }
-
 
     const classification =
       classificationInput.trim();
 
-
     try {
-
       setLoadingPiece(
         true,
       );
 
-
-      console.log(
-        "Importing FrameLogic piece IFC:",
-        file.name,
-      );
-
-
-      // ------------------------------------------------------
-      // IMPORT PIECE DEFINITION
-      // ------------------------------------------------------
+      const adapter =
+        new OcctStepGeometryAdapter();
+      const data =
+        new Uint8Array(
+          await file.arrayBuffer(),
+        );
+      const document =
+        await adapter.load(
+          data,
+          {
+            sourceFileName:
+              file.name,
+            targetUnit:
+              "meter",
+            includeExactFeatures:
+              true,
+          },
+        );
 
       const {
         asset,
         definition,
       } =
-        await bimCore
-          .importDesignPieceIfc(
-            file,
-            {
-
-              code,
-
-              name,
-
-              classification:
-                classification
-                || undefined,
-
-              tags:
-                [],
-
-            },
-          );
-
-
-      console.log(
-        "FrameLogic asset created:",
-        asset,
-      );
-
-
-      console.log(
-        "FrameLogic piece definition created:",
-        definition,
-      );
-
-
-      // ------------------------------------------------------
-      // CREATE FIRST INSTANCE
-      //
-      // Primera inserción en origen.
-      // ------------------------------------------------------
+        bimCore.importStepPiece(
+          document,
+          {
+            code,
+            name,
+            classification:
+              classification
+              || undefined,
+            tags: [],
+          },
+        );
 
       const instance =
-        bimCore
-          .createDesignPieceInstance({
-
-            definitionId:
-              definition.id,
-
-            transform: {
-
-              position: {
-
-                x:
-                  0,
-
-                y:
-                  0,
-
-                z:
-                  0,
-
-              },
-
-              rotation: {
-
-                x:
-                  0,
-
-                y:
-                  0,
-
-                z:
-                  0,
-
-              },
-
+        bimCore.createDesignPieceInstance({
+          definitionId:
+            definition.id,
+          transform: {
+            position: {
+              x: 0,
+              y: 0,
+              z: 0,
             },
-
-            tags:
-              [],
-
-          });
-
+            rotation: {
+              x: 0,
+              y: 0,
+              z: 0,
+            },
+          },
+          tags: [],
+        });
 
       console.log(
-        "First PieceInstance created:",
+        "STEP asset created:",
+        asset,
+      );
+      console.log(
+        "STEP PieceDefinition created:",
+        definition,
+      );
+      console.log(
+        "First STEP PieceInstance created:",
         instance,
       );
 
-
-      // ------------------------------------------------------
-      // ACTIVE PIECE
-      //
-      // Temporalmente trabajaremos con la última
-      // PieceDefinition importada.
-      // ------------------------------------------------------
-
       setActivePiece({
-
         definitionId:
           definition.id,
-
         code:
           definition.code,
-
         name:
           definition.name,
-
         instanceCount:
           1,
-
       });
 
+      bimCore.geometryQuery
+        .clearCache();
+
+      await bimCore.setStandardView(
+        "ISO",
+      );
     }
     catch (
       error
     ) {
-
       console.error(
-        "Error importing FrameLogic piece:",
+        "Error importing STEP piece:",
         error,
       );
-
 
       const message =
         error instanceof Error
           ? error.message
-          : String(
-              error,
-            );
-
+          : String(error);
 
       window.alert(
-        `No se pudo importar la pieza.\n\n${message}`,
+        `No se pudo importar la pieza STEP.\n\n${message}`,
       );
-
     }
     finally {
-
       setLoadingPiece(
         false,
       );
-
-
       event.target.value =
         "";
-
     }
-
   }
+
 
   function handleCancelPlacement(): void {
-
     bimCoreRef.current
       ?.cancelDesignPiecePlacement();
-  
   }
 
 
-  // ==========================================================
-  // INSERT ANOTHER INSTANCE
-  // ==========================================================
-
-  async function handleInsertAnotherInstance(): Promise<void> {
-
+  async function handleInsertAnotherInstance():
+    Promise<void> {
     const bimCore =
       bimCoreRef.current;
-  
-  
+
     if (
       !bimCore
       || !activePiece
     ) {
-  
       return;
-  
     }
-  
-  
+
     try {
-  
       setPlacingPiece(
         true,
       );
-  
-  
-      console.log(
-        "Placement mode started:",
-        activePiece.code,
-      );
-  
-  
+
       const instance =
-        await bimCore
-          .startDesignPiecePlacement(
-            activePiece.definitionId,
-          );
-  
-  
-      // --------------------------------------------------------
-      // CANCELLED WITH ESC OR BUTTON
-      // --------------------------------------------------------
-  
-      if (
-        !instance
-      ) {
-  
-        console.log(
-          "Placement cancelled.",
+        await bimCore.startDesignPiecePlacement(
+          activePiece.definitionId,
         );
-  
-  
+
+      if (!instance) {
         return;
-  
       }
-  
-  
-      console.log(
-        "PieceInstance placed:",
-        instance,
-      );
-  
-  
+
       setActivePiece(
         (
           current,
-        ) => {
-  
-          if (
-            !current
-          ) {
-  
-            return current;
-  
-          }
-  
-  
-          return {
-  
-            ...current,
-  
-            instanceCount:
-              current.instanceCount
-              + 1,
-  
-          };
-  
-        },
+        ) =>
+          current
+            ? {
+                ...current,
+                instanceCount:
+                  current.instanceCount + 1,
+              }
+            : current,
       );
-  
     }
     catch (
       error
     ) {
-  
-      console.error(
-        "Error placing PieceInstance:",
-        error,
-      );
-  
-  
       const message =
         error instanceof Error
           ? error.message
-          : String(
-              error,
-            );
-  
-  
+          : String(error);
+
       window.alert(
         `No se pudo insertar la pieza.\n\n${message}`,
       );
-  
     }
     finally {
-  
       setPlacingPiece(
         false,
       );
-  
     }
-  
   }
 
-
-  // ==========================================================
-  // MODEL VISIBILITY
-  // ==========================================================
 
   function handleVisibilityChange(
     id: string,
     visible: boolean,
   ): void {
-
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
-
 
     bimCore.setModelVisible(
       id,
       visible,
     );
-
-
     refreshModels();
-
   }
 
-
-  // ==========================================================
-  // REFERENCE MODEL LAYER
-  // ==========================================================
 
   function handleModelLayerChange(
     id: string,
     layerId: string,
   ): void {
-
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
 
-
     try {
-
       bimCore.setReferenceModelLayer(
         id,
         layerId,
       );
-
-
       refreshModels();
-
     }
     catch (
       error
     ) {
-
       window.alert(
         error instanceof Error
           ? error.message
-          : String(
-              error,
-            ),
+          : String(error),
       );
-
     }
-
   }
 
-
-  // ==========================================================
-  // REMOVE REFERENCE MODEL
-  // ==========================================================
 
   function handleRemoveModel(
     id: string,
   ): void {
-
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
-
 
     bimCore.removeModel(
       id,
     );
-
-
     refreshModels();
-
   }
 
 
-  // ==========================================================
-  // CLEAR REFERENCE MODELS
-  // ==========================================================
-
   function handleClearModels(): void {
-
     const bimCore =
       bimCoreRef.current;
 
-
-    if (
-      !bimCore
-    ) {
-
+    if (!bimCore) {
       return;
-
     }
 
-
     bimCore.clearModels();
-
-
     refreshModels();
-
   }
 
-
-  // ==========================================================
-  // GLOBAL LOADING STATE
-  // ==========================================================
 
   const loading =
     loadingReference
     || loadingPiece;
 
 
-  // ==========================================================
-  // UI
-  // ==========================================================
-
   return (
     <div
       className="bim-page"
     >
-  
-      {/* ====================================================
-          3D VIEWPORT
-          ==================================================== */}
-  
       <div
         ref={containerRef}
         className="bim-viewport"
       />
-  
-  
-      {/* ====================================================
-          VIEW CUBE
-          ==================================================== */}
-  
-  <ViewCube
 
-  orientation={
-    cameraOrientation
-  }
+      <ViewCube
+        orientation={cameraOrientation}
+        projectionMode={projectionMode}
+        onViewChange={handleStandardView}
+        onCardinalChange={handleCardinalDirection}
+        onToggleProjection={
+          () => {
+            void handleToggleProjection();
+          }
+        }
+      />
 
-  projectionMode={
-    projectionMode
-  }
-
-  onViewChange={
-    handleStandardView
-  }
-
-  onCardinalChange={
-    handleCardinalDirection
-  }
-
-  onToggleProjection={
-    () => {
-
-      void handleToggleProjection();
-
-    }
-  }
-
-/>
-  
-  
-      {/* ====================================================
-          TOOLBAR
-          ==================================================== */}
-  
       <div
         className="bim-toolbar"
       >
-
-        {/* --------------------------------------------------
-            REFERENCE IFC
-            -------------------------------------------------- */}
-
         <button
           type="button"
-          onClick={
-            handleOpenReferenceIfc
-          }
-          disabled={
-            loading
-          }
+          onClick={handleOpenReferenceIfc}
+          disabled={loading}
         >
-
           {
             loadingReference
               ? "Cargando referencia..."
               : "Abrir IFC referencia"
           }
-
         </button>
-       
-
-        {/* --------------------------------------------------
-            DESIGN PIECE IFC
-            -------------------------------------------------- */}
 
         <button
           type="button"
-          onClick={
-            handleImportPieceIfc
-          }
-          disabled={
-            loading
-          }
+          onClick={handleImportPieceStep}
+          disabled={loading}
+          title="Importa una pieza STEP directamente al espacio modelo principal"
         >
-
           {
             loadingPiece
-              ? "Importando pieza..."
-              : "Importar pieza IFC"
+              ? "Importando STEP..."
+              : "Importar pieza STEP"
           }
-
         </button>
-
-
-        {/* --------------------------------------------------
-            PIECE DEFINITION PREPARATION
-            -------------------------------------------------- */}
 
         <button
           type="button"
           title="Selecciona una sola pieza y entra en modo de preparación"
-          onClick={
-            handleStartPiecePreparation
-          }
+          onClick={handleStartPiecePreparation}
         >
           Preparar pieza
         </button>
-
 
         {
           piecePreparation.active
@@ -2114,17 +1252,13 @@ catch (
                 }
               </span>
 
-
               <button
                 type="button"
                 title="Selecciona exactamente un CadPoint y úsalo como origen local de la pieza"
-                onClick={
-                  handleSetPreparedPieceOrigin
-                }
+                onClick={handleSetPreparedPieceOrigin}
               >
                 Origen ← punto
               </button>
-
 
               <button
                 type="button"
@@ -2134,13 +1268,10 @@ catch (
                     : "workplane-edit-button"
                 }
                 title="Selecciona cualquier SNAP válido directamente sobre la geometría para definir el origen local"
-                onClick={
-                  handleStartPreparedPieceOriginSnap
-                }
+                onClick={handleStartPreparedPieceOriginSnap}
               >
                 Origen ← SNAP
               </button>
-
 
               {
                 pieceOriginEdit.active
@@ -2153,34 +1284,25 @@ catch (
                 )
               }
 
-
               <button
                 type="button"
                 title="Convierte los CadPoint seleccionados en SNAPs persistentes de la pieza"
-                onClick={
-                  handleAddPreparedPieceSnaps
-                }
+                onClick={handleAddPreparedPieceSnaps}
               >
                 Punto → SNAP
               </button>
 
-
               <button
                 type="button"
                 title="Convierte las CadLine seleccionadas en ejes de referencia persistentes"
-                onClick={
-                  handleAddPreparedPieceAxes
-                }
+                onClick={handleAddPreparedPieceAxes}
               >
                 Línea → eje
               </button>
 
-
               <button
                 type="button"
-                onClick={
-                  handleStopPiecePreparation
-                }
+                onClick={handleStopPiecePreparation}
               >
                 Salir prep
               </button>
@@ -2188,36 +1310,21 @@ catch (
           )
         }
 
-
-        {/* --------------------------------------------------
-            POINT
-            -------------------------------------------------- */}
-
         <button
           type="button"
           title="POINT · tecla P"
-          onClick={
-            handleStartPoint
-          }
+          onClick={handleStartPoint}
         >
           POINT
         </button>
 
-
         <button
           type="button"
           title="LINE · tecla L · ORTHO 0°/90° sobre WorkPlane"
-          onClick={
-            handleStartLine
-          }
+          onClick={handleStartLine}
         >
           LINE
         </button>
-
-
-        {/* --------------------------------------------------
-            WORKPLANE
-            -------------------------------------------------- */}
 
         <button
           type="button"
@@ -2227,15 +1334,12 @@ catch (
               : "workplane-button"
           }
           title="Cambiar WorkPlane: XY → XZ → YZ → OFF"
-          onClick={
-            handleCycleWorkPlane
-          }
+          onClick={handleCycleWorkPlane}
         >
           {
             `WorkPlane: ${workPlaneMode}`
           }
         </button>
-
 
         <button
           type="button"
@@ -2245,13 +1349,10 @@ catch (
               : "workplane-edit-button"
           }
           title="Mover el origen del WorkPlane a un SNAP"
-          onClick={
-            handleSetWorkPlaneOrigin
-          }
+          onClick={handleSetWorkPlaneOrigin}
         >
           WP origen
         </button>
-
 
         <button
           type="button"
@@ -2261,13 +1362,10 @@ catch (
               : "workplane-edit-button"
           }
           title="Definir WorkPlane libre usando 3 SNAPs"
-          onClick={
-            handleSetWorkPlaneThreePoints
-          }
+          onClick={handleSetWorkPlaneThreePoints}
         >
           WP 3 SNAP
         </button>
-
 
         {
           workPlaneEdit.mode !== "NONE"
@@ -2280,68 +1378,44 @@ catch (
           )
         }
 
+        <button
+          type="button"
+          onClick={
+            () => {
+              void handleInsertAnotherInstance();
+            }
+          }
+          disabled={
+            loading
+            || activePiece === null
+            || placingPiece
+          }
+        >
+          {
+            placingPiece
+              ? "Haz clic en el visor..."
+              : activePiece
+                ? `Insertar otra ${activePiece.code}`
+                : "Insertar otra instancia"
+          }
+        </button>
 
-        {/* --------------------------------------------------
-            INSERT ANOTHER INSTANCE
-            -------------------------------------------------- */}
-
-<button
-  type="button"
-
-  onClick={
-    () => {
-
-      void handleInsertAnotherInstance();
-
-    }
-  }
-
-  disabled={
-    loading
-    || activePiece === null
-    || placingPiece
-  }
->
-
-  {
-    placingPiece
-      ? "Haz clic en el visor..."
-      : activePiece
-        ? `Insertar otra ${activePiece.code}`
-        : "Insertar otra instancia"
-  }
-
-</button>
-
-{
-  placingPiece
-  && (
-
-    <button
-      type="button"
-      onClick={
-        handleCancelPlacement
-      }
-    >
-
-      Cancelar inserción
-
-    </button>
-
-  )
-}
-
-
-        {/* --------------------------------------------------
-            ACTIVE PIECE INFORMATION
-            -------------------------------------------------- */}
+        {
+          placingPiece
+          && (
+            <button
+              type="button"
+              onClick={handleCancelPlacement}
+            >
+              Cancelar inserción
+            </button>
+          )
+        }
 
         {
           activePiece
           && (
-
             <span>
-
               {
                 `${activePiece.code} · ${activePiece.instanceCount} instancia${
                   activePiece.instanceCount === 1
@@ -2349,151 +1423,63 @@ catch (
                     : "s"
                 }`
               }
-
             </span>
-
           )
         }
-
       </div>
 
-
-      {/* ====================================================
-          LAYER PANEL
-          ==================================================== */}
-
       <LayerPanel
-
-        layers={
-          layers
-        }
-
-        activeLayerId={
-          activeLayerId
-        }
-
-        onSetActive={
-          handleSetActiveLayer
-        }
-
-        onVisibilityChange={
-          handleLayerVisibilityChange
-        }
-
-        onLockChange={
-          handleLayerLockChange
-        }
-
-        onSnapChange={
-          handleLayerSnapChange
-        }
-
-        onCreate={
-          handleCreateLayer
-        }
-
-        onRemove={
-          handleRemoveLayer
-        }
-
-        onAssignSelection={
-          handleAssignSelectionToLayer
-        }
-
+        layers={layers}
+        activeLayerId={activeLayerId}
+        onSetActive={handleSetActiveLayer}
+        onVisibilityChange={handleLayerVisibilityChange}
+        onLockChange={handleLayerLockChange}
+        onSnapChange={handleLayerSnapChange}
+        onCreate={handleCreateLayer}
+        onRemove={handleRemoveLayer}
+        onAssignSelection={handleAssignSelectionToLayer}
       />
-
-
-      {/* ====================================================
-          REFERENCE MODEL PANEL
-          ==================================================== */}
 
       <ModelPanel
-
-        models={
-          models
-        }
-
-        layers={
-          layers
-        }
-
-        onVisibilityChange={
-          handleVisibilityChange
-        }
-
-        onLayerChange={
-          handleModelLayerChange
-        }
-
-        onRemove={
-          handleRemoveModel
-        }
-
-        onClear={
-          handleClearModels
-        }
-
+        models={models}
+        layers={layers}
+        onVisibilityChange={handleVisibilityChange}
+        onLayerChange={handleModelLayerChange}
+        onRemove={handleRemoveModel}
+        onClear={handleClearModels}
       />
 
-
-      {/* ====================================================
-          REFERENCE IFC FILE INPUT
-          ==================================================== */}
-
       <input
-        ref={
-          referenceFileInputRef
-        }
-
+        ref={referenceFileInputRef}
         type="file"
-
         accept=".ifc"
-
         hidden
-
         onChange={
           (
             event,
           ) => {
-
             void handleReferenceIfcSelected(
               event,
             );
-
           }
         }
       />
 
-
-      {/* ====================================================
-          DESIGN PIECE IFC FILE INPUT
-          ==================================================== */}
-
       <input
-        ref={
-          pieceFileInputRef
-        }
-
+        ref={pieceFileInputRef}
         type="file"
-
-        accept=".ifc"
-
+        accept=".step,.stp"
         hidden
-
         onChange={
           (
             event,
           ) => {
-
-            void handlePieceIfcSelected(
+            void handlePieceStepSelected(
               event,
             );
-
           }
         }
       />
-
     </div>
   );
-
 }
