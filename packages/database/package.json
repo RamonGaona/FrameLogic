@@ -3,11 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
   "devDependencies": {
-    "dotenv": "^17.4.2",
     "prisma": "^7.10.1"
   },
   "dependencies": {
+    "dotenv": "^17.4.2",
+    "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1"
   }
 }
