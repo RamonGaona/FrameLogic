@@ -1,6 +1,10 @@
 export {
   createBimCore,
-} from "./engine/createFrameLogicBimCoreSelectionSafe";
+} from "./engine/createFrameLogicBimCorePrecision";
+
+export type {
+  PrecisionBimCoreInstance,
+} from "./engine/createFrameLogicBimCorePrecision";
 
 export {
   addSceneHelpers,
@@ -108,6 +112,47 @@ export type {
   DesignSnapResult,
   DesignSnapType,
 } from "./interaction/DesignSnapController";
+
+
+export {
+  GeometryQueryEngine,
+} from "./precision/GeometryQueryEngine";
+
+export type {
+  GeometryPrecision,
+  GeometryQueryContext,
+  GeometryQueryKind,
+  GeometryQueryOptions,
+  GeometryQueryProvider,
+  GeometryQueryResult,
+} from "./precision/GeometryQueryEngine";
+
+export {
+  PrecisionSnapEngine,
+} from "./precision/PrecisionSnapEngine";
+
+export type {
+  PrecisionSnapDetails,
+} from "./precision/PrecisionSnapEngine";
+
+export {
+  MeasurementEngine,
+} from "./precision/MeasurementEngine";
+
+export type {
+  AngleMeasurement,
+  DistanceMeasurement,
+  PointToPlaneMeasurement,
+  PointToSegmentMeasurement,
+} from "./precision/MeasurementEngine";
+
+export {
+  PrecisionCameraController,
+} from "./precision/PrecisionCameraController";
+
+export type {
+  PrecisionCameraControls,
+} from "./precision/PrecisionCameraController";
 
 
 export type {
