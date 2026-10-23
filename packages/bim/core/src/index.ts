@@ -149,6 +149,23 @@ export {
 } from "./step/StepEngineeringBridge";
 
 export {
+  importStepVisualPiece,
+} from "./step/StepVisualImporter";
+
+export type {
+  ImportedStepVisualPiece,
+  ImportStepVisualPieceInput,
+} from "./step/StepVisualImporter";
+
+export {
+  StructuralModelExtractor,
+} from "./structural/StructuralModelExtractor";
+
+export type {
+  StructuralModelExtractionOptions,
+} from "./structural/StructuralModelExtractor";
+
+export {
   FrameLogicEngineeringModel,
   PieceEngineeringRegistry,
   AssemblyDefinitionRegistry,
