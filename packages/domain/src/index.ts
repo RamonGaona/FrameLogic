@@ -112,6 +112,16 @@ export type {
 } from "./engineering/FrameLogicEngineeringModel";
 
 export {
+  createEngineeringSnapshot,
+  restoreEngineeringSnapshot,
+} from "./engineering/EngineeringSnapshot";
+
+export type {
+  FrameLogicEngineeringSnapshot,
+  FrameLogicEngineeringSnapshotV1,
+} from "./engineering/EngineeringSnapshot";
+
+export {
   buildStructuralModel,
 } from "./structural/StructuralModel";
 
