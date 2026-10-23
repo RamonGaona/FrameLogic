@@ -4,6 +4,9 @@ import * as THREE from "three";
 export interface PrecisionCameraControls {
   readonly distance: number;
   readonly minDistance: number;
+  truckSpeed?: number;
+  dollyToCursor?: boolean;
+  infinityDolly?: boolean;
   addEventListener(
     type: string,
     listener: () => void,
@@ -32,6 +35,10 @@ export interface PrecisionCameraControls {
     targetZ: number,
     enableTransition: boolean,
   ) => Promise<void> | void;
+  zoomTo?: (
+    zoom: number,
+    enableTransition: boolean,
+  ) => Promise<void> | void;
 }
 
 
@@ -48,12 +55,32 @@ export class PrecisionCameraController {
     this.cameraProvider = cameraProvider;
     this.controls = controls;
 
+    /*
+     * Navegación CAD: el zoom debe seguir el punto inspeccionado y no quedar
+     * bloqueado al acercarse mucho a una pieza pequeña.
+     */
+    if (
+      "dollyToCursor"
+      in this.controls
+    ) {
+      this.controls.dollyToCursor =
+        true;
+    }
+
+    if (
+      "infinityDolly"
+      in this.controls
+    ) {
+      this.controls.infinityDolly =
+        true;
+    }
+
     this.controls.addEventListener(
       "update",
       this.handleControlsUpdate,
     );
 
-    this.syncClipping();
+    this.syncCameraState();
   }
 
 
@@ -78,13 +105,13 @@ export class PrecisionCameraController {
       );
     }
 
-    this.syncClipping();
+    this.syncCameraState();
   }
 
 
   focusObject(
     object: THREE.Object3D,
-    padding = 1.6,
+    padding = 1.35,
   ): boolean {
     object.updateMatrixWorld(true);
 
@@ -106,7 +133,7 @@ export class PrecisionCameraController {
 
   focusBounds(
     bounds: THREE.Box3,
-    padding = 1.6,
+    padding = 1.35,
   ): boolean {
     if (
       bounds.isEmpty()
@@ -133,13 +160,16 @@ export class PrecisionCameraController {
         -1,
       ).normalize();
     }
+    else {
+      direction.normalize();
+    }
 
     const safePadding = Math.max(
       1,
       padding,
     );
     const distance = Math.max(
-      sphere.radius * 2.5 * safePadding,
+      sphere.radius * 2.5,
       this.controls.minDistance * 2,
       0.05,
     );
@@ -171,7 +201,50 @@ export class PrecisionCameraController {
       );
     }
 
-    this.syncClipping();
+    /*
+     * En ortográfica el encuadre correcto se obtiene cambiando escala/zoom,
+     * no acercando físicamente la cámara como en perspectiva.
+     */
+    if (
+      camera
+      instanceof THREE.OrthographicCamera
+      && this.controls.zoomTo
+    ) {
+      const availableWidth =
+        Math.abs(
+          camera.right
+          - camera.left,
+        );
+      const availableHeight =
+        Math.abs(
+          camera.top
+          - camera.bottom,
+        );
+      const diameter =
+        Math.max(
+          sphere.radius
+          * 2
+          * safePadding,
+          1e-6,
+        );
+      const desiredZoom =
+        Math.max(
+          0.01,
+          Math.min(
+            availableWidth
+            / diameter,
+            availableHeight
+            / diameter,
+          ),
+        );
+
+      void this.controls.zoomTo(
+        desiredZoom,
+        true,
+      );
+    }
+
+    this.syncCameraState();
 
     return true;
   }
@@ -187,40 +260,89 @@ export class PrecisionCameraController {
     const camera = this.cameraProvider();
 
     if (
-      !(camera instanceof THREE.PerspectiveCamera)
+      camera
+      instanceof THREE.PerspectiveCamera
     ) {
+      const distance = Math.max(
+        this.controls.distance,
+        this.controls.minDistance,
+        0.001,
+      );
+      const nextNear = THREE.MathUtils.clamp(
+        distance * 1e-5,
+        1e-6,
+        0.01,
+      );
+      const nextFar = Math.max(
+        camera.far,
+        distance * 1000,
+        1000,
+      );
+
+      if (
+        Math.abs(camera.near - nextNear) > 1e-12
+        || Math.abs(camera.far - nextFar) > 1e-6
+      ) {
+        camera.near = nextNear;
+        camera.far = nextFar;
+        camera.updateProjectionMatrix();
+      }
+
       return;
     }
 
-    const distance = Math.max(
-      this.controls.distance,
-      this.controls.minDistance,
-      0.001,
-    );
-    const nextNear = THREE.MathUtils.clamp(
-      distance * 1e-5,
-      1e-6,
-      0.01,
-    );
-    const nextFar = Math.max(
-      camera.far,
-      distance * 1000,
-      1000,
-    );
-
     if (
-      Math.abs(camera.near - nextNear) > 1e-12
-      || Math.abs(camera.far - nextFar) > 1e-6
+      camera
+      instanceof THREE.OrthographicCamera
     ) {
-      camera.near = nextNear;
-      camera.far = nextFar;
-      camera.updateProjectionMatrix();
+      const nextFar = Math.max(
+        camera.far,
+        this.controls.distance * 1000,
+        1000,
+      );
+
+      if (
+        Math.abs(
+          camera.far
+          - nextFar,
+        ) > 1e-6
+      ) {
+        camera.far =
+          nextFar;
+        camera.updateProjectionMatrix();
+      }
     }
   }
 
 
-  private readonly handleControlsUpdate = (): void => {
+  private syncNavigation(): void {
+    const camera =
+      this.cameraProvider();
+
+    if (
+      camera
+      instanceof THREE.OrthographicCamera
+      && typeof this.controls.truckSpeed
+        === "number"
+    ) {
+      /*
+       * En ORTHO evitamos que el pan dependa agresivamente de la distancia
+       * cámara-target. La propia escala ortográfica ya gobierna cuánto se ve.
+       */
+      this.controls.truckSpeed =
+        2;
+    }
+  }
+
+
+  private syncCameraState(): void {
     this.syncClipping();
+    this.syncNavigation();
+  }
+
+
+  private readonly handleControlsUpdate = (): void => {
+    this.syncCameraState();
   };
 
 
