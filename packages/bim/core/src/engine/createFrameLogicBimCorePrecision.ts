@@ -3,6 +3,10 @@ import {
 } from "@framelogic/domain";
 
 import type {
+  StepGeometryDocument,
+} from "@framelogic/geometry";
+
+import type {
   BimCoreInstance,
 } from "./createBimCore";
 
@@ -42,6 +46,15 @@ import {
   StructuralModelExtractor,
 } from "../structural/StructuralModelExtractor";
 
+import {
+  importStepVisualPiece,
+} from "../step/StepVisualImporter";
+
+import type {
+  ImportedStepVisualPiece,
+  ImportStepVisualPieceInput,
+} from "../step/StepVisualImporter";
+
 import type {
   DesignSnapResult,
 } from "../interaction/DesignSnapController";
@@ -74,6 +87,14 @@ export type PrecisionBimCoreInstance =
      * Extrae ejes estructurales colocados y genera nodos/miembros.
      */
     readonly structuralModel: StructuralModelExtractor;
+
+    /**
+     * Importación STEP directa. No genera un IFC intermedio.
+     */
+    readonly importStepPiece: (
+      document: StepGeometryDocument,
+      input: ImportStepVisualPieceInput,
+    ) => ImportedStepVisualPiece;
   };
 
 
@@ -155,6 +176,19 @@ export async function createBimCore(
       engineeringModel,
     );
 
+  const importStepPiece = (
+    document: StepGeometryDocument,
+    input: ImportStepVisualPieceInput,
+  ):
+    ImportedStepVisualPiece =>
+      importStepVisualPiece(
+        document,
+        input,
+        core.designModel,
+        core.designScene,
+        engineeringModel,
+      );
+
   snapRuntime.findSnap = (
     clientX,
     clientY,
@@ -177,6 +211,7 @@ export async function createBimCore(
     precisionCamera,
     engineeringModel,
     structuralModel,
+    importStepPiece,
     dispose: () => {
       if (disposed) {
         return;
