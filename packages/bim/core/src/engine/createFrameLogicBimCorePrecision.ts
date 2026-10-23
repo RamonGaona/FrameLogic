@@ -30,7 +30,6 @@ import type {
   DesignSnapResult,
 } from "../interaction/DesignSnapController";
 
-
 interface DesignSnapRuntime {
   readonly excludedInstanceIds: Set<string>;
   findSnap: (
@@ -38,7 +37,6 @@ interface DesignSnapRuntime {
     clientY: number,
   ) => DesignSnapResult | null;
 }
-
 
 export type PrecisionBimCoreInstance =
   BimCoreInstance
@@ -49,14 +47,20 @@ export type PrecisionBimCoreInstance =
     readonly precisionCamera: PrecisionCameraController;
   };
 
-
 export async function createBimCore(
   container: HTMLElement,
 ): Promise<PrecisionBimCoreInstance> {
-  const core = await createSelectionSafeBimCore(
-    container,
-  );
-  const canvas = core.world.renderer.three.domElement;
+  const core = await createSelectionSafeBimCore(container);
+  const renderer = core.world.renderer;
+
+  if (!renderer) {
+    core.dispose();
+    throw new Error(
+      "FrameLogic precision model space requires an initialized renderer.",
+    );
+  }
+
+  const canvas = renderer.three.domElement;
   const geometryQuery = new GeometryQueryEngine(
     canvas,
     () => core.world.camera.three,
@@ -64,17 +68,13 @@ export async function createBimCore(
     core.designModel,
   );
   const snapRuntime = core.designSnap as unknown as DesignSnapRuntime;
-  const legacyFindSnap = core.designSnap.findSnap.bind(
-    core.designSnap,
-  );
+  const legacyFindSnap = core.designSnap.findSnap.bind(core.designSnap);
   const snapEngine = new PrecisionSnapEngine(
     canvas,
     () => core.world.camera.three,
     geometryQuery,
     legacyFindSnap,
-    () => Array.from(
-      snapRuntime.excludedInstanceIds,
-    ),
+    () => Array.from(snapRuntime.excludedInstanceIds),
     () => core.designSnap.isEnabled,
   );
   const measurement = new MeasurementEngine();
@@ -86,10 +86,7 @@ export async function createBimCore(
   snapRuntime.findSnap = (
     clientX,
     clientY,
-  ) => snapEngine.findSnap(
-    clientX,
-    clientY,
-  );
+  ) => snapEngine.findSnap(clientX, clientY);
 
   const baseDispose = core.dispose;
   let disposed = false;
@@ -100,16 +97,11 @@ export async function createBimCore(
     snapEngine,
     measurement,
     precisionCamera,
-
     dispose: () => {
-      if (
-        disposed
-      ) {
+      if (disposed) {
         return;
       }
-
       disposed = true;
-
       snapRuntime.findSnap = legacyFindSnap;
       precisionCamera.dispose();
       geometryQuery.dispose();
