@@ -10,16 +10,13 @@ export {
   addSceneHelpers,
 } from "./helpers/addSceneHelpers";
 
-
 export type {
   SceneHelpers,
 } from "./helpers/addSceneHelpers";
 
-
 export {
   DesignSceneController,
 } from "./design/DesignSceneController";
-
 
 export type {
   LoadedModelInfo,
@@ -49,7 +46,6 @@ export {
   DesignSelectionController,
 } from "./interaction/DesignSelectionController";
 
-
 export type {
   DesignSelectionListener,
 } from "./interaction/DesignSelectionController";
@@ -57,7 +53,6 @@ export type {
 export {
   DesignTransformController,
 } from "./interaction/DesignTransformController";
-
 
 export type {
   DesignTransformMode,
@@ -75,44 +70,35 @@ export {
   MoveCommand,
 } from "./commands/MoveCommand";
 
-
-
 export {
   DesignRotateController,
 } from "./interaction/DesignRotateController";
-
 
 export {
   RotateCommand,
 } from "./commands/RotateCommand";
 
-
 export {
   CadHistoryController,
 } from "./interaction/CadHistoryController";
-
 
 export type {
   CadTransformSnapshot,
   CadTransformState,
 } from "./interaction/CadHistoryController";
 
-
 export {
   DeleteCommand,
 } from "./commands/DeleteCommand";
-
 
 export {
   DesignSnapController,
 } from "./interaction/DesignSnapController";
 
-
 export type {
   DesignSnapResult,
   DesignSnapType,
 } from "./interaction/DesignSnapController";
-
 
 export {
   GeometryQueryEngine,
@@ -154,6 +140,46 @@ export type {
   PrecisionCameraControls,
 } from "./precision/PrecisionCameraController";
 
+export {
+  StepEngineeringFeatureProvider,
+} from "./precision/StepEngineeringFeatureProvider";
+
+export {
+  registerStepDocumentEngineering,
+} from "./step/StepEngineeringBridge";
+
+export {
+  FrameLogicEngineeringModel,
+  PieceEngineeringRegistry,
+  AssemblyDefinitionRegistry,
+  buildStructuralModel,
+} from "@framelogic/domain";
+
+export type {
+  AddAssemblyComponentInput,
+  AddAssemblyConstraintInput,
+  AssemblyComponentDefinition,
+  AssemblyConstraint,
+  AssemblyConstraintEndpoint,
+  AssemblyConstraintType,
+  AssemblyDefinition,
+  AssemblyEngineeringSummary,
+  EngineeringDataSource,
+  PieceCommercialData,
+  PieceEngineeringData,
+  PieceEngineeringFeature,
+  PieceHoleFeature,
+  PieceMaterialData,
+  PiecePhysicalData,
+  PlacedStructuralAxis,
+  RegisterAssemblyDefinitionInput,
+  StructuralAxisDefinition,
+  StructuralMember,
+  StructuralModel,
+  StructuralNode,
+  StructuralSectionData,
+  UpsertPieceEngineeringInput,
+} from "@framelogic/domain";
 
 export type {
   CreateDesignLayerInput,
@@ -161,7 +187,6 @@ export type {
   DesignLayerListener,
   UpdateDesignLayerInput,
 } from "@framelogic/domain";
-
 
 export {
   CadWorkPlaneController,
@@ -173,7 +198,6 @@ export type {
   CadWorkPlaneState,
 } from "./interaction/CadWorkPlaneController";
 
-
 export {
   CadWorkPlaneEditController,
 } from "./interaction/CadWorkPlaneEditController";
@@ -183,7 +207,6 @@ export type {
   CadWorkPlaneEditMode,
   CadWorkPlaneEditState,
 } from "./interaction/CadWorkPlaneEditController";
-
 
 export {
   CadPointSceneController,
@@ -202,7 +225,6 @@ export type {
   CadPointPosition,
   RegisterCadPointInput,
 } from "@framelogic/domain";
-
 
 export {
   CadPointSelectionController,
@@ -224,11 +246,9 @@ export {
   DeleteCadPointCommand,
 } from "./commands/DeleteCadPointCommand";
 
-
 export {
   CadWindowSelectionController,
 } from "./interaction/CadWindowSelectionController";
-
 
 export {
   CadLineSceneController,
@@ -268,7 +288,6 @@ export type {
   RegisterCadLineInput,
 } from "@framelogic/domain";
 
-
 export {
   CadUnifiedSelectionController,
 } from "./interaction/CadUnifiedSelectionController";
@@ -291,7 +310,6 @@ export {
 export {
   DeleteMixedSelectionCommand,
 } from "./commands/DeleteMixedSelectionCommand";
-
 
 export {
   PieceDefinitionPreparationController,
@@ -317,7 +335,6 @@ export type {
   AddPieceSnapPointInput,
   AddReferenceAxisLineInput,
 } from "@framelogic/domain";
-
 
 export {
   PieceDefinitionOriginEditController,
