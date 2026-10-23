@@ -38,6 +38,10 @@ import {
   StepEngineeringFeatureProvider,
 } from "../precision/StepEngineeringFeatureProvider";
 
+import {
+  StructuralModelExtractor,
+} from "../structural/StructuralModelExtractor";
+
 import type {
   DesignSnapResult,
 } from "../interaction/DesignSnapController";
@@ -65,6 +69,11 @@ export type PrecisionBimCoreInstance =
      * metadata, features STEP, ensamblajes y ejes estructurales.
      */
     readonly engineeringModel: FrameLogicEngineeringModel;
+
+    /**
+     * Extrae ejes estructurales colocados y genera nodos/miembros.
+     */
+    readonly structuralModel: StructuralModelExtractor;
   };
 
 
@@ -139,6 +148,12 @@ export async function createBimCore(
       () => core.world.camera.three,
       core.world.camera.controls as unknown as PrecisionCameraControls,
     );
+  const structuralModel =
+    new StructuralModelExtractor(
+      core.designModel,
+      core.designScene,
+      engineeringModel,
+    );
 
   snapRuntime.findSnap = (
     clientX,
@@ -161,6 +176,7 @@ export async function createBimCore(
     measurement,
     precisionCamera,
     engineeringModel,
+    structuralModel,
     dispose: () => {
       if (disposed) {
         return;
