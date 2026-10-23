@@ -131,6 +131,25 @@ export async function createBimCore(
     );
   }
 
+  /*
+   * FrameLogic es un espacio de trabajo de precisión.
+   *
+   * ORTHOGRAPHIC es la proyección primaria: evita la distorsión visual
+   * de perspectiva y hace que TOP/FRONT/RIGHT/ISO se comporten como
+   * vistas técnicas. PERSPECTIVE sigue disponible mediante el toggle,
+   * pero deja de ser el estado inicial del model space.
+   */
+  if (
+    core.getCameraProjectionMode()
+    !== "ORTHOGRAPHIC"
+  ) {
+    await core.toggleCameraProjection();
+  }
+
+  await core.setStandardView(
+    "ISO",
+  );
+
   const canvas =
     renderer.three.domElement;
   const engineeringModel =
@@ -205,6 +224,38 @@ export async function createBimCore(
         engineeringModel,
       );
 
+  const baseLoadIfcFile =
+    core.loadIfcFile.bind(
+      core,
+    );
+
+  const loadIfcFile =
+    async (
+      file: File,
+    ) => {
+      const model =
+        await baseLoadIfcFile(
+          file,
+        );
+
+      /*
+       * Un IFC de referencia no cambia la política de cámara de FrameLogic.
+       * Después de cargarlo recuperamos una vista ISO ortográfica encuadrada.
+       */
+      if (
+        core.getCameraProjectionMode()
+        !== "ORTHOGRAPHIC"
+      ) {
+        await core.toggleCameraProjection();
+      }
+
+      await core.setStandardView(
+        "ISO",
+      );
+
+      return model;
+    };
+
   snapRuntime.findSnap = (
     clientX,
     clientY,
@@ -221,6 +272,7 @@ export async function createBimCore(
 
   return {
     ...core,
+    loadIfcFile,
     geometryQuery,
     snapEngine,
     measurement,
