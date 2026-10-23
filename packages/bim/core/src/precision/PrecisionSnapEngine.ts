@@ -13,14 +13,12 @@ import {
   GeometryQueryEngine,
 } from "./GeometryQueryEngine";
 
-
 export interface PrecisionSnapDetails {
   readonly snap: DesignSnapResult;
   readonly geometry: GeometryQueryResult | null;
   readonly screenDistancePx: number;
   readonly source: "LEGACY" | "PRECISION";
 }
-
 
 const SNAP_PRIORITY: Readonly<Record<DesignSnapType, number>> = {
   CUSTOM: 0,
@@ -34,7 +32,6 @@ const SNAP_PRIORITY: Readonly<Record<DesignSnapType, number>> = {
   REFERENCE: 5,
 };
 
-
 export class PrecisionSnapEngine {
   private readonly domElement: HTMLElement;
   private readonly cameraProvider: () => THREE.Camera;
@@ -46,7 +43,6 @@ export class PrecisionSnapEngine {
   private readonly excludedSourceIdsProvider: () => readonly string[];
   private readonly enabledProvider: () => boolean;
   private readonly pixelTolerance: number;
-
 
   constructor(
     domElement: HTMLElement,
@@ -64,47 +60,30 @@ export class PrecisionSnapEngine {
     this.cameraProvider = cameraProvider;
     this.geometryQuery = geometryQuery;
     this.legacyFindSnap = legacyFindSnap;
-    this.excludedSourceIdsProvider = excludedSourceIdsProvider
-      ?? (() => []);
-    this.enabledProvider = enabledProvider
-      ?? (() => true);
-    this.pixelTolerance = Math.max(
-      1,
-      pixelTolerance,
-    );
+    this.excludedSourceIdsProvider = excludedSourceIdsProvider ?? (() => []);
+    this.enabledProvider = enabledProvider ?? (() => true);
+    this.pixelTolerance = Math.max(1, pixelTolerance);
   }
-
 
   findSnap(
     clientX: number,
     clientY: number,
   ): DesignSnapResult | null {
-    return this.findSnapDetails(
-      clientX,
-      clientY,
-    )?.snap ?? null;
+    return this.findSnapDetails(clientX, clientY)?.snap ?? null;
   }
-
 
   findSnapDetails(
     clientX: number,
     clientY: number,
   ): PrecisionSnapDetails | null {
-    if (
-      !this.enabledProvider()
-    ) {
+    if (!this.enabledProvider()) {
       return null;
     }
 
     const candidates: PrecisionSnapDetails[] = [];
-    const legacy = this.legacyFindSnap(
-      clientX,
-      clientY,
-    );
+    const legacy = this.legacyFindSnap(clientX, clientY);
 
-    if (
-      legacy
-    ) {
+    if (legacy) {
       candidates.push({
         snap: {
           type: legacy.type,
@@ -132,20 +111,11 @@ export class PrecisionSnapEngine {
       },
     );
 
-    for (
-      const geometry
-      of geometryCandidates
-    ) {
-      const snapType = this.mapGeometryKind(
-        geometry,
-      );
-
-      if (
-        !snapType
-      ) {
+    for (const geometry of geometryCandidates) {
+      const snapType = this.mapGeometryKind(geometry);
+      if (!snapType) {
         continue;
       }
-
       candidates.push({
         snap: {
           type: snapType,
@@ -158,44 +128,24 @@ export class PrecisionSnapEngine {
       });
     }
 
-    candidates.sort(
-      (
-        first,
-        second,
-      ) => {
-        const priorityDelta = SNAP_PRIORITY[first.snap.type]
-          - SNAP_PRIORITY[second.snap.type];
+    candidates.sort((first, second) => {
+      const priorityDelta = SNAP_PRIORITY[first.snap.type]
+        - SNAP_PRIORITY[second.snap.type];
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
 
-        if (
-          priorityDelta !== 0
-        ) {
-          return priorityDelta;
-        }
+      const geometryRankDelta = this.geometryRank(first.geometry)
+        - this.geometryRank(second.geometry);
+      if (geometryRankDelta !== 0) {
+        return geometryRankDelta;
+      }
 
-        if (
-          first.source !== second.source
-        ) {
-          if (
-            first.geometry?.precision === "MODEL_EXACT"
-          ) {
-            return -1;
-          }
-
-          if (
-            second.geometry?.precision === "MODEL_EXACT"
-          ) {
-            return 1;
-          }
-        }
-
-        return first.screenDistancePx
-          - second.screenDistancePx;
-      },
-    );
+      return first.screenDistancePx - second.screenDistancePx;
+    });
 
     return candidates[0] ?? null;
   }
-
 
   queryGeometry(
     clientX: number,
@@ -211,45 +161,49 @@ export class PrecisionSnapEngine {
     );
   }
 
-
   private mapGeometryKind(
     geometry: GeometryQueryResult,
   ): DesignSnapType | null {
-    switch (
-      geometry.kind
-    ) {
+    switch (geometry.kind) {
       case "CAD_LINE_INTERSECTION":
         return "INTERSECTION";
-
       case "CIRCLE_CENTER":
         return "CENTER";
-
       case "VERTEX":
       case "CAD_LINE_ENDPOINT":
         return "ENDPOINT";
-
       case "CAD_POINT":
         return "POINT";
-
       case "EDGE_MIDPOINT":
       case "CAD_LINE_MIDPOINT":
         return "MIDPOINT";
-
-      case "REFERENCE_POINT":
-        return "CUSTOM";
-
       case "REFERENCE_AXIS_ORIGIN":
       case "REFERENCE_AXIS_NEAREST":
       case "EDGE_NEAREST":
       case "CAD_LINE_NEAREST":
-      case "FACE_POINT":
         return "REFERENCE";
-
+      case "REFERENCE_POINT":
+      case "FACE_POINT":
+        return null;
       default:
         return null;
     }
   }
 
+  private geometryRank(
+    geometry: GeometryQueryResult | null,
+  ): number {
+    if (!geometry) {
+      return 0;
+    }
+    if (geometry.precision === "MODEL_EXACT") {
+      return 0;
+    }
+    if (geometry.precision === "DERIVED_MESH") {
+      return 1;
+    }
+    return 2;
+  }
 
   private screenDistance(
     point: THREE.Vector3,
@@ -257,37 +211,17 @@ export class PrecisionSnapEngine {
     clientY: number,
   ): number {
     const rect = this.domElement.getBoundingClientRect();
-
-    if (
-      rect.width <= 0
-      || rect.height <= 0
-    ) {
+    if (rect.width <= 0 || rect.height <= 0) {
       return Number.POSITIVE_INFINITY;
     }
 
-    const camera = this.cameraProvider();
-    const projected = point.clone()
-      .project(camera);
-
-    if (
-      projected.z < -1
-      || projected.z > 1
-    ) {
+    const projected = point.clone().project(this.cameraProvider());
+    if (projected.z < -1 || projected.z > 1) {
       return Number.POSITIVE_INFINITY;
     }
 
-    const screenX = rect.left
-      + (projected.x + 1)
-      * 0.5
-      * rect.width;
-    const screenY = rect.top
-      + (1 - projected.y)
-      * 0.5
-      * rect.height;
-
-    return Math.hypot(
-      clientX - screenX,
-      clientY - screenY,
-    );
+    const screenX = rect.left + (projected.x + 1) * 0.5 * rect.width;
+    const screenY = rect.top + (1 - projected.y) * 0.5 * rect.height;
+    return Math.hypot(clientX - screenX, clientY - screenY);
   }
 }
