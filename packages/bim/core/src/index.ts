@@ -166,10 +166,12 @@ export type {
 } from "./structural/StructuralModelExtractor";
 
 export {
-  FrameLogicEngineeringModel,
-  PieceEngineeringRegistry,
   AssemblyDefinitionRegistry,
   buildStructuralModel,
+  createEngineeringSnapshot,
+  FrameLogicEngineeringModel,
+  PieceEngineeringRegistry,
+  restoreEngineeringSnapshot,
 } from "@framelogic/domain";
 
 export type {
@@ -182,6 +184,8 @@ export type {
   AssemblyDefinition,
   AssemblyEngineeringSummary,
   EngineeringDataSource,
+  FrameLogicEngineeringSnapshot,
+  FrameLogicEngineeringSnapshotV1,
   PieceCommercialData,
   PieceEngineeringData,
   PieceEngineeringFeature,
