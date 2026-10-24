@@ -43,6 +43,8 @@ export class PrecisionSnapEngine {
   private readonly excludedSourceIdsProvider: () => readonly string[];
   private readonly enabledProvider: () => boolean;
   private readonly pixelTolerance: number;
+  private readonly pointMarker: HTMLDivElement;
+  private disposed = false;
 
   constructor(
     domElement: HTMLElement,
@@ -63,13 +65,81 @@ export class PrecisionSnapEngine {
     this.excludedSourceIdsProvider = excludedSourceIdsProvider ?? (() => []);
     this.enabledProvider = enabledProvider ?? (() => true);
     this.pixelTolerance = Math.max(1, pixelTolerance);
+
+    /*
+     * Confirmación visual del punto geométrico real.
+     *
+     * La etiqueta ENDPOINT/CENTER/... continúa siguiendo al cursor en
+     * DesignSnapController. Este marcador, en cambio, se proyecta desde
+     * snap.point y por eso indica exactamente qué coordenada 3D se usará.
+     *
+     * Es HTML para conservar un tamaño constante en píxeles tanto en cámara
+     * ortográfica como en perspectiva y no participa en ningún raycast.
+     */
+    this.pointMarker = document.createElement(
+      "div",
+    );
+    this.pointMarker.setAttribute(
+      "aria-hidden",
+      "true",
+    );
+    this.pointMarker.style.position =
+      "fixed";
+    this.pointMarker.style.display =
+      "none";
+    this.pointMarker.style.zIndex =
+      "1001";
+    this.pointMarker.style.pointerEvents =
+      "none";
+    this.pointMarker.style.width =
+      "8px";
+    this.pointMarker.style.height =
+      "8px";
+    this.pointMarker.style.boxSizing =
+      "border-box";
+    this.pointMarker.style.borderRadius =
+      "50%";
+    this.pointMarker.style.background =
+      "#ffd54a";
+    this.pointMarker.style.border =
+      "2px solid #111820";
+    this.pointMarker.style.boxShadow =
+      "0 0 0 1px rgba(255,255,255,0.95), 0 0 5px rgba(255,213,74,0.85)";
+    this.pointMarker.style.transform =
+      "translate(-50%, -50%)";
+
+    document.body.append(
+      this.pointMarker,
+    );
+
+    this.domElement.addEventListener(
+      "pointerleave",
+      this.handlePointerLeave,
+    );
+
+    this.domElement.addEventListener(
+      "pointercancel",
+      this.handlePointerLeave,
+    );
   }
 
   findSnap(
     clientX: number,
     clientY: number,
   ): DesignSnapResult | null {
-    return this.findSnapDetails(clientX, clientY)?.snap ?? null;
+    const details =
+      this.findSnapDetails(
+        clientX,
+        clientY,
+      );
+
+    this.updatePointMarker(
+      details?.snap.point
+      ?? null,
+    );
+
+    return details?.snap
+      ?? null;
   }
 
   findSnapDetails(
@@ -159,6 +229,101 @@ export class PrecisionSnapEngine {
         excludedSourceIds: this.excludedSourceIdsProvider(),
       },
     );
+  }
+
+  dispose(): void {
+    if (
+      this.disposed
+    ) {
+      return;
+    }
+
+    this.disposed = true;
+
+    this.domElement.removeEventListener(
+      "pointerleave",
+      this.handlePointerLeave,
+    );
+    this.domElement.removeEventListener(
+      "pointercancel",
+      this.handlePointerLeave,
+    );
+
+    this.pointMarker.remove();
+  }
+
+  private readonly handlePointerLeave = (): void => {
+    this.hidePointMarker();
+  };
+
+  private updatePointMarker(
+    point: THREE.Vector3 | null,
+  ): void {
+    if (
+      this.disposed
+      || !point
+      || !this.enabledProvider()
+    ) {
+      this.hidePointMarker();
+      return;
+    }
+
+    const rect =
+      this.domElement.getBoundingClientRect();
+
+    if (
+      rect.width <= 0
+      || rect.height <= 0
+    ) {
+      this.hidePointMarker();
+      return;
+    }
+
+    const projected =
+      point.clone().project(
+        this.cameraProvider(),
+      );
+
+    if (
+      projected.z < -1
+      || projected.z > 1
+    ) {
+      this.hidePointMarker();
+      return;
+    }
+
+    const screenX =
+      rect.left
+      + (projected.x + 1)
+        * 0.5
+        * rect.width;
+    const screenY =
+      rect.top
+      + (1 - projected.y)
+        * 0.5
+        * rect.height;
+
+    if (
+      screenX < rect.left
+      || screenX > rect.right
+      || screenY < rect.top
+      || screenY > rect.bottom
+    ) {
+      this.hidePointMarker();
+      return;
+    }
+
+    this.pointMarker.style.left =
+      `${screenX}px`;
+    this.pointMarker.style.top =
+      `${screenY}px`;
+    this.pointMarker.style.display =
+      "block";
+  }
+
+  private hidePointMarker(): void {
+    this.pointMarker.style.display =
+      "none";
   }
 
   private mapGeometryKind(
