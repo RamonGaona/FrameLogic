@@ -300,6 +300,7 @@ export async function createBimCore(
       disposed = true;
       snapRuntime.findSnap =
         legacyFindSnap;
+      snapEngine.dispose();
       precisionCamera.dispose();
       removeStepEngineeringProvider();
       removeMeshAnalyticProvider();
