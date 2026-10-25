@@ -22,10 +22,22 @@ export interface PieceMaterialData {
 
 export interface PieceCommercialData {
   readonly currency?: string;
+
+  /**
+   * Tarifa comercial o de venta propia de FrameLogic.
+   * Se mantiene separada del costo unitario.
+   */
+  readonly tariff?: number;
+
   readonly unitCost?: number;
   readonly assemblyCost?: number;
   readonly supplier?: string;
   readonly sku?: string;
+
+  /**
+   * Tiempo previsto de instalación/montaje de una unidad.
+   */
+  readonly installationTimeHours?: number;
 }
 
 
