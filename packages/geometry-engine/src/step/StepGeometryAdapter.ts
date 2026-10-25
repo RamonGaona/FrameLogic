@@ -11,7 +11,6 @@ export type StepFeaturePrecision =
   | "BREP_EXACT"
   | "DERIVED";
 
-
 export interface StepMeshData {
   readonly id: string;
   readonly positions: Float32Array;
@@ -19,13 +18,11 @@ export interface StepMeshData {
   readonly normals?: Float32Array;
 }
 
-
 interface StepFeatureBase {
   readonly id: string;
   readonly name?: string;
   readonly precision: StepFeaturePrecision;
 }
-
 
 export interface StepHoleFeature
   extends StepFeatureBase {
@@ -36,7 +33,6 @@ export interface StepHoleFeature
   readonly depth?: number;
 }
 
-
 export interface StepCircleFeature
   extends StepFeatureBase {
   readonly kind: "CIRCLE";
@@ -44,7 +40,6 @@ export interface StepCircleFeature
   readonly normal: Vector3;
   readonly radius: number;
 }
-
 
 export interface StepCylinderFeature
   extends StepFeatureBase {
@@ -55,13 +50,11 @@ export interface StepCylinderFeature
   readonly length?: number;
 }
 
-
 export interface StepPointFeature
   extends StepFeatureBase {
   readonly kind: "POINT";
   readonly position: Point3;
 }
-
 
 export interface StepAxisFeature
   extends StepFeatureBase {
@@ -71,14 +64,12 @@ export interface StepAxisFeature
   readonly length?: number;
 }
 
-
 export interface StepPlaneFeature
   extends StepFeatureBase {
   readonly kind: "PLANE";
   readonly origin: Point3;
   readonly normal: Vector3;
 }
-
 
 export type StepGeometryFeature =
   | StepHoleFeature
@@ -88,14 +79,12 @@ export type StepGeometryFeature =
   | StepAxisFeature
   | StepPlaneFeature;
 
-
 export type StepMatrix4 = readonly [
   number, number, number, number,
   number, number, number, number,
   number, number, number, number,
   number, number, number, number,
 ];
-
 
 export interface StepProductNode {
   readonly id: string;
@@ -105,10 +94,18 @@ export interface StepProductNode {
   readonly localTransform?: StepMatrix4;
 }
 
-
 export interface StepGeometryDocument {
   readonly id: string;
   readonly sourceFileName: string;
+
+  /**
+   * Copia exacta opcional del STEP original.
+   *
+   * FrameLogic la conserva para poder generar posteriormente un paquete
+   * .flpiece sin reconstruir la geometría desde la malla de visualización.
+   */
+  readonly sourceData?:
+    Uint8Array<ArrayBuffer>;
 
   /**
    * Factor que convierte una unidad nativa del STEP a metros.
@@ -131,13 +128,11 @@ export interface StepGeometryDocument {
   readonly products: readonly StepProductNode[];
 }
 
-
 export interface LoadStepGeometryOptions {
   readonly sourceFileName: string;
   readonly targetUnit?: "meter" | "millimeter";
   readonly includeExactFeatures?: boolean;
 }
-
 
 /**
  * Contrato estable entre FrameLogic y cualquier implementación OCCT.
