@@ -234,7 +234,7 @@ export function parseFrameLogicPiecePackage(
 
 export function decodeFrameLogicPieceGeometry(
   value: FrameLogicPiecePackage,
-): Uint8Array {
+): Uint8Array<ArrayBuffer> {
   let binary:
     string;
 
@@ -251,7 +251,9 @@ export function decodeFrameLogicPieceGeometry(
 
   const bytes =
     new Uint8Array(
-      binary.length,
+      new ArrayBuffer(
+        binary.length,
+      ),
     );
 
   for (
