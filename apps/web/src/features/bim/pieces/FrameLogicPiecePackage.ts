@@ -16,6 +16,14 @@ export interface FrameLogicPiecePackageV1 {
     "FRAMELOGIC_PIECE";
   readonly version:
     1;
+
+  /**
+   * Solo los paquetes READY se pueden abrir como piezas propias.
+   * Archivos externos o piezas incompletas deben entrar por Importar pieza.
+   */
+  readonly status:
+    "READY";
+
   readonly geometry: {
     readonly format:
       FrameLogicPieceGeometryFormat;
@@ -24,6 +32,7 @@ export interface FrameLogicPiecePackageV1 {
     readonly dataBase64:
       string;
   };
+
   readonly definition: {
     readonly code:
       string;
@@ -40,7 +49,13 @@ export interface FrameLogicPiecePackageV1 {
     readonly referenceGeometry:
       PieceReferenceGeometry;
   };
-  readonly engineering?:
+
+  /**
+   * Metadata de ingeniería obligatoria en una pieza propia FrameLogic.
+   * La geometría puede ser STEP o IFC, pero Abrir nunca acepta un paquete
+   * que no tenga este bloque validado.
+   */
+  readonly engineering:
     Omit<
       PieceEngineeringData,
       "pieceDefinitionId"
@@ -65,11 +80,21 @@ export function parseFrameLogicPiecePackage(
       !== "FRAMELOGIC_PIECE"
     || value.version
       !== 1
-    || !value.geometry
-    || !value.definition
+    || value.status
+      !== "READY"
   ) {
     throw new Error(
-      "El archivo no es una pieza FrameLogic compatible.",
+      "El archivo no es una pieza FrameLogic READY compatible. Usa Importar pieza para STEP/IFC externos o incompletos.",
+    );
+  }
+
+  if (
+    !value.geometry
+    || !value.definition
+    || !value.engineering
+  ) {
+    throw new Error(
+      "La pieza FrameLogic está incompleta: debe contener geometría, definición y metadatos de ingeniería.",
     );
   }
 
@@ -104,9 +129,25 @@ export function parseFrameLogicPiecePackage(
       .length === 0
     || typeof value.definition.name
       !== "string"
+    || !Array.isArray(
+      value.definition.tags,
+    )
+    || !Array.isArray(
+      value.definition.snapPoints,
+    )
   ) {
     throw new Error(
       "La pieza FrameLogic no contiene una definición válida.",
+    );
+  }
+
+  if (
+    !Array.isArray(
+      value.engineering.features,
+    )
+  ) {
+    throw new Error(
+      "La pieza FrameLogic no contiene metadatos de ingeniería válidos.",
     );
   }
 
