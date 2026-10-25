@@ -65,6 +65,10 @@ import type {
   DesignSnapResult,
 } from "../interaction/DesignSnapController";
 
+import {
+  PieceFrameLogicWorkspaceController,
+} from "../interaction/PieceFrameLogicWorkspaceController";
+
 
 interface DesignSnapRuntime {
   readonly excludedInstanceIds: Set<string>;
@@ -88,6 +92,12 @@ export type PrecisionBimCoreInstance =
      * metadata, features STEP, ensamblajes y ejes estructurales.
      */
     readonly engineeringModel: FrameLogicEngineeringModel;
+
+    /**
+     * Workspace contextual para convertir/editar una pieza FrameLogic.
+     */
+    readonly pieceFrameLogicWorkspace:
+      PieceFrameLogicWorkspaceController;
 
     /**
      * Extrae ejes estructurales colocados y genera nodos/miembros.
@@ -211,6 +221,38 @@ export async function createBimCore(
       engineeringModel,
     );
 
+  const pieceFrameLogicWorkspace =
+    new PieceFrameLogicWorkspaceController(
+      container,
+      canvas,
+      core.designModel,
+      core.designSelection,
+      engineeringModel,
+      {
+        startPreparation: (
+          instanceId,
+        ) => {
+          core.startPieceDefinitionPreparation(
+            instanceId,
+          );
+        },
+        stopPreparation: () => {
+          core.stopPieceDefinitionPreparation();
+        },
+        startOriginSnap: () => {
+          core.startPreparedPieceOriginSnapEdit();
+        },
+        addSnapsFromSelection: () =>
+          core.addPreparedPieceSnapsFromSelection(),
+        addAxesFromSelection: () =>
+          core.addPreparedPieceAxesFromSelection(),
+        setIsoView: () =>
+          core.setStandardView(
+            "ISO",
+          ),
+      },
+    );
+
   const importStepPiece = (
     document: StepGeometryDocument,
     input: ImportStepVisualPieceInput,
@@ -278,6 +320,7 @@ export async function createBimCore(
     measurement,
     precisionCamera,
     engineeringModel,
+    pieceFrameLogicWorkspace,
     structuralModel,
     importStepPiece,
     createEngineeringSnapshot: () =>
@@ -300,6 +343,7 @@ export async function createBimCore(
       disposed = true;
       snapRuntime.findSnap =
         legacyFindSnap;
+      pieceFrameLogicWorkspace.dispose();
       snapEngine.dispose();
       precisionCamera.dispose();
       removeStepEngineeringProvider();
