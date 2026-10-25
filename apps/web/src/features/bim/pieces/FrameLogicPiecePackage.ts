@@ -118,6 +118,15 @@ export function parseFrameLogicPiecePackage(
     );
   }
 
+  if (
+    typeof parsed !== "object"
+    || parsed === null
+  ) {
+    throw new Error(
+      "El archivo no es un paquete FrameLogic válido.",
+    );
+  }
+
   const value =
     parsed as Partial<FrameLogicPiecePackageV1>;
 
