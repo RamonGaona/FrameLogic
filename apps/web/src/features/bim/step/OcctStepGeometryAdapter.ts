@@ -21,6 +21,26 @@ function getOcct() {
 }
 
 
+function cloneSourceData(
+  data: Uint8Array,
+): Uint8Array<ArrayBuffer> {
+  const buffer =
+    new ArrayBuffer(
+      data.byteLength,
+    );
+  const clone =
+    new Uint8Array(
+      buffer,
+    );
+
+  clone.set(
+    data,
+  );
+
+  return clone;
+}
+
+
 /**
  * Adaptador transitorio basado en el importador OCCT ya instalado.
  *
@@ -34,6 +54,10 @@ export class OcctStepGeometryAdapter
     data: Uint8Array,
     options: Parameters<StepGeometryAdapter["load"]>[1],
   ): Promise<StepGeometryDocument> {
+    const sourceData =
+      cloneSourceData(
+        data,
+      );
     const occt =
       await getOcct();
 
@@ -144,6 +168,7 @@ export class OcctStepGeometryAdapter
         crypto.randomUUID(),
       sourceFileName:
         options.sourceFileName,
+      sourceData,
       unitScaleToMeters:
         targetUnit === "millimeter"
           ? 0.001
