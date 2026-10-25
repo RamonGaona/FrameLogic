@@ -69,6 +69,10 @@ import {
   PieceFrameLogicWorkspaceController,
 } from "../interaction/PieceFrameLogicWorkspaceController";
 
+import {
+  PieceFrameLogicPackageController,
+} from "../interaction/PieceFrameLogicPackageController";
+
 
 interface DesignSnapRuntime {
   readonly excludedInstanceIds: Set<string>;
@@ -98,6 +102,12 @@ export type PrecisionBimCoreInstance =
      */
     readonly pieceFrameLogicWorkspace:
       PieceFrameLogicWorkspaceController;
+
+    /**
+     * Conserva la geometría original y genera archivos .flpiece.
+     */
+    readonly pieceFrameLogicPackage:
+      PieceFrameLogicPackageController;
 
     /**
      * Extrae ejes estructurales colocados y genera nodos/miembros.
@@ -221,6 +231,14 @@ export async function createBimCore(
       engineeringModel,
     );
 
+  const pieceFrameLogicPackage =
+    new PieceFrameLogicPackageController(
+      container,
+      core.designModel,
+      core.designSelection,
+      engineeringModel,
+    );
+
   const pieceFrameLogicWorkspace =
     new PieceFrameLogicWorkspaceController(
       container,
@@ -257,7 +275,8 @@ export async function createBimCore(
     document: StepGeometryDocument,
     input: ImportStepVisualPieceInput,
   ):
-    ImportedStepVisualPiece =>
+    ImportedStepVisualPiece => {
+    const imported =
       importStepVisualPiece(
         document,
         input,
@@ -265,6 +284,67 @@ export async function createBimCore(
         core.designScene,
         engineeringModel,
       );
+
+    if (
+      document.sourceData
+    ) {
+      pieceFrameLogicPackage
+        .registerSource(
+          imported.definition.id,
+          {
+            format:
+              "STEP",
+            fileName:
+              document.sourceFileName,
+            data:
+              document.sourceData,
+          },
+        );
+    }
+
+    return imported;
+  };
+
+  const baseImportDesignPieceIfc =
+    core.importDesignPieceIfc.bind(
+      core,
+    );
+
+  const importDesignPieceIfc =
+    async (
+      file: File,
+      input:
+        Parameters<
+          BimCoreInstance[
+            "importDesignPieceIfc"
+          ]
+        >[1],
+    ) => {
+      const sourceData =
+        new Uint8Array(
+          await file.arrayBuffer(),
+        );
+      const imported =
+        await baseImportDesignPieceIfc(
+          file,
+          input,
+        );
+
+      pieceFrameLogicPackage
+        .registerSource(
+          imported.definition.id,
+          {
+            format:
+              "IFC",
+            fileName:
+              file.name,
+            data:
+              sourceData,
+          },
+        );
+
+      return imported;
+    };
 
   const baseLoadIfcFile =
     core.loadIfcFile.bind(
@@ -315,12 +395,14 @@ export async function createBimCore(
   return {
     ...core,
     loadIfcFile,
+    importDesignPieceIfc,
     geometryQuery,
     snapEngine,
     measurement,
     precisionCamera,
     engineeringModel,
     pieceFrameLogicWorkspace,
+    pieceFrameLogicPackage,
     structuralModel,
     importStepPiece,
     createEngineeringSnapshot: () =>
@@ -344,6 +426,7 @@ export async function createBimCore(
       snapRuntime.findSnap =
         legacyFindSnap;
       pieceFrameLogicWorkspace.dispose();
+      pieceFrameLogicPackage.dispose();
       snapEngine.dispose();
       precisionCamera.dispose();
       removeStepEngineeringProvider();
