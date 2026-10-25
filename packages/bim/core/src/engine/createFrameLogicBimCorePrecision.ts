@@ -83,6 +83,31 @@ interface DesignSnapRuntime {
 }
 
 
+interface PieceClipboardEntry {
+  readonly definitionId: string;
+  readonly layerId: string;
+  readonly transform: {
+    readonly position: {
+      readonly x: number;
+      readonly y: number;
+      readonly z: number;
+    };
+    readonly rotation: {
+      readonly x: number;
+      readonly y: number;
+      readonly z: number;
+    };
+  };
+  readonly tags: readonly string[];
+}
+
+
+interface PastedPieceEntry
+  extends PieceClipboardEntry {
+  readonly id: string;
+}
+
+
 export type PrecisionBimCoreInstance =
   BimCoreInstance
   & {
@@ -387,6 +412,277 @@ export async function createBimCore(
       clientY,
     );
 
+  let pieceClipboard:
+    PieceClipboardEntry[] =
+      [];
+
+  const isEditableTarget = (
+    target: EventTarget | null,
+  ): boolean => {
+    if (
+      !(target instanceof HTMLElement)
+    ) {
+      return false;
+    }
+
+    return (
+      target.isContentEditable
+      || target.tagName === "INPUT"
+      || target.tagName === "TEXTAREA"
+      || target.tagName === "SELECT"
+    );
+  };
+
+  const cloneClipboardEntry = (
+    instanceId: string,
+  ):
+    PieceClipboardEntry
+    | null => {
+    const instance =
+      core.designModel
+        .pieceInstances
+        .get(
+          instanceId,
+        );
+
+    if (!instance) {
+      return null;
+    }
+
+    return {
+      definitionId:
+        instance.definitionId,
+      layerId:
+        instance.layerId,
+      transform: {
+        position: {
+          x:
+            instance.transform.position.x,
+          y:
+            instance.transform.position.y,
+          z:
+            instance.transform.position.z,
+        },
+        rotation: {
+          x:
+            instance.transform.rotation.x,
+          y:
+            instance.transform.rotation.y,
+          z:
+            instance.transform.rotation.z,
+        },
+      },
+      tags: [
+        ...instance.tags,
+      ],
+    };
+  };
+
+  const createPastedPiece = (
+    entry: PieceClipboardEntry,
+    id?: string,
+  ):
+    PastedPieceEntry => {
+    const instance =
+      core.createDesignPieceInstance({
+        id,
+        definitionId:
+          entry.definitionId,
+        layerId:
+          entry.layerId,
+        transform: {
+          position: {
+            ...entry.transform.position,
+          },
+          rotation: {
+            ...entry.transform.rotation,
+          },
+        },
+        tags: [
+          ...entry.tags,
+        ],
+      });
+
+    return {
+      id:
+        instance.id,
+      definitionId:
+        instance.definitionId,
+      layerId:
+        instance.layerId,
+      transform: {
+        position: {
+          ...instance.transform.position,
+        },
+        rotation: {
+          ...instance.transform.rotation,
+        },
+      },
+      tags: [
+        ...instance.tags,
+      ],
+    };
+  };
+
+  const pasteClipboard = (): void => {
+    if (
+      pieceClipboard.length < 1
+    ) {
+      return;
+    }
+
+    core.cancelActiveCadCommand();
+
+    const pasted =
+      pieceClipboard.map(
+        (
+          entry,
+        ) =>
+          createPastedPiece(
+            entry,
+          ),
+      );
+
+    const pastedIds =
+      pasted.map(
+        (
+          entry,
+        ) =>
+          entry.id,
+      );
+
+    core.designSelection
+      .setSelection(
+        pastedIds,
+      );
+
+    core.cadHistory
+      .recordOperation(
+        "PASTE_PIECES",
+        () => {
+          core.cancelActiveCadCommand();
+          core.designSelection
+            .clearSelection();
+
+          for (
+            const entry
+            of pasted
+          ) {
+            core.removeDesignPieceInstance(
+              entry.id,
+            );
+          }
+        },
+        () => {
+          const restoredIds:
+            string[] =
+              [];
+
+          for (
+            const entry
+            of pasted
+          ) {
+            const restored =
+              createPastedPiece(
+                entry,
+                entry.id,
+              );
+
+            restoredIds.push(
+              restored.id,
+            );
+          }
+
+          core.designSelection
+            .setSelection(
+              restoredIds,
+            );
+        },
+      );
+
+    /*
+     * La copia nace exactamente en la misma coordenada para no introducir
+     * desplazamientos arbitrarios. MOVE queda activo para que el usuario
+     * pueda colocarla inmediatamente. Escape oculta el gizmo y conserva
+     * la copia en la posición original si se desea una superposición exacta.
+     */
+    core.startMoveCommand();
+  };
+
+  const handlePieceClipboardKeyDown =
+    (
+      event: KeyboardEvent,
+    ): void => {
+      if (
+        isEditableTarget(
+          event.target,
+        )
+      ) {
+        return;
+      }
+
+      const commandModifier =
+        event.ctrlKey
+        || event.metaKey;
+
+      if (
+        !commandModifier
+        || event.altKey
+      ) {
+        return;
+      }
+
+      const key =
+        event.key.toLowerCase();
+
+      if (
+        key === "c"
+      ) {
+        const selectedIds =
+          core.designSelection
+            .getSelectedIds();
+
+        const copied =
+          selectedIds
+            .map(
+              cloneClipboardEntry,
+            )
+            .filter(
+              (
+                entry,
+              ): entry is PieceClipboardEntry =>
+                entry !== null,
+            );
+
+        if (
+          copied.length < 1
+        ) {
+          return;
+        }
+
+        pieceClipboard =
+          copied;
+
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      if (
+        key === "v"
+        && pieceClipboard.length > 0
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        pasteClipboard();
+      }
+    };
+
+  window.addEventListener(
+    "keydown",
+    handlePieceClipboardKeyDown,
+  );
+
   const baseDispose =
     core.dispose;
   let disposed =
@@ -423,6 +719,12 @@ export async function createBimCore(
         return;
       }
       disposed = true;
+      window.removeEventListener(
+        "keydown",
+        handlePieceClipboardKeyDown,
+      );
+      pieceClipboard =
+        [];
       snapRuntime.findSnap =
         legacyFindSnap;
       pieceFrameLogicWorkspace.dispose();
