@@ -1,0 +1,38 @@
+.layer-panel-collapsed {
+  width: 150px;
+}
+
+.layer-panel-collapsed .layer-panel-header {
+  border-bottom: none;
+}
+
+.layer-toggle-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+
+  min-width: 0;
+  padding: 5px 6px;
+
+  border: none;
+  border-radius: 4px;
+
+  background: transparent;
+  color: white;
+
+  cursor: pointer;
+  font: inherit;
+}
+
+.layer-toggle-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.layer-toggle-icon {
+  width: 12px;
+  flex: 0 0 12px;
+
+  color: #cbd5df;
+  font-size: 12px;
+  line-height: 1;
+}
