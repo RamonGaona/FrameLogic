@@ -13,9 +13,7 @@ import type {
 
 
 export interface PieceFrameLogicWorkspaceActions {
-  readonly startPreparation: (
-    instanceId: string,
-  ) => void;
+  readonly startPreparation: (instanceId: string) => void;
   readonly stopPreparation: () => void;
   readonly startOriginSnap: () => void;
   readonly addSnapsFromSelection: () => number;
@@ -41,32 +39,44 @@ interface InputRefs {
 }
 
 
+const FRAMELOGIC_READY_TAG =
+  "FRAMELOGIC_READY";
+
+
+function hasUserDefinedEngineering(
+  value: PieceEngineeringData | undefined,
+): boolean {
+  if (!value) {
+    return false;
+  }
+
+  return Boolean(
+    value.revision
+    || value.material
+    || value.commercial
+    || value.physical
+    || value.structuralAxis
+    || value.features.some(
+      (
+        feature,
+      ) =>
+        feature.source === "FRAMELOGIC"
+        || feature.source === "MANUAL",
+    )
+  );
+}
+
+
 export class PieceFrameLogicWorkspaceController {
+  private menu: HTMLDivElement | null = null;
+  private workspace: HTMLDivElement | null = null;
+  private statusElement: HTMLDivElement | null = null;
+  private inputRefs: InputRefs | null = null;
+  private activeInstanceId: string | null = null;
+  private disposed = false;
+
   private readonly hiddenElements =
     new Map<HTMLElement, string>();
-
-  private menu:
-    HTMLDivElement
-    | null = null;
-
-  private workspace:
-    HTMLDivElement
-    | null = null;
-
-  private statusElement:
-    HTMLDivElement
-    | null = null;
-
-  private inputRefs:
-    InputRefs
-    | null = null;
-
-  private activeInstanceId:
-    string
-    | null = null;
-
-  private disposed =
-    false;
 
 
   constructor(
@@ -90,9 +100,7 @@ export class PieceFrameLogicWorkspaceController {
 
 
   private readonly handleContextMenu =
-    (
-      event: MouseEvent,
-    ): void => {
+    (event: MouseEvent): void => {
       if (
         this.disposed
         || this.workspace
@@ -129,15 +137,11 @@ export class PieceFrameLogicWorkspaceController {
 
 
   private readonly handleDocumentPointerDown =
-    (
-      event: PointerEvent,
-    ): void => {
+    (event: PointerEvent): void => {
       if (
         this.menu
         && event.target instanceof Node
-        && !this.menu.contains(
-          event.target,
-        )
+        && !this.menu.contains(event.target)
       ) {
         this.hideMenu();
       }
@@ -169,77 +173,56 @@ export class PieceFrameLogicWorkspaceController {
       return;
     }
 
-    const alreadyHasEngineering =
-      this.engineeringModel.pieces.get(
-        definition.id,
-      ) !== undefined;
+    const isFrameLogic =
+      instance.tags.includes(
+        FRAMELOGIC_READY_TAG,
+      )
+      || hasUserDefinedEngineering(
+        this.engineeringModel.pieces.get(
+          definition.id,
+        ),
+      );
 
     const menu =
-      document.createElement(
-        "div",
-      );
+      document.createElement("div");
 
     Object.assign(
       menu.style,
       {
-        position:
-          "fixed",
-        left:
-          `${clientX}px`,
-        top:
-          `${clientY}px`,
-        zIndex:
-          "10000",
-        minWidth:
-          "230px",
-        padding:
-          "6px",
-        border:
-          "1px solid #596875",
-        borderRadius:
-          "6px",
-        background:
-          "#1f2933",
-        boxShadow:
-          "0 8px 24px rgba(0,0,0,0.35)",
-        fontFamily:
-          "Arial, sans-serif",
+        position: "fixed",
+        left: `${clientX}px`,
+        top: `${clientY}px`,
+        zIndex: "10000",
+        minWidth: "230px",
+        padding: "6px",
+        border: "1px solid #596875",
+        borderRadius: "6px",
+        background: "#1f2933",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+        fontFamily: "Arial, sans-serif",
       },
     );
 
     const button =
-      document.createElement(
-        "button",
-      );
-
-    button.type =
-      "button";
+      document.createElement("button");
+    button.type = "button";
     button.textContent =
-      alreadyHasEngineering
+      isFrameLogic
         ? "Editar pieza FrameLogic"
         : "Convertir a pieza FrameLogic";
 
     Object.assign(
       button.style,
       {
-        width:
-          "100%",
-        padding:
-          "9px 10px",
-        border:
-          "none",
-        borderRadius:
-          "4px",
-        background:
-          "transparent",
-        color:
-          "white",
-        textAlign:
-          "left",
-        cursor:
-          "pointer",
-        fontSize:
-          "13px",
+        width: "100%",
+        padding: "9px 10px",
+        border: "none",
+        borderRadius: "4px",
+        background: "transparent",
+        color: "white",
+        textAlign: "left",
+        cursor: "pointer",
+        fontSize: "13px",
       },
     );
 
@@ -267,14 +250,9 @@ export class PieceFrameLogicWorkspaceController {
       },
     );
 
-    menu.appendChild(
-      button,
-    );
-    document.body.appendChild(
-      menu,
-    );
-    this.menu =
-      menu;
+    menu.appendChild(button);
+    document.body.appendChild(menu);
+    this.menu = menu;
   }
 
 
@@ -292,17 +270,17 @@ export class PieceFrameLogicWorkspaceController {
       this.designModel.pieceInstances.get(
         instanceId,
       );
-
-    if (!instance) {
-      return;
-    }
-
     const definition =
-      this.designModel.pieceDefinitions.get(
-        instance.definitionId,
-      );
+      instance
+        ? this.designModel.pieceDefinitions.get(
+            instance.definitionId,
+          )
+        : undefined;
 
-    if (!definition) {
+    if (
+      !instance
+      || !definition
+    ) {
       return;
     }
 
@@ -342,96 +320,58 @@ export class PieceFrameLogicWorkspaceController {
       );
 
     const workspace =
-      document.createElement(
-        "div",
-      );
-
+      document.createElement("div");
     Object.assign(
       workspace.style,
       {
-        position:
-          "absolute",
-        inset:
-          "0",
-        zIndex:
-          "80",
-        pointerEvents:
-          "none",
-        fontFamily:
-          "Arial, sans-serif",
+        position: "absolute",
+        inset: "0",
+        zIndex: "80",
+        pointerEvents: "none",
+        fontFamily: "Arial, sans-serif",
       },
     );
 
     const topBar =
-      document.createElement(
-        "div",
-      );
-
+      document.createElement("div");
     Object.assign(
       topBar.style,
       {
-        position:
-          "absolute",
-        top:
-          "12px",
-        left:
-          "12px",
-        right:
-          "180px",
-        minHeight:
-          "42px",
-        display:
-          "flex",
-        alignItems:
-          "center",
-        gap:
-          "10px",
-        padding:
-          "8px 12px",
-        border:
-          "1px solid #4b5563",
-        borderRadius:
-          "7px",
-        background:
-          "rgba(31,41,51,0.96)",
-        color:
-          "white",
-        pointerEvents:
-          "auto",
+        position: "absolute",
+        top: "12px",
+        left: "12px",
+        right: "180px",
+        minHeight: "42px",
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+        padding: "8px 12px",
+        border: "1px solid #4b5563",
+        borderRadius: "7px",
+        background: "rgba(31,41,51,0.96)",
+        color: "white",
+        pointerEvents: "auto",
       },
     );
 
     const title =
-      document.createElement(
-        "strong",
-      );
+      document.createElement("strong");
     title.textContent =
       `Pieza FrameLogic · ${code}`;
 
     const subtitle =
-      document.createElement(
-        "span",
-      );
+      document.createElement("span");
     subtitle.textContent =
-      `${name}${
-        classification
-          ? ` · ${classification}`
-          : ""
-      } · solo esta pieza está visible`;
-    subtitle.style.fontSize =
-      "12px";
-    subtitle.style.opacity =
-      "0.72";
+      `${name}${classification ? ` · ${classification}` : ""} · solo esta pieza está visible`;
+    subtitle.style.fontSize = "12px";
+    subtitle.style.opacity = "0.72";
 
     const exitButton =
       this.createButton(
         "Volver al modelo",
-        () => {
-          this.exitWorkspace();
-        },
+        () => this.exitWorkspace(),
       );
-    exitButton.style.marginLeft =
-      "auto";
+    exitButton.style.marginLeft = "auto";
 
     topBar.append(
       title,
@@ -440,146 +380,107 @@ export class PieceFrameLogicWorkspaceController {
     );
 
     const panel =
-      document.createElement(
-        "div",
-      );
-
+      document.createElement("div");
     Object.assign(
       panel.style,
       {
-        position:
-          "absolute",
-        top:
-          "68px",
-        left:
-          "12px",
-        width:
-          "340px",
-        maxHeight:
-          "calc(100vh - 84px)",
-        overflowY:
-          "auto",
-        padding:
-          "12px",
-        border:
-          "1px solid #4b5563",
-        borderRadius:
-          "7px",
-        background:
-          "rgba(31,41,51,0.96)",
-        color:
-          "white",
-        pointerEvents:
-          "auto",
+        position: "absolute",
+        top: "68px",
+        left: "12px",
+        width: "340px",
+        maxHeight: "calc(100vh - 84px)",
+        overflowY: "auto",
+        padding: "12px",
+        border: "1px solid #4b5563",
+        borderRadius: "7px",
+        background: "rgba(31,41,51,0.96)",
+        color: "white",
+        pointerEvents: "auto",
       },
     );
 
-    const engineeringTitle =
-      document.createElement(
-        "strong",
-      );
-    engineeringTitle.textContent =
+    const heading =
+      document.createElement("strong");
+    heading.textContent =
       "Metadatos de ingeniería";
-    engineeringTitle.style.display =
-      "block";
-    engineeringTitle.style.marginBottom =
-      "10px";
+    heading.style.display = "block";
+    heading.style.marginBottom = "10px";
+    panel.appendChild(heading);
 
-    panel.appendChild(
-      engineeringTitle,
-    );
-
-    const inputRefs:
-      InputRefs = {
-        revision:
-          this.addInput(
-            panel,
-            "Revisión",
-            current?.revision,
-          ),
-        materialName:
-          this.addInput(
-            panel,
-            "Material",
-            current?.material?.name,
-          ),
-        materialGrade:
-          this.addInput(
-            panel,
-            "Grado / especificación",
-            current?.material?.grade,
-          ),
-        densityKgPerM3:
-          this.addInput(
-            panel,
-            "Densidad kg/m³",
-            current?.material?.densityKgPerM3,
-            "number",
-          ),
-        currency:
-          this.addInput(
-            panel,
-            "Moneda",
-            current?.commercial?.currency,
-          ),
-        tariff:
-          this.addInput(
-            panel,
-            "Tarifa",
-            current?.commercial?.tariff,
-            "number",
-          ),
-        unitCost:
-          this.addInput(
-            panel,
-            "Costo unitario",
-            current?.commercial?.unitCost,
-            "number",
-          ),
-        assemblyCost:
-          this.addInput(
-            panel,
-            "Costo de montaje",
-            current?.commercial?.assemblyCost,
-            "number",
-          ),
-        supplier:
-          this.addInput(
-            panel,
-            "Proveedor",
-            current?.commercial?.supplier,
-          ),
-        sku:
-          this.addInput(
-            panel,
-            "SKU / código proveedor",
-            current?.commercial?.sku,
-          ),
-        installationTimeHours:
-          this.addInput(
-            panel,
-            "Tiempo instalación (h)",
-            current?.commercial?.installationTimeHours,
-            "number",
-          ),
-        massKg:
-          this.addInput(
-            panel,
-            "Peso / masa kg",
-            current?.physical?.massKg,
-            "number",
-          ),
-        volumeM3:
-          this.addInput(
-            panel,
-            "Volumen m³",
-            current?.physical?.volumeM3,
-            "number",
-          ),
-      };
-
-    this.inputRefs =
-      inputRefs;
+    this.inputRefs = {
+      revision: this.addInput(
+        panel,
+        "Revisión",
+        current?.revision,
+      ),
+      materialName: this.addInput(
+        panel,
+        "Material",
+        current?.material?.name,
+      ),
+      materialGrade: this.addInput(
+        panel,
+        "Grado / especificación",
+        current?.material?.grade,
+      ),
+      densityKgPerM3: this.addInput(
+        panel,
+        "Densidad kg/m³",
+        current?.material?.densityKgPerM3,
+        "number",
+      ),
+      currency: this.addInput(
+        panel,
+        "Moneda",
+        current?.commercial?.currency,
+      ),
+      tariff: this.addInput(
+        panel,
+        "Tarifa",
+        current?.commercial?.tariff,
+        "number",
+      ),
+      unitCost: this.addInput(
+        panel,
+        "Costo unitario",
+        current?.commercial?.unitCost,
+        "number",
+      ),
+      assemblyCost: this.addInput(
+        panel,
+        "Costo de montaje",
+        current?.commercial?.assemblyCost,
+        "number",
+      ),
+      supplier: this.addInput(
+        panel,
+        "Proveedor",
+        current?.commercial?.supplier,
+      ),
+      sku: this.addInput(
+        panel,
+        "SKU / código proveedor",
+        current?.commercial?.sku,
+      ),
+      installationTimeHours: this.addInput(
+        panel,
+        "Tiempo instalación (h)",
+        current?.commercial?.installationTimeHours,
+        "number",
+      ),
+      massKg: this.addInput(
+        panel,
+        "Peso / masa kg",
+        current?.physical?.massKg,
+        "number",
+      ),
+      volumeM3: this.addInput(
+        panel,
+        "Volumen m³",
+        current?.physical?.volumeM3,
+        "number",
+      ),
+    };
 
     const saveButton =
       this.createButton(
@@ -588,51 +489,31 @@ export class PieceFrameLogicWorkspaceController {
           this.saveMetadata();
         },
       );
-    saveButton.style.width =
-      "100%";
-    saveButton.style.marginTop =
-      "10px";
+    saveButton.style.width = "100%";
+    saveButton.style.marginTop = "10px";
+    panel.appendChild(saveButton);
 
-    panel.appendChild(
-      saveButton,
-    );
-
-    const geometryTitle =
-      document.createElement(
-        "strong",
-      );
-    geometryTitle.textContent =
+    const geometryHeading =
+      document.createElement("strong");
+    geometryHeading.textContent =
       "Preparación geométrica";
-    geometryTitle.style.display =
-      "block";
-    geometryTitle.style.margin =
-      "18px 0 8px";
-    panel.appendChild(
-      geometryTitle,
-    );
+    geometryHeading.style.display = "block";
+    geometryHeading.style.margin = "18px 0 8px";
+    panel.appendChild(geometryHeading);
 
-    const geometryHelp =
-      document.createElement(
-        "div",
-      );
-    geometryHelp.textContent =
+    const help =
+      document.createElement("div");
+    help.textContent =
       "Define origen, SNAPs y ejes persistentes sobre la pieza aislada.";
-    geometryHelp.style.fontSize =
-      "11px";
-    geometryHelp.style.opacity =
-      "0.72";
-    geometryHelp.style.marginBottom =
-      "8px";
-    panel.appendChild(
-      geometryHelp,
-    );
+    help.style.fontSize = "11px";
+    help.style.opacity = "0.72";
+    help.style.marginBottom = "8px";
+    panel.appendChild(help);
 
     panel.append(
       this.createButton(
         "Preparar geometría",
-        () => {
-          this.startPreparation();
-        },
+        () => this.startPreparation(),
       ),
       this.createButton(
         "Origen ← SNAP",
@@ -645,11 +526,11 @@ export class PieceFrameLogicWorkspaceController {
         "Punto → SNAP",
         () => {
           this.startPreparation();
-          const added =
+          const count =
             this.actions.addSnapsFromSelection();
           this.setStatus(
-            added > 0
-              ? `${added} SNAP agregado(s).`
+            count > 0
+              ? `${count} SNAP agregado(s).`
               : "No se agregó ningún SNAP.",
           );
         },
@@ -658,11 +539,11 @@ export class PieceFrameLogicWorkspaceController {
         "Línea → eje",
         () => {
           this.startPreparation();
-          const added =
+          const count =
             this.actions.addAxesFromSelection();
           this.setStatus(
-            added > 0
-              ? `${added} eje(s) agregado(s).`
+            count > 0
+              ? `${count} eje(s) agregado(s).`
               : "No se agregó ningún eje.",
           );
         },
@@ -679,40 +560,26 @@ export class PieceFrameLogicWorkspaceController {
     );
 
     const status =
-      document.createElement(
-        "div",
-      );
-    status.style.marginTop =
-      "12px";
-    status.style.padding =
-      "8px";
-    status.style.borderRadius =
-      "5px";
+      document.createElement("div");
+    status.style.marginTop = "12px";
+    status.style.padding = "8px";
+    status.style.borderRadius = "5px";
     status.style.background =
       "rgba(0,0,0,0.18)";
-    status.style.fontSize =
-      "11px";
+    status.style.fontSize = "11px";
     status.textContent =
-      current
-        ? "Esta pieza ya contiene metadatos FrameLogic."
+      hasUserDefinedEngineering(current)
+        ? "Esta pieza ya contiene metadatos FrameLogic definidos por el usuario."
         : "Completa y guarda al menos un metadato para convertir la pieza.";
-
-    panel.appendChild(
-      status,
-    );
-
-    this.statusElement =
-      status;
+    panel.appendChild(status);
+    this.statusElement = status;
 
     workspace.append(
       topBar,
       panel,
     );
-    this.container.appendChild(
-      workspace,
-    );
-    this.workspace =
-      workspace;
+    this.container.appendChild(workspace);
+    this.workspace = workspace;
   }
 
 
@@ -729,9 +596,7 @@ export class PieceFrameLogicWorkspaceController {
         "Preparación geométrica activa.",
       );
     }
-    catch (
-      error
-    ) {
+    catch (error) {
       this.setStatus(
         error instanceof Error
           ? error.message
@@ -767,32 +632,24 @@ export class PieceFrameLogicWorkspaceController {
       this.engineeringModel.pieces.get(
         instance.definitionId,
       );
-
     const revision =
-      this.stringValue(
-        refs.revision,
-      );
+      this.textValue(refs.revision);
+    const material =
+      this.buildMaterial(refs);
+    const commercial =
+      this.buildCommercial(refs);
+    const physical =
+      this.buildPhysical(refs);
 
-    const material:
-      PieceMaterialData
-      | undefined =
-        this.buildMaterial(
-          refs,
-        );
-
-    const commercial:
-      PieceCommercialData
-      | undefined =
-        this.buildCommercial(
-          refs,
-        );
-
-    const physical:
-      PiecePhysicalData
-      | undefined =
-        this.buildPhysical(
-          refs,
-        );
+    const manualFeatures =
+      existing?.features.filter(
+        (
+          feature,
+        ) =>
+          feature.source === "FRAMELOGIC"
+          || feature.source === "MANUAL",
+      )
+      ?? [];
 
     const hasRealMetadata =
       Boolean(
@@ -801,7 +658,7 @@ export class PieceFrameLogicWorkspaceController {
         || commercial
         || physical
         || existing?.structuralAxis
-        || existing?.features.length
+        || manualFeatures.length > 0
       );
 
     if (!hasRealMetadata) {
@@ -811,26 +668,37 @@ export class PieceFrameLogicWorkspaceController {
       return false;
     }
 
-    const next:
-      PieceEngineeringData =
-        this.engineeringModel.pieces.upsert({
-          pieceDefinitionId:
-            instance.definitionId,
-          revision,
-          material,
-          commercial,
-          physical,
-          structuralAxis:
-            existing?.structuralAxis,
-          features:
-            existing?.features
-            ?? [],
-        });
+    const next =
+      this.engineeringModel.pieces.upsert({
+        pieceDefinitionId:
+          instance.definitionId,
+        revision,
+        material,
+        commercial,
+        physical,
+        structuralAxis:
+          existing?.structuralAxis,
+        features:
+          existing?.features
+          ?? [],
+      });
+
+    if (
+      !instance.tags.includes(
+        FRAMELOGIC_READY_TAG,
+      )
+    ) {
+      this.designModel.pieceInstances.updateTags(
+        instance.id,
+        [
+          ...instance.tags,
+          FRAMELOGIC_READY_TAG,
+        ],
+      );
+    }
 
     this.setStatus(
-      `Pieza FrameLogic guardada en memoria · ${
-        next.features.length
-      } feature(s).`,
+      `Pieza convertida a FrameLogic · ${next.features.length} feature(s) disponibles.`,
     );
 
     return true;
@@ -839,21 +707,13 @@ export class PieceFrameLogicWorkspaceController {
 
   private buildMaterial(
     refs: InputRefs,
-  ):
-    PieceMaterialData
-    | undefined {
+  ): PieceMaterialData | undefined {
     const name =
-      this.stringValue(
-        refs.materialName,
-      );
+      this.textValue(refs.materialName);
     const grade =
-      this.stringValue(
-        refs.materialGrade,
-      );
+      this.textValue(refs.materialGrade);
     const densityKgPerM3 =
-      this.numberValue(
-        refs.densityKgPerM3,
-      );
+      this.numericValue(refs.densityKgPerM3);
 
     if (
       !name
@@ -867,43 +727,28 @@ export class PieceFrameLogicWorkspaceController {
       name,
       grade,
       densityKgPerM3,
-      source:
-        "FRAMELOGIC",
+      source: "FRAMELOGIC",
     };
   }
 
 
   private buildCommercial(
     refs: InputRefs,
-  ):
-    PieceCommercialData
-    | undefined {
+  ): PieceCommercialData | undefined {
     const currency =
-      this.stringValue(
-        refs.currency,
-      );
+      this.textValue(refs.currency);
     const tariff =
-      this.numberValue(
-        refs.tariff,
-      );
+      this.numericValue(refs.tariff);
     const unitCost =
-      this.numberValue(
-        refs.unitCost,
-      );
+      this.numericValue(refs.unitCost);
     const assemblyCost =
-      this.numberValue(
-        refs.assemblyCost,
-      );
+      this.numericValue(refs.assemblyCost);
     const supplier =
-      this.stringValue(
-        refs.supplier,
-      );
+      this.textValue(refs.supplier);
     const sku =
-      this.stringValue(
-        refs.sku,
-      );
+      this.textValue(refs.sku);
     const installationTimeHours =
-      this.numberValue(
+      this.numericValue(
         refs.installationTimeHours,
       );
 
@@ -933,17 +778,11 @@ export class PieceFrameLogicWorkspaceController {
 
   private buildPhysical(
     refs: InputRefs,
-  ):
-    PiecePhysicalData
-    | undefined {
+  ): PiecePhysicalData | undefined {
     const massKg =
-      this.numberValue(
-        refs.massKg,
-      );
+      this.numericValue(refs.massKg);
     const volumeM3 =
-      this.numberValue(
-        refs.volumeM3,
-      );
+      this.numericValue(refs.volumeM3);
 
     if (
       massKg === undefined
@@ -955,8 +794,7 @@ export class PieceFrameLogicWorkspaceController {
     return {
       massKg,
       volumeM3,
-      source:
-        "FRAMELOGIC",
+      source: "FRAMELOGIC",
     };
   }
 
@@ -964,68 +802,45 @@ export class PieceFrameLogicWorkspaceController {
   private addInput(
     parent: HTMLElement,
     labelText: string,
-    initialValue:
-      string
-      | number
-      | undefined,
-    type =
-      "text",
-  ):
-    HTMLInputElement {
+    initialValue: string | number | undefined,
+    type = "text",
+  ): HTMLInputElement {
     const label =
-      document.createElement(
-        "label",
-      );
-    label.textContent =
-      labelText;
-    label.style.display =
-      "block";
-    label.style.marginTop =
-      "8px";
-    label.style.fontSize =
-      "11px";
-    label.style.color =
-      "#cbd5e1";
+      document.createElement("label");
+    label.textContent = labelText;
+    Object.assign(
+      label.style,
+      {
+        display: "block",
+        marginTop: "8px",
+        fontSize: "11px",
+        color: "#cbd5e1",
+      },
+    );
 
     const input =
-      document.createElement(
-        "input",
-      );
-    input.type =
-      type;
+      document.createElement("input");
+    input.type = type;
     input.value =
       initialValue === undefined
         ? ""
-        : String(
-            initialValue,
-          );
+        : String(initialValue);
 
-    if (
-      type === "number"
-    ) {
-      input.step =
-        "any";
+    if (type === "number") {
+      input.step = "any";
     }
 
     Object.assign(
       input.style,
       {
-        display:
-          "block",
-        width:
-          "100%",
-        marginTop:
-          "4px",
-        padding:
-          "7px 8px",
-        border:
-          "1px solid #596875",
-        borderRadius:
-          "4px",
-        background:
-          "#111827",
-        color:
-          "white",
+        display: "block",
+        width: "100%",
+        marginTop: "4px",
+        padding: "7px 8px",
+        border: "1px solid #596875",
+        borderRadius: "4px",
+        background: "#111827",
+        color: "white",
       },
     );
 
@@ -1033,7 +848,6 @@ export class PieceFrameLogicWorkspaceController {
       label,
       input,
     );
-
     return input;
   }
 
@@ -1041,36 +855,23 @@ export class PieceFrameLogicWorkspaceController {
   private createButton(
     text: string,
     onClick: () => void,
-  ):
-    HTMLButtonElement {
+  ): HTMLButtonElement {
     const button =
-      document.createElement(
-        "button",
-      );
-    button.type =
-      "button";
-    button.textContent =
-      text;
+      document.createElement("button");
+    button.type = "button";
+    button.textContent = text;
 
     Object.assign(
       button.style,
       {
-        margin:
-          "4px 4px 0 0",
-        padding:
-          "7px 9px",
-        border:
-          "1px solid #596875",
-        borderRadius:
-          "4px",
-        background:
-          "#1f2933",
-        color:
-          "white",
-        cursor:
-          "pointer",
-        fontSize:
-          "11px",
+        margin: "4px 4px 0 0",
+        padding: "7px 9px",
+        border: "1px solid #596875",
+        borderRadius: "4px",
+        background: "#1f2933",
+        color: "white",
+        cursor: "pointer",
+        fontSize: "11px",
       },
     );
 
@@ -1078,47 +879,33 @@ export class PieceFrameLogicWorkspaceController {
       "click",
       onClick,
     );
-
     return button;
   }
 
 
-  private stringValue(
+  private textValue(
     input: HTMLInputElement,
-  ):
-    string
-    | undefined {
+  ): string | undefined {
     const value =
       input.value.trim();
-
-    return value.length > 0
+    return value
       ? value
       : undefined;
   }
 
 
-  private numberValue(
+  private numericValue(
     input: HTMLInputElement,
-  ):
-    number
-    | undefined {
+  ): number | undefined {
     const text =
       input.value.trim();
 
-    if (
-      text.length === 0
-    ) {
+    if (!text) {
       return undefined;
     }
 
-    const value =
-      Number(
-        text,
-      );
-
-    return Number.isFinite(
-      value,
-    )
+    const value = Number(text);
+    return Number.isFinite(value)
       ? value
       : undefined;
   }
@@ -1127,9 +914,7 @@ export class PieceFrameLogicWorkspaceController {
   private setStatus(
     message: string,
   ): void {
-    if (
-      this.statusElement
-    ) {
+    if (this.statusElement) {
       this.statusElement.textContent =
         message;
     }
@@ -1142,9 +927,7 @@ export class PieceFrameLogicWorkspaceController {
         ".bim-page",
       );
 
-    if (
-      !(page instanceof HTMLElement)
-    ) {
+    if (!(page instanceof HTMLElement)) {
       return;
     }
 
@@ -1157,19 +940,14 @@ export class PieceFrameLogicWorkspaceController {
       ]
     ) {
       const element =
-        page.querySelector(
-          selector,
-        );
+        page.querySelector(selector);
 
-      if (
-        element instanceof HTMLElement
-      ) {
+      if (element instanceof HTMLElement) {
         this.hiddenElements.set(
           element,
           element.style.display,
         );
-        element.style.display =
-          "none";
+        element.style.display = "none";
       }
     }
   }
@@ -1177,16 +955,11 @@ export class PieceFrameLogicWorkspaceController {
 
   private restoreMainUi(): void {
     for (
-      const [
-        element,
-        previousDisplay,
-      ]
+      const [element, display]
       of this.hiddenElements
     ) {
-      element.style.display =
-        previousDisplay;
+      element.style.display = display;
     }
-
     this.hiddenElements.clear();
   }
 
@@ -1197,34 +970,25 @@ export class PieceFrameLogicWorkspaceController {
     this.restoreMainUi();
 
     this.workspace?.remove();
-    this.workspace =
-      null;
-    this.statusElement =
-      null;
-    this.inputRefs =
-      null;
-    this.activeInstanceId =
-      null;
+    this.workspace = null;
+    this.statusElement = null;
+    this.inputRefs = null;
+    this.activeInstanceId = null;
   }
 
 
   private hideMenu(): void {
     this.menu?.remove();
-    this.menu =
-      null;
+    this.menu = null;
   }
 
 
   dispose(): void {
-    if (
-      this.disposed
-    ) {
+    if (this.disposed) {
       return;
     }
 
-    this.disposed =
-      true;
-
+    this.disposed = true;
     this.canvas.removeEventListener(
       "contextmenu",
       this.handleContextMenu,
@@ -1236,9 +1000,7 @@ export class PieceFrameLogicWorkspaceController {
 
     this.hideMenu();
 
-    if (
-      this.workspace
-    ) {
+    if (this.workspace) {
       this.exitWorkspace();
     }
   }
