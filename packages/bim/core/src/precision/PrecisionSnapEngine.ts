@@ -153,7 +153,18 @@ export class PrecisionSnapEngine {
     const candidates: PrecisionSnapDetails[] = [];
     const legacy = this.legacyFindSnap(clientX, clientY);
 
-    if (legacy) {
+    /*
+     * REFERENCE no representa una ubicación geométrica singular.
+     * Puede ser simplemente el punto más cercano sobre una arista/eje,
+     * por lo que no debe presentarse como un SNAP seleccionable.
+     *
+     * Las referencias siguen disponibles mediante queryGeometry() para
+     * cálculos, inferencias y herramientas futuras.
+     */
+    if (
+      legacy
+      && legacy.type !== "REFERENCE"
+    ) {
       candidates.push({
         snap: {
           type: legacy.type,
@@ -342,11 +353,15 @@ export class PrecisionSnapEngine {
       case "EDGE_MIDPOINT":
       case "CAD_LINE_MIDPOINT":
         return "MIDPOINT";
+
+      /*
+       * Estos resultados siguen siendo útiles para GeometryQuery,
+       * pero no son puntos singulares de SNAP.
+       */
       case "REFERENCE_AXIS_ORIGIN":
       case "REFERENCE_AXIS_NEAREST":
       case "EDGE_NEAREST":
       case "CAD_LINE_NEAREST":
-        return "REFERENCE";
       case "REFERENCE_POINT":
       case "FACE_POINT":
         return null;
