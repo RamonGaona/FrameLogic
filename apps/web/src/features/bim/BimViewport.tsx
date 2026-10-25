@@ -41,6 +41,15 @@ import {
   OcctStepGeometryAdapter,
 } from "./step/OcctStepGeometryAdapter";
 
+import {
+  decodeFrameLogicPieceGeometry,
+  parseFrameLogicPiecePackage,
+} from "./pieces/FrameLogicPiecePackage";
+
+import type {
+  FrameLogicPiecePackage,
+} from "./pieces/FrameLogicPiecePackage";
+
 
 interface ActivePieceInfo {
   definitionId: string;
@@ -50,12 +59,27 @@ interface ActivePieceInfo {
 }
 
 
+interface PieceIdentity {
+  code: string;
+  name: string;
+  classification?: string;
+  tags: string[];
+}
+
+
+interface PieceDefinitionSummary {
+  id: string;
+  code: string;
+  name: string;
+}
+
+
 function defaultPieceCode(
   fileName: string,
 ): string {
   return fileName
     .replace(
-      /\.(?:step|stp)$/i,
+      /\.(?:step|stp|ifc)$/i,
       "",
     )
     .trim()
@@ -64,6 +88,77 @@ function defaultPieceCode(
       "_",
     )
     .toUpperCase();
+}
+
+
+function isStepFile(
+  fileName: string,
+): boolean {
+  return /\.(?:step|stp)$/i.test(
+    fileName,
+  );
+}
+
+
+function isIfcFile(
+  fileName: string,
+): boolean {
+  return /\.ifc$/i.test(
+    fileName,
+  );
+}
+
+
+function requestPieceIdentity(
+  fileName: string,
+): PieceIdentity | null {
+  const defaultCode =
+    defaultPieceCode(
+      fileName,
+    );
+
+  const codeInput =
+    window.prompt(
+      "Código de la pieza:",
+      defaultCode,
+    );
+  const code =
+    codeInput?.trim();
+
+  if (!code) {
+    return null;
+  }
+
+  const nameInput =
+    window.prompt(
+      "Nombre de la pieza:",
+      code,
+    );
+
+  if (nameInput === null) {
+    return null;
+  }
+
+  const classificationInput =
+    window.prompt(
+      "Clasificación opcional:",
+      "",
+    );
+
+  if (classificationInput === null) {
+    return null;
+  }
+
+  return {
+    code,
+    name:
+      nameInput.trim()
+      || code,
+    classification:
+      classificationInput.trim()
+      || undefined,
+    tags: [],
+  };
 }
 
 
@@ -78,7 +173,12 @@ export function BimViewport() {
       null,
     );
 
-  const pieceFileInputRef =
+  const importPieceFileInputRef =
+    useRef<HTMLInputElement>(
+      null,
+    );
+
+  const openFrameLogicPieceInputRef =
     useRef<HTMLInputElement>(
       null,
     );
@@ -101,13 +201,16 @@ export function BimViewport() {
       "PERSPECTIVE"
       | "ORTHOGRAPHIC"
     >(
-      "PERSPECTIVE",
+      "ORTHOGRAPHIC",
     );
 
   const [loadingReference, setLoadingReference] =
     useState(false);
 
-  const [loadingPiece, setLoadingPiece] =
+  const [importingPiece, setImportingPiece] =
+    useState(false);
+
+  const [openingFrameLogicPiece, setOpeningFrameLogicPiece] =
     useState(false);
 
   const [models, setModels] =
@@ -265,8 +368,7 @@ export function BimViewport() {
       window.prompt(
         "Nombre del layer:",
         "",
-      )
-        ?.trim();
+      )?.trim();
 
     if (!name) {
       return;
@@ -349,17 +451,11 @@ export function BimViewport() {
   function handleRemoveLayer(
     layerId: string,
   ): void {
-    const bimCore =
-      bimCoreRef.current;
-
-    if (!bimCore) {
-      return;
-    }
-
     try {
-      bimCore.removeDesignLayer(
-        layerId,
-      );
+      bimCoreRef.current
+        ?.removeDesignLayer(
+          layerId,
+        );
     }
     catch (
       error
@@ -376,17 +472,11 @@ export function BimViewport() {
   function handleAssignSelectionToLayer(
     layerId: string,
   ): void {
-    const bimCore =
-      bimCoreRef.current;
-
-    if (!bimCore) {
-      return;
-    }
-
     try {
-      bimCore.assignCadSelectionToLayer(
-        layerId,
-      );
+      bimCoreRef.current
+        ?.assignCadSelectionToLayer(
+          layerId,
+        );
     }
     catch (
       error
@@ -457,15 +547,9 @@ export function BimViewport() {
 
 
   function handleStartPreparedPieceOriginSnap(): void {
-    const bimCore =
-      bimCoreRef.current;
-
-    if (!bimCore) {
-      return;
-    }
-
     try {
-      bimCore.startPreparedPieceOriginSnapEdit();
+      bimCoreRef.current
+        ?.startPreparedPieceOriginSnapEdit();
     }
     catch (
       error
@@ -608,28 +692,22 @@ export function BimViewport() {
 
       let unsubscribeCamera:
         (() => void)
-        | null =
-          null;
+        | null = null;
       let unsubscribeLayers:
         (() => void)
-        | null =
-          null;
+        | null = null;
       let unsubscribeWorkPlane:
         (() => void)
-        | null =
-          null;
+        | null = null;
       let unsubscribeWorkPlaneEdit:
         (() => void)
-        | null =
-          null;
+        | null = null;
       let unsubscribePiecePreparation:
         (() => void)
-        | null =
-          null;
+        | null = null;
       let unsubscribePieceOriginEdit:
         (() => void)
-        | null =
-          null;
+        | null = null;
 
       void createBimCore(
         container,
@@ -674,12 +752,10 @@ export function BimViewport() {
             unsubscribeLayers =
               instance.subscribeDesignLayers(
                 () => {
-                  if (disposed) {
-                    return;
+                  if (!disposed) {
+                    refreshLayers();
+                    refreshModels();
                   }
-
-                  refreshLayers();
-                  refreshModels();
                 },
               );
 
@@ -814,7 +890,6 @@ export function BimViewport() {
       await bimCore.loadIfcFile(
         file,
       );
-
       refreshModels();
     }
     catch (
@@ -824,7 +899,6 @@ export function BimViewport() {
         "Error loading reference IFC:",
         error,
       );
-
       window.alert(
         "No se pudo cargar el IFC de referencia. Revisa la consola.",
       );
@@ -839,13 +913,110 @@ export function BimViewport() {
   }
 
 
-  function handleImportPieceStep(): void {
-    pieceFileInputRef.current
+  function handleImportPiece(): void {
+    importPieceFileInputRef.current
       ?.click();
   }
 
 
-  async function handlePieceStepSelected(
+  function handleOpenFrameLogicPiece(): void {
+    openFrameLogicPieceInputRef.current
+      ?.click();
+  }
+
+
+  async function importStepDefinition(
+    bimCore: PrecisionBimCoreInstance,
+    data: Uint8Array,
+    sourceFileName: string,
+    identity: PieceIdentity,
+  ): Promise<PieceDefinitionSummary> {
+    const adapter =
+      new OcctStepGeometryAdapter();
+    const document =
+      await adapter.load(
+        data,
+        {
+          sourceFileName,
+          targetUnit:
+            "meter",
+          includeExactFeatures:
+            true,
+        },
+      );
+
+    const {
+      definition,
+    } =
+      bimCore.importStepPiece(
+        document,
+        identity,
+      );
+
+    return definition;
+  }
+
+
+  async function importIfcDefinition(
+    bimCore: PrecisionBimCoreInstance,
+    file: File,
+    identity: PieceIdentity,
+  ): Promise<PieceDefinitionSummary> {
+    const {
+      definition,
+    } =
+      await bimCore.importDesignPieceIfc(
+        file,
+        identity,
+      );
+
+    return definition;
+  }
+
+
+  async function createInitialPieceInstance(
+    bimCore: PrecisionBimCoreInstance,
+    definition: PieceDefinitionSummary,
+  ): Promise<void> {
+    bimCore.createDesignPieceInstance({
+      definitionId:
+        definition.id,
+      transform: {
+        position: {
+          x: 0,
+          y: 0,
+          z: 0,
+        },
+        rotation: {
+          x: 0,
+          y: 0,
+          z: 0,
+        },
+      },
+      tags: [],
+    });
+
+    setActivePiece({
+      definitionId:
+        definition.id,
+      code:
+        definition.code,
+      name:
+        definition.name,
+      instanceCount:
+        1,
+    });
+
+    bimCore.geometryQuery
+      .clearCache();
+
+    await bimCore.setStandardView(
+      "ISO",
+    );
+  }
+
+
+  async function handleImportPieceSelected(
     event: ChangeEvent<HTMLInputElement>,
   ): Promise<void> {
     const file =
@@ -864,165 +1035,276 @@ export function BimViewport() {
       return;
     }
 
-    const defaultCode =
-      defaultPieceCode(
+    if (
+      !isStepFile(
+        file.name,
+      )
+      && !isIfcFile(
+        file.name,
+      )
+    ) {
+      window.alert(
+        "Importar pieza solo acepta STEP, STP o IFC.",
+      );
+      event.target.value =
+        "";
+      return;
+    }
+
+    const identity =
+      requestPieceIdentity(
         file.name,
       );
 
-    const codeInput =
-      window.prompt(
-        "Código de la pieza:",
-        defaultCode,
-      );
-    const code =
-      codeInput?.trim();
-
-    if (!code) {
+    if (!identity) {
       event.target.value =
         "";
       return;
     }
-
-    const nameInput =
-      window.prompt(
-        "Nombre de la pieza:",
-        code,
-      );
-
-    if (nameInput === null) {
-      event.target.value =
-        "";
-      return;
-    }
-
-    const name =
-      nameInput.trim()
-      || code;
-
-    const classificationInput =
-      window.prompt(
-        "Clasificación opcional:",
-        "",
-      );
-
-    if (classificationInput === null) {
-      event.target.value =
-        "";
-      return;
-    }
-
-    const classification =
-      classificationInput.trim();
 
     try {
-      setLoadingPiece(
+      setImportingPiece(
         true,
       );
 
-      const adapter =
-        new OcctStepGeometryAdapter();
-      const data =
-        new Uint8Array(
-          await file.arrayBuffer(),
-        );
-      const document =
-        await adapter.load(
-          data,
-          {
-            sourceFileName:
+      const definition =
+        isStepFile(
+          file.name,
+        )
+          ? await importStepDefinition(
+              bimCore,
+              new Uint8Array(
+                await file.arrayBuffer(),
+              ),
               file.name,
-            targetUnit:
-              "meter",
-            includeExactFeatures:
-              true,
-          },
-        );
+              identity,
+            )
+          : await importIfcDefinition(
+              bimCore,
+              file,
+              identity,
+            );
 
-      const {
-        asset,
+      await createInitialPieceInstance(
+        bimCore,
         definition,
-      } =
-        bimCore.importStepPiece(
-          document,
-          {
-            code,
-            name,
-            classification:
-              classification
-              || undefined,
-            tags: [],
-          },
-        );
-
-      const instance =
-        bimCore.createDesignPieceInstance({
-          definitionId:
-            definition.id,
-          transform: {
-            position: {
-              x: 0,
-              y: 0,
-              z: 0,
-            },
-            rotation: {
-              x: 0,
-              y: 0,
-              z: 0,
-            },
-          },
-          tags: [],
-        });
-
-      console.log(
-        "STEP asset created:",
-        asset,
-      );
-      console.log(
-        "STEP PieceDefinition created:",
-        definition,
-      );
-      console.log(
-        "First STEP PieceInstance created:",
-        instance,
-      );
-
-      setActivePiece({
-        definitionId:
-          definition.id,
-        code:
-          definition.code,
-        name:
-          definition.name,
-        instanceCount:
-          1,
-      });
-
-      bimCore.geometryQuery
-        .clearCache();
-
-      await bimCore.setStandardView(
-        "ISO",
       );
     }
     catch (
       error
     ) {
       console.error(
-        "Error importing STEP piece:",
+        "Error importing external piece:",
         error,
       );
 
-      const message =
-        error instanceof Error
-          ? error.message
-          : String(error);
-
       window.alert(
-        `No se pudo importar la pieza STEP.\n\n${message}`,
+        `No se pudo importar la pieza.\n\n${
+          error instanceof Error
+            ? error.message
+            : String(error)
+        }`,
       );
     }
     finally {
-      setLoadingPiece(
+      setImportingPiece(
+        false,
+      );
+      event.target.value =
+        "";
+    }
+  }
+
+
+  function restoreFrameLogicMetadata(
+    bimCore: PrecisionBimCoreInstance,
+    definitionId: string,
+    piece: FrameLogicPiecePackage,
+  ): void {
+    const registry =
+      bimCore.designModel
+        .pieceDefinitions;
+
+    registry.updateCoordinateSystem(
+      definitionId,
+      piece.definition.coordinateSystem,
+      false,
+    );
+
+    for (
+      const snap
+      of piece.definition.snapPoints
+    ) {
+      registry.addSnapPoint(
+        definitionId,
+        {
+          id:
+            snap.id,
+          name:
+            snap.name,
+          type:
+            snap.type,
+          position: {
+            ...snap.position,
+          },
+          relatedAxisId:
+            snap.relatedAxisId,
+        },
+      );
+    }
+
+    for (
+      const axis
+      of piece.definition
+        .referenceGeometry
+        .axisLines
+    ) {
+      registry.addReferenceAxisLine(
+        definitionId,
+        {
+          id:
+            axis.id,
+          name:
+            axis.name,
+          type:
+            axis.type,
+          origin: {
+            ...axis.origin,
+          },
+          direction: {
+            ...axis.direction,
+          },
+          length:
+            axis.length,
+        },
+      );
+    }
+
+    bimCore.engineeringModel
+      .pieces
+      .upsert({
+        pieceDefinitionId:
+          definitionId,
+        revision:
+          piece.engineering.revision,
+        material:
+          piece.engineering.material,
+        commercial:
+          piece.engineering.commercial,
+        physical:
+          piece.engineering.physical,
+        structuralAxis:
+          piece.engineering.structuralAxis,
+        features:
+          piece.engineering.features,
+      });
+
+    bimCore.geometryQuery
+      .clearCache();
+  }
+
+
+  async function handleFrameLogicPieceSelected(
+    event: ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const bimCore =
+      bimCoreRef.current;
+
+    if (!bimCore) {
+      event.target.value =
+        "";
+      return;
+    }
+
+    try {
+      setOpeningFrameLogicPiece(
+        true,
+      );
+
+      /*
+       * Esta llamada es el filtro de entrada de "Abrir pieza".
+       * Un STEP/IFC suelto, JSON cualquiera, paquete no READY o paquete
+       * sin metadata real se rechaza antes de crear geometría en escena.
+       */
+      const piece =
+        parseFrameLogicPiecePackage(
+          await file.text(),
+        );
+      const bytes =
+        decodeFrameLogicPieceGeometry(
+          piece,
+        );
+      const identity:
+        PieceIdentity = {
+          code:
+            piece.definition.code,
+          name:
+            piece.definition.name,
+          classification:
+            piece.definition.classification,
+          tags: [
+            ...piece.definition.tags,
+          ],
+        };
+
+      const definition =
+        piece.geometry.format
+          === "STEP"
+          ? await importStepDefinition(
+              bimCore,
+              bytes,
+              piece.geometry.fileName,
+              identity,
+            )
+          : await importIfcDefinition(
+              bimCore,
+              new File(
+                [bytes],
+                piece.geometry.fileName,
+                {
+                  type:
+                    "application/octet-stream",
+                },
+              ),
+              identity,
+            );
+
+      restoreFrameLogicMetadata(
+        bimCore,
+        definition.id,
+        piece,
+      );
+
+      await createInitialPieceInstance(
+        bimCore,
+        definition,
+      );
+    }
+    catch (
+      error
+    ) {
+      console.error(
+        "Error opening FrameLogic piece:",
+        error,
+      );
+
+      window.alert(
+        `No se puede abrir como pieza FrameLogic.\n\n${
+          error instanceof Error
+            ? error.message
+            : String(error)
+        }`,
+      );
+    }
+    finally {
+      setOpeningFrameLogicPiece(
         false,
       );
       event.target.value =
@@ -1079,13 +1361,12 @@ export function BimViewport() {
     catch (
       error
     ) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : String(error);
-
       window.alert(
-        `No se pudo insertar la pieza.\n\n${message}`,
+        `No se pudo insertar la pieza.\n\n${
+          error instanceof Error
+            ? error.message
+            : String(error)
+        }`,
       );
     }
     finally {
@@ -1148,36 +1429,25 @@ export function BimViewport() {
   function handleRemoveModel(
     id: string,
   ): void {
-    const bimCore =
-      bimCoreRef.current;
-
-    if (!bimCore) {
-      return;
-    }
-
-    bimCore.removeModel(
-      id,
-    );
+    bimCoreRef.current
+      ?.removeModel(
+        id,
+      );
     refreshModels();
   }
 
 
   function handleClearModels(): void {
-    const bimCore =
-      bimCoreRef.current;
-
-    if (!bimCore) {
-      return;
-    }
-
-    bimCore.clearModels();
+    bimCoreRef.current
+      ?.clearModels();
     refreshModels();
   }
 
 
   const loading =
     loadingReference
-    || loadingPiece;
+    || importingPiece
+    || openingFrameLogicPiece;
 
 
   return (
@@ -1208,6 +1478,7 @@ export function BimViewport() {
           type="button"
           onClick={handleOpenReferenceIfc}
           disabled={loading}
+          title="Carga un IFC como referencia externa del proyecto; no lo convierte en pieza FrameLogic"
         >
           {
             loadingReference
@@ -1218,14 +1489,27 @@ export function BimViewport() {
 
         <button
           type="button"
-          onClick={handleImportPieceStep}
+          onClick={handleImportPiece}
           disabled={loading}
-          title="Importa una pieza STEP directamente al espacio modelo principal"
+          title="Importa una pieza externa STEP/STP o IFC y crea una definición nueva en FrameLogic"
         >
           {
-            loadingPiece
-              ? "Importando STEP..."
-              : "Importar pieza STEP"
+            importingPiece
+              ? "Importando pieza..."
+              : "Importar pieza"
+          }
+        </button>
+
+        <button
+          type="button"
+          onClick={handleOpenFrameLogicPiece}
+          disabled={loading}
+          title="Abre únicamente una pieza FrameLogic READY con geometría y metadatos de ingeniería válidos"
+        >
+          {
+            openingFrameLogicPiece
+              ? "Abriendo pieza..."
+              : "Abrir pieza FrameLogic"
           }
         </button>
 
@@ -1466,15 +1750,31 @@ export function BimViewport() {
       />
 
       <input
-        ref={pieceFileInputRef}
+        ref={importPieceFileInputRef}
         type="file"
-        accept=".step,.stp"
+        accept=".step,.stp,.ifc"
         hidden
         onChange={
           (
             event,
           ) => {
-            void handlePieceStepSelected(
+            void handleImportPieceSelected(
+              event,
+            );
+          }
+        }
+      />
+
+      <input
+        ref={openFrameLogicPieceInputRef}
+        type="file"
+        accept=".flpiece,.json"
+        hidden
+        onChange={
+          (
+            event,
+          ) => {
+            void handleFrameLogicPieceSelected(
               event,
             );
           }
