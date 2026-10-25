@@ -67,13 +67,59 @@ export type FrameLogicPiecePackage =
   FrameLogicPiecePackageV1;
 
 
+function hasObjectData(
+  value: unknown,
+): boolean {
+  return (
+    typeof value === "object"
+    && value !== null
+    && Object.keys(
+      value as Record<string, unknown>,
+    ).length > 0
+  );
+}
+
+
+function hasMeaningfulEngineeringMetadata(
+  engineering:
+    FrameLogicPiecePackageV1["engineering"],
+): boolean {
+  return Boolean(
+    engineering.revision
+    || hasObjectData(
+      engineering.material,
+    )
+    || hasObjectData(
+      engineering.commercial,
+    )
+    || hasObjectData(
+      engineering.physical,
+    )
+    || engineering.structuralAxis
+    || engineering.features.length > 0
+  );
+}
+
+
 export function parseFrameLogicPiecePackage(
   text: string,
 ): FrameLogicPiecePackage {
-  const value =
-    JSON.parse(
+  let parsed:
+    unknown;
+
+  try {
+    parsed = JSON.parse(
       text,
-    ) as Partial<FrameLogicPiecePackageV1>;
+    );
+  }
+  catch {
+    throw new Error(
+      "El archivo no es un paquete FrameLogic válido.",
+    );
+  }
+
+  const value =
+    parsed as Partial<FrameLogicPiecePackageV1>;
 
   if (
     value.schema
@@ -112,6 +158,8 @@ export function parseFrameLogicPiecePackage(
   if (
     typeof value.geometry.fileName
       !== "string"
+    || value.geometry.fileName.trim()
+      .length === 0
     || typeof value.geometry.dataBase64
       !== "string"
     || value.geometry.dataBase64.length
@@ -129,11 +177,18 @@ export function parseFrameLogicPiecePackage(
       .length === 0
     || typeof value.definition.name
       !== "string"
+    || value.definition.name.trim()
+      .length === 0
     || !Array.isArray(
       value.definition.tags,
     )
     || !Array.isArray(
       value.definition.snapPoints,
+    )
+    || !value.definition.coordinateSystem
+    || !value.definition.referenceGeometry
+    || !Array.isArray(
+      value.definition.referenceGeometry.axisLines,
     )
   ) {
     throw new Error(
@@ -151,17 +206,40 @@ export function parseFrameLogicPiecePackage(
     );
   }
 
-  return value as FrameLogicPiecePackageV1;
+  const ready =
+    value as FrameLogicPiecePackageV1;
+
+  if (
+    !hasMeaningfulEngineeringMetadata(
+      ready.engineering,
+    )
+  ) {
+    throw new Error(
+      "La pieza FrameLogic no tiene metadatos de ingeniería definidos. Usa Importar pieza para archivos STEP/IFC externos.",
+    );
+  }
+
+  return ready;
 }
 
 
 export function decodeFrameLogicPieceGeometry(
   value: FrameLogicPiecePackage,
 ): Uint8Array {
-  const binary =
-    window.atob(
+  let binary:
+    string;
+
+  try {
+    binary = window.atob(
       value.geometry.dataBase64,
     );
+  }
+  catch {
+    throw new Error(
+      "La geometría embebida de la pieza FrameLogic está dañada.",
+    );
+  }
+
   const bytes =
     new Uint8Array(
       binary.length,
