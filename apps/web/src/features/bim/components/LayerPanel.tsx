@@ -6,6 +6,8 @@ import type {
   DesignLayer,
 } from "@framelogic/bim-core";
 
+import "./LayerPanel.css";
+
 
 interface LayerPanelProps {
 
