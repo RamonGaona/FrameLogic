@@ -1,0 +1,11 @@
+/*
+ * FrameLogic main model space no longer exposes a separate
+ * "Abrir IFC referencia" action. STEP/STP/IFC external geometry
+ * enters through the single "Importar pieza" flow.
+ *
+ * The legacy handler/input can remain temporarily in BimViewport while
+ * the UI is migrated, but it is intentionally not reachable by users.
+ */
+.bim-toolbar > button:first-of-type {
+  display: none;
+}
