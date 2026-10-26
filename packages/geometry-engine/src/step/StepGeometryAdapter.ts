@@ -108,6 +108,13 @@ export interface StepGeometryDocument {
     Uint8Array<ArrayBuffer>;
 
   /**
+   * Identificador del TopoDS_Shape que permanece vivo dentro del runtime
+   * OpenCascade WASM. GeometryQueryProvider usa este id para resolver
+   * topología exacta sin depender de la triangulación visible.
+   */
+  readonly brepDocumentId?: string;
+
+  /**
    * Factor que convierte una unidad nativa del STEP a metros.
    */
   readonly unitScaleToMeters: number;
