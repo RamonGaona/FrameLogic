@@ -43,6 +43,14 @@ import {
 } from "../drawing/DrawingCenterMarkController";
 
 import {
+  DrawingUsabilityController,
+} from "../drawing/DrawingUsabilityController";
+
+import {
+  CadReferenceImportController,
+} from "../import/CadReferenceImportController";
+
+import {
   OpenCascadeBrepAdvancedProvider,
 } from "../precision/OpenCascadeBrepAdvancedProvider";
 
@@ -282,6 +290,16 @@ export async function createBimCore(
       drawingWorkspace,
     );
 
+  const drawingUsability =
+    new DrawingUsabilityController({
+      container,
+      sectionDrawing,
+      drawingWorkspace,
+      drawingProduction,
+      drawingProfessional,
+      drawingFinishing,
+    });
+
   const baseLoadIfcFile =
     core.loadIfcFile.bind(
       core,
@@ -396,6 +414,25 @@ export async function createBimCore(
       },
     });
 
+  const cadReferenceImport =
+    new CadReferenceImportController({
+      container,
+      designModel:
+        core.designModel,
+      cadLineScene:
+        core.cadLineScene,
+      cadPointScene:
+        core.cadPointScene,
+      clearGeometryQueryCache: () =>
+        core.geometryQuery.clearCache(),
+      onImported: async () => {
+        core.cancelActiveCadCommand();
+        await core.setStandardView(
+          "TOP",
+        );
+      },
+    });
+
   const loadIfcFile =
     async (
       file: File,
@@ -430,7 +467,9 @@ export async function createBimCore(
         handleOpenDrawing,
         true,
       );
+      cadReferenceImport.dispose();
       projectPackage.dispose();
+      drawingUsability.dispose();
       drawingCenterMarks.dispose();
       drawingFinishing.dispose();
       drawingProfessional.dispose();
