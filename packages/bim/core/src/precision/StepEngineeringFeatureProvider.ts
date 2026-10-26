@@ -1,5 +1,9 @@
 import * as THREE from "three";
 
+import {
+  getOpenCascadeBrepKernel,
+} from "@framelogic/geometry";
+
 import type {
   DesignModel,
   EngineeringDataSource,
@@ -13,6 +17,10 @@ import type {
   DesignSceneController,
 } from "../design/DesignSceneController";
 
+import {
+  getStepBrepDocumentId,
+} from "../step/StepEngineeringBridge";
+
 import type {
   GeometryPrecision,
   GeometryQueryContext,
@@ -21,6 +29,13 @@ import type {
 } from "./GeometryQueryEngine";
 
 
+/**
+ * Proveedor STEP de precisión.
+ *
+ * Las features de ingeniería continúan disponibles para ensamblaje/cálculo,
+ * pero vértices y aristas se consultan directamente desde el índice exacto
+ * del TopoDS_Shape que OpenCascade mantiene vivo en WASM.
+ */
 export class StepEngineeringFeatureProvider
   implements GeometryQueryProvider {
   private readonly engineeringModel:
@@ -68,6 +83,18 @@ export class StepEngineeringFeatureProvider
         continue;
       }
 
+      const layer =
+        this.designModel.layers.get(
+          instance.layerId,
+        );
+
+      if (
+        layer?.visible === false
+        || layer?.snapEnabled === false
+      ) {
+        continue;
+      }
+
       const definition =
         this.designModel.pieceDefinitions.get(
           instance.definitionId,
@@ -89,15 +116,31 @@ export class StepEngineeringFeatureProvider
           instance.id,
         );
 
-      if (!object) {
+      if (
+        !object
+        || !object.visible
+      ) {
         continue;
       }
 
       object.updateMatrixWorld(true);
 
       /*
-       * Las features importadas del STEP se conservan en el sistema nativo
-       * del asset. La matrixWorld del objeto lleva ese sistema al workspace.
+       * B-Rep exacto: autoridad geométrica para vértices y aristas STEP.
+       * Three.js solo transforma la coordenada del asset al Model Space.
+       */
+      this.collectBrepTopology(
+        instance.definitionId,
+        instance.id,
+        object,
+        context,
+        results,
+      );
+
+      /*
+       * Features analíticas exactas/derivadas registradas al importar STEP.
+       * Círculos, cilindros, puntos y ejes siguen sirviendo a snap,
+       * ensamblaje e inferencia sin recorrer OCCT en cada pointermove.
        */
       for (
         const feature
@@ -113,10 +156,7 @@ export class StepEngineeringFeatureProvider
       }
 
       /*
-       * El eje estructural, en cambio, pertenece al sistema LOCAL de
-       * PieceDefinition. Primero lo convertimos a coordenadas del asset y
-       * luego aplicamos matrixWorld. Esto mantiene el eje coincidente con la
-       * pieza incluso si el usuario redefine origen u orientación local.
+       * El eje estructural pertenece al sistema LOCAL de PieceDefinition.
        */
       const structuralAxis =
         engineering.structuralAxis;
@@ -157,6 +197,264 @@ export class StepEngineeringFeatureProvider
     }
 
     return results;
+  }
+
+
+  private collectBrepTopology(
+    pieceDefinitionId: string,
+    instanceId: string,
+    object: THREE.Object3D,
+    context: GeometryQueryContext,
+    results: GeometryQueryResult[],
+  ): void {
+    const brepDocumentId =
+      getStepBrepDocumentId(
+        pieceDefinitionId,
+      );
+
+    if (!brepDocumentId) {
+      return;
+    }
+
+    const document =
+      getOpenCascadeBrepKernel()
+        .getDocument(
+          brepDocumentId,
+        );
+
+    if (!document) {
+      return;
+    }
+
+    const scale =
+      document.modelScale;
+
+    for (
+      const vertex
+      of document.vertices
+    ) {
+      this.pushBrepPointCandidate(
+        scaledPoint(
+          vertex.point,
+          scale,
+        ),
+        vertex.id,
+        instanceId,
+        object,
+        context,
+        results,
+        "VERTEX",
+      );
+    }
+
+    for (
+      const edge
+      of document.edges
+    ) {
+      if (edge.midpoint) {
+        this.pushBrepPointCandidate(
+          scaledPoint(
+            edge.midpoint,
+            scale,
+          ),
+          edge.id,
+          instanceId,
+          object,
+          context,
+          results,
+          "EDGE_MIDPOINT",
+        );
+      }
+
+      if (edge.circle) {
+        this.pushBrepPointCandidate(
+          scaledPoint(
+            edge.circle.center,
+            scale,
+          ),
+          `${edge.id}:center`,
+          instanceId,
+          object,
+          context,
+          results,
+          "CIRCLE_CENTER",
+        );
+      }
+
+      if (
+        edge.kind === "LINE"
+        && edge.start
+        && edge.end
+      ) {
+        this.pushBrepNearestLineCandidate(
+          scaledPoint(
+            edge.start,
+            scale,
+          ),
+          scaledPoint(
+            edge.end,
+            scale,
+          ),
+          edge.id,
+          instanceId,
+          object,
+          context,
+          results,
+        );
+      }
+    }
+
+    for (
+      const cylinder
+      of document.cylinders
+    ) {
+      this.pushBrepPointCandidate(
+        scaledPoint(
+          cylinder.axisOrigin,
+          scale,
+        ),
+        cylinder.id,
+        instanceId,
+        object,
+        context,
+        results,
+        "REFERENCE_AXIS_ORIGIN",
+      );
+    }
+  }
+
+
+  private pushBrepPointCandidate(
+    assetPoint: PieceVector3Data,
+    topologyId: string,
+    instanceId: string,
+    object: THREE.Object3D,
+    context: GeometryQueryContext,
+    results: GeometryQueryResult[],
+    kind: GeometryQueryResult["kind"],
+  ): void {
+    const worldPoint =
+      new THREE.Vector3(
+        assetPoint.x,
+        assetPoint.y,
+        assetPoint.z,
+      ).applyMatrix4(
+        object.matrixWorld,
+      );
+
+    const projected =
+      context.projectWorldPoint(
+        worldPoint,
+      );
+
+    if (!projected.visible) {
+      return;
+    }
+
+    const screenDistancePx =
+      Math.hypot(
+        projected.x - context.clientX,
+        projected.y - context.clientY,
+      );
+
+    if (
+      screenDistancePx
+      > context.pixelTolerance
+    ) {
+      return;
+    }
+
+    results.push({
+      kind,
+      point:
+        worldPoint,
+      sourceId:
+        instanceId,
+      relatedSourceIds: [
+        instanceId,
+        `BREP:${topologyId}`,
+      ],
+      object,
+      screenDistancePx,
+      precision:
+        "MODEL_EXACT",
+    });
+  }
+
+
+  private pushBrepNearestLineCandidate(
+    assetStart: PieceVector3Data,
+    assetEnd: PieceVector3Data,
+    topologyId: string,
+    instanceId: string,
+    object: THREE.Object3D,
+    context: GeometryQueryContext,
+    results: GeometryQueryResult[],
+  ): void {
+    const start =
+      new THREE.Vector3(
+        assetStart.x,
+        assetStart.y,
+        assetStart.z,
+      ).applyMatrix4(
+        object.matrixWorld,
+      );
+    const end =
+      new THREE.Vector3(
+        assetEnd.x,
+        assetEnd.y,
+        assetEnd.z,
+      ).applyMatrix4(
+        object.matrixWorld,
+      );
+    const nearest =
+      new THREE.Vector3();
+
+    context.ray.distanceSqToSegment(
+      start,
+      end,
+      undefined,
+      nearest,
+    );
+
+    const projected =
+      context.projectWorldPoint(
+        nearest,
+      );
+
+    if (!projected.visible) {
+      return;
+    }
+
+    const screenDistancePx =
+      Math.hypot(
+        projected.x - context.clientX,
+        projected.y - context.clientY,
+      );
+
+    if (
+      screenDistancePx
+      > context.pixelTolerance
+    ) {
+      return;
+    }
+
+    results.push({
+      kind:
+        "EDGE_NEAREST",
+      point:
+        nearest,
+      sourceId:
+        instanceId,
+      relatedSourceIds: [
+        instanceId,
+        `BREP:${topologyId}`,
+      ],
+      object,
+      screenDistancePx,
+      precision:
+        "MODEL_EXACT",
+    });
   }
 
 
@@ -302,6 +600,21 @@ export class StepEngineeringFeatureProvider
       precision,
     });
   }
+}
+
+
+function scaledPoint(
+  point: PieceVector3Data,
+  scale: number,
+): PieceVector3Data {
+  return {
+    x:
+      point.x * scale,
+    y:
+      point.y * scale,
+    z:
+      point.z * scale,
+  };
 }
 
 
