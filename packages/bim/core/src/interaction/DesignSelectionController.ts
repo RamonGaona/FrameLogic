@@ -20,6 +20,11 @@ export type DesignSelectionListener =
   ) => void;
 
 
+type OutlineMode =
+  | "HOVER"
+  | "SELECTED";
+
+
 // ============================================================
 // DESIGN SELECTION CONTROLLER
 // ============================================================
@@ -72,14 +77,30 @@ export class DesignSelectionController {
 
 
   // ==========================================================
-  // VISUAL SELECTION HELPERS
+  // TECHNICAL EDGE OUTLINES
+  //
+  // Solo se crean para piezas seleccionadas o bajo el mouse.
+  // EdgesGeometry usa un umbral angular para evitar mostrar
+  // diagonales de triangulación y facetas suaves de cilindros.
   // ==========================================================
 
   private readonly helpers =
     new Map<
       string,
-      THREE.BoxHelper
+      THREE.Group
     >();
+
+
+  private hoveredInstanceId:
+    string
+    | null =
+      null;
+
+
+  private hoverHelper:
+    THREE.Group
+    | null =
+      null;
 
 
   // ==========================================================
@@ -128,8 +149,6 @@ export class DesignSelectionController {
 
   // ==========================================================
   // ISOLATION
-  //
-  // Guarda la visibilidad anterior para restaurarla.
   // ==========================================================
 
   private isolationSnapshot:
@@ -185,6 +204,18 @@ export class DesignSelectionController {
       this.handlePointerUp,
     );
 
+
+    this.domElement.addEventListener(
+      "pointermove",
+      this.handlePointerMove,
+    );
+
+
+    this.domElement.addEventListener(
+      "pointerleave",
+      this.handlePointerLeave,
+    );
+
   }
 
 
@@ -206,6 +237,11 @@ export class DesignSelectionController {
 
       this.pointerDownActive =
         false;
+
+
+      this.setHoveredInstance(
+        null,
+      );
 
     }
 
@@ -370,6 +406,7 @@ export class DesignSelectionController {
 
     this.refreshHelpers();
 
+
     this.notify();
 
   }
@@ -419,6 +456,7 @@ export class DesignSelectionController {
 
     this.refreshHelpers();
 
+
     this.notify();
 
   }
@@ -443,6 +481,7 @@ export class DesignSelectionController {
 
 
     this.refreshHelpers();
+
 
     this.notify();
 
@@ -491,6 +530,7 @@ export class DesignSelectionController {
 
     this.refreshHelpers();
 
+
     this.notify();
 
   }
@@ -505,8 +545,6 @@ export class DesignSelectionController {
       event:
         PointerEvent,
     ): void => {
-
-        
 
       if (
         !this.enabled
@@ -528,6 +566,46 @@ export class DesignSelectionController {
 
       this.pointerDownActive =
         true;
+
+    };
+
+
+  // ==========================================================
+  // POINTER MOVE / HOVER
+  // ==========================================================
+
+  private readonly handlePointerMove =
+    (
+      event:
+        PointerEvent,
+    ): void => {
+
+      if (
+        !this.enabled
+        || this.pointerDownActive
+      ) {
+
+        return;
+
+      }
+
+
+      this.setHoveredInstance(
+        this.getInstanceIdAt(
+          event.clientX,
+          event.clientY,
+        ),
+      );
+
+    };
+
+
+  private readonly handlePointerLeave =
+    (): void => {
+
+      this.setHoveredInstance(
+        null,
+      );
 
     };
 
@@ -557,10 +635,6 @@ export class DesignSelectionController {
         false;
 
 
-      // ------------------------------------------------------
-      // DIFFERENTIATE CLICK FROM CAMERA DRAG
-      // ------------------------------------------------------
-
       const dx =
         event.clientX
         - this.pointerDownX;
@@ -582,6 +656,14 @@ export class DesignSelectionController {
         movement > 5
       ) {
 
+        this.setHoveredInstance(
+          this.getInstanceIdAt(
+            event.clientX,
+            event.clientY,
+          ),
+        );
+
+
         return;
 
       }
@@ -589,6 +671,14 @@ export class DesignSelectionController {
 
       this.pick(
         event,
+      );
+
+
+      this.setHoveredInstance(
+        this.getInstanceIdAt(
+          event.clientX,
+          event.clientY,
+        ),
       );
 
     };
@@ -659,29 +749,32 @@ export class DesignSelectionController {
         );
 
 
-    if (
-      intersections.length === 0
+    for (
+      const intersection
+      of intersections
     ) {
 
-      return null;
+      const instanceId =
+        this.findInstanceId(
+          intersection.object,
+        );
+
+
+      if (
+        instanceId
+        && this.isInstanceSelectable(
+          instanceId,
+        )
+      ) {
+
+        return instanceId;
+
+      }
 
     }
 
 
-    const instanceId =
-      this.findInstanceId(
-        intersections[0].object,
-      );
-
-
-    return (
-      instanceId
-      && this.isInstanceSelectable(
-        instanceId,
-      )
-    )
-      ? instanceId
-      : null;
+    return null;
 
   }
 
@@ -695,83 +788,15 @@ export class DesignSelectionController {
       PointerEvent,
   ): void {
 
-    const rect =
-      this.domElement
-        .getBoundingClientRect();
+    const instanceId =
+      this.getInstanceIdAt(
+        event.clientX,
+        event.clientY,
+      );
 
 
     if (
-      rect.width <= 0
-      || rect.height <= 0
-    ) {
-
-      return;
-
-    }
-
-
-    // --------------------------------------------------------
-    // SCREEN -> NDC
-    // --------------------------------------------------------
-
-    this.pointer.x =
-      (
-        (
-          event.clientX
-          - rect.left
-        )
-        / rect.width
-      )
-      * 2
-      - 1;
-
-
-    this.pointer.y =
-      -(
-        (
-          event.clientY
-          - rect.top
-        )
-        / rect.height
-      )
-      * 2
-      + 1;
-
-
-    // --------------------------------------------------------
-    // RAYCAST
-    // --------------------------------------------------------
-
-    this.raycaster.setFromCamera(
-      this.pointer,
-      this.cameraProvider(),
-    );
-
-
-    const objects =
-  this.designScene
-    .getInstanceObjects();
-
-
-
-
-
-    const intersections =
-      this.raycaster
-        .intersectObjects(
-          objects,
-          true,
-        );
-
-        
-
-
-    // --------------------------------------------------------
-    // CLICK ON EMPTY SPACE
-    // --------------------------------------------------------
-
-    if (
-      intersections.length === 0
+      !instanceId
     ) {
 
       if (
@@ -790,36 +815,6 @@ export class DesignSelectionController {
 
     }
 
-
-    // --------------------------------------------------------
-    // FIND PIECE INSTANCE ROOT
-    // --------------------------------------------------------
-
-    const instanceId =
-      this.findInstanceId(
-        intersections[0].object,
-      );
-    
-
-    if (
-      !instanceId
-      || !this.isInstanceSelectable(
-        instanceId,
-      )
-    ) {
-
-      return;
-
-    }
-
-
-    // --------------------------------------------------------
-    // SELECTION MODIFIERS
-    //
-    // Ctrl         = add / toggle
-    // Ctrl + Shift = remove only
-    // Shift only   = no-op
-    // --------------------------------------------------------
 
     if (
       event.shiftKey
@@ -981,39 +976,373 @@ export class DesignSelectionController {
 
 
   // ==========================================================
+  // OUTLINE HELPERS
+  // ==========================================================
+
+  private setHoveredInstance(
+    instanceId:
+      string
+      | null,
+  ): void {
+
+    if (
+      this.hoveredInstanceId
+      === instanceId
+    ) {
+
+      return;
+
+    }
+
+
+    this.hoveredInstanceId =
+      instanceId;
+
+
+    this.refreshHoverHelper();
+
+  }
+
+
+  private refreshHoverHelper(): void {
+
+    if (
+      this.hoverHelper
+    ) {
+
+      this.disposeOutlineHelper(
+        this.hoverHelper,
+      );
+
+
+      this.hoverHelper =
+        null;
+
+    }
+
+
+    const instanceId =
+      this.hoveredInstanceId;
+
+
+    if (
+      !instanceId
+      || this.selectedIds.has(
+        instanceId,
+      )
+      || !this.isInstanceSelectable(
+        instanceId,
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    const object =
+      this.designScene
+        .getInstanceObject(
+          instanceId,
+        );
+
+
+    if (
+      !object
+      || !object.visible
+    ) {
+
+      return;
+
+    }
+
+
+    this.hoverHelper =
+      this.createOutlineHelper(
+        instanceId,
+        object,
+        "HOVER",
+      );
+
+  }
+
+
+  private createOutlineHelper(
+    instanceId: string,
+    object: THREE.Object3D,
+    mode: OutlineMode,
+  ):
+    THREE.Group {
+
+    const group =
+      new THREE.Group();
+
+
+    group.name =
+      mode === "SELECTED"
+        ? `SelectionOutline:${instanceId}`
+        : `HoverOutline:${instanceId}`;
+
+
+    group.raycast =
+      () => {};
+
+
+    const material =
+      new THREE.LineBasicMaterial({
+        color:
+          mode === "SELECTED"
+            ? 0x8aa6b5
+            : 0x334650,
+        transparent:
+          true,
+        opacity:
+          mode === "SELECTED"
+            ? 0.95
+            : 0.72,
+        depthTest:
+          true,
+        depthWrite:
+          false,
+        toneMapped:
+          false,
+      });
+
+
+    this.scene.updateMatrixWorld(
+      true,
+    );
+
+
+    object.updateMatrixWorld(
+      true,
+    );
+
+
+    const inverseRoot =
+      object.matrixWorld
+        .clone()
+        .invert();
+
+
+    let edgeObjectCount =
+      0;
+
+
+    object.traverse(
+      (
+        child,
+      ) => {
+
+        if (
+          !(child instanceof THREE.Mesh)
+        ) {
+
+          return;
+
+        }
+
+
+        const position =
+          child.geometry
+            .getAttribute(
+              "position",
+            );
+
+
+        if (
+          !position
+          || position.count < 3
+        ) {
+
+          return;
+
+        }
+
+
+        const geometry =
+          new THREE.EdgesGeometry(
+            child.geometry,
+            28,
+          );
+
+
+        const edgePosition =
+          geometry.getAttribute(
+            "position",
+          );
+
+
+        if (
+          !edgePosition
+          || edgePosition.count < 2
+        ) {
+
+          geometry.dispose();
+          return;
+
+        }
+
+
+        const lines =
+          new THREE.LineSegments(
+            geometry,
+            material,
+          );
+
+
+        lines.name =
+          `${group.name}:Edges`;
+
+
+        lines.matrixAutoUpdate =
+          false;
+
+
+        lines.matrix.copy(
+          inverseRoot
+            .clone()
+            .multiply(
+              child.matrixWorld,
+            ),
+        );
+
+
+        lines.renderOrder =
+          mode === "SELECTED"
+            ? 12
+            : 11;
+
+
+        lines.raycast =
+          () => {};
+
+
+        group.add(
+          lines,
+        );
+
+
+        edgeObjectCount += 1;
+
+      },
+    );
+
+
+    if (
+      edgeObjectCount === 0
+    ) {
+
+      material.dispose();
+
+    }
+
+
+    object.add(
+      group,
+    );
+
+
+    return group;
+
+  }
+
+
+  private disposeOutlineHelper(
+    helper: THREE.Group,
+  ): void {
+
+    helper.removeFromParent();
+
+
+    const materials =
+      new Set<
+        THREE.Material
+      >();
+
+
+    helper.traverse(
+      (
+        child,
+      ) => {
+
+        if (
+          !(child instanceof THREE.LineSegments)
+        ) {
+
+          return;
+
+        }
+
+
+        child.geometry.dispose();
+
+
+        if (
+          Array.isArray(
+            child.material,
+          )
+        ) {
+
+          for (
+            const material
+            of child.material
+          ) {
+
+            materials.add(
+              material,
+            );
+
+          }
+
+        }
+        else {
+
+          materials.add(
+            child.material,
+          );
+
+        }
+
+      },
+    );
+
+
+    for (
+      const material
+      of materials
+    ) {
+
+      material.dispose();
+
+    }
+
+
+    helper.clear();
+
+  }
+
+
+  // ==========================================================
   // REFRESH VISUAL HELPERS
   // ==========================================================
 
   refreshHelpers(): void {
-
-    // --------------------------------------------------------
-    // REMOVE OLD HELPERS
-    // --------------------------------------------------------
 
     for (
       const helper
       of this.helpers.values()
     ) {
 
-      this.scene.remove(
+      this.disposeOutlineHelper(
         helper,
       );
-
-
-      helper.geometry.dispose();
-
-
-      helper.material.dispose();
 
     }
 
 
     this.helpers.clear();
 
-
-    // --------------------------------------------------------
-    // CREATE HELPERS FOR CURRENT SELECTION
-    // --------------------------------------------------------
 
     for (
       const instanceId
@@ -1036,31 +1365,19 @@ export class DesignSelectionController {
       }
 
 
-      const helper =
-        new THREE.BoxHelper(
-          object,
-        );
-
-
-      helper.name =
-        `Selection:${instanceId}`;
-
-
-      helper.raycast =
-        () => {};
-
-
-      this.scene.add(
-        helper,
-      );
-
-
       this.helpers.set(
         instanceId,
-        helper,
+        this.createOutlineHelper(
+          instanceId,
+          object,
+          "SELECTED",
+        ),
       );
 
     }
+
+
+    this.refreshHoverHelper();
 
   }
 
@@ -1098,6 +1415,20 @@ export class DesignSelectionController {
           true;
 
       }
+
+    }
+
+
+    if (
+      this.hoveredInstanceId
+      && !this.designScene
+        .getInstanceObject(
+          this.hoveredInstanceId,
+        )
+    ) {
+
+      this.hoveredInstanceId =
+        null;
 
     }
 
@@ -1151,7 +1482,6 @@ export class DesignSelectionController {
     }
 
 
-    // Si ya está aislado, primero restauramos.
     if (
       this.isolationSnapshot
     ) {
@@ -1193,6 +1523,11 @@ export class DesignSelectionController {
 
     this.isolationSnapshot =
       snapshot;
+
+
+    this.setHoveredInstance(
+      null,
+    );
 
 
     this.refreshHelpers();
@@ -1287,6 +1622,25 @@ export class DesignSelectionController {
     this.exitIsolation();
 
 
+    this.hoveredInstanceId =
+      null;
+
+
+    if (
+      this.hoverHelper
+    ) {
+
+      this.disposeOutlineHelper(
+        this.hoverHelper,
+      );
+
+
+      this.hoverHelper =
+        null;
+
+    }
+
+
     this.selectedIds.clear();
 
 
@@ -1305,6 +1659,18 @@ export class DesignSelectionController {
     this.domElement.removeEventListener(
       "pointerup",
       this.handlePointerUp,
+    );
+
+
+    this.domElement.removeEventListener(
+      "pointermove",
+      this.handlePointerMove,
+    );
+
+
+    this.domElement.removeEventListener(
+      "pointerleave",
+      this.handlePointerLeave,
     );
 
   }
