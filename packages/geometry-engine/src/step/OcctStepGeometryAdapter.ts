@@ -1,3 +1,4 @@
+// @ts-ignore -- @sunbox/occt-import-js does not publish TypeScript declarations.
 import occtImportJs from "@sunbox/occt-import-js";
 
 import {
@@ -16,14 +17,51 @@ import type {
   StepProductNode,
 } from "./StepGeometryAdapter";
 
+interface OcctArrayAttribute {
+  readonly array: number[];
+}
+
+interface OcctMesh {
+  readonly name: string;
+  readonly attributes: {
+    readonly position: OcctArrayAttribute;
+    readonly normal?: OcctArrayAttribute;
+  };
+  readonly index: OcctArrayAttribute;
+}
+
+interface OcctNode {
+  readonly name: string;
+  readonly meshes: number[];
+  readonly children: OcctNode[];
+}
+
+interface OcctImportResult {
+  readonly success: boolean;
+  readonly root: OcctNode;
+  readonly meshes: OcctMesh[];
+}
+
+interface OcctModule {
+  ReadStepFile(
+    content: Uint8Array,
+    params: {
+      readonly linearUnit: string;
+      readonly linearDeflectionType: string;
+      readonly linearDeflection: number;
+      readonly angularDeflection: number;
+    },
+  ): OcctImportResult;
+}
+
 let occtPromise:
-  ReturnType<typeof occtImportJs>
+  Promise<OcctModule>
   | null =
     null;
 
-function getOcct() {
+function getOcct(): Promise<OcctModule> {
   occtPromise ??=
-    occtImportJs();
+    (occtImportJs() as Promise<OcctModule>);
   return occtPromise;
 }
 
@@ -91,7 +129,10 @@ export class OcctStepGeometryAdapter
     const meshes:
       StepMeshData[] =
       result.meshes.map(
-        (mesh, index) => ({
+        (
+          mesh: OcctMesh,
+          index: number,
+        ) => ({
           id:
             mesh.name
             || `mesh-${index + 1}`,
@@ -128,13 +169,16 @@ export class OcctStepGeometryAdapter
       StepProductNode[] = [];
 
     const visitNode = (
-      node: typeof result.root,
+      node: OcctNode,
       path: string,
     ): string => {
       const id = path;
       const childIds =
         node.children.map(
-          (child, index) =>
+          (
+            child: OcctNode,
+            index: number,
+          ) =>
             visitNode(
               child,
               `${path}/${index}`,
@@ -148,11 +192,15 @@ export class OcctStepGeometryAdapter
         geometryIds:
           node.meshes
             .map(
-              (meshIndex) =>
+              (
+                meshIndex: number,
+              ) =>
                 meshes[meshIndex]?.id,
             )
             .filter(
-              (value): value is string =>
+              (
+                value: string | undefined,
+              ): value is string =>
                 value !== undefined,
             ),
         childIds,
