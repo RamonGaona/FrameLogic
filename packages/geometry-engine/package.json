@@ -1,17 +1,20 @@
 {
-    "name": "@framelogic/geometry",
-    "version": "0.1.0",
-    "private": true,
-    "type": "module",
-    "exports": {
-      ".": "./src/index.ts"
-    },
-    "scripts": {
-      "typecheck": "tsc -p tsconfig.json --noEmit",
-      "test": "vitest run",
-      "test:watch": "vitest"
-    },  
-    "devDependencies": {
-        "vitest": "^5.0.1"
-    }
+  "name": "@framelogic/geometry",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "opencascade.js": "2.0.0-beta.b5ff984"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.1"
+  }
 }
