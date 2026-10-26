@@ -1,4 +1,4 @@
-name: Typecheck
+name: Validate
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  typecheck:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,3 +27,6 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Build web
+        run: npm run build
