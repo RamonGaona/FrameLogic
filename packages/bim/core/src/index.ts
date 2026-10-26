@@ -375,3 +375,48 @@ export type {
   PieceDefinitionOriginEditListener,
   PieceDefinitionOriginEditState,
 } from "./interaction/PieceDefinitionOriginEditController";
+
+export {
+  DrawingProfessionalController,
+} from "./drawing/DrawingProfessionalController";
+
+export type {
+  DrawingProfessionalControllerOptions,
+} from "./drawing/DrawingProfessionalController";
+
+export type {
+  DimensionStyleState,
+  DrawingLineStyle,
+  DrawingProfessionalSnapshot,
+  DrawingProfessionalState,
+  DrawingSectionDisplayState,
+  DrawingSnapMode,
+  DrawingUnit,
+  DrawingViewKind,
+  DrawingViewLayoutState,
+  FrozenDrawingRevisionState,
+  ProfessionalDimensionMode,
+  RevisionCloudState,
+} from "./drawing/DrawingProfessionalModel";
+
+export {
+  AssemblyConstraintSolver,
+} from "./assemblies/AssemblyConstraintSolver";
+
+export type {
+  AssemblyConstraintResidual,
+  AssemblyConstraintSolution,
+} from "./assemblies/AssemblyConstraintSolver";
+
+export {
+  FrameLogicProjectPackageController,
+  parseProjectPackage,
+} from "./project/FrameLogicProjectPackageController";
+
+export type {
+  FrameLogicProjectPackage,
+  FrameLogicProjectPackageControllerOptions,
+  FrameLogicProjectPackageV1,
+  ProjectGeometrySource,
+  ProjectReferenceSource,
+} from "./project/FrameLogicProjectPackageController";
