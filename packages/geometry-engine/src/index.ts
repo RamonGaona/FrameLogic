@@ -69,3 +69,7 @@ export type {
   OpenCascadeHlrResult,
   OpenCascadeSectionResult,
 } from "./step/OpenCascadeDrawingKernel";
+
+export {
+  OcctStepGeometryAdapter,
+} from "./step/OcctStepGeometryAdapter";
