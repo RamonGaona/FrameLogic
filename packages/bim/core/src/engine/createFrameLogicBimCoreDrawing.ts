@@ -35,6 +35,14 @@ import type {
 } from "../drawing/DrawingProfessionalModel";
 
 import {
+  DrawingFinishingController,
+} from "../drawing/DrawingFinishingController";
+
+import {
+  DrawingCenterMarkController,
+} from "../drawing/DrawingCenterMarkController";
+
+import {
   OpenCascadeBrepAdvancedProvider,
 } from "../precision/OpenCascadeBrepAdvancedProvider";
 
@@ -65,6 +73,9 @@ export type PrecisionBimCoreInstance =
 
     readonly drawingProfessional:
       DrawingProfessionalController;
+
+    readonly drawingFinishing:
+      DrawingFinishingController;
 
     readonly assemblyConstraintSolver:
       AssemblyConstraintSolver;
@@ -251,6 +262,26 @@ export async function createBimCore(
       drawingProduction,
     });
 
+  const drawingFinishing =
+    new DrawingFinishingController({
+      container,
+      designModel:
+        core.designModel,
+      engineeringModel:
+        core.engineeringModel,
+      sectionDrawing,
+      drawingWorkspace,
+      drawingProduction,
+      drawingProfessional,
+    });
+
+  const drawingCenterMarks =
+    new DrawingCenterMarkController(
+      core.designModel,
+      core.designScene,
+      drawingWorkspace,
+    );
+
   const baseLoadIfcFile =
     core.loadIfcFile.bind(
       core,
@@ -357,6 +388,8 @@ export async function createBimCore(
       onProjectRestored: async () => {
         await drawingProfessional
           .refreshExactDrawing();
+        drawingFinishing
+          .markCurrentDrawingUpdated();
         await core.setStandardView(
           "ISO",
         );
@@ -398,6 +431,8 @@ export async function createBimCore(
         true,
       );
       projectPackage.dispose();
+      drawingCenterMarks.dispose();
+      drawingFinishing.dispose();
       drawingProfessional.dispose();
       drawingExperience.dispose();
       drawingProduction.dispose();
@@ -414,6 +449,7 @@ export async function createBimCore(
     drawingWorkspace,
     drawingProduction,
     drawingProfessional,
+    drawingFinishing,
     assemblyConstraintSolver,
     projectPackage,
     createDocumentationSnapshot: () =>
