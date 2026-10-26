@@ -1,10 +1,20 @@
 export {
   createBimCore,
-} from "./engine/createFrameLogicBimCorePrecision";
+} from "./engine/createFrameLogicBimCoreDrawing";
 
 export type {
   PrecisionBimCoreInstance,
-} from "./engine/createFrameLogicBimCorePrecision";
+} from "./engine/createFrameLogicBimCoreDrawing";
+
+export {
+  SectionDrawingController,
+} from "./drawing/SectionDrawingController";
+
+export type {
+  SectionDrawingControllerOptions,
+  SectionVector3,
+  SectionViewDefinition,
+} from "./drawing/SectionDrawingController";
 
 export {
   addSceneHelpers,
