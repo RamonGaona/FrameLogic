@@ -1,6 +1,10 @@
 import initOpenCascade from "opencascade.js";
 
 import type {
+  TopoDS_Shape,
+} from "opencascade.js";
+
+import type {
   Point3,
 } from "../types/Point3";
 
@@ -75,9 +79,7 @@ export interface OpenCascadeBrepSnapshot {
 interface RuntimeDocument {
   readonly id: string;
   readonly sourceFileName: string;
-  readonly shape: {
-    delete: () => void;
-  };
+  readonly shape: TopoDS_Shape;
   modelScale: number;
   readonly vertices: BrepExactVertex[];
   readonly edges: BrepExactEdge[];
@@ -148,10 +150,13 @@ export class OpenCascadeBrepKernel {
         );
       }
 
+      const progress =
+        new oc.Message_ProgressRange_1();
       const transferred =
         reader.TransferRoots(
-          new oc.Message_ProgressRange_1(),
+          progress,
         );
+      progress.delete();
 
       if (
         transferred < 1
@@ -173,43 +178,51 @@ export class OpenCascadeBrepKernel {
         );
       }
 
-      const runtime:
-        RuntimeDocument = {
+      try {
+        const runtime:
+          RuntimeDocument = {
+            id,
+            sourceFileName,
+            shape,
+            modelScale:
+              1,
+            vertices:
+              this.extractVertices(
+                oc,
+                shape,
+              ),
+            edges:
+              this.extractEdges(
+                oc,
+                shape,
+              ),
+            cylinders:
+              this.extractCylinders(
+                oc,
+                shape,
+              ),
+            planes:
+              this.extractPlanes(
+                oc,
+                shape,
+              ),
+          };
+
+        this.documents.set(
           id,
-          sourceFileName,
-          shape,
-          modelScale:
-            1,
-          vertices:
-            this.extractVertices(
-              oc,
-              shape,
-            ),
-          edges:
-            this.extractEdges(
-              oc,
-              shape,
-            ),
-          cylinders:
-            this.extractCylinders(
-              oc,
-              shape,
-            ),
-          planes:
-            this.extractPlanes(
-              oc,
-              shape,
-            ),
-        };
+          runtime,
+        );
 
-      this.documents.set(
-        id,
-        runtime,
-      );
-
-      return this.snapshot(
-        runtime,
-      );
+        return this.snapshot(
+          runtime,
+        );
+      }
+      catch (
+        error
+      ) {
+        shape.delete();
+        throw error;
+      }
     }
     finally {
       reader.delete();
@@ -316,7 +329,7 @@ export class OpenCascadeBrepKernel {
 
   private extractVertices(
     oc: OpenCascadeInstance,
-    shape: RuntimeDocument["shape"],
+    shape: TopoDS_Shape,
   ): BrepExactVertex[] {
     const vertices:
       BrepExactVertex[] = [];
@@ -369,7 +382,7 @@ export class OpenCascadeBrepKernel {
 
   private extractEdges(
     oc: OpenCascadeInstance,
-    shape: RuntimeDocument["shape"],
+    shape: TopoDS_Shape,
   ): BrepExactEdge[] {
     const edges:
       BrepExactEdge[] = [];
@@ -421,15 +434,6 @@ export class OpenCascadeBrepKernel {
                   last,
                 )
               : null;
-          const midpoint =
-            finiteRange
-              ? adaptor.Value(
-                  (
-                    first
-                    + last
-                  ) / 2,
-                )
-              : null;
           const type =
             adaptor.GetType();
           const kind:
@@ -443,6 +447,19 @@ export class OpenCascadeBrepKernel {
                       .GeomAbs_Circle
                   ? "CIRCLE"
                   : "OTHER";
+          const midpoint =
+            finiteRange
+            && (
+              kind === "LINE"
+              || kind === "CIRCLE"
+            )
+              ? adaptor.Value(
+                  (
+                    first
+                    + last
+                  ) / 2,
+                )
+              : null;
 
           let circle:
             BrepExactCircle
@@ -527,7 +544,7 @@ export class OpenCascadeBrepKernel {
 
   private extractCylinders(
     oc: OpenCascadeInstance,
-    shape: RuntimeDocument["shape"],
+    shape: TopoDS_Shape,
   ): BrepExactCylinder[] {
     const cylinders:
       BrepExactCylinder[] = [];
@@ -611,7 +628,7 @@ export class OpenCascadeBrepKernel {
 
   private extractPlanes(
     oc: OpenCascadeInstance,
-    shape: RuntimeDocument["shape"],
+    shape: TopoDS_Shape,
   ): BrepExactPlane[] {
     const planes:
       BrepExactPlane[] = [];
