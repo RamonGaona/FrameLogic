@@ -87,6 +87,14 @@ export interface RevisionCloudState {
   height: number;
 }
 
+export interface FrozenDrawingRevisionState {
+  readonly id: string;
+  readonly sheetOwnerSectionId: string;
+  readonly revisionCode: string;
+  readonly createdAt: string;
+  readonly svg: string;
+}
+
 export interface DrawingProfessionalState {
   activeDimensionStyleId: string;
   activeSnapMode: DrawingSnapMode;
@@ -95,6 +103,7 @@ export interface DrawingProfessionalState {
   readonly viewLayouts: DrawingViewLayoutState[];
   readonly sectionDisplay: DrawingSectionDisplayState[];
   readonly revisionClouds: RevisionCloudState[];
+  readonly frozenRevisions: FrozenDrawingRevisionState[];
   titleBlockTemplate:
     | "ISO_SIMPLE"
     | "STRUCTURAL"
@@ -132,6 +141,7 @@ export function createDefaultProfessionalState(): DrawingProfessionalState {
     viewLayouts: [],
     sectionDisplay: [],
     revisionClouds: [],
+    frozenRevisions: [],
     titleBlockTemplate: "ISO_SIMPLE",
   };
 }
