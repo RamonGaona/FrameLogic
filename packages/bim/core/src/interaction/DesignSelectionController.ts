@@ -235,13 +235,14 @@ export class DesignSelectionController {
       !enabled
     ) {
 
+      /*
+       * Deshabilitar selección solo bloquea los clics de selección.
+       * El hover técnico permanece activo para comandos CAD como
+       * LINE, donde el usuario necesita seguir leyendo las aristas
+       * de la pieza mientras coloca puntos con SNAP.
+       */
       this.pointerDownActive =
         false;
-
-
-      this.setHoveredInstance(
-        null,
-      );
 
     }
 
@@ -580,9 +581,14 @@ export class DesignSelectionController {
         PointerEvent,
     ): void => {
 
+      /*
+       * El hover es independiente de `enabled`: durante LINE, POINT
+       * y otros comandos la selección puede estar deshabilitada,
+       * pero el usuario debe seguir viendo el borde técnico de la
+       * pieza que está usando como referencia de SNAP.
+       */
       if (
-        !this.enabled
-        || this.pointerDownActive
+        this.pointerDownActive
       ) {
 
         return;
