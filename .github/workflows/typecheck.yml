@@ -25,8 +25,8 @@ jobs:
       - name: Install
         run: npm install
 
-      - name: Install Linux Rolldown binding
-        run: npm install --no-save @rolldown/binding-linux-x64-gnu@1.2.8
+      - name: Install Linux native bindings
+        run: npm install --no-save @rolldown/binding-linux-x64-gnu@1.2.8 lightningcss-linux-x64-gnu@1.33.0
 
       - name: Typecheck
         run: npm run typecheck
