@@ -43,3 +43,18 @@ export type {
   StepPointFeature,
   StepProductNode,
 } from "./step/StepGeometryAdapter";
+
+export {
+  getOpenCascadeBrepKernel,
+  OpenCascadeBrepKernel,
+} from "./step/OpenCascadeBrepKernel";
+
+export type {
+  BrepCurveKind,
+  BrepExactCircle,
+  BrepExactCylinder,
+  BrepExactEdge,
+  BrepExactPlane,
+  BrepExactVertex,
+  OpenCascadeBrepSnapshot,
+} from "./step/OpenCascadeBrepKernel";
