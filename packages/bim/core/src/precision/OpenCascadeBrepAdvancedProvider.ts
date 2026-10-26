@@ -35,10 +35,21 @@ interface ExactLine {
  */
 export class OpenCascadeBrepAdvancedProvider
   implements GeometryQueryProvider {
+  private readonly designModel:
+    DesignModel;
+
+  private readonly designScene:
+    DesignSceneController;
+
   constructor(
-    private readonly designModel: DesignModel,
-    private readonly designScene: DesignSceneController,
-  ) {}
+    designModel: DesignModel,
+    designScene: DesignSceneController,
+  ) {
+    this.designModel =
+      designModel;
+    this.designScene =
+      designScene;
+  }
 
   query(
     context: GeometryQueryContext,
