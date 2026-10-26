@@ -149,9 +149,67 @@ export function createDefaultProfessionalState(): DrawingProfessionalState {
 export function cloneProfessionalState(
   value: DrawingProfessionalState,
 ): DrawingProfessionalState {
-  return JSON.parse(
-    JSON.stringify(value),
-  ) as DrawingProfessionalState;
+  const raw =
+    JSON.parse(
+      JSON.stringify(value),
+    ) as Partial<DrawingProfessionalState>;
+  const defaults =
+    createDefaultProfessionalState();
+  const dimensionStyles =
+    Array.isArray(raw.dimensionStyles)
+    && raw.dimensionStyles.length > 0
+      ? raw.dimensionStyles
+      : defaults.dimensionStyles;
+  const activeDimensionStyleId =
+    dimensionStyles.some(
+      (
+        style,
+      ) =>
+        style.id
+        === raw.activeDimensionStyleId,
+    )
+      ? raw.activeDimensionStyleId
+        ?? defaults.activeDimensionStyleId
+      : dimensionStyles[0]?.id
+        ?? defaults.activeDimensionStyleId;
+
+  return {
+    activeDimensionStyleId,
+    activeSnapMode:
+      raw.activeSnapMode
+      ?? defaults.activeSnapMode,
+    activeDimensionMode:
+      raw.activeDimensionMode
+      ?? defaults.activeDimensionMode,
+    dimensionStyles:
+      dimensionStyles.map(
+        (
+          style,
+        ) => ({
+          ...createDefaultDimensionStyle(),
+          ...style,
+        }),
+      ),
+    viewLayouts:
+      Array.isArray(raw.viewLayouts)
+        ? raw.viewLayouts
+        : [],
+    sectionDisplay:
+      Array.isArray(raw.sectionDisplay)
+        ? raw.sectionDisplay
+        : [],
+    revisionClouds:
+      Array.isArray(raw.revisionClouds)
+        ? raw.revisionClouds
+        : [],
+    frozenRevisions:
+      Array.isArray(raw.frozenRevisions)
+        ? raw.frozenRevisions
+        : [],
+    titleBlockTemplate:
+      raw.titleBlockTemplate
+      ?? defaults.titleBlockTemplate,
+  };
 }
 
 export function modelMetersToDrawingUnit(
