@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@sunbox/occt-import-js": "^0.0.29",
     "opencascade.js": "2.0.0-beta.b5ff984"
   },
   "devDependencies": {
