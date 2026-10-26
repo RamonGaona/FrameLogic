@@ -2176,10 +2176,6 @@ export class SectionDrawingController {
           );
         break;
       }
-
-      case "DEPTH":
-      case "MOVE":
-        break;
     }
 
     this.replaceSection({
