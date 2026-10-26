@@ -300,7 +300,7 @@ export class OpenCascadeBrepGeometryProvider
       object,
       screenDistancePx,
       precision:
-        "BREP_EXACT",
+        "MODEL_EXACT",
     });
   }
 
@@ -386,7 +386,7 @@ export class OpenCascadeBrepGeometryProvider
       object,
       screenDistancePx,
       precision:
-        "BREP_EXACT",
+        "MODEL_EXACT",
     });
   }
 }
