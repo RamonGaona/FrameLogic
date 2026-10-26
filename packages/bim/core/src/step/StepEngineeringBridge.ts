@@ -9,11 +9,19 @@ import type {
 } from "@framelogic/geometry";
 
 
+const brepDocumentByDefinition =
+  new Map<
+    string,
+    string
+  >();
+
+
 /**
  * Registra en FrameLogic las features extraídas del STEP.
  *
  * El documento STEP continúa siendo la fuente geométrica; este bridge
- * crea el índice de ingeniería que usan snap, ensamble y cálculo.
+ * crea el índice de ingeniería que usan snap, ensamble y cálculo y enlaza
+ * la PieceDefinition con el TopoDS_Shape vivo de OpenCascade.
  */
 export function registerStepDocumentEngineering(
   engineeringModel: FrameLogicEngineeringModel,
@@ -27,6 +35,38 @@ export function registerStepDocumentEngineering(
         mapFeature,
       ),
   });
+
+  if (
+    document.brepDocumentId
+  ) {
+    brepDocumentByDefinition.set(
+      pieceDefinitionId,
+      document.brepDocumentId,
+    );
+  }
+}
+
+
+export function getStepBrepDocumentId(
+  pieceDefinitionId: string,
+): string | undefined {
+  return brepDocumentByDefinition.get(
+    pieceDefinitionId,
+  );
+}
+
+
+export function unbindStepBrepDocument(
+  pieceDefinitionId: string,
+): void {
+  brepDocumentByDefinition.delete(
+    pieceDefinitionId,
+  );
+}
+
+
+export function clearStepBrepDocuments(): void {
+  brepDocumentByDefinition.clear();
 }
 
 
