@@ -18,6 +18,14 @@ import {
   DrawingExperienceController,
 } from "../drawing/DrawingExperienceController";
 
+import {
+  DrawingProductionController,
+} from "../drawing/DrawingProductionController";
+
+import type {
+  FrameLogicDocumentationSnapshot,
+} from "../drawing/DrawingProductionController";
+
 
 export type PrecisionBimCoreInstance =
   BasePrecisionBimCoreInstance
@@ -33,6 +41,20 @@ export type PrecisionBimCoreInstance =
      */
     readonly drawingWorkspace:
       DrawingWorkspaceController;
+
+    /**
+     * Documentación de producción: hojas, escalas, referencias B-Rep,
+     * cajetines, revisiones, vistas múltiples y persistencia.
+     */
+    readonly drawingProduction:
+      DrawingProductionController;
+
+    readonly createDocumentationSnapshot: () =>
+      FrameLogicDocumentationSnapshot;
+
+    readonly restoreDocumentationSnapshot: (
+      snapshot: FrameLogicDocumentationSnapshot,
+    ) => void;
   };
 
 
@@ -140,6 +162,17 @@ export async function createBimCore(
     true,
   );
 
+  const drawingProduction =
+    new DrawingProductionController({
+      container,
+      designModel:
+        core.designModel,
+      designScene:
+        core.designScene,
+      sectionDrawing,
+      drawingWorkspace,
+    });
+
   const drawingExperience =
     new DrawingExperienceController({
       container,
@@ -166,6 +199,7 @@ export async function createBimCore(
         true,
       );
       drawingExperience.dispose();
+      drawingProduction.dispose();
       drawingWorkspace.dispose();
       sectionDrawing.dispose();
       baseDispose();
@@ -175,6 +209,18 @@ export async function createBimCore(
     ...core,
     sectionDrawing,
     drawingWorkspace,
+    drawingProduction,
+    createDocumentationSnapshot: () =>
+      drawingProduction
+        .createDocumentationSnapshot(),
+    restoreDocumentationSnapshot: (
+      snapshot,
+    ) => {
+      drawingProduction
+        .restoreDocumentationSnapshot(
+          snapshot,
+        );
+    },
     dispose,
   };
 }
