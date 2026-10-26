@@ -1816,7 +1816,7 @@ export class SectionDrawingController {
     section: SectionViewDefinition,
     drawing: SectionDrawingData,
   ):
-    Uint8Array {
+    Uint8Array<ArrayBuffer> {
     const pageWidth =
       841.89;
     const pageHeight =
