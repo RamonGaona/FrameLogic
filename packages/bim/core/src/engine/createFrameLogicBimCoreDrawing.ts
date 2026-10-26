@@ -14,6 +14,10 @@ import {
   DrawingWorkspaceController,
 } from "../drawing/DrawingWorkspaceController";
 
+import {
+  DrawingExperienceController,
+} from "../drawing/DrawingExperienceController";
+
 
 export type PrecisionBimCoreInstance =
   BasePrecisionBimCoreInstance
@@ -136,6 +140,13 @@ export async function createBimCore(
     true,
   );
 
+  const drawingExperience =
+    new DrawingExperienceController({
+      container,
+      sectionDrawing,
+      drawingWorkspace,
+    });
+
   const baseDispose =
     core.dispose;
   let disposed =
@@ -154,6 +165,7 @@ export async function createBimCore(
         handleOpenDrawing,
         true,
       );
+      drawingExperience.dispose();
       drawingWorkspace.dispose();
       sectionDrawing.dispose();
       baseDispose();
