@@ -1,3 +1,5 @@
+import type * as THREE from "three";
+
 import type {
   DrawingWorkspaceController,
 } from "./DrawingWorkspaceController";
@@ -6,8 +8,6 @@ import type {
   SectionDrawingController,
   SectionViewDefinition,
 } from "./SectionDrawingController";
-
-import type * as THREE from "three";
 
 
 type DrawingTool =
@@ -27,279 +27,181 @@ interface SectionVisualInternal {
 
 
 interface SectionDrawingInternal {
-  activeSectionId:
-    string | null;
-  readonly sections:
-    SectionViewDefinition[];
-  readonly visuals:
-    Map<string, SectionVisualInternal>;
+  activeSectionId: string | null;
+  readonly visuals: Map<string, SectionVisualInternal>;
   refreshUi(): void;
-  setStatus(
-    message: string,
-  ): void;
-  replaceSection(
-    section: SectionViewDefinition,
-  ): void;
+  setStatus(message: string): void;
+  replaceSection(section: SectionViewDefinition): void;
 }
 
 
 interface DrawingDocumentInternal {
-  readonly annotations:
-    readonly unknown[];
+  readonly annotations: readonly unknown[];
 }
 
 
 interface DrawingWorkspaceInternal {
-  activeSectionId:
-    string | null;
+  activeSectionId: string | null;
   zoom: number;
-  readonly documents:
-    Map<string, DrawingDocumentInternal>;
-  setTool(
-    tool: DrawingTool,
-  ): void;
-  setZoom(
-    value: number,
-  ): void;
+  readonly documents: Map<string, DrawingDocumentInternal>;
+  setTool(tool: DrawingTool): void;
+  setZoom(value: number): void;
 }
 
 
 export interface DrawingExperienceControllerOptions {
-  readonly container:
-    HTMLElement;
-  readonly sectionDrawing:
-    SectionDrawingController;
-  readonly drawingWorkspace:
-    DrawingWorkspaceController;
+  readonly container: HTMLElement;
+  readonly sectionDrawing: SectionDrawingController;
+  readonly drawingWorkspace: DrawingWorkspaceController;
 }
 
 
 /**
- * Pulido de experiencia para planos y secciones.
- *
- * Este controlador no cambia el modelo de datos. Solo añade:
- * - selector A-A / B-B / C-C en Model Space;
- * - anterior / siguiente;
- * - renombrado de sección;
- * - atenuación de secciones inactivas;
- * - selector de sección dentro del Drawing Workspace;
- * - indicador de zoom, profundidad y cantidad de anotaciones;
- * - atajos de teclado para las herramientas del plano.
+ * Mejora la experiencia de uso de secciones y planos sin cambiar
+ * SectionViewDefinition ni el formato de anotaciones.
  */
 export class DrawingExperienceController {
-  private readonly container:
-    HTMLElement;
+  private readonly container: HTMLElement;
+  private readonly sectionDrawing: SectionDrawingController;
+  private readonly drawingWorkspace: DrawingWorkspaceController;
+  private readonly sectionInternal: SectionDrawingInternal;
+  private readonly drawingInternal: DrawingWorkspaceInternal;
 
-  private readonly sectionDrawing:
-    SectionDrawingController;
+  private readonly sectionSelect: HTMLSelectElement;
+  private readonly previousButton: HTMLButtonElement | null;
+  private readonly nextButton: HTMLButtonElement | null;
+  private readonly renameButton: HTMLButtonElement | null;
 
-  private readonly drawingWorkspace:
-    DrawingWorkspaceController;
+  private readonly drawingSelect: HTMLSelectElement | null;
+  private readonly drawingInfo: HTMLSpanElement | null;
+  private readonly zoomInfo: HTMLSpanElement | null;
+  private readonly fitButton: HTMLButtonElement | null;
 
-  private readonly sectionInternal:
-    SectionDrawingInternal;
-
-  private readonly drawingInternal:
-    DrawingWorkspaceInternal;
-
-  private readonly sectionSelect:
-    HTMLSelectElement;
-
-  private readonly drawingSelect:
-    HTMLSelectElement | null;
-
-  private readonly drawingInfo:
-    HTMLSpanElement | null;
-
-  private readonly zoomInfo:
-    HTMLSpanElement | null;
-
-  private readonly timer:
-    number;
-
-  private disposed =
-    false;
+  private readonly timer: number;
+  private disposed = false;
 
 
   constructor(
     options: DrawingExperienceControllerOptions,
   ) {
-    this.container =
-      options.container;
-    this.sectionDrawing =
-      options.sectionDrawing;
-    this.drawingWorkspace =
-      options.drawingWorkspace;
-    this.sectionInternal =
-      options.sectionDrawing
-      as unknown
-      as SectionDrawingInternal;
-    this.drawingInternal =
-      options.drawingWorkspace
-      as unknown
-      as DrawingWorkspaceInternal;
+    this.container = options.container;
+    this.sectionDrawing = options.sectionDrawing;
+    this.drawingWorkspace = options.drawingWorkspace;
+
+    this.sectionInternal = (
+      options.sectionDrawing as unknown
+    ) as SectionDrawingInternal;
+
+    this.drawingInternal = (
+      options.drawingWorkspace as unknown
+    ) as DrawingWorkspaceInternal;
 
     const sectionPanel =
       this.container.querySelector<HTMLElement>(
         '[data-framelogic-section-panel="true"]',
       );
 
-    const sectionSelect =
-      document.createElement(
-        "select",
-      );
-
-    sectionSelect.title =
-      "Sección activa";
-    this.styleSelect(
-      sectionSelect,
-    );
-    this.sectionSelect =
-      sectionSelect;
+    this.sectionSelect = document.createElement("select");
+    this.sectionSelect.title = "Sección activa";
+    this.styleSelect(this.sectionSelect);
 
     if (sectionPanel) {
-      const previousButton =
-        this.makeButton(
-          "‹",
-          "Sección anterior",
-        );
-      const nextButton =
-        this.makeButton(
-          "›",
-          "Sección siguiente",
-        );
-      const renameButton =
-        this.makeButton(
-          "Nombre",
-          "Renombrar sección",
-        );
+      this.previousButton = this.makeButton("‹", "Sección anterior");
+      this.nextButton = this.makeButton("›", "Sección siguiente");
+      this.renameButton = this.makeButton("Nombre", "Renombrar sección");
 
       const title =
-        Array.from(
-          sectionPanel.children,
-        ).find(
-          (
-            child,
-          ) =>
-            child.textContent
-            === "SECCIÓN",
-        )
-        ?? sectionPanel.firstChild;
+        Array.from(sectionPanel.children).find(
+          (child) => child.textContent === "SECCIÓN",
+        ) ?? sectionPanel.firstChild;
 
       if (title) {
         title.after(
-          previousButton,
-          sectionSelect,
-          nextButton,
-          renameButton,
+          this.previousButton,
+          this.sectionSelect,
+          this.nextButton,
+          this.renameButton,
         );
       }
       else {
         sectionPanel.prepend(
-          previousButton,
-          sectionSelect,
-          nextButton,
-          renameButton,
+          this.previousButton,
+          this.sectionSelect,
+          this.nextButton,
+          this.renameButton,
         );
       }
 
-      sectionSelect.addEventListener(
+      this.sectionSelect.addEventListener(
         "change",
         this.handleSectionSelect,
       );
-      previousButton.addEventListener(
+      this.previousButton.addEventListener(
         "click",
         this.handlePreviousSection,
       );
-      nextButton.addEventListener(
+      this.nextButton.addEventListener(
         "click",
         this.handleNextSection,
       );
-      renameButton.addEventListener(
+      this.renameButton.addEventListener(
         "click",
         this.handleRenameSection,
       );
+    }
+    else {
+      this.previousButton = null;
+      this.nextButton = null;
+      this.renameButton = null;
     }
 
     const drawingOverlay =
       this.container.querySelector<HTMLElement>(
         '[data-framelogic-drawing-workspace="true"]',
       );
-    const toolbar =
-      drawingOverlay
-        ?.firstElementChild
-        as HTMLElement | null;
+
+    const toolbar = (
+      drawingOverlay?.firstElementChild ?? null
+    ) as HTMLElement | null;
 
     if (toolbar) {
-      const divider =
-        document.createElement(
-          "span",
-        );
-      divider.textContent =
-        "Sección";
-      divider.style.opacity =
-        "0.7";
-      divider.style.marginLeft =
-        "4px";
+      const divider = document.createElement("span");
+      divider.textContent = "Sección";
+      divider.style.opacity = "0.7";
+      divider.style.marginLeft = "4px";
 
-      const drawingSelect =
-        document.createElement(
-          "select",
-        );
-      drawingSelect.title =
-        "Cambiar plano de sección";
-      this.styleSelect(
-        drawingSelect,
-      );
+      const drawingSelect = document.createElement("select");
+      drawingSelect.title = "Cambiar plano de sección";
+      this.styleSelect(drawingSelect);
       drawingSelect.addEventListener(
         "change",
         this.handleDrawingSelect,
       );
 
-      const fitButton =
-        this.makeButton(
-          "Ajustar",
-          "Volver a zoom 100%",
-        );
+      const drawingInfo = document.createElement("span");
+      drawingInfo.style.padding = "3px 7px";
+      drawingInfo.style.borderRadius = "999px";
+      drawingInfo.style.background = "rgba(255,255,255,0.08)";
+      drawingInfo.style.color = "#c9d6dc";
+      drawingInfo.style.whiteSpace = "nowrap";
+
+      const fitButton = this.makeButton(
+        "Ajustar",
+        "Volver a zoom 100%",
+      );
       fitButton.addEventListener(
         "click",
         this.handleFitDrawing,
       );
 
-      const zoomInfo =
-        document.createElement(
-          "span",
-        );
-      zoomInfo.style.minWidth =
-        "42px";
-      zoomInfo.style.textAlign =
-        "center";
-      zoomInfo.style.opacity =
-        "0.75";
+      const zoomInfo = document.createElement("span");
+      zoomInfo.style.minWidth = "42px";
+      zoomInfo.style.textAlign = "center";
+      zoomInfo.style.opacity = "0.75";
 
-      const drawingInfo =
-        document.createElement(
-          "span",
-        );
-      drawingInfo.style.padding =
-        "3px 7px";
-      drawingInfo.style.borderRadius =
-        "999px";
-      drawingInfo.style.background =
-        "rgba(255,255,255,0.08)";
-      drawingInfo.style.color =
-        "#c9d6dc";
-      drawingInfo.style.whiteSpace =
-        "nowrap";
-
-      const backButton =
-        toolbar.querySelector(
-          "button",
-        );
+      const firstButton = toolbar.querySelector("button");
       const titleElement =
-        backButton
-          ?.nextElementSibling
-        ?? toolbar.firstElementChild;
+        firstButton?.nextElementSibling ?? toolbar.firstElementChild;
 
       if (titleElement) {
         titleElement.after(
@@ -317,45 +219,27 @@ export class DrawingExperienceController {
       }
 
       const exportButton =
-        Array.from(
-          toolbar.querySelectorAll(
-            "button",
-          ),
-        ).find(
-          (
-            button,
-          ) =>
-            button.textContent
-            === "Exportar PDF",
-        );
+        Array.from(toolbar.querySelectorAll("button")).find(
+          (button) => button.textContent === "Exportar PDF",
+        ) ?? null;
 
       if (exportButton) {
-        exportButton.before(
-          fitButton,
-          zoomInfo,
-        );
+        exportButton.before(fitButton, zoomInfo);
       }
       else {
-        toolbar.append(
-          fitButton,
-          zoomInfo,
-        );
+        toolbar.append(fitButton, zoomInfo);
       }
 
-      this.drawingSelect =
-        drawingSelect;
-      this.drawingInfo =
-        drawingInfo;
-      this.zoomInfo =
-        zoomInfo;
+      this.drawingSelect = drawingSelect;
+      this.drawingInfo = drawingInfo;
+      this.zoomInfo = zoomInfo;
+      this.fitButton = fitButton;
     }
     else {
-      this.drawingSelect =
-        null;
-      this.drawingInfo =
-        null;
-      this.zoomInfo =
-        null;
+      this.drawingSelect = null;
+      this.drawingInfo = null;
+      this.zoomInfo = null;
+      this.fitButton = null;
     }
 
     window.addEventListener(
@@ -365,12 +249,10 @@ export class DrawingExperienceController {
     );
 
     this.sync();
-    this.timer =
-      window.setInterval(
-        () =>
-          this.sync(),
-        300,
-      );
+    this.timer = window.setInterval(
+      () => this.sync(),
+      300,
+    );
   }
 
 
@@ -379,129 +261,108 @@ export class DrawingExperienceController {
       return;
     }
 
-    this.disposed =
-      true;
-    window.clearInterval(
-      this.timer,
-    );
+    this.disposed = true;
+    window.clearInterval(this.timer);
+
     window.removeEventListener(
       "keydown",
       this.handleKeyDown,
       true,
     );
+
+    this.sectionSelect.removeEventListener(
+      "change",
+      this.handleSectionSelect,
+    );
+    this.previousButton?.removeEventListener(
+      "click",
+      this.handlePreviousSection,
+    );
+    this.nextButton?.removeEventListener(
+      "click",
+      this.handleNextSection,
+    );
+    this.renameButton?.removeEventListener(
+      "click",
+      this.handleRenameSection,
+    );
+    this.drawingSelect?.removeEventListener(
+      "change",
+      this.handleDrawingSelect,
+    );
+    this.fitButton?.removeEventListener(
+      "click",
+      this.handleFitDrawing,
+    );
   }
 
 
   private sync(): void {
-    const sections =
-      this.sectionDrawing
-        .getSections();
-    const active =
-      this.sectionDrawing
-        .getActiveSection();
+    const sections = this.sectionDrawing.getSections();
+    const active = this.sectionDrawing.getActiveSection();
 
     this.syncSelect(
       this.sectionSelect,
       sections,
-      active?.id
-      ?? null,
+      active?.id ?? null,
     );
 
     if (this.drawingSelect) {
       this.syncSelect(
         this.drawingSelect,
         sections,
-        this.drawingInternal
-          .activeSectionId,
+        this.drawingInternal.activeSectionId,
       );
     }
 
-    this.syncVisualState(
-      active?.id
-      ?? null,
-    );
+    this.syncVisualState(active?.id ?? null);
     this.syncDrawingInfo();
   }
 
 
   private syncSelect(
     select: HTMLSelectElement,
-    sections:
-      readonly SectionViewDefinition[],
-    selectedId:
-      string | null,
+    sections: readonly SectionViewDefinition[],
+    selectedId: string | null,
   ): void {
-    const signature =
-      sections
-        .map(
-          (
-            section,
-          ) =>
-            `${section.id}:${section.name}:${section.depth}`,
-        )
-        .join(
-          "|",
-        );
+    const signature = sections
+      .map(
+        (section) =>
+          `${section.id}:${section.name}:${section.depth}`,
+      )
+      .join("|");
 
-    if (
-      select.dataset["signature"]
-      !== signature
-    ) {
+    if (select.dataset["signature"] !== signature) {
       select.replaceChildren();
 
       if (sections.length < 1) {
-        const option =
-          document.createElement(
-            "option",
-          );
-        option.value =
-          "";
-        option.textContent =
-          "Sin secciones";
-        select.append(
-          option,
-        );
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "Sin secciones";
+        select.append(option);
       }
       else {
-        for (
-          const section
-          of sections
-        ) {
-          const option =
-            document.createElement(
-              "option",
-            );
-          option.value =
-            section.id;
+        for (const section of sections) {
+          const option = document.createElement("option");
+          option.value = section.id;
           option.textContent =
             `${this.shortSectionName(section.name)} · ${this.formatNumber(section.depth)} m`;
-          select.append(
-            option,
-          );
+          select.append(option);
         }
       }
 
-      select.dataset["signature"] =
-        signature;
+      select.dataset["signature"] = signature;
     }
 
-    select.disabled =
-      sections.length < 1;
+    select.disabled = sections.length < 1;
 
     if (
       selectedId
-      && Array.from(
-        select.options,
-      ).some(
-        (
-          option,
-        ) =>
-          option.value
-          === selectedId,
+      && Array.from(select.options).some(
+        (option) => option.value === selectedId,
       )
     ) {
-      select.value =
-        selectedId;
+      select.value = selectedId;
     }
   }
 
@@ -509,33 +370,23 @@ export class DrawingExperienceController {
   private activateSection(
     sectionId: string,
   ): boolean {
-    const section =
-      this.sectionDrawing
-        .getSections()
-        .find(
-          (
-            candidate,
-          ) =>
-            candidate.id
-            === sectionId,
-        );
+    const section = this.sectionDrawing
+      .getSections()
+      .find(
+        (candidate) => candidate.id === sectionId,
+      );
 
     if (!section) {
       return false;
     }
 
-    this.sectionInternal
-      .activeSectionId =
-        section.id;
-    this.sectionInternal
-      .refreshUi();
-    this.sectionInternal
-      .setStatus(
-        `${section.name}: ${this.formatNumber(section.width)} × ${this.formatNumber(section.height)} × ${this.formatNumber(section.depth)} m.`,
-      );
-    this.syncVisualState(
-      section.id,
+    this.sectionInternal.activeSectionId = section.id;
+    this.sectionInternal.refreshUi();
+    this.sectionInternal.setStatus(
+      `${section.name}: ${this.formatNumber(section.width)} × ${this.formatNumber(section.height)} × ${this.formatNumber(section.depth)} m.`,
     );
+
+    this.syncVisualState(section.id);
     this.sync();
     return true;
   }
@@ -544,33 +395,19 @@ export class DrawingExperienceController {
   private syncVisualState(
     activeId: string | null,
   ): void {
-    for (
-      const [
-        id,
-        visual,
-      ]
-      of this.sectionInternal.visuals
-    ) {
-      const active =
-        id === activeId;
+    for (const [id, visual] of this.sectionInternal.visuals) {
+      const active = id === activeId;
 
-      visual.fillMaterial.opacity =
-        active
-          ? 0.075
-          : 0.018;
-      visual.edgeMaterial.opacity =
-        active
-          ? 0.95
-          : 0.24;
-      visual.arrow.visible =
-        active;
+      visual.fillMaterial.opacity = active
+        ? 0.075
+        : 0.018;
+      visual.edgeMaterial.opacity = active
+        ? 0.95
+        : 0.24;
+      visual.arrow.visible = active;
 
-      for (
-        const handle
-        of visual.handles.values()
-      ) {
-        handle.visible =
-          active;
+      for (const handle of visual.handles.values()) {
+        handle.visible = active;
       }
     }
   }
@@ -578,180 +415,131 @@ export class DrawingExperienceController {
 
   private readonly handleSectionSelect =
     (): void => {
-      if (
-        this.sectionSelect.value
-      ) {
-        this.activateSection(
-          this.sectionSelect.value,
-        );
+      const id = this.sectionSelect.value;
+
+      if (id) {
+        this.activateSection(id);
       }
     };
 
 
   private readonly handleDrawingSelect =
     (): void => {
-      const id =
-        this.drawingSelect?.value;
+      const id = this.drawingSelect?.value;
 
-      if (
-        !id
-        || !this.activateSection(
-          id,
-        )
-      ) {
+      if (!id || !this.activateSection(id)) {
         return;
       }
 
-      this.drawingWorkspace
-        .openActiveSection();
+      this.drawingWorkspace.openActiveSection();
     };
 
 
   private readonly handlePreviousSection =
     (): void => {
-      this.activateRelative(
-        -1,
-      );
+      this.activateRelative(-1);
     };
 
 
   private readonly handleNextSection =
     (): void => {
-      this.activateRelative(
-        1,
-      );
+      this.activateRelative(1);
     };
 
 
   private activateRelative(
     delta: number,
   ): void {
-    const sections =
-      this.sectionDrawing
-        .getSections();
+    const sections = this.sectionDrawing.getSections();
 
     if (sections.length < 1) {
       return;
     }
 
-    const currentId =
-      this.sectionDrawing
-        .getActiveSection()
-        ?.id;
-    const currentIndex =
-      Math.max(
-        0,
-        sections.findIndex(
-          (
-            section,
-          ) =>
-            section.id
-            === currentId,
-        ),
-      );
-    const nextIndex =
-      (
-        currentIndex
-        + delta
-        + sections.length
-      )
-      % sections.length;
-    const section =
-      sections[nextIndex];
+    const currentId = this.sectionDrawing
+      .getActiveSection()
+      ?.id;
+
+    const foundIndex = sections.findIndex(
+      (section) => section.id === currentId,
+    );
+    const currentIndex = foundIndex >= 0
+      ? foundIndex
+      : 0;
+    const nextIndex = (
+      currentIndex
+      + delta
+      + sections.length
+    ) % sections.length;
+    const section = sections[nextIndex];
 
     if (section) {
-      this.activateSection(
-        section.id,
-      );
+      this.activateSection(section.id);
     }
   }
 
 
   private readonly handleRenameSection =
     (): void => {
-      const section =
-        this.sectionDrawing
-          .getActiveSection();
+      const section = this.sectionDrawing.getActiveSection();
 
       if (!section) {
         return;
       }
 
-      const value =
-        window.prompt(
-          "Nombre de la sección",
-          section.name,
-        );
+      const value = window.prompt(
+        "Nombre de la sección",
+        section.name,
+      );
 
       if (
         value === null
         || !value.trim()
-        || value.trim()
-        === section.name
+        || value.trim() === section.name
       ) {
         return;
       }
 
-      this.sectionInternal
-        .replaceSection({
-          ...section,
-          name:
-            value.trim(),
-        });
+      this.sectionInternal.replaceSection({
+        ...section,
+        name: value.trim(),
+      });
+
       this.sync();
     };
 
 
   private readonly handleFitDrawing =
     (): void => {
-      this.drawingInternal
-        .setZoom(
-          1,
-        );
+      this.drawingInternal.setZoom(1);
       this.syncDrawingInfo();
     };
 
 
   private syncDrawingInfo(): void {
-    if (
-      !this.drawingInfo
-      || !this.zoomInfo
-    ) {
+    if (!this.drawingInfo || !this.zoomInfo) {
       return;
     }
 
-    const sectionId =
-      this.drawingInternal
-        .activeSectionId;
-    const section =
-      this.sectionDrawing
-        .getSections()
-        .find(
-          (
-            candidate,
-          ) =>
-            candidate.id
-            === sectionId,
-        );
-    const documentState =
-      sectionId
-        ? this.drawingInternal
-          .documents
-          .get(
-            sectionId,
-          )
-        : null;
+    const sectionId = this.drawingInternal.activeSectionId;
+    const section = this.sectionDrawing
+      .getSections()
+      .find(
+        (candidate) => candidate.id === sectionId,
+      );
+
+    const documentState = sectionId
+      ? this.drawingInternal.documents.get(sectionId)
+      : null;
+
     const annotationCount =
-      documentState
-        ?.annotations.length
-      ?? 0;
+      documentState?.annotations.length ?? 0;
 
     this.zoomInfo.textContent =
       `${Math.round(this.drawingInternal.zoom * 100)}%`;
 
     if (!section) {
-      this.drawingInfo.textContent =
-        "Sin plano activo";
+      this.drawingInfo.textContent = "Sin plano activo";
       return;
     }
 
@@ -764,21 +552,15 @@ export class DrawingExperienceController {
     (
       event: KeyboardEvent,
     ): void => {
-      const overlay =
-        this.container.querySelector<HTMLElement>(
-          '[data-framelogic-drawing-workspace="true"]',
-        );
+      const overlay = this.container.querySelector<HTMLElement>(
+        '[data-framelogic-drawing-workspace="true"]',
+      );
 
-      if (
-        !overlay
-        || overlay.style.display
-        === "none"
-      ) {
+      if (!overlay || overlay.style.display === "none") {
         return;
       }
 
-      const target =
-        event.target;
+      const target = event.target;
 
       if (
         target instanceof HTMLInputElement
@@ -788,27 +570,22 @@ export class DrawingExperienceController {
         return;
       }
 
-      const key =
-        event.key.toLowerCase();
-      const tool:
-        DrawingTool | null =
-          key === "v"
-            ? "SELECT"
-            : key === "d"
-              ? "DIMENSION"
-              : key === "l"
-                ? "LABEL"
-                : key === "t"
-                  ? "TEXT"
-                  : null;
+      const key = event.key.toLowerCase();
+      const tool: DrawingTool | null =
+        key === "v"
+          ? "SELECT"
+          : key === "d"
+            ? "DIMENSION"
+            : key === "l"
+              ? "LABEL"
+              : key === "t"
+                ? "TEXT"
+                : null;
 
       if (tool) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        this.drawingInternal
-          .setTool(
-            tool,
-          );
+        this.drawingInternal.setTool(tool);
         return;
       }
 
@@ -823,31 +600,19 @@ export class DrawingExperienceController {
   private makeButton(
     text: string,
     title: string,
-  ):
-    HTMLButtonElement {
-    const button =
-      document.createElement(
-        "button",
-      );
+  ): HTMLButtonElement {
+    const button = document.createElement("button");
 
-    button.type =
-      "button";
-    button.textContent =
-      text;
-    button.title =
-      title;
-    button.style.padding =
-      "4px 7px";
+    button.type = "button";
+    button.textContent = text;
+    button.title = title;
+    button.style.padding = "4px 7px";
     button.style.border =
       "1px solid rgba(255,255,255,0.16)";
-    button.style.borderRadius =
-      "4px";
-    button.style.background =
-      "#26343c";
-    button.style.color =
-      "#f1f5f7";
-    button.style.cursor =
-      "pointer";
+    button.style.borderRadius = "4px";
+    button.style.background = "#26343c";
+    button.style.color = "#f1f5f7";
+    button.style.cursor = "pointer";
 
     return button;
   }
@@ -856,22 +621,15 @@ export class DrawingExperienceController {
   private styleSelect(
     select: HTMLSelectElement,
   ): void {
-    select.style.minWidth =
-      "112px";
-    select.style.maxWidth =
-      "190px";
-    select.style.padding =
-      "4px 6px";
+    select.style.minWidth = "112px";
+    select.style.maxWidth = "190px";
+    select.style.padding = "4px 6px";
     select.style.border =
       "1px solid rgba(255,255,255,0.16)";
-    select.style.borderRadius =
-      "4px";
-    select.style.background =
-      "#11181d";
-    select.style.color =
-      "#eef4f6";
-    select.style.font =
-      "inherit";
+    select.style.borderRadius = "4px";
+    select.style.background = "#11181d";
+    select.style.color = "#eef4f6";
+    select.style.font = "inherit";
   }
 
 
@@ -892,9 +650,7 @@ export class DrawingExperienceController {
     value: number,
   ): string {
     return Number(
-      value.toFixed(
-        3,
-      ),
+      value.toFixed(3),
     ).toString();
   }
 }
