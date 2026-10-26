@@ -34,15 +34,19 @@ interface ResolvedFeature {
 }
 
 /**
- * Solver geométrico incremental para constraints persistentes de ensamble.
- * El primer componente actúa como ancla y cada constraint corrige el segundo.
- * Está pensado como base determinista para el workspace de montaje, no como
- * sustituto de un solver paramétrico global de grados de libertad.
+ * Solver incremental de constraints persistentes. El primer endpoint de cada
+ * constraint actúa como referencia y se corrige el segundo componente.
  */
 export class AssemblyConstraintSolver {
+  private readonly engineeringModel:
+    FrameLogicEngineeringModel;
+
   constructor(
-    private readonly engineeringModel: FrameLogicEngineeringModel,
-  ) {}
+    engineeringModel: FrameLogicEngineeringModel,
+  ) {
+    this.engineeringModel =
+      engineeringModel;
+  }
 
   solve(
     assembly: AssemblyDefinition,
@@ -68,10 +72,7 @@ export class AssemblyConstraintSolver {
     const transforms =
       new Map<string, MutableTransform>();
 
-    for (
-      const component
-      of assembly.components
-    ) {
+    for (const component of assembly.components) {
       transforms.set(
         component.id,
         toMutableTransform(
@@ -92,31 +93,23 @@ export class AssemblyConstraintSolver {
         iteration + 1;
       let maxError = 0;
 
-      for (
-        const constraint
-        of assembly.constraints
-      ) {
+      for (const constraint of assembly.constraints) {
         if (!constraint.enabled) {
           continue;
         }
 
-        const error =
-          this.applyConstraint(
-            assembly,
-            constraint,
-            transforms,
-          );
-
         maxError =
           Math.max(
             maxError,
-            error,
+            this.applyConstraint(
+              assembly,
+              constraint,
+              transforms,
+            ),
           );
       }
 
-      if (
-        maxError <= tolerance
-      ) {
+      if (maxError <= tolerance) {
         converged = true;
         break;
       }
@@ -125,15 +118,11 @@ export class AssemblyConstraintSolver {
     const residuals =
       assembly.constraints
         .filter(
-          (
-            constraint,
-          ) =>
+          (constraint) =>
             constraint.enabled,
         )
         .map(
-          (
-            constraint,
-          ) => ({
+          (constraint) => ({
             constraintId:
               constraint.id,
             error:
@@ -147,16 +136,8 @@ export class AssemblyConstraintSolver {
     const componentTransforms:
       Record<string, Transform3D> = {};
 
-    for (
-      const [
-        componentId,
-        transform,
-      ]
-      of transforms
-    ) {
-      componentTransforms[
-        componentId
-      ] =
+    for (const [componentId, transform] of transforms) {
+      componentTransforms[componentId] =
         fromMutableTransform(
           transform,
         );
@@ -166,9 +147,7 @@ export class AssemblyConstraintSolver {
       converged:
         converged
         || residuals.every(
-          (
-            residual,
-          ) =>
+          (residual) =>
             residual.error
             <= tolerance,
         ),
@@ -202,26 +181,18 @@ export class AssemblyConstraintSolver {
         constraint.second.componentId,
       );
 
-    if (
-      !first
-      || !second
-      || !moving
-    ) {
+    if (!first || !second || !moving) {
       return Number.POSITIVE_INFINITY;
     }
 
-    switch (
-      constraint.type
-    ) {
+    switch (constraint.type) {
       case "COINCIDENT": {
         const delta =
           first.point.clone()
             .sub(
               second.point,
             );
-        moving.position.add(
-          delta,
-        );
+        moving.position.add(delta);
         return delta.length();
       }
 
@@ -238,26 +209,21 @@ export class AssemblyConstraintSolver {
           vector.length();
         const direction =
           distance > 1e-12
-            ? vector
-                .multiplyScalar(
-                  1 / distance,
-                )
+            ? vector.multiplyScalar(
+                1 / distance,
+              )
             : new THREE.Vector3(
                 1,
                 0,
                 0,
               );
         const correction =
-          desired
-          - distance;
-
+          desired - distance;
         moving.position.addScaledVector(
           direction,
           correction,
         );
-        return Math.abs(
-          correction,
-        );
+        return Math.abs(correction);
       }
 
       case "CONCENTRIC":
@@ -267,15 +233,11 @@ export class AssemblyConstraintSolver {
             .sub(
               second.point,
             );
-
         moving.position.add(
           translation,
         );
 
-        if (
-          first.direction
-          && second.direction
-        ) {
+        if (first.direction && second.direction) {
           rotateDirectionToward(
             moving,
             second.direction,
@@ -295,20 +257,15 @@ export class AssemblyConstraintSolver {
       }
 
       case "PARALLEL": {
-        if (
-          !first.direction
-          || !second.direction
-        ) {
+        if (!first.direction || !second.direction) {
           return Number.POSITIVE_INFINITY;
         }
-
         const error =
           directionError(
             first.direction,
             second.direction,
             false,
           );
-
         rotateDirectionToward(
           moving,
           second.direction,
@@ -319,48 +276,35 @@ export class AssemblyConstraintSolver {
       }
 
       case "PERPENDICULAR": {
-        if (
-          !first.direction
-          || !second.direction
-        ) {
+        if (!first.direction || !second.direction) {
           return Number.POSITIVE_INFINITY;
         }
-
-        const target =
-          perpendicularTarget(
-            first.direction,
-            second.direction,
-          );
         const error =
           Math.abs(
-            first.direction
-              .clone()
+            first.direction.clone()
               .normalize()
               .dot(
-                second.direction
-                  .clone()
+                second.direction.clone()
                   .normalize(),
               ),
           );
-
         rotateDirectionToward(
           moving,
           second.direction,
-          target,
+          perpendicularTarget(
+            first.direction,
+            second.direction,
+          ),
           true,
         );
         return error;
       }
 
       case "FACE_TO_FACE": {
-        const desired =
-          constraint.offset
-          ?? 0;
         const normal =
           first.direction
             ?.clone()
             .normalize();
-
         if (!normal) {
           return Number.POSITIVE_INFINITY;
         }
@@ -377,23 +321,20 @@ export class AssemblyConstraintSolver {
           );
         }
 
-        const signed =
-          second.point
-            .clone()
+        const signedDistance =
+          second.point.clone()
             .sub(
               first.point,
             )
-            .dot(
-              normal,
-            );
+            .dot(normal);
         const correction =
-          desired
-          - signed;
-
+          (constraint.offset ?? 0)
+          - signedDistance;
         moving.position.addScaledVector(
           normal,
           correction,
         );
+
         return Math.max(
           Math.abs(correction),
           directionError(
@@ -426,20 +367,16 @@ export class AssemblyConstraintSolver {
         transforms,
       );
 
-    if (
-      !first
-      || !second
-    ) {
+    if (!first || !second) {
       return Number.POSITIVE_INFINITY;
     }
 
-    switch (
-      constraint.type
-    ) {
+    switch (constraint.type) {
       case "COINCIDENT":
         return first.point.distanceTo(
           second.point,
         );
+
       case "DISTANCE":
         return Math.abs(
           first.point.distanceTo(
@@ -447,6 +384,7 @@ export class AssemblyConstraintSolver {
           )
           - (constraint.offset ?? 0),
         );
+
       case "CONCENTRIC":
       case "COAXIAL":
         return Math.max(
@@ -459,48 +397,43 @@ export class AssemblyConstraintSolver {
             false,
           ),
         );
+
       case "PARALLEL":
         return directionError(
           first.direction,
           second.direction,
           false,
         );
+
       case "PERPENDICULAR":
         return first.direction
           && second.direction
             ? Math.abs(
-                first.direction
-                  .clone()
+                first.direction.clone()
                   .normalize()
                   .dot(
-                    second.direction
-                      .clone()
+                    second.direction.clone()
                       .normalize(),
                   ),
               )
             : Number.POSITIVE_INFINITY;
+
       case "FACE_TO_FACE": {
         if (!first.direction) {
           return Number.POSITIVE_INFINITY;
         }
-
         const normal =
-          first.direction
-            .clone()
+          first.direction.clone()
             .normalize();
         const distanceError =
           Math.abs(
-            second.point
-              .clone()
+            second.point.clone()
               .sub(
                 first.point,
               )
-              .dot(
-                normal,
-              )
+              .dot(normal)
             - (constraint.offset ?? 0),
           );
-
         return Math.max(
           distanceError,
           directionError(
@@ -521,9 +454,7 @@ export class AssemblyConstraintSolver {
   ): ResolvedFeature | null {
     const component =
       assembly.components.find(
-        (
-          entry,
-        ) =>
+        (entry) =>
           entry.id
           === componentId,
       );
@@ -532,10 +463,7 @@ export class AssemblyConstraintSolver {
         componentId,
       );
 
-    if (
-      !component
-      || !transform
-    ) {
+    if (!component || !transform) {
       return null;
     }
 
@@ -547,9 +475,7 @@ export class AssemblyConstraintSolver {
         );
     const feature =
       engineering?.features.find(
-        (
-          entry,
-        ) =>
+        (entry) =>
           entry.id
           === featureId,
       );
@@ -570,23 +496,18 @@ function resolveFeature(
   transform: MutableTransform,
 ): ResolvedFeature {
   const point =
-    featurePoint(
-      feature,
-    );
+    featurePoint(feature)
+      .applyQuaternion(
+        transform.quaternion,
+      )
+      .add(
+        transform.position,
+      );
   const direction =
-    featureDirection(
-      feature,
-    );
+    featureDirection(feature);
 
   return {
-    point:
-      point
-        .applyQuaternion(
-          transform.quaternion,
-        )
-        .add(
-          transform.position,
-        ),
+    point,
     direction:
       direction
         ? direction
@@ -601,64 +522,38 @@ function resolveFeature(
 function featurePoint(
   feature: PieceEngineeringFeature,
 ): THREE.Vector3 {
-  switch (
-    feature.kind
-  ) {
+  switch (feature.kind) {
     case "HOLE":
-      return vector(
-        feature.center,
-      );
+      return vector(feature.center);
     case "AXIS":
-      return vector(
-        feature.origin,
-      );
+      return vector(feature.origin);
     case "PLANE":
-      return vector(
-        feature.origin,
-      );
+      return vector(feature.origin);
     case "POINT":
-      return vector(
-        feature.position,
-      );
+      return vector(feature.position);
     case "CIRCLE":
-      return vector(
-        feature.center,
-      );
+      return vector(feature.center);
     case "CYLINDER":
-      return vector(
-        feature.axisOrigin,
-      );
+      return vector(feature.axisOrigin);
   }
 }
 
 function featureDirection(
   feature: PieceEngineeringFeature,
 ): THREE.Vector3 | undefined {
-  switch (
-    feature.kind
-  ) {
+  switch (feature.kind) {
     case "HOLE":
-      return vector(
-        feature.axisDirection,
-      );
+      return vector(feature.axisDirection);
     case "AXIS":
-      return vector(
-        feature.direction,
-      );
+      return vector(feature.direction);
     case "PLANE":
-      return vector(
-        feature.normal,
-      );
-    case "CIRCLE":
-      return vector(
-        feature.normal,
-      );
-    case "CYLINDER":
-      return vector(
-        feature.axisDirection,
-      );
+      return vector(feature.normal);
     case "POINT":
       return undefined;
+    case "CIRCLE":
+      return vector(feature.normal);
+    case "CYLINDER":
+      return vector(feature.axisDirection);
   }
 }
 
@@ -683,18 +578,13 @@ function rotateDirectionToward(
   preserveSign: boolean,
 ): void {
   const current =
-    currentWorld
-      .clone()
+    currentWorld.clone()
       .normalize();
   let target =
-    targetWorld
-      .clone()
+    targetWorld.clone()
       .normalize();
 
-  if (
-    !preserveSign
-    && current.dot(target) < 0
-  ) {
+  if (!preserveSign && current.dot(target) < 0) {
     target =
       target.multiplyScalar(
         -1,
@@ -707,7 +597,6 @@ function rotateDirectionToward(
         current,
         target,
       );
-
   transform.quaternion
     .premultiply(
       correction,
@@ -720,50 +609,40 @@ function perpendicularTarget(
   currentDirection: THREE.Vector3,
 ): THREE.Vector3 {
   const fixed =
-    fixedDirection
-      .clone()
+    fixedDirection.clone()
       .normalize();
   const current =
-    currentDirection
-      .clone()
+    currentDirection.clone()
       .normalize();
   const projected =
     current.clone()
       .addScaledVector(
         fixed,
-        -current.dot(
-          fixed,
-        ),
+        -current.dot(fixed),
       );
 
-  if (
-    projected.lengthSq()
-    <= 1e-18
-  ) {
-    const fallback =
-      Math.abs(fixed.x) < 0.8
-        ? new THREE.Vector3(
-            1,
-            0,
-            0,
-          )
-        : new THREE.Vector3(
-            0,
-            1,
-            0,
-          );
-
-    return fallback
-      .addScaledVector(
-        fixed,
-        -fallback.dot(
-          fixed,
-        ),
-      )
-      .normalize();
+  if (projected.lengthSq() > 1e-18) {
+    return projected.normalize();
   }
 
-  return projected.normalize();
+  const fallback =
+    Math.abs(fixed.x) < 0.8
+      ? new THREE.Vector3(
+          1,
+          0,
+          0,
+        )
+      : new THREE.Vector3(
+          0,
+          1,
+          0,
+        );
+  return fallback
+    .addScaledVector(
+      fixed,
+      -fallback.dot(fixed),
+    )
+    .normalize();
 }
 
 function directionError(
@@ -771,10 +650,7 @@ function directionError(
   second: THREE.Vector3 | undefined,
   opposite: boolean,
 ): number {
-  if (
-    !first
-    || !second
-  ) {
+  if (!first || !second) {
     return 0;
   }
 
@@ -785,15 +661,9 @@ function directionError(
         second.clone()
           .normalize(),
       );
-
   return opposite
-    ? Math.abs(
-        dot + 1,
-      )
-    : 1
-      - Math.abs(
-          dot,
-        );
+    ? Math.abs(dot + 1)
+    : 1 - Math.abs(dot);
 }
 
 function toMutableTransform(
@@ -806,7 +676,6 @@ function toMutableTransform(
       transform.rotation.z,
       "XYZ",
     );
-
   return {
     position:
       new THREE.Vector3(
@@ -816,9 +685,7 @@ function toMutableTransform(
       ),
     quaternion:
       new THREE.Quaternion()
-        .setFromEuler(
-          euler,
-        ),
+        .setFromEuler(euler),
   };
 }
 
@@ -831,23 +698,16 @@ function fromMutableTransform(
         transform.quaternion,
         "XYZ",
       );
-
   return {
     position: {
-      x:
-        transform.position.x,
-      y:
-        transform.position.y,
-      z:
-        transform.position.z,
+      x: transform.position.x,
+      y: transform.position.y,
+      z: transform.position.z,
     },
     rotation: {
-      x:
-        euler.x,
-      y:
-        euler.y,
-      z:
-        euler.z,
+      x: euler.x,
+      y: euler.y,
+      z: euler.z,
     },
   };
 }
