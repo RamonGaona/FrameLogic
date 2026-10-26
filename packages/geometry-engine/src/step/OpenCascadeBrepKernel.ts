@@ -1,6 +1,7 @@
 import initOpenCascade from "opencascade.js";
 
 import type {
+  TopAbs_ShapeEnum,
   TopoDS_Shape,
 } from "opencascade.js";
 
@@ -92,6 +93,19 @@ let sharedKernel:
   OpenCascadeBrepKernel
   | null =
     null;
+
+
+/**
+ * Convierte los valores enum expuestos por embind al tipo nominal que los
+ * constructores de opencascade.js esperan. Algunas versiones del paquete
+ * generan los miembros TopAbs_* como `{}` en sus declaraciones TypeScript,
+ * aunque en runtime son los valores enum correctos de OCCT.
+ */
+function asShapeEnum(
+  value: unknown,
+): TopAbs_ShapeEnum {
+  return value as TopAbs_ShapeEnum;
+}
 
 
 /**
@@ -336,10 +350,14 @@ export class OpenCascadeBrepKernel {
     const explorer =
       new oc.TopExp_Explorer_2(
         shape,
-        oc.TopAbs_ShapeEnum
-          .TopAbs_VERTEX,
-        oc.TopAbs_ShapeEnum
-          .TopAbs_SHAPE,
+        asShapeEnum(
+          oc.TopAbs_ShapeEnum
+            .TopAbs_VERTEX,
+        ),
+        asShapeEnum(
+          oc.TopAbs_ShapeEnum
+            .TopAbs_SHAPE,
+        ),
       );
     let index =
       0;
@@ -389,10 +407,14 @@ export class OpenCascadeBrepKernel {
     const explorer =
       new oc.TopExp_Explorer_2(
         shape,
-        oc.TopAbs_ShapeEnum
-          .TopAbs_EDGE,
-        oc.TopAbs_ShapeEnum
-          .TopAbs_SHAPE,
+        asShapeEnum(
+          oc.TopAbs_ShapeEnum
+            .TopAbs_EDGE,
+        ),
+        asShapeEnum(
+          oc.TopAbs_ShapeEnum
+            .TopAbs_SHAPE,
+        ),
       );
     let index =
       0;
@@ -551,10 +573,14 @@ export class OpenCascadeBrepKernel {
     const explorer =
       new oc.TopExp_Explorer_2(
         shape,
-        oc.TopAbs_ShapeEnum
-          .TopAbs_FACE,
-        oc.TopAbs_ShapeEnum
-          .TopAbs_SHAPE,
+        asShapeEnum(
+          oc.TopAbs_ShapeEnum
+            .TopAbs_FACE,
+        ),
+        asShapeEnum(
+          oc.TopAbs_ShapeEnum
+            .TopAbs_SHAPE,
+        ),
       );
     let index =
       0;
@@ -635,10 +661,14 @@ export class OpenCascadeBrepKernel {
     const explorer =
       new oc.TopExp_Explorer_2(
         shape,
-        oc.TopAbs_ShapeEnum
-          .TopAbs_FACE,
-        oc.TopAbs_ShapeEnum
-          .TopAbs_SHAPE,
+        asShapeEnum(
+          oc.TopAbs_ShapeEnum
+            .TopAbs_FACE,
+        ),
+        asShapeEnum(
+          oc.TopAbs_ShapeEnum
+            .TopAbs_SHAPE,
+        ),
       );
     let index =
       0;
