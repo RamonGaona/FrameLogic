@@ -42,41 +42,35 @@ import {
   AssemblyConstraintSolver,
 } from "../assemblies/AssemblyConstraintSolver";
 
+import {
+  FrameLogicProjectPackageController,
+} from "../project/FrameLogicProjectPackageController";
+
+import type {
+  FrameLogicProjectPackage,
+} from "../project/FrameLogicProjectPackageController";
+
 
 export type PrecisionBimCoreInstance =
   BasePrecisionBimCoreInstance
   & {
-    /**
-     * Herramienta de planos de sección por recuadro + profundidad.
-     */
     readonly sectionDrawing:
       SectionDrawingController;
 
-    /**
-     * Editor vectorial de planos: cotas, labels, textos y exportación PDF.
-     */
     readonly drawingWorkspace:
       DrawingWorkspaceController;
 
-    /**
-     * Documentación de producción: hojas, escalas, referencias B-Rep,
-     * cajetines, revisiones, vistas múltiples y persistencia.
-     */
     readonly drawingProduction:
       DrawingProductionController;
 
-    /**
-     * Capa CAD profesional: Section/HLR OCCT, viewports, detalles,
-     * DIMSTYLE/unidades, snaps avanzados, undo/redo y SVG/DXF.
-     */
     readonly drawingProfessional:
       DrawingProfessionalController;
 
-    /**
-     * Solver incremental para constraints persistentes de ensamblaje.
-     */
     readonly assemblyConstraintSolver:
       AssemblyConstraintSolver;
+
+    readonly projectPackage:
+      FrameLogicProjectPackageController;
 
     readonly createDocumentationSnapshot: () =>
       FrameLogicDocumentationSnapshot;
@@ -94,6 +88,14 @@ export type PrecisionBimCoreInstance =
 
     readonly refreshExactDrawing: (
       sectionId?: string,
+    ) => Promise<void>;
+
+    readonly createProjectPackage: (
+      name?: string,
+    ) => FrameLogicProjectPackage;
+
+    readonly restoreProjectPackage: (
+      project: FrameLogicProjectPackage,
     ) => Promise<void>;
   };
 
@@ -249,6 +251,134 @@ export async function createBimCore(
       drawingProduction,
     });
 
+  const baseLoadIfcFile =
+    core.loadIfcFile.bind(
+      core,
+    );
+
+  const projectPackage =
+    new FrameLogicProjectPackageController({
+      container,
+      designModel:
+        core.designModel,
+      designScene:
+        core.designScene,
+      cadPointScene:
+        core.cadPointScene,
+      cadLineScene:
+        core.cadLineScene,
+      piecePackage:
+        core.pieceFrameLogicPackage,
+      createEngineeringSnapshot: () =>
+        core.createEngineeringSnapshot(),
+      restoreEngineeringSnapshot: (
+        snapshot,
+      ) =>
+        core.restoreEngineeringSnapshot(
+          snapshot,
+        ),
+      createDocumentationSnapshot: () =>
+        drawingProduction
+          .createDocumentationSnapshot(),
+      restoreDocumentationSnapshot: (
+        snapshot,
+      ) =>
+        drawingProduction
+          .restoreDocumentationSnapshot(
+            snapshot,
+          ),
+      createProfessionalSnapshot: () =>
+        drawingProfessional
+          .createProfessionalSnapshot(),
+      restoreProfessionalSnapshot: (
+        snapshot,
+      ) =>
+        drawingProfessional
+          .restoreProfessionalSnapshot(
+            snapshot,
+          ),
+      importStepPiece: (
+        document,
+        input,
+      ) =>
+        core.importStepPiece(
+          document,
+          input,
+        ),
+      importIfcPiece: (
+        file,
+        input,
+      ) =>
+        core.importDesignPieceIfc(
+          file,
+          input,
+        ),
+      createPieceInstance: (
+        input,
+      ) =>
+        core.createDesignPieceInstance({
+          id:
+            input.id,
+          definitionId:
+            input.definitionId,
+          layerId:
+            input.layerId,
+          transform:
+            input.transform,
+          tags:
+            input.tags
+              ? [...input.tags]
+              : [],
+        }),
+      loadReferenceIfc:
+        baseLoadIfcFile,
+      setReferenceVisible: (
+        id,
+        visible,
+      ) =>
+        core.setModelVisible(
+          id,
+          visible,
+        ),
+      setReferenceLayer: (
+        id,
+        layerId,
+      ) =>
+        core.setReferenceModelLayer(
+          id,
+          layerId,
+        ),
+      clearReferenceModels: () =>
+        core.clearModels(),
+      cancelActiveCadCommand: () =>
+        core.cancelActiveCadCommand(),
+      clearGeometryQueryCache: () =>
+        core.geometryQuery.clearCache(),
+      onProjectRestored: async () => {
+        await drawingProfessional
+          .refreshExactDrawing();
+        await core.setStandardView(
+          "ISO",
+        );
+      },
+    });
+
+  const loadIfcFile =
+    async (
+      file: File,
+    ) => {
+      const model =
+        await baseLoadIfcFile(
+          file,
+        );
+      await projectPackage
+        .registerReferenceIfc(
+          file,
+          model,
+        );
+      return model;
+    };
+
   const baseDispose =
     core.dispose;
   let disposed =
@@ -267,6 +397,7 @@ export async function createBimCore(
         handleOpenDrawing,
         true,
       );
+      projectPackage.dispose();
       drawingProfessional.dispose();
       drawingExperience.dispose();
       drawingProduction.dispose();
@@ -278,11 +409,13 @@ export async function createBimCore(
 
   return {
     ...core,
+    loadIfcFile,
     sectionDrawing,
     drawingWorkspace,
     drawingProduction,
     drawingProfessional,
     assemblyConstraintSolver,
+    projectPackage,
     createDocumentationSnapshot: () =>
       drawingProduction
         .createDocumentationSnapshot(),
@@ -311,6 +444,20 @@ export async function createBimCore(
       drawingProfessional
         .refreshExactDrawing(
           sectionId,
+        ),
+    createProjectPackage: (
+      name,
+    ) =>
+      projectPackage
+        .createProjectPackage(
+          name,
+        ),
+    restoreProjectPackage: (
+      project,
+    ) =>
+      projectPackage
+        .restoreProjectPackage(
+          project,
         ),
     dispose,
   };
