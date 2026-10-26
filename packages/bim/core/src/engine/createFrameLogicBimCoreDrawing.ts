@@ -26,6 +26,22 @@ import type {
   FrameLogicDocumentationSnapshot,
 } from "../drawing/DrawingProductionController";
 
+import {
+  DrawingProfessionalController,
+} from "../drawing/DrawingProfessionalController";
+
+import type {
+  DrawingProfessionalSnapshot,
+} from "../drawing/DrawingProfessionalModel";
+
+import {
+  OpenCascadeBrepAdvancedProvider,
+} from "../precision/OpenCascadeBrepAdvancedProvider";
+
+import {
+  AssemblyConstraintSolver,
+} from "../assemblies/AssemblyConstraintSolver";
+
 
 export type PrecisionBimCoreInstance =
   BasePrecisionBimCoreInstance
@@ -49,12 +65,36 @@ export type PrecisionBimCoreInstance =
     readonly drawingProduction:
       DrawingProductionController;
 
+    /**
+     * Capa CAD profesional: Section/HLR OCCT, viewports, detalles,
+     * DIMSTYLE/unidades, snaps avanzados, undo/redo y SVG/DXF.
+     */
+    readonly drawingProfessional:
+      DrawingProfessionalController;
+
+    /**
+     * Solver incremental para constraints persistentes de ensamblaje.
+     */
+    readonly assemblyConstraintSolver:
+      AssemblyConstraintSolver;
+
     readonly createDocumentationSnapshot: () =>
       FrameLogicDocumentationSnapshot;
 
     readonly restoreDocumentationSnapshot: (
       snapshot: FrameLogicDocumentationSnapshot,
     ) => void;
+
+    readonly createProfessionalDrawingSnapshot: () =>
+      DrawingProfessionalSnapshot;
+
+    readonly restoreProfessionalDrawingSnapshot: (
+      snapshot: DrawingProfessionalSnapshot,
+    ) => void;
+
+    readonly refreshExactDrawing: (
+      sectionId?: string,
+    ) => Promise<void>;
   };
 
 
@@ -74,6 +114,21 @@ export async function createBimCore(
       "FrameLogic section drawing requires an initialized renderer.",
     );
   }
+
+  const advancedBrepProvider =
+    new OpenCascadeBrepAdvancedProvider(
+      core.designModel,
+      core.designScene,
+    );
+  const removeAdvancedBrepProvider =
+    core.geometryQuery.addProvider(
+      advancedBrepProvider,
+    );
+
+  const assemblyConstraintSolver =
+    new AssemblyConstraintSolver(
+      core.engineeringModel,
+    );
 
   const sectionDrawing =
     new SectionDrawingController({
@@ -180,6 +235,20 @@ export async function createBimCore(
       drawingWorkspace,
     });
 
+  const drawingProfessional =
+    new DrawingProfessionalController({
+      container,
+      designModel:
+        core.designModel,
+      designScene:
+        core.designScene,
+      engineeringModel:
+        core.engineeringModel,
+      sectionDrawing,
+      drawingWorkspace,
+      drawingProduction,
+    });
+
   const baseDispose =
     core.dispose;
   let disposed =
@@ -198,10 +267,12 @@ export async function createBimCore(
         handleOpenDrawing,
         true,
       );
+      drawingProfessional.dispose();
       drawingExperience.dispose();
       drawingProduction.dispose();
       drawingWorkspace.dispose();
       sectionDrawing.dispose();
+      removeAdvancedBrepProvider();
       baseDispose();
     };
 
@@ -210,6 +281,8 @@ export async function createBimCore(
     sectionDrawing,
     drawingWorkspace,
     drawingProduction,
+    drawingProfessional,
+    assemblyConstraintSolver,
     createDocumentationSnapshot: () =>
       drawingProduction
         .createDocumentationSnapshot(),
@@ -221,6 +294,24 @@ export async function createBimCore(
           snapshot,
         );
     },
+    createProfessionalDrawingSnapshot: () =>
+      drawingProfessional
+        .createProfessionalSnapshot(),
+    restoreProfessionalDrawingSnapshot: (
+      snapshot,
+    ) => {
+      drawingProfessional
+        .restoreProfessionalSnapshot(
+          snapshot,
+        );
+    },
+    refreshExactDrawing: (
+      sectionId,
+    ) =>
+      drawingProfessional
+        .refreshExactDrawing(
+          sectionId,
+        ),
     dispose,
   };
 }
