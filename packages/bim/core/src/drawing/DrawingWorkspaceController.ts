@@ -69,7 +69,7 @@ type DrawingAnnotation =
   | TextAnnotation;
 
 
-interface DrawingDocument {
+interface DrawingDocumentState {
   readonly sectionId: string;
   readonly annotations: DrawingAnnotation[];
 }
@@ -85,7 +85,7 @@ interface PaperTransform {
   readonly scale: number;
   readonly offsetX: number;
   readonly offsetY: number;
-  readonly drawingHeight: number;
+  readonly height: number;
 }
 
 
@@ -93,10 +93,8 @@ interface AnnotationDragState {
   readonly annotationId: string;
   readonly startX: number;
   readonly startY: number;
-  readonly startOffsetX?: number;
-  readonly startOffsetY?: number;
-  readonly startTextX?: number;
-  readonly startTextY?: number;
+  readonly startOffsetX: number;
+  readonly startOffsetY: number;
 }
 
 
@@ -133,9 +131,6 @@ const EPSILON =
 
 
 export class DrawingWorkspaceController {
-  private readonly container:
-    HTMLElement;
-
   private readonly designScene:
     DesignSceneController;
 
@@ -143,7 +138,7 @@ export class DrawingWorkspaceController {
     SectionDrawingController;
 
   private readonly documents =
-    new Map<string, DrawingDocument>();
+    new Map<string, DrawingDocumentState>();
 
   private readonly overlay:
     HTMLDivElement;
@@ -167,6 +162,10 @@ export class DrawingWorkspaceController {
     string | null =
       null;
 
+  private snapshot:
+    DrawingSnapshot | null =
+      null;
+
   private tool:
     DrawingTool =
       "SELECT";
@@ -183,10 +182,6 @@ export class DrawingWorkspaceController {
     AnnotationDragState | null =
       null;
 
-  private snapshot:
-    DrawingSnapshot | null =
-      null;
-
   private zoom =
     1;
 
@@ -197,8 +192,6 @@ export class DrawingWorkspaceController {
   constructor(
     options: DrawingWorkspaceControllerOptions,
   ) {
-    this.container =
-      options.container;
     this.designScene =
       options.designScene;
     this.sectionDrawing =
@@ -246,14 +239,11 @@ export class DrawingWorkspaceController {
       "#141b20";
     toolbar.style.borderBottom =
       "1px solid rgba(255,255,255,0.12)";
-    toolbar.style.flex =
-      "0 0 auto";
 
     const backButton =
       this.makeButton(
         "← Model Space",
       );
-
     const title =
       document.createElement(
         "div",
@@ -264,7 +254,7 @@ export class DrawingWorkspaceController {
     title.style.marginRight =
       "10px";
     title.style.minWidth =
-      "140px";
+      "150px";
 
     toolbar.append(
       backButton,
@@ -382,8 +372,6 @@ export class DrawingWorkspaceController {
         "div",
       );
 
-    status.style.flex =
-      "0 0 auto";
     status.style.padding =
       "6px 10px";
     status.style.background =
@@ -400,8 +388,7 @@ export class DrawingWorkspaceController {
       stage,
       status,
     );
-
-    this.container.append(
+    options.container.append(
       overlay,
     );
 
@@ -651,23 +638,17 @@ export class DrawingWorkspaceController {
           : "#27343c";
     }
 
-    if (
-      tool === "DIMENSION"
-    ) {
+    if (tool === "DIMENSION") {
       this.setStatus(
         "COTA: selecciona dos puntos de geometría.",
       );
     }
-    else if (
-      tool === "LABEL"
-    ) {
+    else if (tool === "LABEL") {
       this.setStatus(
         "LABEL: selecciona una pieza en el plano.",
       );
     }
-    else if (
-      tool === "TEXT"
-    ) {
+    else if (tool === "TEXT") {
       this.setStatus(
         "TEXTO: haz clic donde quieras colocar la nota.",
       );
@@ -683,7 +664,7 @@ export class DrawingWorkspaceController {
   private ensureDocument(
     sectionId: string,
   ):
-    DrawingDocument {
+    DrawingDocumentState {
     const current =
       this.documents.get(
         sectionId,
@@ -694,7 +675,7 @@ export class DrawingWorkspaceController {
     }
 
     const created:
-      DrawingDocument = {
+      DrawingDocumentState = {
         sectionId,
         annotations: [],
       };
@@ -708,7 +689,7 @@ export class DrawingWorkspaceController {
 
 
   private getActiveDocument():
-    DrawingDocument | null {
+    DrawingDocumentState | null {
     if (!this.activeSectionId) {
       return null;
     }
@@ -756,55 +737,43 @@ export class DrawingWorkspaceController {
           annotationElement.getAttribute(
             "data-annotation-id",
           );
+        const point =
+          this.eventToSheetPoint(
+            event,
+          );
 
-        if (id) {
-          const point =
-            this.eventToSheetPoint(
-              event,
-            );
-
-          if (!point) {
-            return;
-          }
-
+        if (
+          id
+          && point
+        ) {
           const annotation =
             this.findAnnotation(
               id,
             );
 
-          if (!annotation) {
+          if (annotation) {
+            this.selectedAnnotationId =
+              id;
+            this.dragState = {
+              annotationId:
+                id,
+              startX:
+                point.x,
+              startY:
+                point.y,
+              startOffsetX:
+                annotation.kind === "TEXT"
+                  ? annotation.x
+                  : annotation.offsetX,
+              startOffsetY:
+                annotation.kind === "TEXT"
+                  ? annotation.y
+                  : annotation.offsetY,
+            };
+            this.render();
+            event.preventDefault();
             return;
           }
-
-          this.selectedAnnotationId =
-            id;
-          this.dragState = {
-            annotationId:
-              id,
-            startX:
-              point.x,
-            startY:
-              point.y,
-            startOffsetX:
-              annotation.kind === "TEXT"
-                ? undefined
-                : annotation.offsetX,
-            startOffsetY:
-              annotation.kind === "TEXT"
-                ? undefined
-                : annotation.offsetY,
-            startTextX:
-              annotation.kind === "TEXT"
-                ? annotation.x
-                : undefined,
-            startTextY:
-              annotation.kind === "TEXT"
-                ? annotation.y
-                : undefined,
-          };
-          this.render();
-          event.preventDefault();
-          return;
         }
       }
 
@@ -817,9 +786,7 @@ export class DrawingWorkspaceController {
         return;
       }
 
-      if (
-        this.tool === "DIMENSION"
-      ) {
+      if (this.tool === "DIMENSION") {
         this.handleDimensionPoint(
           point.x,
           point.y,
@@ -827,9 +794,7 @@ export class DrawingWorkspaceController {
         return;
       }
 
-      if (
-        this.tool === "LABEL"
-      ) {
+      if (this.tool === "LABEL") {
         this.handleLabelPoint(
           point.x,
           point.y,
@@ -837,9 +802,7 @@ export class DrawingWorkspaceController {
         return;
       }
 
-      if (
-        this.tool === "TEXT"
-      ) {
+      if (this.tool === "TEXT") {
         this.handleTextPoint(
           point.x,
           point.y,
@@ -868,17 +831,15 @@ export class DrawingWorkspaceController {
         this.eventToSheetPoint(
           event,
         );
-
-      if (!point) {
-        return;
-      }
-
       const annotation =
         this.findAnnotation(
           drag.annotationId,
         );
 
-      if (!annotation) {
+      if (
+        !point
+        || !annotation
+      ) {
         return;
       }
 
@@ -889,22 +850,20 @@ export class DrawingWorkspaceController {
         point.y
         - drag.startY;
 
-      if (
-        annotation.kind === "TEXT"
-      ) {
+      if (annotation.kind === "TEXT") {
         annotation.x =
-          (drag.startTextX ?? annotation.x)
+          drag.startOffsetX
           + dx;
         annotation.y =
-          (drag.startTextY ?? annotation.y)
+          drag.startOffsetY
           + dy;
       }
       else {
         annotation.offsetX =
-          (drag.startOffsetX ?? annotation.offsetX)
+          drag.startOffsetX
           + dx;
         annotation.offsetY =
-          (drag.startOffsetY ?? annotation.offsetY)
+          drag.startOffsetY
           + dy;
       }
 
@@ -1002,12 +961,8 @@ export class DrawingWorkspaceController {
         return;
       }
 
-      if (
-        event.key === "Escape"
-      ) {
-        if (
-          this.tool !== "SELECT"
-        ) {
+      if (event.key === "Escape") {
+        if (this.tool !== "SELECT") {
           this.setTool(
             "SELECT",
           );
@@ -1053,14 +1008,14 @@ export class DrawingWorkspaceController {
       return;
     }
 
-    const document =
+    const drawingDocument =
       this.getActiveDocument();
 
-    if (!document) {
+    if (!drawingDocument) {
       return;
     }
 
-    document.annotations.push({
+    drawingDocument.annotations.push({
       id:
         crypto.randomUUID(),
       kind:
@@ -1112,14 +1067,14 @@ export class DrawingWorkspaceController {
       return;
     }
 
-    const document =
+    const drawingDocument =
       this.getActiveDocument();
 
-    if (!document) {
+    if (!drawingDocument) {
       return;
     }
 
-    document.annotations.push({
+    drawingDocument.annotations.push({
       id:
         crypto.randomUUID(),
       kind:
@@ -1158,14 +1113,14 @@ export class DrawingWorkspaceController {
       return;
     }
 
-    const document =
+    const drawingDocument =
       this.getActiveDocument();
 
-    if (!document) {
+    if (!drawingDocument) {
       return;
     }
 
-    document.annotations.push({
+    drawingDocument.annotations.push({
       id:
         crypto.randomUUID(),
       kind:
@@ -1188,18 +1143,18 @@ export class DrawingWorkspaceController {
     (): void => {
       const id =
         this.selectedAnnotationId;
-      const document =
+      const drawingDocument =
         this.getActiveDocument();
 
       if (
         !id
-        || !document
+        || !drawingDocument
       ) {
         return;
       }
 
       const index =
-        document.annotations
+        drawingDocument.annotations
           .findIndex(
             (
               annotation,
@@ -1212,14 +1167,14 @@ export class DrawingWorkspaceController {
         return;
       }
 
-      document.annotations.splice(
+      drawingDocument.annotations.splice(
         index,
         1,
       );
-    this.selectedAnnotationId =
-      null;
-    this.render();
-  };
+      this.selectedAnnotationId =
+        null;
+      this.render();
+    };
 
 
   private findAnnotation(
@@ -1331,10 +1286,10 @@ export class DrawingWorkspaceController {
           EPSILON,
         ),
       );
-    const drawingWidth =
+    const width =
       section.width
       * scale;
-    const drawingHeight =
+    const height =
       section.height
       * scale;
 
@@ -1344,15 +1299,15 @@ export class DrawingWorkspaceController {
         CONTENT_LEFT
         + (
           availableWidth
-          - drawingWidth
+          - width
         ) / 2,
       offsetY:
         CONTENT_TOP
         + (
           availableHeight
-          - drawingHeight
+          - height
         ) / 2,
-      drawingHeight,
+      height,
     };
   }
 
@@ -1372,7 +1327,7 @@ export class DrawingWorkspaceController {
       transform.offsetX
       + x * transform.scale,
       transform.offsetY
-      + transform.drawingHeight
+      + transform.height
       - y * transform.scale,
     );
   }
@@ -1397,7 +1352,7 @@ export class DrawingWorkspaceController {
       / transform.scale,
       (
         transform.offsetY
-        + transform.drawingHeight
+        + transform.height
         - y
       )
       / transform.scale,
@@ -1423,21 +1378,19 @@ export class DrawingWorkspaceController {
         paperX,
         paperY,
       );
-    const transform =
-      this.paperTransform(
-        snapshot.section,
-      );
     const tolerance =
       18
-      / transform.scale;
-    let best:
-      {
-        segment: DrawingSegment;
-        point: THREE.Vector2;
-        distance: number;
-      }
-      | null =
+      / this.paperTransform(
+        snapshot.section,
+      ).scale;
+    let bestSegment:
+      DrawingSegment | null =
         null;
+    let bestPoint:
+      THREE.Vector2 | null =
+        null;
+    let bestDistance =
+      Number.POSITIVE_INFINITY;
 
     for (
       const segment
@@ -1454,33 +1407,32 @@ export class DrawingWorkspaceController {
         );
 
       if (
-        distance > tolerance
-        || (
-          best
-          && distance >= best.distance
-        )
+        distance <= tolerance
+        && distance < bestDistance
       ) {
-        continue;
+        bestSegment =
+          segment;
+        bestPoint =
+          point;
+        bestDistance =
+          distance;
       }
-
-      best = {
-        segment,
-        point,
-        distance,
-      };
     }
 
-    if (!best) {
+    if (
+      !bestSegment
+      || !bestPoint
+    ) {
       return null;
     }
 
     return {
       instanceId:
-        best.segment.instanceId,
+        bestSegment.instanceId,
       x:
-        best.point.x,
+        bestPoint.x,
       y:
-        best.point.y,
+        bestPoint.y,
     };
   }
 
@@ -1531,7 +1483,7 @@ export class DrawingWorkspaceController {
         reference.x,
         reference.y,
       );
-    let bestPoint =
+    let best =
       source.clone();
     let bestDistance =
       Number.POSITIVE_INFINITY;
@@ -1553,7 +1505,7 @@ export class DrawingWorkspaceController {
       if (distance < bestDistance) {
         bestDistance =
           distance;
-        bestPoint =
+        best =
           point;
       }
     }
@@ -1562,8 +1514,8 @@ export class DrawingWorkspaceController {
       point:
         this.sectionToPaper(
           snapshot.section,
-          bestPoint.x,
-          bestPoint.y,
+          best.x,
+          best.y,
         ),
       lost:
         false,
@@ -1622,18 +1574,16 @@ export class DrawingWorkspaceController {
   private render(): void {
     const snapshot =
       this.snapshot;
-    const document =
+    const drawingDocument =
       this.getActiveDocument();
 
-    while (
-      this.svg.firstChild
-    ) {
+    while (this.svg.firstChild) {
       this.svg.firstChild.remove();
     }
 
     if (
       !snapshot
-      || !document
+      || !drawingDocument
     ) {
       return;
     }
@@ -1696,19 +1646,14 @@ export class DrawingWorkspaceController {
 
     for (
       const annotation
-      of document.annotations
+      of drawingDocument.annotations
     ) {
-      if (
-        annotation.kind === "DIMENSION"
-      ) {
+      if (annotation.kind === "DIMENSION") {
         this.renderDimension(
           annotation,
-          snapshot.section,
         );
       }
-      else if (
-        annotation.kind === "LABEL"
-      ) {
+      else if (annotation.kind === "LABEL") {
         this.renderLabel(
           annotation,
         );
@@ -1727,7 +1672,6 @@ export class DrawingWorkspaceController {
       16,
       "#111",
       "start",
-      undefined,
     );
     this.appendSvgText(
       SHEET_WIDTH - 34,
@@ -1736,14 +1680,12 @@ export class DrawingWorkspaceController {
       11,
       "#333",
       "end",
-      undefined,
     );
   }
 
 
   private renderDimension(
     annotation: DimensionAnnotation,
-    section: SectionViewDefinition,
   ): void {
     const a =
       this.resolveReference(
@@ -1756,31 +1698,28 @@ export class DrawingWorkspaceController {
     const lost =
       a.lost
       || b.lost;
+    const offset =
+      new THREE.Vector2(
+        annotation.offsetX,
+        annotation.offsetY,
+      );
     const da =
       a.point.clone()
         .add(
-          new THREE.Vector2(
-            annotation.offsetX,
-            annotation.offsetY,
-          ),
+          offset,
         );
     const db =
       b.point.clone()
         .add(
-          new THREE.Vector2(
-            annotation.offsetX,
-            annotation.offsetY,
-          ),
+          offset,
         );
     const color =
       lost
         ? "#d33"
         : "#135f89";
-    const selected =
-      this.selectedAnnotationId
-      === annotation.id;
     const width =
-      selected
+      this.selectedAnnotationId
+      === annotation.id
         ? 2
         : 1.15;
 
@@ -1812,83 +1751,6 @@ export class DrawingWorkspaceController {
       annotation.id,
     );
 
-    const direction =
-      db.clone()
-        .sub(
-          da,
-        );
-
-    if (direction.lengthSq() > EPSILON) {
-      direction.normalize();
-      const normal =
-        new THREE.Vector2(
-          -direction.y,
-          direction.x,
-        );
-      const arrow =
-        6;
-
-      this.appendSvgLine(
-        da.x
-        - direction.x * arrow
-        + normal.x * arrow * 0.55,
-        da.y
-        - direction.y * arrow
-        + normal.y * arrow * 0.55,
-        da.x,
-        da.y,
-        color,
-        width,
-        annotation.id,
-      );
-      this.appendSvgLine(
-        da.x
-        - direction.x * arrow
-        - normal.x * arrow * 0.55,
-        da.y
-        - direction.y * arrow
-        - normal.y * arrow * 0.55,
-        da.x,
-        da.y,
-        color,
-        width,
-        annotation.id,
-      );
-      this.appendSvgLine(
-        db.x
-        + direction.x * arrow
-        + normal.x * arrow * 0.55,
-        db.y
-        + direction.y * arrow
-        + normal.y * arrow * 0.55,
-        db.x,
-        db.y,
-        color,
-        width,
-        annotation.id,
-      );
-      this.appendSvgLine(
-        db.x
-        + direction.x * arrow
-        - normal.x * arrow * 0.55,
-        db.y
-        + direction.y * arrow
-        - normal.y * arrow * 0.55,
-        db.x,
-        db.y,
-        color,
-        width,
-        annotation.id,
-      );
-    }
-
-    const value =
-      Math.hypot(
-        annotation.b.x
-        - annotation.a.x,
-        annotation.b.y
-        - annotation.a.y,
-      );
     const midpoint =
       da.clone()
         .add(
@@ -1897,6 +1759,13 @@ export class DrawingWorkspaceController {
         .multiplyScalar(
           0.5,
         );
+    const value =
+      Math.hypot(
+        annotation.b.x
+        - annotation.a.x,
+        annotation.b.y
+        - annotation.a.y,
+      );
 
     this.appendSvgText(
       midpoint.x,
@@ -1909,8 +1778,6 @@ export class DrawingWorkspaceController {
       "middle",
       annotation.id,
     );
-
-    void section;
   }
 
 
@@ -2026,6 +1893,10 @@ export class DrawingWorkspaceController {
       );
       line.style.cursor =
         "move";
+    }
+    else {
+      line.style.pointerEvents =
+        "none";
     }
 
     this.svg.append(
@@ -2249,7 +2120,7 @@ export class DrawingWorkspaceController {
           edgeGeometry.dispose();
 
           for (
-            const segment
+            const cut
             of this.extractCutSegments(
               child,
               worldToSection,
@@ -2258,7 +2129,7 @@ export class DrawingWorkspaceController {
           ) {
             segments.push({
               instanceId,
-              ...segment,
+              ...cut,
               cut:
                 true,
             });
@@ -2306,12 +2177,12 @@ export class DrawingWorkspaceController {
       return result;
     }
 
-    const geometryIndex =
+    const index =
       geometry.getIndex();
     const triangleCount =
-      geometryIndex
+      index
         ? Math.floor(
-            geometryIndex.count / 3,
+            index.count / 3,
           )
         : Math.floor(
             position.count / 3,
@@ -2341,32 +2212,32 @@ export class DrawingWorkspaceController {
       const base =
         triangle * 3;
       const ia =
-        geometryIndex
-          ? geometryIndex.getX(base)
+        index
+          ? index.getX(base)
           : base;
       const ib =
-        geometryIndex
-          ? geometryIndex.getX(base + 1)
+        index
+          ? index.getX(base + 1)
           : base + 1;
       const ic =
-        geometryIndex
-          ? geometryIndex.getX(base + 2)
+        index
+          ? index.getX(base + 2)
           : base + 2;
-      const points =
-        this.intersectTriangleWithPlane(
+      const intersections =
+        this.intersectTriangle(
           readVertex(ia),
           readVertex(ib),
           readVertex(ic),
         );
 
-      if (points.length < 2) {
+      if (intersections.length < 2) {
         continue;
       }
 
       const first =
-        points[0];
+        intersections[0];
       const second =
-        points[1];
+        intersections[1];
 
       if (
         !first
@@ -2375,11 +2246,25 @@ export class DrawingWorkspaceController {
         continue;
       }
 
+      const a =
+        first.clone();
+      const b =
+        second.clone();
+
+      a.z =
+        EPSILON;
+      b.z =
+        EPSILON;
+
       const clipped =
-        this.clipCutSegment(
-          first,
-          second,
-          section,
+        this.clipSegmentToBox(
+          a,
+          b,
+          {
+            ...section,
+            depth:
+              EPSILON * 2,
+          },
         );
 
       if (clipped) {
@@ -2400,7 +2285,7 @@ export class DrawingWorkspaceController {
   }
 
 
-  private intersectTriangleWithPlane(
+  private intersectTriangle(
     a: THREE.Vector3,
     b: THREE.Vector3,
     c: THREE.Vector3,
@@ -2425,7 +2310,7 @@ export class DrawingWorkspaceController {
       return [];
     }
 
-    const intersections:
+    const result:
       THREE.Vector3[] = [];
 
     for (
@@ -2449,8 +2334,8 @@ export class DrawingWorkspaceController {
         Math.abs(first.z)
         <= EPSILON
       ) {
-        this.pushUniquePoint(
-          intersections,
+        this.pushUnique(
+          result,
           first,
         );
       }
@@ -2474,21 +2359,21 @@ export class DrawingWorkspaceController {
 
         point.z =
           0;
-        this.pushUniquePoint(
-          intersections,
+        this.pushUnique(
+          result,
           point,
         );
       }
     }
 
-    return intersections.slice(
+    return result.slice(
       0,
       2,
     );
   }
 
 
-  private pushUniquePoint(
+  private pushUnique(
     points: THREE.Vector3[],
     point: THREE.Vector3,
   ): void {
@@ -2508,35 +2393,6 @@ export class DrawingWorkspaceController {
 
     points.push(
       point.clone(),
-    );
-  }
-
-
-  private clipCutSegment(
-    a: THREE.Vector3,
-    b: THREE.Vector3,
-    section: SectionViewDefinition,
-  ):
-    [THREE.Vector3, THREE.Vector3]
-    | null {
-    const start =
-      a.clone();
-    const end =
-      b.clone();
-
-    start.z =
-      EPSILON;
-    end.z =
-      EPSILON;
-
-    return this.clipSegmentToBox(
-      start,
-      end,
-      {
-        ...section,
-        depth:
-          EPSILON * 2,
-      },
     );
   }
 
@@ -2693,12 +2549,12 @@ export class DrawingWorkspaceController {
     (): void => {
       const snapshot =
         this.snapshot;
-      const document =
+      const drawingDocument =
         this.getActiveDocument();
 
       if (
         !snapshot
-        || !document
+        || !drawingDocument
       ) {
         return;
       }
@@ -2706,7 +2562,7 @@ export class DrawingWorkspaceController {
       const pdf =
         this.createPdf(
           snapshot,
-          document,
+          drawingDocument,
         );
       const blob =
         new Blob(
@@ -2723,7 +2579,7 @@ export class DrawingWorkspaceController {
           blob,
         );
       const anchor =
-        document.createElement(
+        window.document.createElement(
           "a",
         );
 
@@ -2744,7 +2600,7 @@ export class DrawingWorkspaceController {
 
   private createPdf(
     snapshot: DrawingSnapshot,
-    drawingDocument: DrawingDocument,
+    drawingDocument: DrawingDocumentState,
   ):
     Uint8Array<ArrayBuffer> {
     const pageWidth =
@@ -2805,9 +2661,7 @@ export class DrawingWorkspaceController {
       const annotation
       of drawingDocument.annotations
     ) {
-      if (
-        annotation.kind === "DIMENSION"
-      ) {
+      if (annotation.kind === "DIMENSION") {
         const a =
           this.resolveReference(
             annotation.a,
@@ -2816,21 +2670,20 @@ export class DrawingWorkspaceController {
           this.resolveReference(
             annotation.b,
           );
+        const offset =
+          new THREE.Vector2(
+            annotation.offsetX,
+            annotation.offsetY,
+          );
         const da =
           a.point.clone()
             .add(
-              new THREE.Vector2(
-                annotation.offsetX,
-                annotation.offsetY,
-              ),
+              offset,
             );
         const db =
           b.point.clone()
             .add(
-              new THREE.Vector2(
-                annotation.offsetX,
-                annotation.offsetY,
-              ),
+              offset,
             );
 
         commands.push(
@@ -2869,26 +2722,22 @@ export class DrawingWorkspaceController {
             annotation.b.y
             - annotation.a.y,
           );
-        const text =
-          a.lost
-          || b.lost
-            ? "REFERENCIA PERDIDA"
-            : `${this.formatNumber(value)} m`;
 
         commands.push(
           this.pdfTextCommand(
             midpoint.x,
             midpoint.y - 6,
-            text,
+            a.lost
+            || b.lost
+              ? "REFERENCIA PERDIDA"
+              : `${this.formatNumber(value)} m`,
             9,
             toPdfX,
             toPdfY,
           ),
         );
       }
-      else if (
-        annotation.kind === "LABEL"
-      ) {
+      else if (annotation.kind === "LABEL") {
         const target =
           this.resolveReference(
             annotation.target,
