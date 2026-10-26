@@ -58,3 +58,14 @@ export type {
   BrepExactVertex,
   OpenCascadeBrepSnapshot,
 } from "./step/OpenCascadeBrepKernel";
+
+export {
+  OpenCascadeDrawingKernel,
+} from "./step/OpenCascadeDrawingKernel";
+
+export type {
+  OpenCascadeDrawingPrecision,
+  OpenCascadeDrawingSegment,
+  OpenCascadeHlrResult,
+  OpenCascadeSectionResult,
+} from "./step/OpenCascadeDrawingKernel";
