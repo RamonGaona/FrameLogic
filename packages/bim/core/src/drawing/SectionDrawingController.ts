@@ -44,12 +44,41 @@ interface SectionDrawingData {
 }
 
 
+type SectionHandleType =
+  | "CORNER_00"
+  | "CORNER_10"
+  | "CORNER_11"
+  | "CORNER_01"
+  | "DEPTH"
+  | "MOVE";
+
+
+interface SectionHandleData {
+  readonly sectionId: string;
+  readonly type: SectionHandleType;
+}
+
+
 interface SectionVisual {
   readonly group: THREE.Group;
   readonly fillGeometry: THREE.BoxGeometry;
   readonly fillMaterial: THREE.MeshBasicMaterial;
   readonly edgeGeometry: THREE.EdgesGeometry;
   readonly edgeMaterial: THREE.LineBasicMaterial;
+  readonly arrow: THREE.ArrowHelper;
+  readonly handles: Map<
+    SectionHandleType,
+    THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>
+  >;
+}
+
+
+interface SectionDragState {
+  readonly sectionId: string;
+  readonly handleType: SectionHandleType;
+  readonly startSection: SectionViewDefinition;
+  readonly dragPlane: THREE.Plane;
+  readonly startWorldPoint: THREE.Vector3;
 }
 
 
@@ -71,20 +100,21 @@ export interface SectionDrawingControllerOptions {
 const SECTION_EPSILON =
   1e-7;
 
+const MIN_SECTION_SIZE =
+  0.01;
+
 
 /**
- * MVP de planos de sección FrameLogic.
+ * Planos de sección FrameLogic.
  *
  * El usuario define un rectángulo sobre el WorkPlane activo y una profundidad.
- * Ese rectángulo se convierte en un volumen 3D orientado. El PDF proyecta
- * únicamente geometría que cae dentro de ese volumen.
+ * El volumen puede editarse después con handles 3D:
+ * - 4 esquinas del plano frontal: ancho / alto.
+ * - handle amarillo posterior: profundidad.
+ * - handle verde central: mover el recuadro dentro de su plano.
  *
- * Esta primera implementación genera el dibujo desde las mallas Three.js:
- * - EdgesGeometry -> líneas proyectadas dentro de la profundidad.
- * - Intersección triángulo/plano -> línea gruesa de corte.
- *
- * La definición de SectionView es independiente de la fuente geométrica para
- * que el extractor pueda migrarse después a OCCT Section + HLR exacto.
+ * La flecha amarilla siempre apunta desde el plano de corte hacia la profundidad
+ * incluida en la vista PDF.
  */
 export class SectionDrawingController {
   private readonly container:
@@ -120,6 +150,12 @@ export class SectionDrawingController {
   private readonly visuals =
     new Map<string, SectionVisual>();
 
+  private readonly handleRaycaster =
+    new THREE.Raycaster();
+
+  private readonly pointer =
+    new THREE.Vector2();
+
   private activeSectionId:
     string | null =
       null;
@@ -140,6 +176,10 @@ export class SectionDrawingController {
   private preview:
     THREE.LineLoop<THREE.BufferGeometry, THREE.LineBasicMaterial>
     | null =
+      null;
+
+  private dragState:
+    SectionDragState | null =
       null;
 
   private disposed =
@@ -193,11 +233,19 @@ export class SectionDrawingController {
       document.createElement(
         "div",
       );
+
     panel.dataset["framelogicSectionPanel"] =
       "true";
     panel.style.position =
       "absolute";
+
+    /*
+     * El panel de Layers vive en el sector inferior izquierdo.
+     * SECCIÓN se mantiene en la esquina inferior derecha para no solaparlo.
+     */
     panel.style.left =
+      "auto";
+    panel.style.right =
       "16px";
     panel.style.bottom =
       "16px";
@@ -207,8 +255,14 @@ export class SectionDrawingController {
       "flex";
     panel.style.alignItems =
       "center";
+    panel.style.flexWrap =
+      "wrap";
+    panel.style.justifyContent =
+      "flex-end";
     panel.style.gap =
       "6px";
+    panel.style.maxWidth =
+      "min(680px, calc(100% - 32px))";
     panel.style.padding =
       "7px 9px";
     panel.style.borderRadius =
@@ -230,6 +284,7 @@ export class SectionDrawingController {
       document.createElement(
         "strong",
       );
+
     title.textContent =
       "SECCIÓN";
     title.style.letterSpacing =
@@ -239,6 +294,7 @@ export class SectionDrawingController {
       document.createElement(
         "span",
       );
+
     depthLabel.textContent =
       "Prof. m";
     depthLabel.style.opacity =
@@ -248,6 +304,7 @@ export class SectionDrawingController {
       document.createElement(
         "input",
       );
+
     depthInput.type =
       "number";
     depthInput.min =
@@ -290,6 +347,7 @@ export class SectionDrawingController {
       document.createElement(
         "div",
       );
+
     status.style.marginLeft =
       "4px";
     status.style.maxWidth =
@@ -366,6 +424,10 @@ export class SectionDrawingController {
       this.handleDepthChange,
     );
 
+    /*
+     * Capture=true permite que los handles ganen el gesto antes que los
+     * controles de cámara, sin alterar la navegación cuando no se arrastran.
+     */
     this.canvas.addEventListener(
       "pointerdown",
       this.handlePointerDown,
@@ -379,6 +441,11 @@ export class SectionDrawingController {
     this.canvas.addEventListener(
       "pointermove",
       this.handlePointerMove,
+      true,
+    );
+    this.canvas.addEventListener(
+      "pointerleave",
+      this.handlePointerLeave,
     );
     window.addEventListener(
       "keydown",
@@ -425,6 +492,9 @@ export class SectionDrawingController {
     }
 
     this.beforeStart();
+    this.cancelDrag(
+      false,
+    );
     this.cancelCreation();
     this.creationStage =
       "SECOND_POINT";
@@ -448,8 +518,12 @@ export class SectionDrawingController {
       null;
     this.creationPlaneState =
       null;
-    this.canvas.style.cursor =
-      "";
+
+    if (!this.dragState) {
+      this.canvas.style.cursor =
+        "";
+    }
+
     this.disposePreview();
     this.refreshUi();
   }
@@ -573,6 +647,9 @@ export class SectionDrawingController {
 
     this.disposed =
       true;
+    this.cancelDrag(
+      false,
+    );
     this.cancelCreation();
 
     this.createButton.removeEventListener(
@@ -609,6 +686,11 @@ export class SectionDrawingController {
     this.canvas.removeEventListener(
       "pointermove",
       this.handlePointerMove,
+      true,
+    );
+    this.canvas.removeEventListener(
+      "pointerleave",
+      this.handlePointerLeave,
     );
     window.removeEventListener(
       "keydown",
@@ -675,7 +757,7 @@ export class SectionDrawingController {
         reversed,
       );
       this.setStatus(
-        `${section.name}: profundidad invertida.`,
+        `${section.name}: dirección de vista invertida.`,
       );
     };
 
@@ -721,14 +803,51 @@ export class SectionDrawingController {
       event: PointerEvent,
     ): void => {
       if (
-        this.creationStage === "IDLE"
-        || event.button !== 0
+        event.button !== 0
       ) {
+        return;
+      }
+
+      if (
+        this.creationStage
+        !== "IDLE"
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      const hit =
+        this.pickHandle(
+          event.clientX,
+          event.clientY,
+        );
+
+      if (!hit) {
         return;
       }
 
       event.preventDefault();
       event.stopImmediatePropagation();
+
+      this.beforeStart();
+      this.activeSectionId =
+        hit.sectionId;
+      this.refreshUi();
+      this.beginDrag(
+        hit,
+        event.clientX,
+        event.clientY,
+      );
+
+      try {
+        this.canvas.setPointerCapture(
+          event.pointerId,
+        );
+      }
+      catch {
+        // Algunos navegadores no permiten captura si el pointer cambió.
+      }
     };
 
 
@@ -737,8 +856,37 @@ export class SectionDrawingController {
       event: PointerEvent,
     ): void => {
       if (
+        event.button !== 0
+      ) {
+        return;
+      }
+
+      if (this.dragState) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        this.finishDrag();
+
+        try {
+          if (
+            this.canvas.hasPointerCapture(
+              event.pointerId,
+            )
+          ) {
+            this.canvas.releasePointerCapture(
+              event.pointerId,
+            );
+          }
+        }
+        catch {
+          // Sin acción: el gesto ya terminó.
+        }
+
+        return;
+      }
+
+      if (
         this.creationStage === "IDLE"
-        || event.button !== 0
       ) {
         return;
       }
@@ -776,27 +924,70 @@ export class SectionDrawingController {
     (
       event: PointerEvent,
     ): void => {
-      if (
-        this.creationStage === "IDLE"
-        || !this.firstPoint
-      ) {
+      if (this.dragState) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        this.updateDrag(
+          event.clientX,
+          event.clientY,
+        );
         return;
       }
 
-      const point =
-        this.resolvePoint(
+      if (
+        this.creationStage
+        !== "IDLE"
+      ) {
+        if (!this.firstPoint) {
+          return;
+        }
+
+        const point =
+          this.resolvePoint(
+            event.clientX,
+            event.clientY,
+          );
+
+        if (!point) {
+          return;
+        }
+
+        this.updatePreview(
+          this.firstPoint,
+          point,
+        );
+        return;
+      }
+
+      const hit =
+        this.pickHandle(
           event.clientX,
           event.clientY,
         );
 
-      if (!point) {
+      if (!hit) {
+        this.canvas.style.cursor =
+          "";
         return;
       }
 
-      this.updatePreview(
-        this.firstPoint,
-        point,
-      );
+      this.canvas.style.cursor =
+        hit.type === "MOVE"
+          ? "move"
+          : "grab";
+    };
+
+
+  private readonly handlePointerLeave =
+    (): void => {
+      if (
+        this.creationStage === "IDLE"
+        && !this.dragState
+      ) {
+        this.canvas.style.cursor =
+          "";
+      }
     };
 
 
@@ -806,7 +997,24 @@ export class SectionDrawingController {
     ): void => {
       if (
         event.key !== "Escape"
-        || this.creationStage === "IDLE"
+      ) {
+        return;
+      }
+
+      if (this.dragState) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.cancelDrag(
+          true,
+        );
+        this.setStatus(
+          "Edición de sección cancelada.",
+        );
+        return;
+      }
+
+      if (
+        this.creationStage === "IDLE"
       ) {
         return;
       }
@@ -1207,6 +1415,206 @@ export class SectionDrawingController {
         normal,
         section.depth / 2,
       );
+
+    const maxSize =
+      Math.max(
+        section.width,
+        section.height,
+        section.depth,
+        MIN_SECTION_SIZE,
+      );
+    const handleRadius =
+      Math.max(
+        maxSize * 0.018,
+        0.018,
+      );
+
+    const handles =
+      new Map<
+        SectionHandleType,
+        THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>
+      >();
+
+    const addHandle =
+      (
+        type: SectionHandleType,
+        position: THREE.Vector3,
+        color: number,
+      ): void => {
+        const geometry =
+          new THREE.SphereGeometry(
+            handleRadius,
+            14,
+            10,
+          );
+        const material =
+          new THREE.MeshBasicMaterial({
+            color,
+            depthTest:
+              false,
+            depthWrite:
+              false,
+            toneMapped:
+              false,
+          });
+        const handle =
+          new THREE.Mesh(
+            geometry,
+            material,
+          );
+
+        handle.name =
+          `SectionHandle:${section.name}:${type}`;
+        handle.position.copy(
+          position,
+        );
+        handle.renderOrder =
+          70;
+        handle.userData[
+          "frameLogicSectionHandle"
+        ] = {
+          sectionId:
+            section.id,
+          type,
+        } satisfies SectionHandleData;
+
+        group.add(
+          handle,
+        );
+        handles.set(
+          type,
+          handle,
+        );
+      };
+
+    /*
+     * Las posiciones son locales al BoxGeometry centrado.
+     * El plano frontal está en z = -depth/2 y el posterior en +depth/2.
+     */
+    const frontZ =
+      -section.depth / 2;
+    const backZ =
+      section.depth / 2;
+    const halfW =
+      section.width / 2;
+    const halfH =
+      section.height / 2;
+
+    addHandle(
+      "CORNER_00",
+      new THREE.Vector3(
+        -halfW,
+        -halfH,
+        frontZ,
+      ),
+      0x72d7ff,
+    );
+    addHandle(
+      "CORNER_10",
+      new THREE.Vector3(
+        halfW,
+        -halfH,
+        frontZ,
+      ),
+      0x72d7ff,
+    );
+    addHandle(
+      "CORNER_11",
+      new THREE.Vector3(
+        halfW,
+        halfH,
+        frontZ,
+      ),
+      0x72d7ff,
+    );
+    addHandle(
+      "CORNER_01",
+      new THREE.Vector3(
+        -halfW,
+        halfH,
+        frontZ,
+      ),
+      0x72d7ff,
+    );
+    addHandle(
+      "DEPTH",
+      new THREE.Vector3(
+        0,
+        0,
+        backZ,
+      ),
+      0xffc857,
+    );
+    addHandle(
+      "MOVE",
+      new THREE.Vector3(
+        0,
+        0,
+        frontZ,
+      ),
+      0x8ee89a,
+    );
+
+    /*
+     * Flecha de vista: normal = dirección desde el plano frontal hacia
+     * el volumen que se incluirá en el PDF.
+     */
+    const arrowLength =
+      Math.max(
+        Math.min(
+          section.depth * 0.55,
+          Math.max(
+            section.width,
+            section.height,
+          ) * 0.35,
+        ),
+        Math.max(
+          section.width,
+          section.height,
+        ) * 0.12,
+        handleRadius * 5,
+      );
+    const arrow =
+      new THREE.ArrowHelper(
+        new THREE.Vector3(
+          0,
+          0,
+          1,
+        ),
+        new THREE.Vector3(
+          0,
+          0,
+          frontZ
+          + handleRadius * 2.5,
+        ),
+        arrowLength,
+        0xffc857,
+        Math.min(
+          arrowLength * 0.3,
+          handleRadius * 5,
+        ),
+        Math.min(
+          arrowLength * 0.16,
+          handleRadius * 2.8,
+        ),
+      );
+
+    arrow.name =
+      `SectionViewDirection:${section.name}`;
+    arrow.traverse(
+      (
+        child,
+      ) => {
+        child.renderOrder =
+          65;
+        child.raycast =
+          () => {};
+      },
+    );
+    group.add(
+      arrow,
+    );
+
     group.updateMatrixWorld(
       true,
     );
@@ -1222,6 +1630,8 @@ export class SectionDrawingController {
         fillMaterial,
         edgeGeometry,
         edgeMaterial,
+        arrow,
+        handles,
       },
     );
   }
@@ -1231,10 +1641,51 @@ export class SectionDrawingController {
     visual: SectionVisual,
   ): void {
     visual.group.removeFromParent();
+
+    for (
+      const handle
+      of visual.handles.values()
+    ) {
+      handle.geometry.dispose();
+      handle.material.dispose();
+    }
+
+    visual.arrow.line.geometry.dispose();
+    this.disposeMaterial(
+      visual.arrow.line.material,
+    );
+    visual.arrow.cone.geometry.dispose();
+    this.disposeMaterial(
+      visual.arrow.cone.material,
+    );
+
     visual.fillGeometry.dispose();
     visual.fillMaterial.dispose();
     visual.edgeGeometry.dispose();
     visual.edgeMaterial.dispose();
+  }
+
+
+  private disposeMaterial(
+    material:
+      THREE.Material
+      | THREE.Material[],
+  ): void {
+    if (
+      Array.isArray(
+        material,
+      )
+    ) {
+      for (
+        const entry
+        of material
+      ) {
+        entry.dispose();
+      }
+      return;
+    }
+
+    material.dispose();
   }
 
 
@@ -1259,6 +1710,586 @@ export class SectionDrawingController {
       section,
     );
     this.refreshUi();
+  }
+
+
+  private pickHandle(
+    clientX: number,
+    clientY: number,
+  ):
+    SectionHandleData | null {
+    const rect =
+      this.canvas
+        .getBoundingClientRect();
+
+    if (
+      rect.width <= 0
+      || rect.height <= 0
+    ) {
+      return null;
+    }
+
+    this.pointer.x =
+      (
+        (
+          clientX
+          - rect.left
+        )
+        / rect.width
+      )
+      * 2
+      - 1;
+    this.pointer.y =
+      -(
+        (
+          clientY
+          - rect.top
+        )
+        / rect.height
+      )
+      * 2
+      + 1;
+
+    this.handleRaycaster
+      .setFromCamera(
+        this.pointer,
+        this.cameraProvider(),
+      );
+
+    const handles:
+      THREE.Object3D[] = [];
+
+    for (
+      const visual
+      of this.visuals.values()
+    ) {
+      handles.push(
+        ...visual.handles.values(),
+      );
+    }
+
+    const hit =
+      this.handleRaycaster
+        .intersectObjects(
+          handles,
+          false,
+        )[0];
+
+    if (!hit) {
+      return null;
+    }
+
+    const data =
+      hit.object.userData[
+        "frameLogicSectionHandle"
+      ] as SectionHandleData | undefined;
+
+    if (
+      !data
+      || !this.sections.some(
+        (
+          section,
+        ) =>
+          section.id === data.sectionId,
+      )
+    ) {
+      return null;
+    }
+
+    return data;
+  }
+
+
+  private beginDrag(
+    hit: SectionHandleData,
+    clientX: number,
+    clientY: number,
+  ): void {
+    const section =
+      this.sections.find(
+        (
+          entry,
+        ) =>
+          entry.id === hit.sectionId,
+      );
+
+    if (!section) {
+      return;
+    }
+
+    const origin =
+      this.toVector3(
+        section.origin,
+      );
+    const normal =
+      this.toVector3(
+        section.normal,
+      )
+        .normalize();
+    let dragPlane:
+      THREE.Plane;
+
+    if (
+      hit.type === "DEPTH"
+    ) {
+      const depthPoint =
+        origin.clone()
+          .addScaledVector(
+            this.toVector3(
+              section.xAxis,
+            ),
+            section.width / 2,
+          )
+          .addScaledVector(
+            this.toVector3(
+              section.yAxis,
+            ),
+            section.height / 2,
+          )
+          .addScaledVector(
+            normal,
+            section.depth,
+          );
+      const cameraDirection =
+        new THREE.Vector3();
+
+      this.cameraProvider()
+        .getWorldDirection(
+          cameraDirection,
+        );
+
+      let tangent =
+        cameraDirection
+          .clone()
+          .addScaledVector(
+            normal,
+            -cameraDirection.dot(
+              normal,
+            ),
+          );
+
+      if (
+        tangent.lengthSq()
+        <= 1e-10
+      ) {
+        tangent =
+          this.toVector3(
+            section.xAxis,
+          );
+      }
+
+      tangent.normalize();
+
+      const planeNormal =
+        new THREE.Vector3()
+          .crossVectors(
+            normal,
+            tangent,
+          );
+
+      if (
+        planeNormal.lengthSq()
+        <= 1e-10
+      ) {
+        planeNormal.copy(
+          this.toVector3(
+            section.yAxis,
+          ),
+        );
+      }
+
+      planeNormal.normalize();
+      dragPlane =
+        new THREE.Plane()
+          .setFromNormalAndCoplanarPoint(
+            planeNormal,
+            depthPoint,
+          );
+    }
+    else {
+      dragPlane =
+        new THREE.Plane()
+          .setFromNormalAndCoplanarPoint(
+            normal,
+            origin,
+          );
+    }
+
+    const startWorldPoint =
+      this.intersectPointerWithPlane(
+        clientX,
+        clientY,
+        dragPlane,
+      );
+
+    if (!startWorldPoint) {
+      return;
+    }
+
+    this.dragState = {
+      sectionId:
+        section.id,
+      handleType:
+        hit.type,
+      startSection:
+        section,
+      dragPlane,
+      startWorldPoint,
+    };
+    this.canvas.style.cursor =
+      "grabbing";
+  }
+
+
+  private updateDrag(
+    clientX: number,
+    clientY: number,
+  ): void {
+    const drag =
+      this.dragState;
+
+    if (!drag) {
+      return;
+    }
+
+    const worldPoint =
+      this.intersectPointerWithPlane(
+        clientX,
+        clientY,
+        drag.dragPlane,
+      );
+
+    if (!worldPoint) {
+      return;
+    }
+
+    const section =
+      drag.startSection;
+    const origin =
+      this.toVector3(
+        section.origin,
+      );
+    const xAxis =
+      this.toVector3(
+        section.xAxis,
+      )
+        .normalize();
+    const yAxis =
+      this.toVector3(
+        section.yAxis,
+      )
+        .normalize();
+    const normal =
+      this.toVector3(
+        section.normal,
+      )
+        .normalize();
+
+    if (
+      drag.handleType === "DEPTH"
+    ) {
+      const startDepthPoint =
+        origin.clone()
+          .addScaledVector(
+            xAxis,
+            section.width / 2,
+          )
+          .addScaledVector(
+            yAxis,
+            section.height / 2,
+          )
+          .addScaledVector(
+            normal,
+            section.depth,
+          );
+      const depth =
+        Math.max(
+          MIN_SECTION_SIZE,
+          section.depth
+          + worldPoint
+            .clone()
+            .sub(
+              startDepthPoint,
+            )
+            .dot(
+              normal,
+            ),
+        );
+
+      this.replaceSection({
+        ...section,
+        depth,
+      });
+      return;
+    }
+
+    if (
+      drag.handleType === "MOVE"
+    ) {
+      const delta =
+        worldPoint.clone()
+          .sub(
+            drag.startWorldPoint,
+          );
+      const planarDelta =
+        xAxis.clone()
+          .multiplyScalar(
+            delta.dot(
+              xAxis,
+            ),
+          )
+          .addScaledVector(
+            yAxis,
+            delta.dot(
+              yAxis,
+            ),
+          );
+
+      this.replaceSection({
+        ...section,
+        origin:
+          this.vectorData(
+            origin.add(
+              planarDelta,
+            ),
+          ),
+      });
+      return;
+    }
+
+    const local =
+      worldPoint.clone()
+        .sub(
+          origin,
+        );
+    const x =
+      local.dot(
+        xAxis,
+      );
+    const y =
+      local.dot(
+        yAxis,
+      );
+
+    let width =
+      section.width;
+    let height =
+      section.height;
+    let nextOrigin =
+      origin.clone();
+
+    switch (
+      drag.handleType
+    ) {
+      case "CORNER_00": {
+        const clampedX =
+          Math.min(
+            x,
+            section.width
+            - MIN_SECTION_SIZE,
+          );
+        const clampedY =
+          Math.min(
+            y,
+            section.height
+            - MIN_SECTION_SIZE,
+          );
+
+        width =
+          section.width
+          - clampedX;
+        height =
+          section.height
+          - clampedY;
+        nextOrigin
+          .addScaledVector(
+            xAxis,
+            clampedX,
+          )
+          .addScaledVector(
+            yAxis,
+            clampedY,
+          );
+        break;
+      }
+
+      case "CORNER_10": {
+        const clampedX =
+          Math.max(
+            x,
+            MIN_SECTION_SIZE,
+          );
+        const clampedY =
+          Math.min(
+            y,
+            section.height
+            - MIN_SECTION_SIZE,
+          );
+
+        width =
+          clampedX;
+        height =
+          section.height
+          - clampedY;
+        nextOrigin
+          .addScaledVector(
+            yAxis,
+            clampedY,
+          );
+        break;
+      }
+
+      case "CORNER_11": {
+        width =
+          Math.max(
+            x,
+            MIN_SECTION_SIZE,
+          );
+        height =
+          Math.max(
+            y,
+            MIN_SECTION_SIZE,
+          );
+        break;
+      }
+
+      case "CORNER_01": {
+        const clampedX =
+          Math.min(
+            x,
+            section.width
+            - MIN_SECTION_SIZE,
+          );
+
+        width =
+          section.width
+          - clampedX;
+        height =
+          Math.max(
+            y,
+            MIN_SECTION_SIZE,
+          );
+        nextOrigin
+          .addScaledVector(
+            xAxis,
+            clampedX,
+          );
+        break;
+      }
+
+      case "DEPTH":
+      case "MOVE":
+        break;
+    }
+
+    this.replaceSection({
+      ...section,
+      origin:
+        this.vectorData(
+          nextOrigin,
+        ),
+      width,
+      height,
+    });
+  }
+
+
+  private finishDrag(): void {
+    const section =
+      this.getActiveSection();
+
+    this.dragState =
+      null;
+    this.canvas.style.cursor =
+      "";
+
+    if (!section) {
+      return;
+    }
+
+    this.depthInput.value =
+      this.formatNumber(
+        section.depth,
+      );
+    this.setStatus(
+      `${section.name}: ${this.formatNumber(section.width)} × ${this.formatNumber(section.height)} × ${this.formatNumber(section.depth)} m.`,
+    );
+  }
+
+
+  private cancelDrag(
+    restore: boolean,
+  ): void {
+    const drag =
+      this.dragState;
+
+    if (!drag) {
+      return;
+    }
+
+    this.dragState =
+      null;
+    this.canvas.style.cursor =
+      "";
+
+    if (restore) {
+      this.replaceSection(
+        drag.startSection,
+      );
+    }
+  }
+
+
+  private intersectPointerWithPlane(
+    clientX: number,
+    clientY: number,
+    plane: THREE.Plane,
+  ):
+    THREE.Vector3 | null {
+    const rect =
+      this.canvas
+        .getBoundingClientRect();
+
+    if (
+      rect.width <= 0
+      || rect.height <= 0
+    ) {
+      return null;
+    }
+
+    this.pointer.x =
+      (
+        (
+          clientX
+          - rect.left
+        )
+        / rect.width
+      )
+      * 2
+      - 1;
+    this.pointer.y =
+      -(
+        (
+          clientY
+          - rect.top
+        )
+        / rect.height
+      )
+      * 2
+      + 1;
+
+    this.handleRaycaster
+      .setFromCamera(
+        this.pointer,
+        this.cameraProvider(),
+      );
+
+    return this.handleRaycaster
+      .ray
+      .intersectPlane(
+        plane,
+        new THREE.Vector3(),
+      );
   }
 
 
@@ -1493,10 +2524,22 @@ export class SectionDrawingController {
         continue;
       }
 
+      const first =
+        points[0];
+      const second =
+        points[1];
+
+      if (
+        !first
+        || !second
+      ) {
+        continue;
+      }
+
       const clipped =
         this.clipSegment2D(
-          points[0],
-          points[1],
+          first,
+          second,
           section.width,
           section.height,
         );
@@ -1600,6 +2643,7 @@ export class SectionDrawingController {
               second,
               t,
             );
+
         point.z =
           0;
         this.pushUniquePoint(
