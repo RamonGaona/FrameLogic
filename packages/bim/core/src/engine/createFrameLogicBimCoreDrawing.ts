@@ -10,6 +10,10 @@ import {
   SectionDrawingController,
 } from "../drawing/SectionDrawingController";
 
+import {
+  DrawingWorkspaceController,
+} from "../drawing/DrawingWorkspaceController";
+
 
 export type PrecisionBimCoreInstance =
   BasePrecisionBimCoreInstance
@@ -19,6 +23,12 @@ export type PrecisionBimCoreInstance =
      */
     readonly sectionDrawing:
       SectionDrawingController;
+
+    /**
+     * Editor vectorial de planos: cotas, labels, textos y exportación PDF.
+     */
+    readonly drawingWorkspace:
+      DrawingWorkspaceController;
   };
 
 
@@ -69,6 +79,63 @@ export async function createBimCore(
       },
     });
 
+  const drawingWorkspace =
+    new DrawingWorkspaceController({
+      container,
+      designScene:
+        core.designScene,
+      sectionDrawing,
+    });
+
+  const sectionPanel =
+    container.querySelector(
+      '[data-framelogic-section-panel="true"]',
+    );
+  const openDrawingButton =
+    Array.from(
+      sectionPanel
+        ?.querySelectorAll(
+          "button",
+        )
+      ?? [],
+    ).find(
+      (
+        button,
+      ) =>
+        button.textContent
+        === "PDF",
+    )
+      ?? null;
+
+  if (openDrawingButton) {
+    openDrawingButton.textContent =
+      "Abrir plano";
+  }
+
+  const handleOpenDrawing =
+    (
+      event: Event,
+    ): void => {
+      if (
+        !openDrawingButton
+        || event.currentTarget
+        !== openDrawingButton
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      drawingWorkspace
+        .openActiveSection();
+    };
+
+  openDrawingButton?.addEventListener(
+    "click",
+    handleOpenDrawing,
+    true,
+  );
+
   const baseDispose =
     core.dispose;
   let disposed =
@@ -82,6 +149,12 @@ export async function createBimCore(
 
       disposed =
         true;
+      openDrawingButton?.removeEventListener(
+        "click",
+        handleOpenDrawing,
+        true,
+      );
+      drawingWorkspace.dispose();
       sectionDrawing.dispose();
       baseDispose();
     };
@@ -89,6 +162,7 @@ export async function createBimCore(
   return {
     ...core,
     sectionDrawing,
+    drawingWorkspace,
     dispose,
   };
 }
