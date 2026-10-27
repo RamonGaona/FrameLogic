@@ -123,9 +123,9 @@ function logTiming(
  *
  * Las dos etapas siguen siendo exactas/compatibles, pero ya no se lanzan como
  * un falso Promise.all: ReadStepFile es síncrono y bloqueaba antes de iniciar
- * la segunda rama. Ahora liberamos los arrays JS temporales y cedemos un turno
- * al navegador antes de construir el B-Rep, reduciendo picos de memoria y
- * permitiendo que la UI actualice el estado de carga.
+ * la segunda rama. Cedemos un turno al navegador entre las etapas pesadas para
+ * permitir que la UI actualice el estado de carga sin modificar los objetos
+ * internos devueltos por @sunbox/occt-import-js.
  */
 export class OcctStepGeometryAdapter
   implements StepGeometryAdapter {
@@ -176,37 +176,25 @@ export class OcctStepGeometryAdapter
         (
           mesh: OcctMesh,
           index: number,
-        ) => {
-          const converted: StepMeshData = {
-            id:
-              mesh.name
-              || `mesh-${index + 1}`,
-            positions:
-              new Float32Array(
-                mesh.attributes.position.array,
-              ),
-            indices:
-              new Uint32Array(
-                mesh.index.array,
-              ),
-            normals:
-              mesh.attributes.normal
-                ? new Float32Array(
-                    mesh.attributes.normal.array,
-                  )
-                : undefined,
-          };
-
-          // Los TypedArray ya son la copia compacta que conservará FrameLogic.
-          // Vaciar los number[] reduce el pico de memoria antes del B-Rep.
-          mesh.attributes.position.array.length = 0;
-          mesh.index.array.length = 0;
-          if (mesh.attributes.normal) {
-            mesh.attributes.normal.array.length = 0;
-          }
-
-          return converted;
-        },
+        ): StepMeshData => ({
+          id:
+            mesh.name
+            || `mesh-${index + 1}`,
+          positions:
+            new Float32Array(
+              mesh.attributes.position.array,
+            ),
+          indices:
+            new Uint32Array(
+              mesh.index.array,
+            ),
+          normals:
+            mesh.attributes.normal
+              ? new Float32Array(
+                  mesh.attributes.normal.array,
+                )
+              : undefined,
+        }),
       );
     const meshConvertMs =
       now() - meshConvertStart;
