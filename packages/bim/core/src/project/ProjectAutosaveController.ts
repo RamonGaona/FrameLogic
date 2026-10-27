@@ -295,6 +295,9 @@ export class ProjectAutosaveController {
         }
       }
       catch {
+        event.preventDefault();
+        event.returnValue =
+          "";
         return;
       }
 
@@ -467,12 +470,16 @@ async function readAutosave():
             STORE_NAME,
           ).get("latest");
         request.onsuccess =
-          () => resolve(
-            (request.result
+          () => {
+            const result =
+              request.result
               as AutosaveRecord
-              | undefined)
-            ?? null,
-          );
+              | undefined;
+            resolve(
+              result
+              ?? null,
+            );
+          };
         request.onerror =
           () => reject(
             request.error,
