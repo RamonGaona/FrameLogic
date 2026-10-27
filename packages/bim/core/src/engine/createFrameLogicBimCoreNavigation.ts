@@ -55,14 +55,16 @@ export async function createBimCore(
   if (!renderer) {
     core.dispose();
     throw new Error(
-      "FrameLogic smart insertion requires an initialized renderer.",
+      "FrameLogic navigation requires an initialized renderer.",
     );
   }
+
+  const canvas = renderer.three.domElement;
 
   const smartPieceInsertion =
     new SmartPieceInsertionController({
       container,
-      canvas: renderer.three.domElement,
+      canvas,
       scene: core.world.scene.three,
       cameraProvider: () =>
         core.world.camera.three,
@@ -91,29 +93,18 @@ export async function createBimCore(
 
   const instanceTree = new InstanceTreeController({
     container,
+    canvas,
     designModel: core.designModel,
+    designScene: core.designScene,
     designSelection: core.designSelection,
     cadReferenceBlocks,
     cancelActiveCommand: () =>
       core.cancelActiveCadCommand(),
   });
 
-  /*
-   * Deja aire debajo de la barra principal/proyecto para que el árbol no
-   * parezca unido a los botones superiores.
-   */
-  const instanceTreePanel =
-    container.querySelector<HTMLElement>(
-      '[data-framelogic-instance-tree="true"]',
-    );
-  if (instanceTreePanel) {
-    instanceTreePanel.style.top = "136px";
-    instanceTreePanel.style.maxHeight =
-      "calc(100% - 220px)";
-  }
-
   const align = new AlignController({
     container,
+    canvas,
     designModel: core.designModel,
     designScene: core.designScene,
     designSelection: core.designSelection,
@@ -122,6 +113,15 @@ export async function createBimCore(
       core.cancelActiveCadCommand(),
     clearGeometryQueryCache: () =>
       core.geometryQuery.clearCache(),
+    findSnapPoint: (
+      clientX,
+      clientY,
+    ) =>
+      core.snapEngine
+        .findSnap(clientX, clientY)
+        ?.point
+        .clone()
+      ?? null,
   });
 
   /*
