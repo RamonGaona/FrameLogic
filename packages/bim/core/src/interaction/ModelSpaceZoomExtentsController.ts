@@ -538,37 +538,47 @@ function findReferenceModelObject(
   modelId:
     string,
 ): THREE.Object3D | null {
+  const stack:
+    THREE.Object3D[] =
+      [...scene.children];
   let match:
     THREE.Object3D | null =
       null;
 
-  scene.traverse(
-    (
-      object,
-    ) => {
-      if (
-        match
-        || object.name === modelId
-        || object.name.includes(modelId)
-        || userDataContainsId(
-          object.userData,
-          modelId,
-        )
-      ) {
-        if (!match) {
-          match =
-            object;
-        }
-      }
-    },
-  );
+  while (
+    stack.length > 0
+  ) {
+    const object =
+      stack.pop();
+    if (!object) {
+      continue;
+    }
+
+    if (
+      object.name === modelId
+      || object.name.includes(modelId)
+      || userDataContainsId(
+        object.userData,
+        modelId,
+      )
+    ) {
+      match =
+        object;
+      break;
+    }
+
+    stack.push(
+      ...object.children,
+    );
+  }
 
   if (!match) {
     return null;
   }
 
-  let root =
-    match;
+  let root:
+    THREE.Object3D =
+      match;
   while (
     root.parent
     && root.parent !== scene
