@@ -81,6 +81,7 @@ export class CadReferenceBlockController {
   private pointerDownX = 0;
   private pointerDownY = 0;
   private pointerDownActive = false;
+  private interactionEnabled = true;
   private disposed = false;
 
   constructor(
@@ -175,6 +176,14 @@ export class CadReferenceBlockController {
     this.selectionBox.dispose();
     this.controls.dispose();
     this.badge.remove();
+  }
+
+  setInteractionEnabled(enabled: boolean): void {
+    this.interactionEnabled = enabled;
+    if (!enabled) {
+      this.pointerDownActive = false;
+      this.deactivateTransform();
+    }
   }
 
   getSelectedReferenceNames(): readonly string[] {
@@ -354,6 +363,59 @@ export class CadReferenceBlockController {
     return true;
   }
 
+  /**
+   * Aplica un transform rígido P1->P2 + rotación a toda la referencia.
+   * Se usa por ALINEAR 4 puntos sin editar sus entidades internas.
+   */
+  transformReference(
+    referenceName: string,
+    fromOrigin: THREE.Vector3,
+    toOrigin: THREE.Vector3,
+    rotation: THREE.Quaternion,
+  ): boolean {
+    const layerIds = this.getReferenceLayerIds(
+      referenceName,
+      true,
+    );
+    if (layerIds.size < 1) return false;
+
+    for (const line of this.options.designModel.cadLines.getAll()) {
+      if (!layerIds.has(line.layerId)) continue;
+      this.options.designModel.cadLines.updateGeometry(
+        line.id,
+        rigidTransformPoint(
+          line.start,
+          fromOrigin,
+          toOrigin,
+          rotation,
+        ),
+        rigidTransformPoint(
+          line.end,
+          fromOrigin,
+          toOrigin,
+          rotation,
+        ),
+      );
+    }
+
+    for (const point of this.options.designModel.cadPoints.getAll()) {
+      if (!layerIds.has(point.layerId)) continue;
+      this.options.designModel.cadPoints.updatePosition(
+        point.id,
+        rigidTransformPoint(
+          point.position,
+          fromOrigin,
+          toOrigin,
+          rotation,
+        ),
+      );
+    }
+
+    this.syncGeometry();
+    this.refreshSelectionVisual();
+    return true;
+  }
+
   deleteSelectedReferences(): boolean {
     const selected = [...this.selectedReferenceNames];
     if (selected.length < 1) return false;
@@ -388,6 +450,7 @@ export class CadReferenceBlockController {
   private activateTransform(
     mode: "translate" | "rotate",
   ): boolean {
+    if (!this.interactionEnabled) return false;
     const bounds = this.getSelectedBounds();
     if (!bounds) return false;
 
@@ -417,7 +480,11 @@ export class CadReferenceBlockController {
   }
 
   private readonly handleTransformStart = (): void => {
-    if (!this.activeMode || this.selectedReferenceNames.size < 1) return;
+    if (
+      !this.interactionEnabled
+      || !this.activeMode
+      || this.selectedReferenceNames.size < 1
+    ) return;
     this.transformSnapshot = this.captureSelection();
     this.options.setCameraEnabled(false);
   };
@@ -523,7 +590,7 @@ export class CadReferenceBlockController {
   private readonly handlePointerDown = (
     event: PointerEvent,
   ): void => {
-    if (event.button !== 0) return;
+    if (!this.interactionEnabled || event.button !== 0) return;
     this.pointerDownX = event.clientX;
     this.pointerDownY = event.clientY;
     this.pointerDownActive = true;
@@ -533,7 +600,8 @@ export class CadReferenceBlockController {
     event: PointerEvent,
   ): void => {
     if (
-      event.button !== 0
+      !this.interactionEnabled
+      || event.button !== 0
       || !this.pointerDownActive
       || this.controls.dragging
     ) {
@@ -578,7 +646,8 @@ export class CadReferenceBlockController {
     event: KeyboardEvent,
   ): void => {
     if (
-      this.disposed
+      !this.interactionEnabled
+      || this.disposed
       || isEditableTarget(event.target)
       || event.ctrlKey
       || event.metaKey
@@ -803,6 +872,27 @@ function rotatePoint(
     .sub(center)
     .applyQuaternion(quaternion)
     .add(center);
+  return {
+    x: transformed.x,
+    y: transformed.y,
+    z: transformed.z,
+  };
+}
+
+function rigidTransformPoint(
+  point: Point3,
+  fromOrigin: THREE.Vector3,
+  toOrigin: THREE.Vector3,
+  quaternion: THREE.Quaternion,
+): Point3 {
+  const transformed = new THREE.Vector3(
+    point.x,
+    point.y,
+    point.z,
+  )
+    .sub(fromOrigin)
+    .applyQuaternion(quaternion)
+    .add(toOrigin);
   return {
     x: transformed.x,
     y: transformed.y,
