@@ -10,6 +10,7 @@
     "scripts": {
       "dev": "npm run dev --workspace @framelogic/web",
       "build": "npm run build --workspace @framelogic/web",
+      "build:cloudflare": "npm install --no-save @rolldown/binding-linux-x64-gnu@1.2.8 && npm run build",
       "typecheck": "npm run typecheck --workspaces --if-present",
       "lint": "npm run lint --workspaces --if-present",
       "test": "npm run test --workspaces --if-present"
