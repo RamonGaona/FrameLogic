@@ -18,51 +18,47 @@ import type {
 
 export interface AlignControllerOptions {
   readonly container: HTMLElement;
+  readonly canvas: HTMLElement;
   readonly designModel: DesignModel;
   readonly designScene: DesignSceneController;
   readonly designSelection: DesignSelectionController;
   readonly cadReferenceBlocks: CadReferenceBlockController;
   readonly cancelActiveCommand: () => void;
   readonly clearGeometryQueryCache: () => void;
+  readonly findSnapPoint: (
+    clientX: number,
+    clientY: number,
+  ) => THREE.Vector3 | null;
 }
 
-type AlignAxis = "X" | "Y" | "Z";
-type AlignMode = "MIN" | "CENTER" | "MAX";
-
-type AlignTarget =
-  | {
-      readonly id: string;
-      readonly kind: "PIECE";
-      readonly label: string;
-      readonly pieceIds: readonly string[];
-    }
-  | {
-      readonly id: string;
-      readonly kind: "ASSEMBLY";
-      readonly label: string;
-      readonly pieceIds: readonly string[];
-    }
-  | {
-      readonly id: string;
-      readonly kind: "CAD";
-      readonly label: string;
-      readonly referenceName: string;
-    };
+type AlignStage = 0 | 1 | 2 | 3;
 
 /**
- * ALINEAR por caja envolvente.
+ * ALINEAR por 4 puntos, estilo CAD 3D:
  *
- * La referencia permanece fija y los demás objetivos seleccionados se mueven
- * sobre X/Y/Z para hacer coincidir MIN, CENTRO o MAX. Si un ensamble completo
- * está seleccionado, sus piezas se trasladan juntas como una sola entidad.
+ * Selección previa = objetos que se moverán.
+ * P1 = origen actual.
+ * P2 = nuevo origen.
+ * P3 = punto que define el eje/dirección actual desde P1.
+ * P4 = punto que define el nuevo eje/dirección desde P2.
+ *
+ * La transformación final es rígida: una traslación P1->P2 y una rotación
+ * que hace coincidir el vector P1->P3 con P2->P4. No requiere seleccionar
+ * una segunda instancia de referencia.
  */
 export class AlignController {
   private readonly options: AlignControllerOptions;
   private readonly button: HTMLButtonElement;
   private readonly panel: HTMLDivElement;
-  private readonly referenceSelect: HTMLSelectElement;
   private readonly status: HTMLSpanElement;
-  private targets: AlignTarget[] = [];
+  private readonly points: THREE.Vector3[] = [];
+  private selectedPieceIds: string[] = [];
+  private selectedCadReferences: string[] = [];
+  private active = false;
+  private pointerDownX = 0;
+  private pointerDownY = 0;
+  private pointerDownActive = false;
+  private stage: AlignStage = 0;
   private disposed = false;
 
   constructor(
@@ -72,18 +68,38 @@ export class AlignController {
     this.button = this.createButton(options.container);
     const ui = this.createPanel(options.container);
     this.panel = ui.panel;
-    this.referenceSelect = ui.referenceSelect;
     this.status = ui.status;
 
     this.button.addEventListener("click", this.handleOpen);
     window.addEventListener("keydown", this.handleKeyDown, true);
+    options.canvas.addEventListener(
+      "pointerdown",
+      this.handlePointerDown,
+      true,
+    );
+    options.canvas.addEventListener(
+      "pointerup",
+      this.handlePointerUp,
+      true,
+    );
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.close();
     this.button.removeEventListener("click", this.handleOpen);
     window.removeEventListener("keydown", this.handleKeyDown, true);
+    this.options.canvas.removeEventListener(
+      "pointerdown",
+      this.handlePointerDown,
+      true,
+    );
+    this.options.canvas.removeEventListener(
+      "pointerup",
+      this.handlePointerUp,
+      true,
+    );
     this.button.remove();
     this.panel.remove();
   }
@@ -105,7 +121,7 @@ export class AlignController {
       return;
     }
 
-    if (event.key === "Escape" && this.panel.style.display !== "none") {
+    if (event.key === "Escape" && this.active) {
       event.preventDefault();
       event.stopPropagation();
       this.close();
@@ -114,7 +130,7 @@ export class AlignController {
 
     if (
       event.key.toLowerCase() === "a"
-      && this.panel.style.display === "none"
+      && !this.active
     ) {
       event.preventDefault();
       event.stopPropagation();
@@ -124,192 +140,227 @@ export class AlignController {
 
   private open(): void {
     this.options.cancelActiveCommand();
-    this.targets = this.collectTargets();
-    if (this.targets.length < 2) {
+
+    this.selectedPieceIds = [
+      ...this.options.designSelection.getSelectedIds(),
+    ].filter((id) =>
+      this.options.designModel.pieceInstances.get(id) !== undefined,
+    );
+    this.selectedCadReferences = [
+      ...this.options.cadReferenceBlocks.getSelectedReferenceNames(),
+    ];
+
+    if (
+      this.selectedPieceIds.length < 1
+      && this.selectedCadReferences.length < 1
+    ) {
       window.alert(
-        "ALINEAR requiere al menos dos objetivos seleccionados. Puedes combinar piezas, ensambles completos y bloques DWG/DXF con Ctrl.",
+        "ALINEAR requiere seleccionar primero la pieza, ensamble o referencia CAD que se va a mover.",
       );
       return;
     }
 
-    this.referenceSelect.replaceChildren();
-    for (const target of this.targets) {
-      const option = document.createElement("option");
-      option.value = target.id;
-      option.textContent = target.label;
-      this.referenceSelect.append(option);
-    }
-    this.status.textContent = `${this.targets.length} objetivos · la referencia permanece fija`;
+    this.points.length = 0;
+    this.stage = 0;
+    this.active = true;
+    this.pointerDownActive = false;
+    this.options.designSelection.setEnabled(false);
+    this.options.cadReferenceBlocks.setInteractionEnabled(false);
     this.panel.style.display = "grid";
+    this.updateStatus();
   }
 
   private close(): void {
+    if (!this.active) {
+      this.panel.style.display = "none";
+      return;
+    }
+    this.active = false;
+    this.pointerDownActive = false;
+    this.points.length = 0;
+    this.selectedPieceIds = [];
+    this.selectedCadReferences = [];
+    this.options.designSelection.setEnabled(true);
+    this.options.cadReferenceBlocks.setInteractionEnabled(true);
     this.panel.style.display = "none";
-    this.targets = [];
   }
 
-  private align(
-    axis: AlignAxis,
-    mode: AlignMode,
-  ): void {
-    const referenceId = this.referenceSelect.value;
-    const reference = this.targets.find((target) => target.id === referenceId);
-    if (!reference) return;
-    const referenceBounds = this.getBounds(reference);
-    if (!referenceBounds) return;
+  private readonly handlePointerDown = (
+    event: PointerEvent,
+  ): void => {
+    if (!this.active || event.button !== 0) return;
+    this.pointerDownX = event.clientX;
+    this.pointerDownY = event.clientY;
+    this.pointerDownActive = true;
+  };
 
-    const referenceCoordinate = coordinateAt(
-      referenceBounds,
-      axis,
-      mode,
-    );
-
-    let moved = 0;
-    for (const target of this.targets) {
-      if (target.id === reference.id) continue;
-      const bounds = this.getBounds(target);
-      if (!bounds) continue;
-      const coordinate = coordinateAt(bounds, axis, mode);
-      const amount = referenceCoordinate - coordinate;
-      if (Math.abs(amount) <= 1e-10) continue;
-      const delta = new THREE.Vector3();
-      if (axis === "X") delta.x = amount;
-      else if (axis === "Y") delta.y = amount;
-      else delta.z = amount;
-      this.translateTarget(target, delta);
-      moved += 1;
-    }
-
-    this.options.clearGeometryQueryCache();
-    this.status.textContent =
-      `${moved} objetivo${moved === 1 ? "" : "s"} alineado${moved === 1 ? "" : "s"} · ${axis} ${mode}`;
-  }
-
-  private collectTargets(): AlignTarget[] {
-    const selectedPieces = new Set(
-      this.options.designSelection.getSelectedIds(),
-    );
-    const consumed = new Set<string>();
-    const targets: AlignTarget[] = [];
-
-    for (const assembly of this.options.designModel.assemblies.getAll()) {
-      const members = assembly.pieceInstanceIds.filter((id) =>
-        this.options.designModel.pieceInstances.get(id) !== undefined,
-      );
-      if (
-        members.length > 0
-        && members.every((id) => selectedPieces.has(id))
-      ) {
-        targets.push({
-          id: `ASSEMBLY:${assembly.id}`,
-          kind: "ASSEMBLY",
-          label: `Ensamble · ${assembly.name}`,
-          pieceIds: members,
-        });
-        for (const id of members) consumed.add(id);
-      }
-    }
-
-    for (const instanceId of selectedPieces) {
-      if (consumed.has(instanceId)) continue;
-      const instance = this.options.designModel.pieceInstances.get(instanceId);
-      if (!instance) continue;
-      const definition = this.options.designModel.pieceDefinitions.get(
-        instance.definitionId,
-      );
-      targets.push({
-        id: `PIECE:${instanceId}`,
-        kind: "PIECE",
-        label: definition
-          ? `${definition.code} · ${definition.name}`
-          : `Pieza ${instanceId.slice(0, 8)}`,
-        pieceIds: [instanceId],
-      });
-    }
-
-    for (
-      const referenceName
-      of this.options.cadReferenceBlocks.getSelectedReferenceNames()
+  private readonly handlePointerUp = (
+    event: PointerEvent,
+  ): void => {
+    if (
+      !this.active
+      || event.button !== 0
+      || !this.pointerDownActive
     ) {
-      targets.push({
-        id: `CAD:${referenceName}`,
-        kind: "CAD",
-        label: `CAD · ${referenceName}`,
-        referenceName,
-      });
-    }
-
-    return targets;
-  }
-
-  private getBounds(target: AlignTarget): THREE.Box3 | null {
-    if (target.kind === "CAD") {
-      return this.options.cadReferenceBlocks.getReferenceBounds(
-        target.referenceName,
-        true,
-      );
-    }
-
-    const box = new THREE.Box3();
-    let hasBounds = false;
-    for (const pieceId of target.pieceIds) {
-      const object = this.options.designScene.getInstanceObject(pieceId);
-      if (!object || !object.visible) continue;
-      object.updateWorldMatrix(true, true);
-      const current = new THREE.Box3().setFromObject(object, true);
-      if (current.isEmpty()) continue;
-      if (!hasBounds) {
-        box.copy(current);
-        hasBounds = true;
-      }
-      else {
-        box.union(current);
-      }
-    }
-    return hasBounds ? box : null;
-  }
-
-  private translateTarget(
-    target: AlignTarget,
-    delta: THREE.Vector3,
-  ): void {
-    if (target.kind === "CAD") {
-      this.options.cadReferenceBlocks.translateReference(
-        target.referenceName,
-        delta,
-      );
       return;
     }
 
-    for (const pieceId of target.pieceIds) {
-      const instance = this.options.designModel.pieceInstances.get(pieceId);
-      const object = this.options.designScene.getInstanceObject(pieceId);
-      if (!instance || !object) continue;
+    this.pointerDownActive = false;
+    const movement = Math.hypot(
+      event.clientX - this.pointerDownX,
+      event.clientY - this.pointerDownY,
+    );
 
-      object.position.add(delta);
-      object.updateMatrix();
-      object.updateMatrixWorld(true);
-      this.options.designModel.pieceInstances.updateTransform(
+    if (movement > 5) {
+      return;
+    }
+
+    const point = this.options.findSnapPoint(
+      event.clientX,
+      event.clientY,
+    );
+
+    if (!point) {
+      this.status.textContent =
+        `${stageLabel(this.stage)} · selecciona un SNAP válido`;
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    this.points.push(point.clone());
+
+    if (this.points.length < 4) {
+      this.stage = this.points.length as AlignStage;
+      this.updateStatus();
+      return;
+    }
+
+    this.applyAlignment();
+  };
+
+  private applyAlignment(): void {
+    const p1 = this.points[0];
+    const p2 = this.points[1];
+    const p3 = this.points[2];
+    const p4 = this.points[3];
+    if (!p1 || !p2 || !p3 || !p4) return;
+
+    const currentAxis = p3.clone().sub(p1);
+    const targetAxis = p4.clone().sub(p2);
+
+    if (
+      currentAxis.lengthSq() <= 1e-16
+      || targetAxis.lengthSq() <= 1e-16
+    ) {
+      this.status.textContent =
+        "ALINEAR · los puntos de eje deben definir una dirección válida";
+      this.points.length = 0;
+      this.stage = 0;
+      return;
+    }
+
+    const rotation = new THREE.Quaternion()
+      .setFromUnitVectors(
+        currentAxis.normalize(),
+        targetAxis.normalize(),
+      );
+
+    for (const pieceId of this.selectedPieceIds) {
+      this.transformPiece(
         pieceId,
-        {
-          position: {
-            x: instance.transform.position.x + delta.x,
-            y: instance.transform.position.y + delta.y,
-            z: instance.transform.position.z + delta.z,
-          },
-          rotation: {
-            ...instance.transform.rotation,
-          },
-        },
+        p1,
+        p2,
+        rotation,
       );
     }
+
+    for (const referenceName of this.selectedCadReferences) {
+      this.options.cadReferenceBlocks.transformReference(
+        referenceName,
+        p1,
+        p2,
+        rotation,
+      );
+    }
+
+    this.options.designScene.sync();
+    this.options.designSelection.refreshHelpers();
+    this.options.cadReferenceBlocks.refresh();
+    this.options.clearGeometryQueryCache();
+    this.status.textContent =
+      `ALINEAR · ${this.selectedPieceIds.length + this.selectedCadReferences.length} objetivo(s) movidos`;
+
+    window.setTimeout(
+      () => this.close(),
+      650,
+    );
+  }
+
+  private transformPiece(
+    pieceId: string,
+    fromOrigin: THREE.Vector3,
+    toOrigin: THREE.Vector3,
+    rotation: THREE.Quaternion,
+  ): void {
+    const instance =
+      this.options.designModel.pieceInstances.get(pieceId);
+    const object =
+      this.options.designScene.getInstanceObject(pieceId);
+    if (!instance || !object) return;
+
+    object.updateWorldMatrix(true, true);
+
+    const position = object.position
+      .clone()
+      .sub(fromOrigin)
+      .applyQuaternion(rotation)
+      .add(toOrigin);
+
+    const quaternion = rotation
+      .clone()
+      .multiply(object.quaternion);
+
+    object.position.copy(position);
+    object.quaternion.copy(quaternion);
+    object.updateMatrix();
+    object.updateMatrixWorld(true);
+
+    const euler = new THREE.Euler()
+      .setFromQuaternion(
+        quaternion,
+        "XYZ",
+      );
+
+    this.options.designModel.pieceInstances.updateTransform(
+      pieceId,
+      {
+        position: {
+          x: position.x,
+          y: position.y,
+          z: position.z,
+        },
+        rotation: {
+          x: euler.x,
+          y: euler.y,
+          z: euler.z,
+        },
+      },
+    );
+  }
+
+  private updateStatus(): void {
+    this.status.textContent =
+      `${stageLabel(this.stage)} · ${this.points.length}/4 puntos`;
   }
 
   private createButton(container: HTMLElement): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = "ALINEAR";
-    button.title = "Alinear selección (A)";
+    button.title = "Alinear selección por 4 puntos (A)";
     Object.assign(button.style, {
       padding: "5px 8px",
       border: "1px solid rgba(255,255,255,0.16)",
@@ -337,7 +388,6 @@ export class AlignController {
 
   private createPanel(container: HTMLElement): {
     panel: HTMLDivElement;
-    referenceSelect: HTMLSelectElement;
     status: HTMLSpanElement;
   } {
     const panel = document.createElement("div");
@@ -348,10 +398,10 @@ export class AlignController {
       transform: "translateX(-50%)",
       zIndex: "165",
       display: "none",
-      gridTemplateColumns: "auto minmax(180px, 320px) auto auto auto",
+      gridTemplateColumns: "auto auto",
       alignItems: "center",
-      gap: "6px",
-      padding: "7px 9px",
+      gap: "8px",
+      padding: "8px 10px",
       border: "1px solid rgba(255,255,255,0.18)",
       borderRadius: "6px",
       background: "rgba(18,25,30,0.96)",
@@ -361,98 +411,56 @@ export class AlignController {
     });
 
     const label = document.createElement("strong");
-    label.textContent = "ALINEAR";
-    const referenceSelect = document.createElement("select");
-    referenceSelect.title = "Objeto de referencia que permanece fijo";
-    Object.assign(referenceSelect.style, {
-      minWidth: "180px",
-      padding: "4px",
-      background: "#202c33",
-      color: "#edf5f8",
-      border: "1px solid rgba(255,255,255,0.14)",
-      borderRadius: "4px",
-    });
-
-    const axisGroup = document.createElement("div");
-    axisGroup.style.display = "flex";
-    axisGroup.style.gap = "3px";
-    for (const axis of ["X", "Y", "Z"] as const) {
-      const axisLabel = document.createElement("span");
-      axisLabel.textContent = axis;
-      axisLabel.style.color = "#91a6b0";
-      axisLabel.style.padding = "4px 2px";
-      axisGroup.append(axisLabel);
-      for (const mode of ["MIN", "CENTER", "MAX"] as const) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = mode === "CENTER"
-          ? "C"
-          : mode === "MIN"
-            ? "−"
-            : "+";
-        button.title = `${axis} · ${mode}`;
-        Object.assign(button.style, smallButtonStyle());
-        button.addEventListener("click", () => this.align(axis, mode));
-        axisGroup.append(button);
-      }
-    }
+    label.textContent = "ALINEAR · 4 PUNTOS";
 
     const close = document.createElement("button");
     close.type = "button";
-    close.textContent = "×";
-    close.title = "Cerrar";
-    Object.assign(close.style, smallButtonStyle());
+    close.textContent = "Cancelar";
+    Object.assign(close.style, {
+      padding: "4px 7px",
+      border: "1px solid rgba(255,255,255,0.14)",
+      borderRadius: "4px",
+      background: "rgba(255,255,255,0.06)",
+      color: "#edf5f8",
+      cursor: "pointer",
+      font: "11px system-ui, sans-serif",
+    });
     close.addEventListener("click", () => this.close());
 
     const status = document.createElement("span");
-    status.style.color = "#91a6b0";
+    status.style.color = "#9ec2d1";
     status.style.fontSize = "11px";
     status.style.gridColumn = "1 / -1";
 
+    const help = document.createElement("span");
+    help.textContent =
+      "P1 origen actual · P2 nuevo origen · P3 eje actual · P4 nuevo eje";
+    help.style.color = "#718993";
+    help.style.fontSize = "10px";
+    help.style.gridColumn = "1 / -1";
+
     panel.append(
       label,
-      referenceSelect,
-      axisGroup,
       close,
       status,
+      help,
     );
     container.append(panel);
-    return { panel, referenceSelect, status };
+    return { panel, status };
   }
 }
 
-function coordinateAt(
-  box: THREE.Box3,
-  axis: AlignAxis,
-  mode: AlignMode,
-): number {
-  const min = axis === "X"
-    ? box.min.x
-    : axis === "Y"
-      ? box.min.y
-      : box.min.z;
-  const max = axis === "X"
-    ? box.max.x
-    : axis === "Y"
-      ? box.max.y
-      : box.max.z;
-  if (mode === "MIN") return min;
-  if (mode === "MAX") return max;
-  return (min + max) * 0.5;
-}
-
-function smallButtonStyle(): Partial<CSSStyleDeclaration> {
-  return {
-    width: "25px",
-    height: "24px",
-    padding: "0",
-    border: "1px solid rgba(255,255,255,0.14)",
-    borderRadius: "4px",
-    background: "rgba(255,255,255,0.06)",
-    color: "#edf5f8",
-    cursor: "pointer",
-    font: "11px system-ui, sans-serif",
-  };
+function stageLabel(stage: AlignStage): string {
+  switch (stage) {
+    case 0:
+      return "P1 · origen actual";
+    case 1:
+      return "P2 · nuevo origen";
+    case 2:
+      return "P3 · eje actual";
+    case 3:
+      return "P4 · nuevo eje";
+  }
 }
 
 function isEditableTarget(
