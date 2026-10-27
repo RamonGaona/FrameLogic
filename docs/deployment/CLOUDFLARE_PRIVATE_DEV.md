@@ -16,11 +16,11 @@ Use these values when connecting the GitHub repository `RamonGaona/FrameLogic`:
 
 The repository root must remain the build root because the web app depends on workspace packages under `packages/`.
 
-`build:cloudflare` installs Rolldown's Linux x64 native binding before running the normal FrameLogic web build. This avoids npm's cross-platform optional-dependency lockfile issue when the lockfile was generated on Windows.
+`build:cloudflare` installs the Linux x64 native bindings required by Rolldown and Lightning CSS before running the normal FrameLogic web build. This avoids npm's cross-platform optional-dependency lockfile issue when the lockfile was generated on Windows.
 
 ## Automatic updates
 
-Cloudflare Pages Git integration automatically creates a new deployment when a commit is pushed to the connected branch. The preview alias for `feature/precision-model-space` will always point to the latest deployment for that branch.
+Cloudflare Pages Git integration automatically creates a new deployment when a commit is pushed to the connected branch. The preview deployment for `feature/precision-model-space` will update when new commits are pushed to that branch.
 
 ## Private access
 
@@ -29,7 +29,7 @@ Preview deployments are public by default. In Cloudflare Pages:
 1. Open the Pages project.
 2. Go to Settings > General.
 3. Enable the Access policy for preview deployments.
-4. In Cloudflare Zero Trust > Access controls > Applications, restrict access to the account/email(s) allowed to test FrameLogic.
+4. In Cloudflare Zero Trust > Access > Applications, restrict access to the account/email(s) allowed to test FrameLogic.
 5. To protect the main `*.pages.dev` hostname as well, follow Cloudflare's documented Pages Access procedure for the production hostname and keep the preview wildcard policy enabled.
 
 Do not add a custom public domain for the development environment unless it is later required.
