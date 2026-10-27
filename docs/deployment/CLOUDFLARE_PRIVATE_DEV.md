@@ -10,11 +10,13 @@ Use these values when connecting the GitHub repository `RamonGaona/FrameLogic`:
 - Preview branch to use for daily FrameLogic testing: `feature/precision-model-space`
 - Root directory: repository root (`/`)
 - Framework preset: React (Vite) or None
-- Build command: `npm run build`
+- Build command: `npm run build:cloudflare`
 - Build output directory: `apps/web/dist`
 - Node version: read from `.node-version`
 
 The repository root must remain the build root because the web app depends on workspace packages under `packages/`.
+
+`build:cloudflare` installs Rolldown's Linux x64 native binding before running the normal FrameLogic web build. This avoids npm's cross-platform optional-dependency lockfile issue when the lockfile was generated on Windows.
 
 ## Automatic updates
 
@@ -44,12 +46,18 @@ A failed build must not be treated as a valid development release. Keep testing 
 
 ## Local equivalent
 
-The Cloudflare build is equivalent to running from the repository root:
+The regular local workflow remains:
 
 ```powershell
 npm install
 npm.cmd run typecheck
 npm.cmd run build
+```
+
+The Cloudflare/Linux build command is:
+
+```text
+npm run build:cloudflare
 ```
 
 The generated static site is in `apps/web/dist`.
