@@ -33,6 +33,22 @@ jobs:
           test -d apps/web/dist
           find apps/web/dist -maxdepth 3 -type f | sort
 
-      - name: Verify OpenCascade WASM asset
+      - name: Verify Cloudflare Pages asset size limit
+        run: |
+          oversized="$(find apps/web/dist -type f -size +25M -print)"
+          if [ -n "$oversized" ]; then
+            echo "Cloudflare Pages rejects individual files larger than 25 MiB:"
+            echo "$oversized"
+            exit 1
+          fi
+
+      - name: Verify OpenCascade full WASM is externalized
+        run: |
+          if find apps/web/dist -type f -name 'opencascade.full*.wasm' | grep -q .; then
+            echo "opencascade.full.wasm must not be bundled into the Cloudflare Pages output."
+            exit 1
+          fi
+
+      - name: Verify remaining WASM assets
         run: |
           find apps/web/dist -type f -name '*.wasm' | grep -q .
