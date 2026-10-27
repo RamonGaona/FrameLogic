@@ -13,7 +13,42 @@ export type RotateNumericAxis =
   | "Z";
 
 
+export const CAD_LINE_DISTANCE_MODE_EVENT =
+  "framelogic:cad-line-distance-mode";
+
+
+export const CAD_LINE_DISTANCE_END_EVENT =
+  "framelogic:cad-line-distance-end";
+
+
+export const CAD_LINE_DISTANCE_APPLY_EVENT =
+  "framelogic:cad-line-distance-apply";
+
+
+export interface CadLineDistanceModeDetail {
+
+  readonly domElement:
+    HTMLElement;
+
+}
+
+
+export interface CadLineDistanceApplyDetail {
+
+  readonly container:
+    HTMLElement;
+
+  readonly distance:
+    number;
+
+}
+
+
 export class CadNumericInputController {
+
+  private readonly container:
+    HTMLElement;
+
 
   private readonly root:
     HTMLDivElement;
@@ -36,6 +71,7 @@ export class CadNumericInputController {
     | "ROTATE"
     | "POINT"
     | "LINE"
+    | "LINE_DISTANCE"
     | null =
       null;
 
@@ -91,6 +127,10 @@ export class CadNumericInputController {
     container:
       HTMLElement,
   ) {
+
+    this.container =
+      container;
+
 
     const computedPosition =
       window.getComputedStyle(
@@ -241,6 +281,18 @@ export class CadNumericInputController {
     );
 
 
+    document.addEventListener(
+      CAD_LINE_DISTANCE_MODE_EVENT,
+      this.handleLineDistanceMode,
+    );
+
+
+    document.addEventListener(
+      CAD_LINE_DISTANCE_END_EVENT,
+      this.handleLineDistanceEnd,
+    );
+
+
     this.root.append(
       this.title,
       this.fields,
@@ -331,14 +383,24 @@ export class CadNumericInputController {
       null;
 
 
+    const singleAxis =
+      axis.length === 1;
+
+
     this.title.textContent =
-      `MOVE · ${axis}`;
+      singleAxis
+        ? `MOVE · ${axis} · DIST`
+        : `MOVE · ${axis}`;
 
 
     const labels =
-      axis.length === 1
-        ? [axis]
+      singleAxis
+        ? ["D"]
         : axis.split("");
+
+
+    this.applyButton.textContent =
+      "Aplicar";
 
 
     this.buildInputs(
@@ -377,6 +439,10 @@ export class CadNumericInputController {
       `ROTATE · ${axis}`;
 
 
+    this.applyButton.textContent =
+      "Aplicar";
+
+
     this.buildInputs(
       [axis],
       "°",
@@ -408,6 +474,10 @@ export class CadNumericInputController {
 
     this.title.textContent =
       "POINT · XYZ";
+
+
+    this.applyButton.textContent =
+      "Aplicar";
 
 
     this.buildInputs(
@@ -447,11 +517,54 @@ export class CadNumericInputController {
       "LINE · XYZ";
 
 
+    this.applyButton.textContent =
+      "Aplicar";
+
+
     this.buildInputs(
       [
         "X",
         "Y",
         "Z",
+      ],
+      "",
+    );
+
+
+    this.root.style.display =
+      "flex";
+
+
+    this.focusFirstInput();
+
+  }
+
+
+  showLineDistance(): void {
+
+    this.mode =
+      "LINE_DISTANCE";
+
+
+    this.moveAxis =
+      null;
+
+
+    this.rotateAxis =
+      null;
+
+
+    this.title.textContent =
+      "LINE · LONGITUD";
+
+
+    this.applyButton.textContent =
+      "Dibujar";
+
+
+    this.buildInputs(
+      [
+        "L",
       ],
       "",
     );
@@ -485,6 +598,10 @@ export class CadNumericInputController {
 
 
     this.fields.replaceChildren();
+
+
+    this.applyButton.textContent =
+      "Aplicar";
 
   }
 
@@ -616,13 +733,6 @@ export class CadNumericInputController {
   private focusFirstInput():
     void {
 
-    /*
-     * Esperamos a que termine el pointer event del gizmo.
-     *
-     * Así no interferimos con TransformControls y,
-     * si el usuario quiere entrada numérica, puede escribir
-     * inmediatamente sin hacer clic en la casilla.
-     */
     window.setTimeout(
       () => {
 
@@ -651,6 +761,76 @@ export class CadNumericInputController {
     );
 
   }
+
+
+  private readonly handleLineDistanceMode =
+    (
+      event:
+        Event,
+    ): void => {
+
+      const detail =
+        (
+          event as CustomEvent<
+            CadLineDistanceModeDetail
+          >
+        ).detail;
+
+
+      if (
+        !detail
+        || !this.container.contains(
+          detail.domElement,
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      this.showLineDistance();
+
+  };
+
+
+  private readonly handleLineDistanceEnd =
+    (
+      event:
+        Event,
+    ): void => {
+
+      const detail =
+        (
+          event as CustomEvent<
+            CadLineDistanceModeDetail
+          >
+        ).detail;
+
+
+      if (
+        !detail
+        || !this.container.contains(
+          detail.domElement,
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      if (
+        this.mode === "LINE"
+        || this.mode
+          === "LINE_DISTANCE"
+      ) {
+
+        this.hide();
+
+      }
+
+  };
 
 
   private readonly handleApply =
@@ -686,7 +866,12 @@ export class CadNumericInputController {
 
       if (
         values.some(
-          Number.isNaN,
+          (
+            value,
+          ) =>
+            !Number.isFinite(
+              value,
+            ),
         )
       ) {
 
@@ -754,6 +939,32 @@ export class CadNumericInputController {
           values[2] ?? 0,
         );
 
+
+        return;
+
+      }
+
+
+      if (
+        this.mode === "LINE_DISTANCE"
+      ) {
+
+        document.dispatchEvent(
+          new CustomEvent<
+            CadLineDistanceApplyDetail
+          >(
+            CAD_LINE_DISTANCE_APPLY_EVENT,
+            {
+              detail: {
+                container:
+                  this.container,
+                distance:
+                  values[0] ?? 0,
+              },
+            },
+          ),
+        );
+
       }
 
     };
@@ -793,6 +1004,18 @@ export class CadNumericInputController {
     this.root.removeEventListener(
       "keydown",
       this.handleKeyDown,
+    );
+
+
+    document.removeEventListener(
+      CAD_LINE_DISTANCE_MODE_EVENT,
+      this.handleLineDistanceMode,
+    );
+
+
+    document.removeEventListener(
+      CAD_LINE_DISTANCE_END_EVENT,
+      this.handleLineDistanceEnd,
     );
 
 
