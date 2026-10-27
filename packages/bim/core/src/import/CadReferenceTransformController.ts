@@ -442,7 +442,14 @@ export class CadReferenceTransformController {
   private captureReference(
     referenceName: string,
   ): TransformSnapshot {
-    const layerIds = this.getReferenceLayerIds(referenceName);
+    /*
+     * El bloque completo se transforma, incluso si alguna de sus subcapas
+     * está temporalmente oculta en Capas CAD.
+     */
+    const layerIds = this.getReferenceLayerIds(
+      referenceName,
+      true,
+    );
     return {
       pivotPosition: this.pivot.position.clone(),
       pivotQuaternion: this.pivot.quaternion.clone(),
@@ -467,7 +474,13 @@ export class CadReferenceTransformController {
   private computeReferenceBounds(
     referenceName: string,
   ): THREE.Box3 | null {
-    const layerIds = this.getReferenceLayerIds(referenceName);
+    /*
+     * Selección y zoom respetan la visibilidad de subcapas; mover/rotar no.
+     */
+    const layerIds = this.getReferenceLayerIds(
+      referenceName,
+      false,
+    );
     if (layerIds.size < 1) return null;
     const box = new THREE.Box3();
     let hasPoint = false;
@@ -554,13 +567,14 @@ export class CadReferenceTransformController {
 
   private getReferenceLayerIds(
     referenceName: string,
+    includeHidden: boolean,
   ): Set<string> {
     const ids = new Set<string>();
     for (const layer of this.options.designModel.layers.getAll()) {
       const parsed = parseCadLayerName(layer);
       if (
         parsed?.referenceName === referenceName
-        && layer.visible
+        && (includeHidden || layer.visible)
       ) {
         ids.add(layer.id);
       }
