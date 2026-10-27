@@ -387,36 +387,41 @@ export class DesignSceneController {
   }
 
   // ==========================================================
-// GET ALL INSTANCE OBJECTS
-// ==========================================================
+  // GET VISIBLE INSTANCE OBJECTS
+  // ==========================================================
 
-getInstanceObjects():
-THREE.Object3D[] {
+  getInstanceObjects():
+    THREE.Object3D[] {
 
-return Array.from(
-  this.instanceObjects.values(),
-);
+    return Array.from(
+      this.instanceObjects.values(),
+    ).filter(
+      (
+        object,
+      ) =>
+        object.visible,
+    );
 
-}
+  }
 
 
-// ==========================================================
-// GET INSTANCE ENTRIES
-// ==========================================================
+  // ==========================================================
+  // GET INSTANCE ENTRIES
+  // ==========================================================
 
-getInstanceEntries():
-Array<
-  [
-    string,
-    THREE.Object3D,
-  ]
-> {
+  getInstanceEntries():
+    Array<
+      [
+        string,
+        THREE.Object3D,
+      ]
+    > {
 
-return Array.from(
-  this.instanceObjects.entries(),
-);
+    return Array.from(
+      this.instanceObjects.entries(),
+    );
 
-}
+  }
 
 
   // ==========================================================
