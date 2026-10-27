@@ -39,6 +39,27 @@ export type CadWorkPlaneEditListener = (
 ) => void;
 
 
+interface DesignFaceHit {
+  readonly point: THREE.Vector3;
+  readonly normal: THREE.Vector3;
+  readonly instanceId: string;
+}
+
+
+interface SelectionSurfaceRuntime {
+  readonly cameraProvider?: () => THREE.Camera;
+  readonly designScene?: {
+    getInstanceEntries?: () => Array<[string, THREE.Object3D]>;
+  };
+}
+
+
+type ThreePointSource =
+  | "NONE"
+  | "FACE"
+  | "SNAP";
+
+
 export class CadWorkPlaneEditController {
   private readonly domElement: HTMLElement;
   private readonly workPlane: CadWorkPlaneController;
@@ -48,6 +69,13 @@ export class CadWorkPlaneEditController {
   private readonly lineSelection: CadLineSelectionController | null;
   private readonly listeners = new Set<CadWorkPlaneEditListener>();
   private readonly points: THREE.Vector3[] = [];
+
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly pointer = new THREE.Vector2();
+  private readonly referenceFacePlane = new THREE.Plane();
+  private readonly referenceFaceNormal = new THREE.Vector3();
+  private referenceFaceInstanceId: string | null = null;
+  private threePointSource: ThreePointSource = "NONE";
 
   private readonly originEditor: HTMLDivElement;
   private readonly originXInput: HTMLInputElement;
@@ -187,7 +215,8 @@ export class CadWorkPlaneEditController {
 
     this.cancel();
     this.modeValue = "THREE_POINTS";
-    this.messageValue = "Punto 1/3: selecciona el SNAP del origen.";
+    this.messageValue =
+      "Punto 1/3: haz clic sobre una cara de la pieza para definir el nuevo origen local 0,0,0.";
     this.selection.setEnabled(false);
     this.pointSelection?.setEnabled(false);
     this.lineSelection?.setEnabled(false);
@@ -196,7 +225,7 @@ export class CadWorkPlaneEditController {
 
   cancel(): void {
     this.modeValue = "NONE";
-    this.points.length = 0;
+    this.resetThreePointReference();
     this.pointerDownActive = false;
     this.messageValue = "";
     this.originEditor.style.display = "none";
@@ -204,6 +233,14 @@ export class CadWorkPlaneEditController {
     this.pointSelection?.setEnabled(true);
     this.lineSelection?.setEnabled(true);
     this.notify();
+  }
+
+  private resetThreePointReference(): void {
+    this.points.length = 0;
+    this.threePointSource = "NONE";
+    this.referenceFaceInstanceId = null;
+    this.referenceFaceNormal.set(0, 0, 0);
+    this.referenceFacePlane.set(new THREE.Vector3(0, 0, 1), 0);
   }
 
   private readonly applyOriginCoordinates = (): void => {
@@ -266,29 +303,98 @@ export class CadWorkPlaneEditController {
       return;
     }
 
+    if (this.modeValue === "THREE_POINTS") {
+      this.handleThreePointClick(event);
+      return;
+    }
+
     const snap = this.snap.findSnap(event.clientX, event.clientY);
 
     if (!snap) {
       this.messageValue =
-        this.modeValue === "ORIGIN"
-          ? "Selecciona un SNAP 3D o escribe XYZ para mover el WorkPlane libremente."
-          : `Punto ${this.points.length + 1}/3: selecciona un SNAP válido.`;
+        "Selecciona un SNAP 3D o escribe XYZ para mover el WorkPlane libremente.";
       this.notify();
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
+    this.workPlane.setOrigin(snap.point);
+    this.finish();
+  };
 
-    if (this.modeValue === "ORIGIN") {
-      this.workPlane.setOrigin(snap.point);
-      this.finish();
+  private handleThreePointClick(event: PointerEvent): void {
+    if (this.threePointSource === "FACE") {
+      const faceHit = this.pickDesignFace(event.clientX, event.clientY);
+
+      if (!faceHit) {
+        this.messageValue =
+          `Punto ${this.points.length + 1}/3: haz clic sobre la misma cara de referencia.`;
+        this.notify();
+        return;
+      }
+
+      if (!this.isHitOnReferenceFace(faceHit)) {
+        this.messageValue =
+          "El punto debe estar sobre la misma cara plana usada como referencia.";
+        this.notify();
+        return;
+      }
+
+      const point = faceHit.point.clone();
+      this.referenceFacePlane.projectPoint(point, point);
+      this.acceptThreePoint(event, point);
       return;
     }
 
+    if (this.threePointSource === "SNAP") {
+      const snap = this.snap.findSnap(event.clientX, event.clientY);
+
+      if (!snap) {
+        this.messageValue =
+          `Punto ${this.points.length + 1}/3: selecciona un SNAP válido.`;
+        this.notify();
+        return;
+      }
+
+      this.acceptThreePoint(event, snap.point.clone());
+      return;
+    }
+
+    const faceHit = this.pickDesignFace(event.clientX, event.clientY);
+
+    if (faceHit) {
+      this.threePointSource = "FACE";
+      this.referenceFaceInstanceId = faceHit.instanceId;
+      this.referenceFaceNormal.copy(faceHit.normal).normalize();
+      this.referenceFacePlane.setFromNormalAndCoplanarPoint(
+        this.referenceFaceNormal,
+        faceHit.point,
+      );
+      this.acceptThreePoint(event, faceHit.point.clone());
+      return;
+    }
+
+    const snap = this.snap.findSnap(event.clientX, event.clientY);
+
+    if (snap) {
+      this.threePointSource = "SNAP";
+      this.acceptThreePoint(event, snap.point.clone());
+      return;
+    }
+
+    this.messageValue =
+      "Punto 1/3: haz clic sobre una cara de una pieza o selecciona un SNAP válido.";
+    this.notify();
+  }
+
+  private acceptThreePoint(
+    event: PointerEvent,
+    point: THREE.Vector3,
+  ): void {
     if (
       this.points.length === 1
-      && snap.point.distanceToSquared(this.points[0]) <= 1e-12
+      && point.distanceToSquared(this.points[0]) <= 1e-12
     ) {
       this.messageValue =
         "Punto 2/3: debe ser diferente al origen para definir +X local.";
@@ -296,18 +402,24 @@ export class CadWorkPlaneEditController {
       return;
     }
 
-    this.points.push(snap.point.clone());
+    this.points.push(point);
+    event.preventDefault();
+    event.stopPropagation();
 
     if (this.points.length === 1) {
       this.messageValue =
-        "Punto 2/3: selecciona el SNAP que define +X local.";
+        this.threePointSource === "FACE"
+          ? "Punto 2/3: sobre la misma cara, haz clic en la dirección +X local."
+          : "Punto 2/3: selecciona el SNAP que define +X local.";
       this.notify();
       return;
     }
 
     if (this.points.length === 2) {
       this.messageValue =
-        "Punto 3/3: selecciona un SNAP para definir el plano y +Y local.";
+        this.threePointSource === "FACE"
+          ? "Punto 3/3: sobre la misma cara, define +Y local. +Z será perpendicular a la cara."
+          : "Punto 3/3: selecciona un SNAP para definir +Y local; +Z será perpendicular.";
       this.notify();
       return;
     }
@@ -321,13 +433,96 @@ export class CadWorkPlaneEditController {
     if (!applied) {
       this.points.pop();
       this.messageValue =
-        "El tercer punto no puede ser colineal con los dos primeros. Selecciona otro SNAP.";
+        "El tercer punto no puede ser colineal con los dos primeros. Selecciona otro punto para +Y local.";
       this.notify();
       return;
     }
 
     this.finish();
-  };
+  }
+
+  private pickDesignFace(
+    clientX: number,
+    clientY: number,
+  ): DesignFaceHit | null {
+    const runtime = this.selection as unknown as SelectionSurfaceRuntime;
+    const cameraProvider = runtime.cameraProvider;
+    const getInstanceEntries = runtime.designScene?.getInstanceEntries;
+
+    if (!cameraProvider || !getInstanceEntries) {
+      return null;
+    }
+
+    const rect = this.domElement.getBoundingClientRect();
+
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, cameraProvider());
+
+    let best: DesignFaceHit | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    const normalMatrix = new THREE.Matrix3();
+
+    for (const [instanceId, root] of getInstanceEntries.call(runtime.designScene)) {
+      if (!root.visible) {
+        continue;
+      }
+
+      const intersections = this.raycaster.intersectObject(root, true);
+
+      for (const intersection of intersections) {
+        if (!intersection.face || intersection.distance >= bestDistance) {
+          continue;
+        }
+
+        normalMatrix.getNormalMatrix(intersection.object.matrixWorld);
+        const normal = intersection.face.normal
+          .clone()
+          .applyNormalMatrix(normalMatrix)
+          .normalize();
+
+        if (normal.lengthSq() <= 1e-12) {
+          continue;
+        }
+
+        bestDistance = intersection.distance;
+        best = {
+          point: intersection.point.clone(),
+          normal,
+          instanceId,
+        };
+        break;
+      }
+    }
+
+    return best;
+  }
+
+  private isHitOnReferenceFace(hit: DesignFaceHit): boolean {
+    if (!this.referenceFaceInstanceId) {
+      return false;
+    }
+
+    if (hit.instanceId !== this.referenceFaceInstanceId) {
+      return false;
+    }
+
+    const normalAlignment = Math.abs(
+      hit.normal.dot(this.referenceFaceNormal),
+    );
+
+    if (normalAlignment < 0.999) {
+      return false;
+    }
+
+    return Math.abs(
+      this.referenceFacePlane.distanceToPoint(hit.point),
+    ) <= 1e-4;
+  }
 
   private formatCoordinate(value: number): string {
     if (Math.abs(value) < 1e-12) {
@@ -338,7 +533,7 @@ export class CadWorkPlaneEditController {
 
   private finish(): void {
     this.modeValue = "NONE";
-    this.points.length = 0;
+    this.resetThreePointReference();
     this.pointerDownActive = false;
     this.messageValue = "";
     this.originEditor.style.display = "none";
