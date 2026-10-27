@@ -6,6 +6,7 @@ import {
 
 import type {
   ChangeEvent,
+  MouseEvent as ReactMouseEvent,
 } from "react";
 
 import {
@@ -27,6 +28,10 @@ import type {
 
 import {
   ModelPanel,
+} from "./components/ModelPanel";
+
+import type {
+  PiecePanelItem,
 } from "./components/ModelPanel";
 
 import {
@@ -71,6 +76,15 @@ interface PieceDefinitionSummary {
   id: string;
   code: string;
   name: string;
+}
+
+
+interface PieceContextMenuState {
+  id: string;
+  name: string;
+  visible: boolean;
+  x: number;
+  y: number;
 }
 
 
@@ -188,6 +202,11 @@ export function BimViewport() {
       null,
     );
 
+  const hiddenPieceIdsRef =
+    useRef<Set<string>>(
+      new Set(),
+    );
+
   const [cameraOrientation, setCameraOrientation] =
     useState<CameraOrientation>({
       azimuth:
@@ -216,6 +235,16 @@ export function BimViewport() {
   const [models, setModels] =
     useState<LoadedModelInfo[]>(
       [],
+    );
+
+  const [pieces, setPieces] =
+    useState<PiecePanelItem[]>(
+      [],
+    );
+
+  const [pieceContextMenu, setPieceContextMenu] =
+    useState<PieceContextMenuState | null>(
+      null,
     );
 
   const [layers, setLayers] =
@@ -278,6 +307,81 @@ export function BimViewport() {
     useState(false);
 
 
+  useEffect(
+    () => {
+
+      if (
+        !pieceContextMenu
+      ) {
+        return;
+      }
+
+
+      const close =
+        (): void => {
+          setPieceContextMenu(
+            null,
+          );
+        };
+
+
+      const handleKeyDown =
+        (
+          event:
+            KeyboardEvent,
+        ): void => {
+
+          if (
+            event.key === "Escape"
+          ) {
+            close();
+          }
+
+        };
+
+
+      window.addEventListener(
+        "pointerdown",
+        close,
+      );
+      window.addEventListener(
+        "resize",
+        close,
+      );
+      window.addEventListener(
+        "blur",
+        close,
+      );
+      window.addEventListener(
+        "keydown",
+        handleKeyDown,
+      );
+
+
+      return () => {
+        window.removeEventListener(
+          "pointerdown",
+          close,
+        );
+        window.removeEventListener(
+          "resize",
+          close,
+        );
+        window.removeEventListener(
+          "blur",
+          close,
+        );
+        window.removeEventListener(
+          "keydown",
+          handleKeyDown,
+        );
+      };
+
+    },
+    [pieceContextMenu],
+  );
+
+
   function handleCardinalDirection(
     direction: CardinalDirection,
   ): void {
@@ -338,6 +442,89 @@ export function BimViewport() {
   }
 
 
+  function refreshPieces(): void {
+    const bimCore =
+      bimCoreRef.current;
+
+    if (!bimCore) {
+      setPieces([]);
+      return;
+    }
+
+
+    const instances =
+      bimCore.designModel
+        .pieceInstances
+        .getAll();
+
+    const activeIds =
+      new Set(
+        instances.map(
+          (
+            instance,
+          ) =>
+            instance.id,
+        ),
+      );
+
+
+    for (
+      const hiddenId
+      of Array.from(
+        hiddenPieceIdsRef.current,
+      )
+    ) {
+      if (
+        !activeIds.has(
+          hiddenId,
+        )
+      ) {
+        hiddenPieceIdsRef.current
+          .delete(
+            hiddenId,
+          );
+      }
+    }
+
+
+    setPieces(
+      instances.map(
+        (
+          instance,
+          index,
+        ) => {
+          const definition =
+            bimCore.designModel
+              .pieceDefinitions
+              .get(
+                instance.definitionId,
+              );
+
+          return {
+            id:
+              instance.id,
+            name:
+              instance.name?.trim()
+              || definition?.name
+              || definition?.code
+              || `Pieza ${index + 1}`,
+            code:
+              definition?.code
+              || "PIEZA",
+            layerId:
+              instance.layerId,
+            visible:
+              !hiddenPieceIdsRef.current
+                .has(
+                  instance.id,
+                ),
+          };
+        },
+      ),
+    );
+  }
+
+
   function refreshLayers(): void {
     const bimCore =
       bimCoreRef.current;
@@ -353,6 +540,132 @@ export function BimViewport() {
     setActiveLayerId(
       bimCore.getActiveDesignLayerId(),
     );
+  }
+
+
+  function handlePieceVisibilityChange(
+    instanceId: string,
+    visible: boolean,
+  ): void {
+    const bimCore =
+      bimCoreRef.current;
+
+    if (!bimCore) {
+      return;
+    }
+
+
+    if (visible) {
+      hiddenPieceIdsRef.current
+        .delete(
+          instanceId,
+        );
+    }
+    else {
+      hiddenPieceIdsRef.current
+        .add(
+          instanceId,
+        );
+
+      const remainingSelection =
+        bimCore.designSelection
+          .getSelectedIds()
+          .filter(
+            (
+              selectedId,
+            ) =>
+              selectedId
+              !== instanceId,
+          );
+
+      bimCore.designSelection
+        .setSelection(
+          remainingSelection,
+        );
+    }
+
+
+    bimCore.designScene
+      .sync();
+
+    bimCore.pieceDefinitionHelpers
+      .sync();
+
+    bimCore.designSelection
+      .refreshHelpers();
+
+    refreshPieces();
+
+    setPieceContextMenu(
+      null,
+    );
+  }
+
+
+  function handleViewportContextMenu(
+    event:
+      ReactMouseEvent<HTMLDivElement>,
+  ): void {
+    event.preventDefault();
+
+
+    const bimCore =
+      bimCoreRef.current;
+
+    if (!bimCore) {
+      setPieceContextMenu(
+        null,
+      );
+      return;
+    }
+
+
+    const instanceId =
+      bimCore.designSelection
+        .getInstanceIdAt(
+          event.clientX,
+          event.clientY,
+        );
+
+    if (!instanceId) {
+      setPieceContextMenu(
+        null,
+      );
+      return;
+    }
+
+
+    const piece =
+      pieces.find(
+        (
+          item,
+        ) =>
+          item.id
+          === instanceId,
+      );
+
+    if (!piece) {
+      setPieceContextMenu(
+        null,
+      );
+      return;
+    }
+
+
+    event.stopPropagation();
+
+    setPieceContextMenu({
+      id:
+        piece.id,
+      name:
+        piece.name,
+      visible:
+        piece.visible,
+      x:
+        event.clientX,
+      y:
+        event.clientY,
+    });
   }
 
 
@@ -696,6 +1009,9 @@ export function BimViewport() {
       let unsubscribeLayers:
         (() => void)
         | null = null;
+      let unsubscribeDesignSelection:
+        (() => void)
+        | null = null;
       let unsubscribeWorkPlane:
         (() => void)
         | null = null;
@@ -724,9 +1040,21 @@ export function BimViewport() {
             bimCoreRef.current =
               instance;
 
+            instance.designScene
+              .setVisibilityFilter(
+                (
+                  instanceId,
+                ) =>
+                  !hiddenPieceIdsRef.current
+                    .has(
+                      instanceId,
+                    ),
+              );
+
             setModels(
               instance.getLoadedModels(),
             );
+            refreshPieces();
             setLayers(
               instance.getDesignLayers(),
             );
@@ -755,9 +1083,20 @@ export function BimViewport() {
                   if (!disposed) {
                     refreshLayers();
                     refreshModels();
+                    refreshPieces();
                   }
                 },
               );
+
+            unsubscribeDesignSelection =
+              instance.designSelection
+                .subscribe(
+                  () => {
+                    if (!disposed) {
+                      refreshPieces();
+                    }
+                  },
+                );
 
             unsubscribeWorkPlane =
               instance.subscribeCadWorkPlane(
@@ -842,6 +1181,7 @@ export function BimViewport() {
 
         unsubscribeCamera?.();
         unsubscribeLayers?.();
+        unsubscribeDesignSelection?.();
         unsubscribeWorkPlane?.();
         unsubscribeWorkPlaneEdit?.();
         unsubscribePiecePreparation?.();
@@ -1009,6 +1349,8 @@ export function BimViewport() {
 
     bimCore.geometryQuery
       .clearCache();
+
+    refreshPieces();
 
     await bimCore.setStandardView(
       "ISO",
@@ -1357,6 +1699,8 @@ export function BimViewport() {
               }
             : current,
       );
+
+      refreshPieces();
     }
     catch (
       error
@@ -1457,6 +1801,7 @@ export function BimViewport() {
       <div
         ref={containerRef}
         className="bim-viewport"
+        onContextMenu={handleViewportContextMenu}
       />
 
       <ViewCube
@@ -1726,12 +2071,72 @@ export function BimViewport() {
 
       <ModelPanel
         models={models}
+        pieces={pieces}
         layers={layers}
         onVisibilityChange={handleVisibilityChange}
+        onPieceVisibilityChange={handlePieceVisibilityChange}
         onLayerChange={handleModelLayerChange}
         onRemove={handleRemoveModel}
         onClear={handleClearModels}
       />
+
+      {
+        pieceContextMenu
+        && (
+          <div
+            className="model-context-menu"
+            style={{
+              left:
+                pieceContextMenu.x,
+              top:
+                pieceContextMenu.y,
+            }}
+            onPointerDown={
+              (
+                event,
+              ) => {
+                event.stopPropagation();
+              }
+            }
+          >
+            <div
+              className="model-context-title"
+              title={pieceContextMenu.name}
+            >
+              {pieceContextMenu.name}
+            </div>
+
+            <button
+              type="button"
+              className="model-context-action"
+              onClick={
+                () => {
+                  handlePieceVisibilityChange(
+                    pieceContextMenu.id,
+                    !pieceContextMenu.visible,
+                  );
+                }
+              }
+            >
+              <span
+                aria-hidden="true"
+              >
+                {
+                  pieceContextMenu.visible
+                    ? "◌"
+                    : "👁"
+                }
+              </span>
+
+              {
+                pieceContextMenu.visible
+                  ? "Ocultar pieza"
+                  : "Mostrar pieza"
+              }
+            </button>
+          </div>
+        )
+      }
 
       <input
         ref={referenceFileInputRef}
