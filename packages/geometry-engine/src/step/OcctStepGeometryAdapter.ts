@@ -65,24 +65,67 @@ function getOcct(): Promise<OcctModule> {
   return occtPromise;
 }
 
-function cloneSourceData(
+/**
+ * Conserva los bytes originales sin copiar el archivo completo cuando el
+ * Uint8Array ya posee un ArrayBuffer exclusivo (caso normal de File y de los
+ * paquetes FrameLogic). Solo copiamos vistas parciales o buffers no estándar.
+ */
+function retainSourceData(
   data: Uint8Array,
 ): Uint8Array<ArrayBuffer> {
-  const buffer =
-    new ArrayBuffer(
-      data.byteLength,
-    );
+  if (
+    data.buffer instanceof ArrayBuffer
+    && data.byteOffset === 0
+    && data.byteLength === data.buffer.byteLength
+  ) {
+    return data as Uint8Array<ArrayBuffer>;
+  }
+
   const clone =
     new Uint8Array(
-      buffer,
+      new ArrayBuffer(data.byteLength),
     );
   clone.set(data);
   return clone;
 }
 
+function yieldToBrowser(): Promise<void> {
+  return new Promise(
+    (resolve) => {
+      setTimeout(resolve, 0);
+    },
+  );
+}
+
+function now(): number {
+  return typeof performance !== "undefined"
+    ? performance.now()
+    : Date.now();
+}
+
+function logTiming(
+  fileName: string,
+  timings: Record<string, number>,
+): void {
+  console.debug(
+    `[FrameLogic][STEP] ${fileName}`,
+    Object.fromEntries(
+      Object.entries(timings).map(
+        ([key, value]) => [key, Math.round(value * 10) / 10],
+      ),
+    ),
+  );
+}
+
 /**
  * Adaptador STEP reutilizable por el visor y por el cargador de proyectos.
  * La triangulación alimenta Three.js; OpenCascade.js conserva el B-Rep vivo.
+ *
+ * Las dos etapas siguen siendo exactas/compatibles, pero ya no se lanzan como
+ * un falso Promise.all: ReadStepFile es síncrono y bloqueaba antes de iniciar
+ * la segunda rama. Ahora liberamos los arrays JS temporales y cedemos un turno
+ * al navegador antes de construir el B-Rep, reduciendo picos de memoria y
+ * permitiendo que la UI actualice el estado de carga.
  */
 export class OcctStepGeometryAdapter
   implements StepGeometryAdapter {
@@ -90,69 +133,96 @@ export class OcctStepGeometryAdapter
     data: Uint8Array,
     options: Parameters<StepGeometryAdapter["load"]>[1],
   ): Promise<StepGeometryDocument> {
+    const totalStart = now();
     const sourceData =
-      cloneSourceData(data);
+      retainSourceData(data);
+    const occtInitStart = now();
     const occt =
       await getOcct();
+    const occtInitMs =
+      now() - occtInitStart;
     const brepKernel =
       getOpenCascadeBrepKernel();
     const targetUnit =
       options.targetUnit
       ?? "meter";
 
-    const [result, brep] =
-      await Promise.all([
-        Promise.resolve(
-          occt.ReadStepFile(
-            data,
-            {
-              linearUnit: targetUnit,
-              linearDeflectionType: "bounding_box_ratio",
-              linearDeflection: 0.001,
-              angularDeflection: 0.5,
-            },
-          ),
-        ),
-        brepKernel.loadStep(
-          sourceData,
-          options.sourceFileName,
-        ),
-      ]);
+    await yieldToBrowser();
+
+    const visualStart = now();
+    const result =
+      occt.ReadStepFile(
+        data,
+        {
+          linearUnit: targetUnit,
+          linearDeflectionType: "bounding_box_ratio",
+          linearDeflection: 0.001,
+          angularDeflection: 0.5,
+        },
+      );
+    const visualMs =
+      now() - visualStart;
 
     if (!result.success) {
-      brepKernel.disposeDocument(brep.id);
       throw new Error(
         `No se pudo leer el STEP "${options.sourceFileName}" con OpenCascade.`,
       );
     }
 
+    const meshConvertStart = now();
     const meshes:
       StepMeshData[] =
       result.meshes.map(
         (
           mesh: OcctMesh,
           index: number,
-        ) => ({
-          id:
-            mesh.name
-            || `mesh-${index + 1}`,
-          positions:
-            new Float32Array(
-              mesh.attributes.position.array,
-            ),
-          indices:
-            new Uint32Array(
-              mesh.index.array,
-            ),
-          normals:
-            mesh.attributes.normal
-              ? new Float32Array(
-                  mesh.attributes.normal.array,
-                )
-              : undefined,
-        }),
-      );
+        ) => {
+          const converted: StepMeshData = {
+            id:
+              mesh.name
+              || `mesh-${index + 1}`,
+            positions:
+              new Float32Array(
+                mesh.attributes.position.array,
+              ),
+            indices:
+              new Uint32Array(
+                mesh.index.array,
+              ),
+            normals:
+              mesh.attributes.normal
+                ? new Float32Array(
+                    mesh.attributes.normal.array,
+                  )
+                : undefined,
+          };
 
+          // Los TypedArray ya son la copia compacta que conservará FrameLogic.
+          // Vaciar los number[] reduce el pico de memoria antes del B-Rep.
+          mesh.attributes.position.array.length = 0;
+          mesh.index.array.length = 0;
+          if (mesh.attributes.normal) {
+            mesh.attributes.normal.array.length = 0;
+          }
+
+          return converted;
+        },
+      );
+    const meshConvertMs =
+      now() - meshConvertStart;
+
+    await yieldToBrowser();
+
+    const brepStart = now();
+    const brep =
+      await brepKernel.loadStep(
+        sourceData,
+        options.sourceFileName,
+      );
+    const brepMs =
+      now() - brepStart;
+
+    const scaleStart = now();
     const modelScale =
       inferBrepToMeshScale(
         brep,
@@ -165,6 +235,9 @@ export class OcctStepGeometryAdapter
     const scaledBrep =
       brepKernel.getDocument(brep.id)
       ?? brep;
+    const scaleMs =
+      now() - scaleStart;
+
     const products:
       StepProductNode[] = [];
 
@@ -192,9 +265,7 @@ export class OcctStepGeometryAdapter
         geometryIds:
           node.meshes
             .map(
-              (
-                meshIndex: number,
-              ) =>
+              (meshIndex: number) =>
                 meshes[meshIndex]?.id,
             )
             .filter(
@@ -213,6 +284,31 @@ export class OcctStepGeometryAdapter
       "root",
     );
 
+    const featureStart = now();
+    const features =
+      options.includeExactFeatures
+        === false
+        ? []
+        : createExactFeatures(
+            scaledBrep,
+          );
+    const featureMs =
+      now() - featureStart;
+
+    logTiming(
+      options.sourceFileName,
+      {
+        occtInitMs,
+        visualMs,
+        meshConvertMs,
+        brepMs,
+        scaleMs,
+        featureMs,
+        totalMs:
+          now() - totalStart,
+      },
+    );
+
     return {
       id:
         crypto.randomUUID(),
@@ -226,13 +322,7 @@ export class OcctStepGeometryAdapter
           ? 0.001
           : 1,
       meshes,
-      features:
-        options.includeExactFeatures
-          === false
-          ? []
-          : createExactFeatures(
-              scaledBrep,
-            ),
+      features,
       products,
     };
   }
@@ -322,35 +412,9 @@ function inferBrepToMeshScale(
   meshes: readonly StepMeshData[],
 ): number {
   const brepDiagonal =
-    pointCloudDiagonal(
-      brep.vertices.map(
-        (vertex) =>
-          vertex.point,
-      ),
-    );
-  const meshPoints:
-    Array<{
-      x: number;
-      y: number;
-      z: number;
-    }> = [];
-
-  for (const mesh of meshes) {
-    for (
-      let index = 0;
-      index + 2 < mesh.positions.length;
-      index += 3
-    ) {
-      meshPoints.push({
-        x: mesh.positions[index] ?? 0,
-        y: mesh.positions[index + 1] ?? 0,
-        z: mesh.positions[index + 2] ?? 0,
-      });
-    }
-  }
-
+    brepVertexDiagonal(brep);
   const meshDiagonal =
-    pointCloudDiagonal(meshPoints);
+    meshVertexDiagonal(meshes);
 
   if (
     !Number.isFinite(brepDiagonal)
@@ -371,14 +435,12 @@ function inferBrepToMeshScale(
     : 1;
 }
 
-function pointCloudDiagonal(
-  points: readonly {
-    x: number;
-    y: number;
-    z: number;
-  }[],
+function brepVertexDiagonal(
+  brep: OpenCascadeBrepSnapshot,
 ): number {
-  if (points.length < 1) return 0;
+  if (brep.vertices.length < 1) {
+    return 0;
+  }
 
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
@@ -387,13 +449,14 @@ function pointCloudDiagonal(
   let maxY = Number.NEGATIVE_INFINITY;
   let maxZ = Number.NEGATIVE_INFINITY;
 
-  for (const point of points) {
-    minX = Math.min(minX, point.x);
-    minY = Math.min(minY, point.y);
-    minZ = Math.min(minZ, point.z);
-    maxX = Math.max(maxX, point.x);
-    maxY = Math.max(maxY, point.y);
-    maxZ = Math.max(maxZ, point.z);
+  for (const vertex of brep.vertices) {
+    const point = vertex.point;
+    if (point.x < minX) minX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.z < minZ) minZ = point.z;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y > maxY) maxY = point.y;
+    if (point.z > maxZ) maxZ = point.z;
   }
 
   return Math.hypot(
@@ -401,6 +464,46 @@ function pointCloudDiagonal(
     maxY - minY,
     maxZ - minZ,
   );
+}
+
+function meshVertexDiagonal(
+  meshes: readonly StepMeshData[],
+): number {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+  let hasPoint = false;
+
+  for (const mesh of meshes) {
+    const positions = mesh.positions;
+    for (
+      let index = 0;
+      index + 2 < positions.length;
+      index += 3
+    ) {
+      const x = positions[index] ?? 0;
+      const y = positions[index + 1] ?? 0;
+      const z = positions[index + 2] ?? 0;
+      hasPoint = true;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
+    }
+  }
+
+  return hasPoint
+    ? Math.hypot(
+        maxX - minX,
+        maxY - minY,
+        maxZ - minZ,
+      )
+    : 0;
 }
 
 function scalePoint(

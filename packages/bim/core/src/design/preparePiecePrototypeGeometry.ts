@@ -5,23 +5,27 @@ import {
 } from "three/addons/utils/BufferGeometryUtils.js";
 
 
+const MAX_CREASED_NORMAL_VERTICES =
+  200_000;
+
+
 /**
  * Prepara la geometría visual de una PieceDefinition para un visor CAD/BIM.
  *
- * El objetivo no es modificar la forma real del IFC, sino recalcular normales
- * de sombreado de forma coherente:
- *
- * - triángulos coplanares se ven como una sola cara plana;
- * - facetas consecutivas de una curva se suavizan visualmente;
- * - aristas mecánicas marcadas se conservan duras.
- *
- * 35° es suficientemente alto para suavizar una circunferencia IFC de
- * 12 segmentos (30° entre facetas), pero mantiene una esquina de 90°.
+ * Para mallas pequeñas conservamos el suavizado por crease. En mallas grandes
+ * importadas por OCCT reutilizamos las normales existentes para evitar clonar
+ * y desindexar cientos de miles de vértices durante la apertura. Esto solo
+ * afecta sombreado visual: el STEP/B-Rep exacto permanece intacto.
  */
 export function preparePiecePrototypeGeometry(
   prototype:
     THREE.Object3D,
 ): void {
+
+  const startedAt =
+    typeof performance !== "undefined"
+      ? performance.now()
+      : Date.now();
 
   const creaseAngle =
     THREE.MathUtils.degToRad(
@@ -40,6 +44,10 @@ export function preparePiecePrototypeGeometry(
     new Set<
       THREE.BufferGeometry
     >();
+
+
+  let reusedLargeGeometryCount =
+    0;
 
 
   prototype.traverse(
@@ -70,31 +78,74 @@ export function preparePiecePrototypeGeometry(
         !preparedGeometry
       ) {
 
-        /*
-         * Trabajamos sobre un clone para no alterar accidentalmente
-         * recursos que el Mesher/Fragments todavía pueda estar usando
-         * durante la extracción de la pieza.
-         */
-        preparedGeometry =
-          toCreasedNormals(
-            sourceGeometry.clone(),
-            creaseAngle,
+        const position =
+          sourceGeometry.getAttribute(
+            "position",
+          );
+
+        const normal =
+          sourceGeometry.getAttribute(
+            "normal",
+          );
+
+        const canReuseImportedNormals =
+          Boolean(
+            normal
+            && position
+            && position.count
+              >= MAX_CREASED_NORMAL_VERTICES,
           );
 
 
-        preparedGeometry.computeBoundingBox();
+        if (
+          canReuseImportedNormals
+        ) {
 
-        preparedGeometry.computeBoundingSphere();
+          preparedGeometry =
+            sourceGeometry;
+
+          reusedLargeGeometryCount +=
+            1;
+
+        }
+        else {
+
+          preparedGeometry =
+            toCreasedNormals(
+              sourceGeometry.clone(),
+              creaseAngle,
+            );
+
+          replacedSources.add(
+            sourceGeometry,
+          );
+
+        }
+
+
+        if (
+          preparedGeometry.boundingBox
+          === null
+        ) {
+
+          preparedGeometry.computeBoundingBox();
+
+        }
+
+
+        if (
+          preparedGeometry.boundingSphere
+          === null
+        ) {
+
+          preparedGeometry.computeBoundingSphere();
+
+        }
 
 
         preparedBySource.set(
           sourceGeometry,
           preparedGeometry,
-        );
-
-
-        replacedSources.add(
-          sourceGeometry,
         );
 
       }
@@ -107,16 +158,42 @@ export function preparePiecePrototypeGeometry(
   );
 
 
-  /*
-   * Todos los Mesh del prototype ya apuntan a las geometrías preparadas.
-   * Liberamos las geometrías visuales extraídas que quedaron reemplazadas.
-   */
   for (
     const sourceGeometry
     of replacedSources
   ) {
 
     sourceGeometry.dispose();
+
+  }
+
+
+  const elapsed =
+    (
+      typeof performance !== "undefined"
+        ? performance.now()
+        : Date.now()
+    )
+    - startedAt;
+
+
+  if (
+    elapsed >= 25
+    || reusedLargeGeometryCount > 0
+  ) {
+
+    console.debug(
+      "[FrameLogic][Geometry] prototype preparation",
+      {
+        ms:
+          Math.round(
+            elapsed * 10,
+          ) / 10,
+        geometries:
+          preparedBySource.size,
+        reusedLargeGeometryCount,
+      },
+    );
 
   }
 
