@@ -69,11 +69,20 @@ export class CadReferenceLayerPanelController {
       options.designModel.layers
         .subscribe(
           () => {
-            this.ensureImportedLayersLocked();
+            /*
+             * No bloqueamos automáticamente una capa CAD recién creada.
+             * Durante la importación DWG/DXF el importador necesita crear
+             * primero todas sus líneas/puntos. Cuando termina, el flujo de
+             * importación llama explícitamente ensureImportedLayersLocked().
+             */
             this.render();
           },
         );
 
+    /*
+     * Sí protegemos referencias CAD que ya existían al arrancar el panel
+     * (por ejemplo, restauradas desde un proyecto guardado).
+     */
     this.ensureImportedLayersLocked();
     this.render();
   }
