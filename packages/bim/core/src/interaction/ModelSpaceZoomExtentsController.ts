@@ -31,6 +31,17 @@ interface CameraControlsLike {
     zoom: number,
     enableTransition?: boolean,
   ): Promise<void>;
+  fitToBox?: (
+    box: THREE.Box3,
+    enableTransition?: boolean,
+    options?: {
+      readonly cover?: boolean;
+      readonly paddingLeft?: number;
+      readonly paddingRight?: number;
+      readonly paddingTop?: number;
+      readonly paddingBottom?: number;
+    },
+  ) => Promise<void>;
 }
 
 export interface ModelSpaceZoomExtentsControllerOptions {
@@ -127,11 +138,37 @@ export class ModelSpaceZoomExtentsController {
     const sphere = bounds.getBoundingSphere(
       new THREE.Sphere(),
     );
-    const center = sphere.center;
     const radius = Math.max(
       sphere.radius,
       0.05,
     );
+
+    /*
+     * camera-controls conoce la proyección ortográfica/perspectiva activa y
+     * calcula mejor el encuadre que una aproximación manual de zoom. Esto
+     * evita que Z+O termine extremadamente lejos con piezas STEP pequeñas o
+     * al cambiar entre ISO/TOP/FRONT.
+     */
+    if (typeof controls.fitToBox === "function") {
+      const padding = Math.max(
+        radius * 0.16,
+        0.01,
+      );
+      await controls.fitToBox(
+        bounds.clone(),
+        true,
+        {
+          cover: false,
+          paddingLeft: padding,
+          paddingRight: padding,
+          paddingTop: padding,
+          paddingBottom: padding,
+        },
+      );
+      return;
+    }
+
+    const center = sphere.center;
     const camera = this.options.cameraProvider();
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
