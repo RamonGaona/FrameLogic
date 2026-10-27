@@ -25,9 +25,7 @@ const DATABASE_VERSION =
 const STORE_NAME =
   "autosaves";
 const AUTOSAVE_INTERVAL_MS =
-  10_000;
-const BEFORE_UNLOAD_GRACE_MS =
-  15_000;
+  60_000;
 
 /**
  * Recuperación local de proyecto para cierres/reinicios inesperados.
@@ -268,21 +266,21 @@ export class ProjectAutosaveController {
       event:
         BeforeUnloadEvent,
     ): void => {
-      if (
-        this.lastSuccessfulAutosave > 0
-        && Date.now()
-          - this.lastSuccessfulAutosave
-          <= BEFORE_UNLOAD_GRACE_MS
-      ) {
-        return;
-      }
-
       try {
         const project =
           this.options.createProjectPackage(
             "FrameLogic Recovery Check",
           );
         if (!hasRecoverableContent(project)) {
+          return;
+        }
+
+        const serialized =
+          JSON.stringify(project);
+        if (
+          this.lastSerialized
+          && serialized === this.lastSerialized
+        ) {
           return;
         }
       }
@@ -306,9 +304,9 @@ export class ProjectAutosaveController {
     const status =
       document.createElement("span");
     status.textContent =
-      "Autoguardado: activo";
+      "Autoguardado: activo · 1 min";
     status.title =
-      "FrameLogic guarda una copia de recuperación local en este navegador.";
+      "FrameLogic guarda una copia de recuperación local cada minuto y al ocultar/cerrar la página.";
     Object.assign(
       status.style,
       {
