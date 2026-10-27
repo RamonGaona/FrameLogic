@@ -40,6 +40,17 @@ import type {
   DesignOrthoController,
 } from "./DesignOrthoController";
 
+import {
+  CAD_LINE_DISTANCE_APPLY_EVENT,
+  CAD_LINE_DISTANCE_END_EVENT,
+  CAD_LINE_DISTANCE_MODE_EVENT,
+} from "./CadNumericInputController";
+
+import type {
+  CadLineDistanceApplyDetail,
+  CadLineDistanceModeDetail,
+} from "./CadNumericInputController";
+
 
 export class CadLinePlacementController {
 
@@ -96,6 +107,12 @@ export class CadLinePlacementController {
 
 
   private startPoint:
+    THREE.Vector3
+    | null =
+      null;
+
+
+  private lastDirection:
     THREE.Vector3
     | null =
       null;
@@ -265,6 +282,12 @@ export class CadLinePlacementController {
       true,
     );
 
+
+    document.addEventListener(
+      CAD_LINE_DISTANCE_APPLY_EVENT,
+      this.handleNumericDistanceApply,
+    );
+
   }
 
 
@@ -320,6 +343,10 @@ export class CadLinePlacementController {
       null;
 
 
+    this.lastDirection =
+      null;
+
+
     this.preview.visible =
       false;
 
@@ -358,6 +385,10 @@ export class CadLinePlacementController {
       null;
 
 
+    this.lastDirection =
+      null;
+
+
     this.pointerDownActive =
       false;
 
@@ -382,6 +413,9 @@ export class CadLinePlacementController {
       .setEnabled(
         true,
       );
+
+
+    this.endDistanceInput();
 
   }
 
@@ -424,6 +458,78 @@ export class CadLinePlacementController {
     );
 
   }
+
+
+  createAtDistance(
+    distance:
+      number,
+  ):
+    boolean {
+
+    if (
+      !this.active
+      || !this.startPoint
+      || !this.lastDirection
+      || !Number.isFinite(
+        distance,
+      )
+      || Math.abs(
+        distance,
+      ) <= 1e-12
+    ) {
+
+      return false;
+
+    }
+
+
+    const end =
+      this.startPoint
+        .clone()
+        .addScaledVector(
+          this.lastDirection,
+          distance,
+        );
+
+
+    return this.acceptPoint(
+      end,
+    );
+
+  }
+
+
+  private readonly handleNumericDistanceApply =
+    (
+      event:
+        Event,
+    ): void => {
+
+      const detail =
+        (
+          event as CustomEvent<
+            CadLineDistanceApplyDetail
+          >
+        ).detail;
+
+
+      if (
+        !detail
+        || !detail.container.contains(
+          this.domElement,
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      this.createAtDistance(
+        detail.distance,
+      );
+
+  };
 
 
   private readonly handlePointerDown =
@@ -488,9 +594,6 @@ export class CadLinePlacementController {
         );
 
 
-      /*
-       * El arrastre pertenece a la cámara.
-       */
       if (
         movement > 5
       ) {
@@ -587,16 +690,6 @@ export class CadLinePlacementController {
     THREE.Vector3
     | null {
 
-    /*
-     * Flujo de precisión:
-     *
-     * cursor -> detección geométrica -> SNAP exacto -> ORTO -> final.
-     *
-     * El SNAP se obtiene antes de ORTO para no reemplazar la detección
-     * geométrica por una aproximación de pantalla. Si ORTO está activo,
-     * el punto exacto detectado se proyecta matemáticamente sobre el eje
-     * dominante que pasa por el punto inicial de la operación.
-     */
     const snap =
       this.snap.findSnap(
         clientX,
@@ -679,8 +772,15 @@ export class CadLinePlacementController {
         resolvedPoint.clone();
 
 
+      this.lastDirection =
+        null;
+
+
       this.preview.visible =
         false;
+
+
+      this.requestDistanceInput();
 
 
       return true;
@@ -726,16 +826,34 @@ export class CadLinePlacementController {
     }
 
 
-    /*
-     * LINE continuo:
-     * el final se convierte en el siguiente inicio.
-     */
+    const direction =
+      end
+        .clone()
+        .sub(
+          start,
+        );
+
+
+    if (
+      direction.lengthSq()
+      > 1e-20
+    ) {
+
+      this.lastDirection =
+        direction.normalize();
+
+    }
+
+
     this.startPoint =
       end;
 
 
     this.preview.visible =
       false;
+
+
+    this.requestDistanceInput();
 
 
     return true;
@@ -871,6 +989,25 @@ export class CadLinePlacementController {
   ):
     void {
 
+    const direction =
+      end
+        .clone()
+        .sub(
+          start,
+        );
+
+
+    if (
+      direction.lengthSq()
+      > 1e-20
+    ) {
+
+      this.lastDirection =
+        direction.normalize();
+
+    }
+
+
     this.preview.geometry
       .setFromPoints(
         [
@@ -885,6 +1022,54 @@ export class CadLinePlacementController {
 
     this.preview.visible =
       true;
+
+  }
+
+
+  private requestDistanceInput():
+    void {
+
+    const detail:
+      CadLineDistanceModeDetail = {
+        domElement:
+          this.domElement,
+      };
+
+
+    document.dispatchEvent(
+      new CustomEvent<
+        CadLineDistanceModeDetail
+      >(
+        CAD_LINE_DISTANCE_MODE_EVENT,
+        {
+          detail,
+        },
+      ),
+    );
+
+  }
+
+
+  private endDistanceInput():
+    void {
+
+    const detail:
+      CadLineDistanceModeDetail = {
+        domElement:
+          this.domElement,
+      };
+
+
+    document.dispatchEvent(
+      new CustomEvent<
+        CadLineDistanceModeDetail
+      >(
+        CAD_LINE_DISTANCE_END_EVENT,
+        {
+          detail,
+        },
+      ),
+    );
 
   }
 
@@ -926,6 +1111,12 @@ export class CadLinePlacementController {
       "pointermove",
       this.handlePointerMove,
       true,
+    );
+
+
+    document.removeEventListener(
+      CAD_LINE_DISTANCE_APPLY_EVENT,
+      this.handleNumericDistanceApply,
     );
 
 
