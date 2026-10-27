@@ -181,6 +181,49 @@ export class AssemblyRegistry {
 
 
   // ==========================================================
+  // UPDATE NAME
+  // ==========================================================
+
+  updateName(
+    id: string,
+    name: string,
+  ):
+    Assembly
+    | undefined {
+
+    const current =
+      this.assemblies.get(
+        id,
+      );
+
+    if (!current) {
+      return undefined;
+    }
+
+    const nextName =
+      name.trim();
+
+    if (!nextName) {
+      return current;
+    }
+
+    const updated:
+      Assembly = {
+        ...current,
+        name: nextName,
+      };
+
+    this.assemblies.set(
+      id,
+      updated,
+    );
+
+    return updated;
+
+  }
+
+
+  // ==========================================================
   // UPDATE PIECES
   // ==========================================================
 
