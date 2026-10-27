@@ -1,5 +1,14 @@
 import openCascadeFull from "opencascade.js/dist/opencascade.full.js";
-import openCascadeWasmUrl from "opencascade.js/dist/opencascade.full.wasm?url";
+
+
+const OPENCASCADE_PACKAGE_VERSION =
+  "2.0.0-beta.b5ff984";
+
+const DEFAULT_OPENCASCADE_WASM_URL =
+  `https://cdn.jsdelivr.net/npm/opencascade.js@${OPENCASCADE_PACKAGE_VERSION}/dist/opencascade.full.wasm`;
+
+const configuredOpenCascadeWasmUrl =
+  import.meta.env.VITE_OPENCASCADE_WASM_URL?.trim();
 
 
 /**
@@ -10,13 +19,17 @@ import openCascadeWasmUrl from "opencascade.js/dist/opencascade.full.wasm?url";
  * internos minificados (por ejemplo "a"), lo que produce el error
  * "Failed to resolve import 'a'".
  *
- * Aquí entregamos explícitamente a Emscripten la URL estática del WASM. El
- * kernel sigue siendo exactamente opencascade.full; solo cambia cómo Vite
- * localiza el binario.
+ * Cloudflare Pages tampoco permite publicar archivos individuales mayores de
+ * 25 MiB. opencascade.full.wasm ronda los 48 MiB, por lo que no debe formar
+ * parte de apps/web/dist. El runtime carga ese binario bajo demanda desde una
+ * URL externa. Por defecto usa jsDelivr fijado a la misma versión del paquete
+ * que FrameLogic instala; puede sustituirse con VITE_OPENCASCADE_WASM_URL
+ * (por ejemplo, una URL de Cloudflare R2) sin cambiar el código.
  */
 export default function initOpenCascadeForVite({
   mainJS = openCascadeFull,
-  mainWasm = openCascadeWasmUrl,
+  mainWasm = configuredOpenCascadeWasmUrl
+    || DEFAULT_OPENCASCADE_WASM_URL,
   worker = undefined,
   libs = [],
   module = {},
