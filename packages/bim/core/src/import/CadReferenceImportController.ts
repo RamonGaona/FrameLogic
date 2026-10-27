@@ -103,7 +103,10 @@ export class CadReferenceImportController {
 
     const unitScale = this.resolveUnitScale(parsed.insUnits);
     const layerIds = new Map<string, string>();
-    const baseName = stripExtension(file.name);
+    const referenceName = uniqueReferenceName(
+      this.options.designModel,
+      stripExtension(file.name),
+    );
     const getLayerId = (sourceLayer: string): string => {
       const key = sourceLayer.trim() || "0";
       const current = layerIds.get(key);
@@ -111,7 +114,7 @@ export class CadReferenceImportController {
       const layer = this.options.designModel.layers.create({
         name: uniqueLayerName(
           this.options.designModel,
-          `CAD ${baseName} · ${key}`,
+          `CAD ${referenceName} · ${key}`,
         ),
         visible: true,
         locked: false,
@@ -145,7 +148,7 @@ export class CadReferenceImportController {
       ? ` · ${parsed.skippedEntities} entidades no compatibles omitidas`
       : "";
     window.alert(
-      `Plano CAD importado en Model Space.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos${skipped}.`,
+      `Plano CAD "${referenceName}" importado como bloque de referencia.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos${skipped}.`,
     );
   }
 
@@ -162,7 +165,7 @@ export class CadReferenceImportController {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = "Abrir DWG/DXF";
-    button.title = "Importar plano CAD 2D como referencia editable/snap en Model Space";
+    button.title = "Importar plano CAD 2D como bloque de referencia con SNAP";
     Object.assign(button.style, {
       padding: "5px 8px",
       border: "1px solid rgba(255,255,255,0.16)",
@@ -561,6 +564,29 @@ function insUnitsToMeters(code: number): number | null {
     case 21: return 1200 / 3937;
     default: return null;
   }
+}
+
+function uniqueReferenceName(
+  designModel: DesignModel,
+  requested: string,
+): string {
+  const base = requested.trim().slice(0, 72) || "Referencia";
+  const used = new Set<string>();
+  for (const layer of designModel.layers.getAll()) {
+    if (!layer.name.startsWith("CAD ")) continue;
+    const body = layer.name.slice(4);
+    const separator = body.indexOf(" · ");
+    if (separator <= 0) continue;
+    used.add(
+      body.slice(0, separator).trim().toLowerCase(),
+    );
+  }
+  if (!used.has(base.toLowerCase())) return base;
+  for (let index = 2; index < 10000; index += 1) {
+    const candidate = `${base} (${index})`;
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${base} ${crypto.randomUUID().slice(0, 8)}`;
 }
 
 function uniqueLayerName(designModel: DesignModel, requested: string): string {
