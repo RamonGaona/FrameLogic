@@ -97,24 +97,25 @@ export function preparePiecePrototypeGeometry(
           );
 
 
+        const nextGeometry:
+          THREE.BufferGeometry =
+            canReuseImportedNormals
+              ? sourceGeometry
+              : toCreasedNormals(
+                  sourceGeometry.clone(),
+                  creaseAngle,
+                );
+
+
         if (
           canReuseImportedNormals
         ) {
-
-          preparedGeometry =
-            sourceGeometry;
 
           reusedLargeGeometryCount +=
             1;
 
         }
         else {
-
-          preparedGeometry =
-            toCreasedNormals(
-              sourceGeometry.clone(),
-              creaseAngle,
-            );
 
           replacedSources.add(
             sourceGeometry,
@@ -124,29 +125,33 @@ export function preparePiecePrototypeGeometry(
 
 
         if (
-          preparedGeometry.boundingBox
+          nextGeometry.boundingBox
           === null
         ) {
 
-          preparedGeometry.computeBoundingBox();
+          nextGeometry.computeBoundingBox();
 
         }
 
 
         if (
-          preparedGeometry.boundingSphere
+          nextGeometry.boundingSphere
           === null
         ) {
 
-          preparedGeometry.computeBoundingSphere();
+          nextGeometry.computeBoundingSphere();
 
         }
 
 
         preparedBySource.set(
           sourceGeometry,
-          preparedGeometry,
+          nextGeometry,
         );
+
+
+        preparedGeometry =
+          nextGeometry;
 
       }
 
