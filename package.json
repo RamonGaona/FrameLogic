@@ -1,18 +1,18 @@
 {
-    "name": "framelogic",
-    "version": "0.1.0",
-    "private": true,
-    "workspaces": [
-      "apps/*",
-      "packages/*",
-      "packages/bim/*"
-    ],
-    "scripts": {
-      "dev": "npm run dev --workspace @framelogic/web",
-      "build": "npm run build --workspace @framelogic/web",
-      "build:cloudflare": "npm install --no-save @rolldown/binding-linux-x64-gnu@1.2.8 lightningcss-linux-x64-gnu@1.33.0 && npm run build",
-      "typecheck": "npm run typecheck --workspaces --if-present",
-      "lint": "npm run lint --workspaces --if-present",
-      "test": "npm run test --workspaces --if-present"
-    }
+  "name": "framelogic",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "packages/bim/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @framelogic/web",
+    "build": "npm run build --workspace @framelogic/web",
+    "build:cloudflare": "npm install --include=dev --package-lock=false && npm install --no-save --package-lock=false @rolldown/binding-linux-x64-gnu@1.2.8 lightningcss-linux-x64-gnu@1.33.0 && npm run build",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
   }
+}
