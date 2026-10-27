@@ -55,6 +55,10 @@ import {
 } from "../import/CadReferenceLayerPanelController";
 
 import {
+  CadReferenceTransformController,
+} from "../import/CadReferenceTransformController";
+
+import {
   ModelSpaceZoomExtentsController,
 } from "../interaction/ModelSpaceZoomExtentsController";
 
@@ -325,6 +329,37 @@ export async function createBimCore(
         core.geometryQuery.clearCache(),
     });
 
+  const cadReferenceTransform =
+    new CadReferenceTransformController({
+      container,
+      domElement:
+        renderer.three.domElement,
+      scene:
+        core.world.scene.three,
+      cameraProvider: () =>
+        core.world.camera.three,
+      designModel:
+        core.designModel,
+      cadLineScene:
+        core.cadLineScene,
+      cadPointScene:
+        core.cadPointScene,
+      setCameraEnabled: (
+        enabled,
+      ) => {
+        core.world.camera.controls.enabled =
+          enabled;
+      },
+      clearGeometryQueryCache: () =>
+        core.geometryQuery.clearCache(),
+      clearOtherSelections: () => {
+        core.cancelActiveCadCommand();
+        core.designSelection.clearSelection();
+        core.cadLineSelection.clearSelection();
+        core.cadPointSelection.clearSelection();
+      },
+    });
+
   const zoomExtents =
     new ModelSpaceZoomExtentsController({
       container,
@@ -342,6 +377,21 @@ export async function createBimCore(
         core.cadPointScene,
       getLoadedModels: () =>
         core.getLoadedModels(),
+      getSelectedObjects: () =>
+        core.designSelection
+          .getSelectedIds()
+          .map((id) =>
+            core.designScene
+              .getInstanceObject(id),
+          )
+          .filter(
+            (object): object is NonNullable<typeof object> =>
+              object !== null
+              && object !== undefined,
+          ),
+      getSelectedCadReferenceBounds: () =>
+        cadReferenceTransform
+          .getSelectedBounds(),
     });
 
   const baseLoadIfcFile =
@@ -450,6 +500,7 @@ export async function createBimCore(
       onProjectRestored: async () => {
         cadReferenceLayers
           .ensureImportedLayersLocked();
+        cadReferenceTransform.refresh();
         await drawingProfessional
           .refreshExactDrawing();
         drawingFinishing
@@ -477,6 +528,7 @@ export async function createBimCore(
         core.cancelActiveCadCommand();
         cadReferenceLayers
           .ensureImportedLayersLocked();
+        cadReferenceTransform.refresh();
         await core.setStandardView(
           "TOP",
         );
@@ -541,6 +593,7 @@ export async function createBimCore(
       autosave.dispose();
       cadReferenceImport.dispose();
       zoomExtents.dispose();
+      cadReferenceTransform.dispose();
       cadReferenceLayers.dispose();
       projectPackage.dispose();
       drawingUsability.dispose();
