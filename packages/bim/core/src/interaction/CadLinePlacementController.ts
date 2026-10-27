@@ -22,6 +22,7 @@ import type {
 
 import type {
   CadWorkPlaneController,
+  CadWorkPlaneState,
 } from "./CadWorkPlaneController";
 
 import type {
@@ -391,11 +392,19 @@ export class CadLinePlacementController {
     clientY: number,
   ): THREE.Vector3 | null {
     /*
-     * Prioridad de precisión:
-     * SNAP exacto -> ORTO 3D -> plano activo -> 3D libre.
+     * Regla de dibujo:
      *
-     * ORTO ignora la limitación del plano para poder elegir
-     * X, Y o Z global aun cuando el plano visible sea XY/XZ/YZ.
+     * 1. Si existe un plano activo, toda LINE permanece en ese plano.
+     *    - ORTO OFF: dirección libre dentro del plano.
+     *    - ORTO ON: solo los dos ejes del plano (o ejes locales CUSTOM).
+     *
+     * 2. Si el plano está OFF, LINE trabaja libre en 3D.
+     *    - ORTO OFF: dirección 3D libre según la vista.
+     *    - ORTO ON: X/Y/Z globales.
+     *
+     * SNAP se detecta primero y después se proyecta matemáticamente al
+     * contexto permitido. Un snap fuera de un plano activo nunca saca
+     * la línea de ese plano.
      */
     const snap = this.snap.findSnap(
       clientX,
@@ -403,66 +412,106 @@ export class CadLinePlacementController {
     );
 
     if (snap) {
-      const candidate = snap.point.clone();
-
-      if (!this.startPoint) {
-        return candidate;
-      }
-
-      return this.ortho.constrainPoint(
+      return this.resolveCandidate(
+        snap.point,
         this.startPoint,
-        candidate,
       );
     }
 
-    if (!this.startPoint) {
-      if (this.workPlane.enabled) {
-        return this.workPlane.intersectPointer(
-          clientX,
-          clientY,
-          this.cameraProvider(),
-          this.domElement,
-        );
-      }
-
-      return this.intersectFree3DPointer(
-        clientX,
-        clientY,
-        this.workPlane.getState().origin,
-      );
-    }
-
-    if (this.ortho.isEnabled) {
-      const freeCandidate = this.intersectFree3DPointer(
-        clientX,
-        clientY,
-        this.startPoint,
-      );
-
-      if (!freeCandidate) {
-        return null;
-      }
-
-      return this.ortho.constrainPoint(
-        this.startPoint,
-        freeCandidate,
-      );
-    }
+    let candidate: THREE.Vector3 | null;
 
     if (this.workPlane.enabled) {
-      return this.workPlane.intersectPointer(
+      candidate = this.workPlane.intersectPointer(
         clientX,
         clientY,
         this.cameraProvider(),
         this.domElement,
       );
     }
+    else {
+      candidate = this.intersectFree3DPointer(
+        clientX,
+        clientY,
+        this.startPoint
+          ?? this.workPlane.getState().origin,
+      );
+    }
 
-    return this.intersectFree3DPointer(
-      clientX,
-      clientY,
+    if (!candidate) {
+      return null;
+    }
+
+    return this.resolveCandidate(
+      candidate,
       this.startPoint,
     );
+  }
+
+  private resolveCandidate(
+    candidate: THREE.Vector3,
+    start: THREE.Vector3 | null,
+  ): THREE.Vector3 {
+    const state = this.workPlane.getState();
+
+    const resolved = state.enabled
+      ? this.projectPointToWorkPlane(
+          candidate,
+          state,
+        )
+      : candidate.clone();
+
+    if (!start || !this.ortho.isEnabled) {
+      return resolved;
+    }
+
+    if (state.enabled) {
+      /*
+       * ORTO dentro de un plano activo nunca utiliza la normal.
+       * Para CUSTOM, X/Y representan los dos ejes locales del plano.
+       */
+      return this.ortho.constrainPoint(
+        start,
+        resolved,
+        {
+          axes: ["X", "Y"],
+          basis: {
+            xAxis: state.xAxis,
+            yAxis: state.yAxis,
+            zAxis: state.normal,
+          },
+        },
+      );
+    }
+
+    return this.ortho.constrainPoint(
+      start,
+      resolved,
+    );
+  }
+
+  private projectPointToWorkPlane(
+    point: THREE.Vector3,
+    state: CadWorkPlaneState,
+  ): THREE.Vector3 {
+    const normal = state.normal.clone();
+
+    if (normal.lengthSq() <= 1e-20) {
+      return point.clone();
+    }
+
+    normal.normalize();
+
+    const distance = point
+      .clone()
+      .sub(state.origin)
+      .dot(normal);
+
+    return point
+      .clone()
+      .addScaledVector(
+        normal,
+        -distance,
+      );
   }
 
   private intersectFree3DPointer(
@@ -512,12 +561,10 @@ export class CadLinePlacementController {
   private acceptPoint(
     point: THREE.Vector3,
   ): boolean {
-    const resolvedPoint = this.startPoint
-      ? this.ortho.constrainPoint(
-          this.startPoint,
-          point,
-        )
-      : point.clone();
+    const resolvedPoint = this.resolveCandidate(
+      point,
+      this.startPoint,
+    );
 
     if (!this.startPoint) {
       this.startPoint = resolvedPoint.clone();
@@ -546,6 +593,9 @@ export class CadLinePlacementController {
     const direction = end.clone().sub(start);
     if (direction.lengthSq() > 1e-20) {
       this.lastDirection = direction.normalize();
+    }
+    else {
+      this.lastDirection = null;
     }
 
     this.startPoint = end;
