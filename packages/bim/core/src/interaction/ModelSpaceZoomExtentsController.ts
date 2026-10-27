@@ -41,7 +41,7 @@ interface CameraControlsLike {
       readonly paddingTop?: number;
       readonly paddingBottom?: number;
     },
-  ) => Promise<void>;
+  ) => Promise<unknown>;
 }
 
 export interface ModelSpaceZoomExtentsControllerOptions {
