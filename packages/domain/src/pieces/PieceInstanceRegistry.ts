@@ -19,6 +19,8 @@ export interface RegisterPieceInstanceInput {
 
   id?: string;
 
+  name?: string;
+
   definitionId: string;
 
   layerId?: string;
@@ -74,6 +76,10 @@ export class PieceInstanceRegistry {
       PieceInstance = {
 
         id,
+
+        name:
+          input.name?.trim()
+          || undefined,
 
         definitionId:
           input.definitionId,
@@ -180,6 +186,44 @@ export class PieceInstanceRegistry {
           instance.layerId
           === layerId,
       );
+
+  }
+
+
+  // ==========================================================
+  // UPDATE NAME
+  // ==========================================================
+
+  updateName(
+    id: string,
+    name: string | undefined,
+  ):
+    PieceInstance
+    | undefined {
+
+    const current =
+      this.instances.get(
+        id,
+      );
+
+    if (!current) {
+      return undefined;
+    }
+
+    const updated:
+      PieceInstance = {
+        ...current,
+        name:
+          name?.trim()
+          || undefined,
+      };
+
+    this.instances.set(
+      id,
+      updated,
+    );
+
+    return updated;
 
   }
 
