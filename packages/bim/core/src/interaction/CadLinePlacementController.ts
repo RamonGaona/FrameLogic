@@ -32,6 +32,14 @@ import type {
   DesignSnapController,
 } from "./DesignSnapController";
 
+import {
+  getDesignOrthoController,
+} from "./DesignOrthoController";
+
+import type {
+  DesignOrthoController,
+} from "./DesignOrthoController";
+
 
 export class CadLinePlacementController {
 
@@ -61,6 +69,10 @@ export class CadLinePlacementController {
 
   private readonly workPlane:
     CadWorkPlaneController;
+
+
+  private readonly ortho:
+    DesignOrthoController;
 
 
   private readonly history:
@@ -170,6 +182,12 @@ export class CadLinePlacementController {
 
     this.workPlane =
       workPlane;
+
+
+    this.ortho =
+      getDesignOrthoController(
+        domElement,
+      );
 
 
     this.history =
@@ -569,6 +587,16 @@ export class CadLinePlacementController {
     THREE.Vector3
     | null {
 
+    /*
+     * Flujo de precisión:
+     *
+     * cursor -> detección geométrica -> SNAP exacto -> ORTO -> final.
+     *
+     * El SNAP se obtiene antes de ORTO para no reemplazar la detección
+     * geométrica por una aproximación de pantalla. Si ORTO está activo,
+     * el punto exacto detectado se proyecta matemáticamente sobre el eje
+     * dominante que pasa por el punto inicial de la operación.
+     */
     const snap =
       this.snap.findSnap(
         clientX,
@@ -576,33 +604,32 @@ export class CadLinePlacementController {
       );
 
 
-    /*
-     * SNAP tiene prioridad absoluta.
-     * Puede producir una línea 3D no ortogonal
-     * y puede salir del WorkPlane.
-     */
+    let candidate:
+      THREE.Vector3
+      | null =
+        snap
+          ? snap.point.clone()
+          : null;
+
+
     if (
-      snap
+      !candidate
     ) {
 
-      return snap.point
-        .clone();
+      candidate =
+        this.workPlane
+          .intersectPointer(
+            clientX,
+            clientY,
+            this.cameraProvider(),
+            this.domElement,
+          );
 
     }
 
 
-    const rawPlanePoint =
-      this.workPlane
-        .intersectPointer(
-          clientX,
-          clientY,
-          this.cameraProvider(),
-          this.domElement,
-        );
-
-
     if (
-      !rawPlanePoint
+      !candidate
     ) {
 
       return null;
@@ -610,95 +637,19 @@ export class CadLinePlacementController {
     }
 
 
-    /*
-     * Primer punto libre:
-     * simplemente cae sobre el WorkPlane.
-     */
     if (
       !this.startPoint
     ) {
 
-      return rawPlanePoint;
+      return candidate;
 
     }
 
 
-    /*
-     * ORTHO tipo F8:
-     *
-     * 0° / 90° respecto a los ejes LOCALES
-     * del WorkPlane activo.
-     *
-     * Si el primer punto vino de un SNAP situado
-     * fuera del plano, estas mismas direcciones
-     * pasan por el primer punto.
-     */
-    return this.applyWorkPlaneOrtho(
-      this.startPoint,
-      rawPlanePoint,
-    );
-
-  }
-
-
-  private applyWorkPlaneOrtho(
-    start:
-      THREE.Vector3,
-
-    candidate:
-      THREE.Vector3,
-  ):
-    THREE.Vector3 {
-
-    const state =
-      this.workPlane
-        .getState();
-
-
-    const delta =
-      candidate
-        .clone()
-        .sub(
-          start,
-        );
-
-
-    const alongX =
-      delta.dot(
-        state.xAxis,
-      );
-
-
-    const alongY =
-      delta.dot(
-        state.yAxis,
-      );
-
-
-    if (
-      Math.abs(
-        alongX,
-      )
-      >= Math.abs(
-        alongY,
-      )
-    ) {
-
-      return start
-        .clone()
-        .addScaledVector(
-          state.xAxis,
-          alongX,
-        );
-
-    }
-
-
-    return start
-      .clone()
-      .addScaledVector(
-        state.yAxis,
-        alongY,
+    return this.ortho
+      .constrainPoint(
+        this.startPoint,
+        candidate,
       );
 
   }
@@ -710,12 +661,22 @@ export class CadLinePlacementController {
   ):
     boolean {
 
+    const resolvedPoint =
+      this.startPoint
+        ? this.ortho
+            .constrainPoint(
+              this.startPoint,
+              point,
+            )
+        : point.clone();
+
+
     if (
       !this.startPoint
     ) {
 
       this.startPoint =
-        point.clone();
+        resolvedPoint.clone();
 
 
       this.preview.visible =
@@ -730,7 +691,7 @@ export class CadLinePlacementController {
     if (
       this.startPoint
         .distanceToSquared(
-          point,
+          resolvedPoint,
         )
       <= 1e-12
     ) {
@@ -746,7 +707,7 @@ export class CadLinePlacementController {
 
 
     const end =
-      point.clone();
+      resolvedPoint.clone();
 
 
     const created =
