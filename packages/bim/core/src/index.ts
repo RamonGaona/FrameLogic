@@ -1,3 +1,15 @@
+if (typeof window !== "undefined") {
+  // Drawing/project persistence is explicit through .flproject.
+  // Browser reloads must not resurrect sections or paper-space views
+  // from a previous unsaved session.
+  window.localStorage.removeItem(
+    "framelogic.documentation.v1",
+  );
+  window.localStorage.removeItem(
+    "framelogic.drawing-professional.v1",
+  );
+}
+
 export {
   createBimCore,
 } from "./engine/createFrameLogicBimCoreDrawing";
