@@ -129,10 +129,9 @@ export class ProjectAutosaveController {
       true;
     try {
       const project =
-        this.options
-          .createProjectPackage(
-            "FrameLogic Autosave",
-          );
+        this.options.createProjectPackage(
+          "FrameLogic Autosave",
+        );
 
       if (!hasRecoverableContent(project)) {
         this.status.textContent =
@@ -225,10 +224,9 @@ export class ProjectAutosaveController {
 
       this.status.textContent =
         "Recuperando…";
-      await this.options
-        .restoreProjectPackage(
-          record.project,
-        );
+      await this.options.restoreProjectPackage(
+        record.project,
+      );
       this.lastSerialized =
         JSON.stringify(
           record.project,
@@ -270,11 +268,6 @@ export class ProjectAutosaveController {
       event:
         BeforeUnloadEvent,
     ): void => {
-      /*
-       * Si el último autoguardado es reciente no molestamos al usuario.
-       * Si todavía no hubo uno exitoso, o lleva demasiado tiempo pendiente,
-       * el navegador muestra su aviso nativo de cambios sin guardar.
-       */
       if (
         this.lastSuccessfulAutosave > 0
         && Date.now()
@@ -286,10 +279,9 @@ export class ProjectAutosaveController {
 
       try {
         const project =
-          this.options
-            .createProjectPackage(
-              "FrameLogic Recovery Check",
-            );
+          this.options.createProjectPackage(
+            "FrameLogic Recovery Check",
+          );
         if (!hasRecoverableContent(project)) {
           return;
         }
@@ -382,10 +374,9 @@ function openDatabase():
           const database =
             request.result;
           if (
-            !database.objectStoreNames
-              .contains(
-                STORE_NAME,
-              )
+            !database.objectStoreNames.contains(
+              STORE_NAME,
+            )
           ) {
             database.createObjectStore(
               STORE_NAME,
@@ -471,10 +462,9 @@ async function readAutosave():
           ).get("latest");
         request.onsuccess =
           () => {
-            const result =
-              request.result
-              as AutosaveRecord
-              | undefined;
+            const result:
+              AutosaveRecord | undefined =
+                request.result;
             resolve(
               result
               ?? null,
