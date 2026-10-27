@@ -73,6 +73,26 @@ export function LayerPanel(
   const [expanded, setExpanded] =
     useState(false);
 
+  /*
+   * Las capas internas de DWG/DXF se administran en el panel
+   * independiente "Capas CAD". Aquí dejamos únicamente los layers
+   * normales del proyecto para no mezclar referencias CAD con el modelo.
+   */
+  const modelLayers =
+    layers.filter(
+      (
+        layer,
+      ) =>
+        !(
+          layer.name.startsWith(
+            "CAD ",
+          )
+          && layer.name.includes(
+            " · ",
+          )
+        ),
+    );
+
 
   return (
     <div
@@ -143,7 +163,7 @@ export function LayerPanel(
             >
 
               {
-                layers.map(
+                modelLayers.map(
                   (
                     layer,
                   ) => {
