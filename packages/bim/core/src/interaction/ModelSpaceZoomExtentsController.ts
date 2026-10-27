@@ -33,7 +33,7 @@ interface CameraControlsLike {
   ): Promise<void>;
   fitToBox?: (
     box: THREE.Box3,
-    enableTransition?: boolean,
+    enableTransition: boolean,
     options?: {
       readonly cover?: boolean;
       readonly paddingLeft?: number;
@@ -143,12 +143,6 @@ export class ModelSpaceZoomExtentsController {
       0.05,
     );
 
-    /*
-     * camera-controls conoce la proyección ortográfica/perspectiva activa y
-     * calcula mejor el encuadre que una aproximación manual de zoom. Esto
-     * evita que Z+O termine extremadamente lejos con piezas STEP pequeñas o
-     * al cambiar entre ISO/TOP/FRONT.
-     */
     if (typeof controls.fitToBox === "function") {
       const padding = Math.max(
         radius * 0.16,
