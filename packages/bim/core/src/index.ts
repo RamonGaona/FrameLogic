@@ -80,6 +80,19 @@ export type {
   DesignTransformMode,
 } from "./interaction/DesignTransformController";
 
+export {
+  DesignOrthoController,
+  disposeDesignOrthoController,
+  getDesignOrthoController,
+} from "./interaction/DesignOrthoController";
+
+export type {
+  DesignOrthoAxis,
+  DesignOrthoBasis,
+  DesignOrthoConstraintOptions,
+  DesignOrthoListener,
+} from "./interaction/DesignOrthoController";
+
 export type {
   CadCommand,
 } from "./commands/CadCommand";
