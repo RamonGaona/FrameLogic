@@ -51,6 +51,14 @@ import {
 } from "../import/CadReferenceImportController";
 
 import {
+  CadReferenceLayerPanelController,
+} from "../import/CadReferenceLayerPanelController";
+
+import {
+  ModelSpaceZoomExtentsController,
+} from "../interaction/ModelSpaceZoomExtentsController";
+
+import {
   OpenCascadeBrepAdvancedProvider,
 } from "../precision/OpenCascadeBrepAdvancedProvider";
 
@@ -65,6 +73,10 @@ import {
 import type {
   FrameLogicProjectPackage,
 } from "../project/FrameLogicProjectPackageController";
+
+import {
+  ProjectAutosaveController,
+} from "../project/ProjectAutosaveController";
 
 
 export type PrecisionBimCoreInstance =
@@ -300,6 +312,38 @@ export async function createBimCore(
       drawingFinishing,
     });
 
+  const cadReferenceLayers =
+    new CadReferenceLayerPanelController({
+      container,
+      designModel:
+        core.designModel,
+      cadLineScene:
+        core.cadLineScene,
+      cadPointScene:
+        core.cadPointScene,
+      clearGeometryQueryCache: () =>
+        core.geometryQuery.clearCache(),
+    });
+
+  const zoomExtents =
+    new ModelSpaceZoomExtentsController({
+      container,
+      scene:
+        core.world.scene.three,
+      cameraProvider: () =>
+        core.world.camera.three,
+      controls:
+        core.world.camera.controls,
+      designScene:
+        core.designScene,
+      cadLineScene:
+        core.cadLineScene,
+      cadPointScene:
+        core.cadPointScene,
+      getLoadedModels: () =>
+        core.getLoadedModels(),
+    });
+
   const baseLoadIfcFile =
     core.loadIfcFile.bind(
       core,
@@ -404,6 +448,8 @@ export async function createBimCore(
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
       onProjectRestored: async () => {
+        cadReferenceLayers
+          .ensureImportedLayersLocked();
         await drawingProfessional
           .refreshExactDrawing();
         drawingFinishing
@@ -411,6 +457,8 @@ export async function createBimCore(
         await core.setStandardView(
           "ISO",
         );
+        await zoomExtents
+          .zoomExtents();
       },
     });
 
@@ -427,10 +475,33 @@ export async function createBimCore(
         core.geometryQuery.clearCache(),
       onImported: async () => {
         core.cancelActiveCadCommand();
+        cadReferenceLayers
+          .ensureImportedLayersLocked();
         await core.setStandardView(
           "TOP",
         );
+        await zoomExtents
+          .zoomExtents();
       },
+    });
+
+  const autosave =
+    new ProjectAutosaveController({
+      container,
+      createProjectPackage: (
+        name,
+      ) =>
+        projectPackage
+          .createProjectPackage(
+            name,
+          ),
+      restoreProjectPackage: (
+        project,
+      ) =>
+        projectPackage
+          .restoreProjectPackage(
+            project,
+          ),
     });
 
   const loadIfcFile =
@@ -467,7 +538,10 @@ export async function createBimCore(
         handleOpenDrawing,
         true,
       );
+      autosave.dispose();
       cadReferenceImport.dispose();
+      zoomExtents.dispose();
+      cadReferenceLayers.dispose();
       projectPackage.dispose();
       drawingUsability.dispose();
       drawingCenterMarks.dispose();
