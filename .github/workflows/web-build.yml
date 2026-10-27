@@ -1,0 +1,38 @@
+name: Web build
+
+on:
+  push:
+    branches:
+      - feature/precision-model-space
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build FrameLogic web
+        run: npm run build
+
+      - name: Verify static output
+        run: |
+          test -d apps/web/dist
+          find apps/web/dist -maxdepth 3 -type f | sort
+
+      - name: Verify OpenCascade WASM asset
+        run: |
+          find apps/web/dist -type f -name '*.wasm' | grep -q .
