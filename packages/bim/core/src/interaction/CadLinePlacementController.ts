@@ -67,9 +67,9 @@ export class CadLinePlacementController {
   private readonly lineSelection: CadLineSelectionController;
   private readonly preview: THREE.Line;
 
-  private readonly freeRaycaster = new THREE.Raycaster();
-  private readonly freePointer = new THREE.Vector2();
-  private readonly freePlane = new THREE.Plane();
+  private readonly pointerRaycaster = new THREE.Raycaster();
+  private readonly pointerNdc = new THREE.Vector2();
+  private readonly pointerPlane = new THREE.Plane();
   private readonly viewDirection = new THREE.Vector3();
 
   private startPoint: THREE.Vector3 | null = null;
@@ -392,19 +392,20 @@ export class CadLinePlacementController {
     clientY: number,
   ): THREE.Vector3 | null {
     /*
-     * Regla de dibujo:
+     * El primer punto siempre se conserva exactamente donde fue elegido,
+     * incluso si queda fuera del workplane visible.
      *
-     * 1. Si existe un plano activo, toda LINE permanece en ese plano.
-     *    - ORTO OFF: dirección libre dentro del plano.
-     *    - ORTO ON: solo los dos ejes del plano (o ejes locales CUSTOM).
+     * Después del primer punto, un workplane activo define DIRECCIONES:
+     * se usa un plano paralelo al workplane que pasa por startPoint.
+     * Así, por ejemplo, XY desde (3,3,3) conserva Z=3.
      *
-     * 2. Si el plano está OFF, LINE trabaja libre en 3D.
-     *    - ORTO OFF: dirección 3D libre según la vista.
-     *    - ORTO ON: X/Y/Z globales.
+     * - Plano ON + ORTO OFF: dirección libre dentro de ese plano paralelo.
+     * - Plano ON + ORTO ON: solo los dos ejes del plano.
+     * - Plano OFF + ORTO OFF: 3D libre según la vista.
+     * - Plano OFF + ORTO ON: X/Y/Z globales.
      *
-     * SNAP se detecta primero y después se proyecta matemáticamente al
-     * contexto permitido. Un snap fuera de un plano activo nunca saca
-     * la línea de ese plano.
+     * SNAP se detecta primero. Si ya existe startPoint y hay workplane,
+     * el snap se proyecta al plano paralelo permitido.
      */
     const snap = this.snap.findSnap(
       clientX,
@@ -418,22 +419,22 @@ export class CadLinePlacementController {
       );
     }
 
+    const state = this.workPlane.getState();
     let candidate: THREE.Vector3 | null;
 
-    if (this.workPlane.enabled) {
-      candidate = this.workPlane.intersectPointer(
+    if (state.enabled) {
+      candidate = this.intersectPointerWithPlane(
         clientX,
         clientY,
-        this.cameraProvider(),
-        this.domElement,
+        state.normal,
+        this.startPoint ?? state.origin,
       );
     }
     else {
       candidate = this.intersectFree3DPointer(
         clientX,
         clientY,
-        this.startPoint
-          ?? this.workPlane.getState().origin,
+        this.startPoint ?? state.origin,
       );
     }
 
@@ -451,20 +452,27 @@ export class CadLinePlacementController {
     candidate: THREE.Vector3,
     start: THREE.Vector3 | null,
   ): THREE.Vector3 {
-    const state = this.workPlane.getState();
-
-    const resolved = state.enabled
-      ? this.projectPointToWorkPlane(
-          candidate,
-          state,
-        )
-      : candidate.clone();
-
-    if (!start || !this.ortho.isEnabled) {
-      return resolved;
+    /*
+     * Nunca proyectamos el primer punto. El plano controla el movimiento
+     * DESDE ese punto, no la posición absoluta del punto inicial.
+     */
+    if (!start) {
+      return candidate.clone();
     }
 
+    const state = this.workPlane.getState();
+
     if (state.enabled) {
+      const resolved = this.projectPointToParallelWorkPlane(
+        candidate,
+        state,
+        start,
+      );
+
+      if (!this.ortho.isEnabled) {
+        return resolved;
+      }
+
       /*
        * ORTO dentro de un plano activo nunca utiliza la normal.
        * Para CUSTOM, X/Y representan los dos ejes locales del plano.
@@ -483,15 +491,20 @@ export class CadLinePlacementController {
       );
     }
 
+    if (!this.ortho.isEnabled) {
+      return candidate.clone();
+    }
+
     return this.ortho.constrainPoint(
       start,
-      resolved,
+      candidate,
     );
   }
 
-  private projectPointToWorkPlane(
+  private projectPointToParallelWorkPlane(
     point: THREE.Vector3,
     state: CadWorkPlaneState,
+    anchor: THREE.Vector3,
   ): THREE.Vector3 {
     const normal = state.normal.clone();
 
@@ -503,7 +516,7 @@ export class CadLinePlacementController {
 
     const distance = point
       .clone()
-      .sub(state.origin)
+      .sub(anchor)
       .dot(normal);
 
     return point
@@ -514,9 +527,10 @@ export class CadLinePlacementController {
       );
   }
 
-  private intersectFree3DPointer(
+  private intersectPointerWithPlane(
     clientX: number,
     clientY: number,
+    normal: THREE.Vector3,
     anchor: THREE.Vector3,
   ): THREE.Vector3 | null {
     const rect = this.domElement.getBoundingClientRect();
@@ -524,19 +538,42 @@ export class CadLinePlacementController {
       return null;
     }
 
-    this.freePointer.x = (
+    const resolvedNormal = normal.clone();
+    if (resolvedNormal.lengthSq() <= 1e-20) {
+      return null;
+    }
+    resolvedNormal.normalize();
+
+    this.pointerNdc.x = (
       (clientX - rect.left) / rect.width
     ) * 2 - 1;
 
-    this.freePointer.y = -(
+    this.pointerNdc.y = -(
       (clientY - rect.top) / rect.height
     ) * 2 + 1;
 
-    const camera = this.cameraProvider();
-    this.freeRaycaster.setFromCamera(
-      this.freePointer,
-      camera,
+    this.pointerRaycaster.setFromCamera(
+      this.pointerNdc,
+      this.cameraProvider(),
     );
+
+    this.pointerPlane.setFromNormalAndCoplanarPoint(
+      resolvedNormal,
+      anchor,
+    );
+
+    return this.pointerRaycaster.ray.intersectPlane(
+      this.pointerPlane,
+      new THREE.Vector3(),
+    );
+  }
+
+  private intersectFree3DPointer(
+    clientX: number,
+    clientY: number,
+    anchor: THREE.Vector3,
+  ): THREE.Vector3 | null {
+    const camera = this.cameraProvider();
 
     camera.getWorldDirection(
       this.viewDirection,
@@ -546,15 +583,11 @@ export class CadLinePlacementController {
       return null;
     }
 
-    this.viewDirection.normalize();
-    this.freePlane.setFromNormalAndCoplanarPoint(
+    return this.intersectPointerWithPlane(
+      clientX,
+      clientY,
       this.viewDirection,
       anchor,
-    );
-
-    return this.freeRaycaster.ray.intersectPlane(
-      this.freePlane,
-      new THREE.Vector3(),
     );
   }
 
