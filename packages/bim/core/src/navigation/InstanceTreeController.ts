@@ -40,8 +40,9 @@ export interface InstanceTreeControllerOptions {
  * Árbol jerárquico del Model Space.
  *
  * - Ensambles son grupos lógicos de PieceInstance, no geometría fusionada.
- * - Clic derecho permite crear ensamble, mover/copiar selección a un grupo.
+ * - Clic derecho en el árbol permite crear ensamble, mover/copiar selección a un grupo.
  * - F2 renombra la instancia o ensamble enfocado en el árbol.
+ * - El canvas conserva su propio menú contextual de Model Space.
  * - Cada DWG/DXF permanece como bloque de referencia con sus capas debajo.
  */
 export class InstanceTreeController {
@@ -92,10 +93,6 @@ export class InstanceTreeController {
       this.handleGlobalPointerDown,
       true,
     );
-    options.canvas.addEventListener(
-      "contextmenu",
-      this.handleCanvasContextMenu,
-    );
 
     this.unsubscribeSelection = options.designSelection.subscribe(
       () => this.render(),
@@ -133,10 +130,6 @@ export class InstanceTreeController {
       "pointerdown",
       this.handleGlobalPointerDown,
       true,
-    );
-    this.options.canvas.removeEventListener(
-      "contextmenu",
-      this.handleCanvasContextMenu,
     );
     this.hideContextMenu();
     this.panel.remove();
@@ -187,19 +180,6 @@ export class InstanceTreeController {
     ) {
       this.hideContextMenu();
     }
-  };
-
-  private readonly handleCanvasContextMenu = (
-    event: MouseEvent,
-  ): void => {
-    const selected =
-      this.options.designSelection.getSelectedIds();
-    if (selected.length < 1) return;
-    event.preventDefault();
-    this.showSelectionContextMenu(
-      event.clientX,
-      event.clientY,
-    );
   };
 
   private refreshIfChanged(): void {
@@ -661,13 +641,6 @@ export class InstanceTreeController {
           action: () => this.copySelectionToAssembly(assembly.id),
         },
       );
-    }
-
-    if (this.focusedItem?.kind === "PIECE") {
-      entries.unshift({
-        label: "Renombrar instancia · F2",
-        action: () => this.renameFocusedItem(),
-      });
     }
 
     this.showContextMenu(x, y, entries);
