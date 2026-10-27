@@ -42,7 +42,29 @@ A failed build must not be treated as a valid development release. Keep testing 
 
 ## OpenCascade / WASM
 
-`apps/web/vite.config.ts` aliases `opencascade.js` to the local Vite runtime wrapper. The wrapper imports `opencascade.full.wasm` with `?url`, so Vite emits the WASM as a static build asset. The GitHub `Web build` workflow checks that the final `apps/web/dist` directory contains a `.wasm` file.
+`apps/web/vite.config.ts` aliases `opencascade.js` to the local Vite runtime wrapper.
+
+The full `opencascade.full.wasm` binary is approximately 48 MiB, which exceeds the 25 MiB individual-file limit of Cloudflare Pages. For that reason the wrapper does **not** import the full WASM with `?url` and the file is not emitted inside `apps/web/dist`.
+
+Instead, OpenCascade loads the WASM on demand from an external URL. The default URL is pinned to the same `opencascade.js` package version used by FrameLogic:
+
+```text
+https://cdn.jsdelivr.net/npm/opencascade.js@2.0.0-beta.b5ff984/dist/opencascade.full.wasm
+```
+
+To host the WASM somewhere else later, for example Cloudflare R2, set this Vite environment variable in Cloudflare Pages and in any local environment that needs the custom location:
+
+```text
+VITE_OPENCASCADE_WASM_URL=https://your-host.example/opencascade.full.wasm
+```
+
+No source-code change is required when that variable is used.
+
+The GitHub `Web build` workflow verifies that:
+
+- no file in `apps/web/dist` exceeds 25 MiB;
+- `opencascade.full.wasm` is not bundled into the Pages output;
+- the smaller WASM assets required by the rest of FrameLogic are still present.
 
 ## Local equivalent
 
