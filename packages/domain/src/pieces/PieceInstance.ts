@@ -12,6 +12,14 @@ export interface PieceInstance {
 
 
   /**
+   * Nombre opcional de esta instancia concreta.
+   * No modifica PieceDefinition: dos copias de la misma pieza
+   * pueden tener nombres distintos en el árbol del proyecto.
+   */
+  readonly name?: string;
+
+
+  /**
    * PieceDefinition utilizada.
    *
    * Muchas instancias pueden utilizar
