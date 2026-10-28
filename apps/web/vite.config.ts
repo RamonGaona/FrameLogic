@@ -2,9 +2,18 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
 
+const buildSha =
+  process.env.CF_PAGES_COMMIT_SHA
+  ?? process.env.GITHUB_SHA
+  ?? 'local'
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+
+  define: {
+    __FRAMELOGIC_BUILD_SHA__: JSON.stringify(buildSha),
+  },
 
   /*
    * opencascade.js/dist/index.js importa opencascade.full.wasm sin ?url.
