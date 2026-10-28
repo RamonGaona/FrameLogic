@@ -6,7 +6,7 @@ import type {
 } from "./SectionDrawingController";
 
 type AxisHandleType = "DEPTH" | "NORMAL_MOVE";
-type RuntimeHandleType =
+type CornerHandleType =
   | "CORNER_00"
   | "CORNER_10"
   | "CORNER_11"
@@ -14,7 +14,9 @@ type RuntimeHandleType =
   | "BACK_CORNER_00"
   | "BACK_CORNER_10"
   | "BACK_CORNER_11"
-  | "BACK_CORNER_01"
+  | "BACK_CORNER_01";
+type RuntimeHandleType =
+  | CornerHandleType
   | "MOVE"
   | AxisHandleType;
 
@@ -29,11 +31,13 @@ interface AxisDragState {
   readonly startSection: SectionViewDefinition;
   readonly dragPlane: THREE.Plane;
   readonly startWorldPoint: THREE.Vector3;
-  readonly axisClientX: number;
-  readonly axisClientY: number;
-  readonly axisScreenX: number;
-  readonly axisScreenY: number;
-  readonly worldPerPixel: number;
+  readonly axisClientX?: number;
+  readonly axisClientY?: number;
+  readonly axisScreenX?: number;
+  readonly axisScreenY?: number;
+  readonly worldPerPixel?: number;
+  cornerClientX?: number;
+  cornerClientY?: number;
 }
 
 interface SectionDrawingRuntime {
@@ -56,18 +60,24 @@ interface Options {
 
 const MIN_SECTION_SIZE = 0.01;
 
+/*
+ * Los puntos azules estaban demasiado sensibles porque el raycast nativo
+ * convierte directamente cada pixel del mouse en una nueva intersección sobre
+ * el plano de edición. Reducir a 50% conserva exactamente la geometría del
+ * cálculo, pero permite ajustes de ancho/alto mucho más finos.
+ */
+const CORNER_DRAG_SENSITIVITY = 0.5;
+
 /**
- * Hace estable el arrastre de los dos controles que trabajan sobre la normal
- * del volumen de sección:
+ * Hace estable la edición de los controles del volumen de sección:
  *
  * - Amarillo (DEPTH): cambia la profundidad.
  * - Magenta (NORMAL_MOVE): desplaza todo el volumen perpendicular al plano.
+ * - Azules frontales/posteriores: ajustan ancho/alto con sensibilidad reducida.
  *
- * La versión anterior usaba intersección rayo/plano. Cuando ese plano quedaba
- * casi paralelo al rayo de cámara, unos pocos píxeles podían convertirse en
- * varios metros; en el caso contrario el amarillo podía parecer inmóvil.
- * Aquí se proyecta la normal en pantalla y se convierte directamente el delta
- * del mouse a distancia real, con una escala limitada por el zoom de cámara.
+ * Amarillo y magenta usan la proyección de la normal en pantalla. Los azules
+ * conservan el cálculo geométrico nativo, pero reciben un delta de mouse
+ * amortiguado para evitar movimientos demasiado rápidos.
  */
 export class SectionAxisDragStabilityController {
   private readonly options: Options;
@@ -94,6 +104,17 @@ export class SectionAxisDragStabilityController {
         this.beginAxisDrag(hit, clientX, clientY);
         return;
       }
+
+      if (this.isCornerHandle(hit.type)) {
+        this.baseBeginDrag(hit, clientX, clientY);
+        const drag = this.runtime.dragState;
+        if (drag && drag.sectionId === hit.sectionId) {
+          drag.cornerClientX = clientX;
+          drag.cornerClientY = clientY;
+        }
+        return;
+      }
+
       this.baseBeginDrag(hit, clientX, clientY);
     };
 
@@ -106,10 +127,31 @@ export class SectionAxisDragStabilityController {
         drag
         && (drag.handleType === "DEPTH" || drag.handleType === "NORMAL_MOVE")
         && Number.isFinite(drag.worldPerPixel)
+        && Number.isFinite(drag.axisClientX)
+        && Number.isFinite(drag.axisClientY)
+        && Number.isFinite(drag.axisScreenX)
+        && Number.isFinite(drag.axisScreenY)
       ) {
         this.updateAxisDrag(drag, clientX, clientY);
         return;
       }
+
+      if (
+        drag
+        && this.isCornerHandle(drag.handleType)
+        && Number.isFinite(drag.cornerClientX)
+        && Number.isFinite(drag.cornerClientY)
+      ) {
+        const startX = drag.cornerClientX ?? clientX;
+        const startY = drag.cornerClientY ?? clientY;
+        const controlledX =
+          startX + (clientX - startX) * CORNER_DRAG_SENSITIVITY;
+        const controlledY =
+          startY + (clientY - startY) * CORNER_DRAG_SENSITIVITY;
+        this.baseUpdateDrag(controlledX, controlledY);
+        return;
+      }
+
       this.baseUpdateDrag(clientX, clientY);
     };
   }
@@ -178,10 +220,15 @@ export class SectionAxisDragStabilityController {
     clientX: number,
     clientY: number,
   ): void {
+    const axisClientX = drag.axisClientX ?? clientX;
+    const axisClientY = drag.axisClientY ?? clientY;
+    const axisScreenX = drag.axisScreenX ?? 0;
+    const axisScreenY = drag.axisScreenY ?? -1;
+    const worldPerPixel = drag.worldPerPixel ?? 0;
     const pixelDelta =
-      (clientX - drag.axisClientX) * drag.axisScreenX
-      + (clientY - drag.axisClientY) * drag.axisScreenY;
-    const distance = pixelDelta * drag.worldPerPixel;
+      (clientX - axisClientX) * axisScreenX
+      + (clientY - axisClientY) * axisScreenY;
+    const distance = pixelDelta * worldPerPixel;
 
     if (drag.handleType === "DEPTH") {
       const depth = Math.max(
@@ -311,6 +358,17 @@ export class SectionAxisDragStabilityController {
     }
 
     return Math.max(fallbackSize / Math.max(viewportHeight, 1), 1e-8);
+  }
+
+  private isCornerHandle(type: RuntimeHandleType): type is CornerHandleType {
+    return type === "CORNER_00"
+      || type === "CORNER_10"
+      || type === "CORNER_11"
+      || type === "CORNER_01"
+      || type === "BACK_CORNER_00"
+      || type === "BACK_CORNER_10"
+      || type === "BACK_CORNER_11"
+      || type === "BACK_CORNER_01";
   }
 
   private toVector3(value: {
