@@ -26,6 +26,14 @@ import {
   MoveRulerExperienceController,
 } from "../interaction/MoveRulerExperienceController";
 
+import {
+  AssemblyPdfController,
+} from "../drawing/AssemblyPdfController";
+
+import {
+  AssemblyPdfTreeBridgeController,
+} from "../drawing/AssemblyPdfTreeBridgeController";
+
 export type PrecisionBimCoreInstance =
   DrawingPrecisionBimCoreInstance
   & {
@@ -91,6 +99,12 @@ export async function createBimCore(
       container,
     });
 
+  const assemblyPdf =
+    new AssemblyPdfController({
+      container,
+      designScene: core.designScene,
+    });
+
   const instanceTree = new InstanceTreeController({
     container,
     canvas,
@@ -101,6 +115,13 @@ export async function createBimCore(
     cancelActiveCommand: () =>
       core.cancelActiveCadCommand(),
   });
+
+  const assemblyPdfTreeBridge =
+    new AssemblyPdfTreeBridgeController({
+      designModel: core.designModel,
+      workPlane: core.cadWorkPlane,
+      assemblyPdf,
+    });
 
   const align = new AlignController({
     container,
@@ -216,6 +237,8 @@ export async function createBimCore(
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
+    assemblyPdfTreeBridge.dispose();
+    assemblyPdf.dispose();
     moveRuler.dispose();
     smartPieceInsertion.dispose();
     align.dispose();
