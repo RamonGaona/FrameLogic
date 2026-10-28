@@ -5,18 +5,20 @@ import {
 } from "three/addons/utils/BufferGeometryUtils.js";
 
 
+const MAX_TOTAL_CREASED_VERTICES =
+  100_000;
+
+
 /**
  * Prepara la geometría visual de una PieceDefinition para un visor CAD/BIM.
  *
- * El objetivo no es modificar la forma real del IFC, sino recalcular normales
- * de sombreado de forma coherente:
+ * En piezas pequeñas mantenemos el suavizado por crease que da una lectura
+ * CAD limpia. En piezas grandes evitamos toCreasedNormals(), porque clona y
+ * desindexa geometría de forma síncrona y puede bloquear el hilo principal.
  *
- * - triángulos coplanares se ven como una sola cara plana;
- * - facetas consecutivas de una curva se suavizan visualmente;
- * - aristas mecánicas marcadas se conservan duras.
- *
- * 35° es suficientemente alto para suavizar una circunferencia IFC de
- * 12 segmentos (30° entre facetas), pero mantiene una esquina de 90°.
+ * La ruta rápida conserva las normales importadas. Si una geometría grande
+ * no trae normales, se clona solo esa geometría y se calculan normales de
+ * vértice estándar. La geometría STEP/B-Rep exacta no se modifica.
  */
 export function preparePiecePrototypeGeometry(
   prototype:
@@ -27,6 +29,56 @@ export function preparePiecePrototypeGeometry(
     THREE.MathUtils.degToRad(
       35,
     );
+
+
+  const sourceGeometries =
+    new Set<
+      THREE.BufferGeometry
+    >();
+
+
+  prototype.traverse(
+    (
+      child,
+    ) => {
+
+      if (
+        child instanceof THREE.Mesh
+        && child.geometry
+          instanceof THREE.BufferGeometry
+      ) {
+
+        sourceGeometries.add(
+          child.geometry,
+        );
+
+      }
+
+    },
+  );
+
+
+  let totalVertexCount =
+    0;
+
+
+  for (
+    const geometry
+    of sourceGeometries
+  ) {
+
+    totalVertexCount +=
+      geometry.getAttribute(
+        "position",
+      )?.count
+      ?? 0;
+
+  }
+
+
+  const useFastPath =
+    totalVertexCount
+    > MAX_TOTAL_CREASED_VERTICES;
 
 
   const preparedBySource =
@@ -70,26 +122,75 @@ export function preparePiecePrototypeGeometry(
         !preparedGeometry
       ) {
 
-        preparedGeometry =
-          toCreasedNormals(
-            sourceGeometry.clone(),
-            creaseAngle,
+        if (
+          useFastPath
+        ) {
+
+          if (
+            sourceGeometry.getAttribute(
+              "normal",
+            )
+          ) {
+
+            preparedGeometry =
+              sourceGeometry;
+
+          }
+          else {
+
+            preparedGeometry =
+              sourceGeometry.clone();
+
+            preparedGeometry
+              .computeVertexNormals();
+
+            replacedSources.add(
+              sourceGeometry,
+            );
+
+          }
+
+        }
+        else {
+
+          preparedGeometry =
+            toCreasedNormals(
+              sourceGeometry.clone(),
+              creaseAngle,
+            );
+
+          replacedSources.add(
+            sourceGeometry,
           );
 
+        }
 
-        preparedGeometry.computeBoundingBox();
 
-        preparedGeometry.computeBoundingSphere();
+        if (
+          preparedGeometry.boundingBox
+          === null
+        ) {
+
+          preparedGeometry
+            .computeBoundingBox();
+
+        }
+
+
+        if (
+          preparedGeometry.boundingSphere
+          === null
+        ) {
+
+          preparedGeometry
+            .computeBoundingSphere();
+
+        }
 
 
         preparedBySource.set(
           sourceGeometry,
           preparedGeometry,
-        );
-
-
-        replacedSources.add(
-          sourceGeometry,
         );
 
       }
@@ -108,6 +209,23 @@ export function preparePiecePrototypeGeometry(
   ) {
 
     sourceGeometry.dispose();
+
+  }
+
+
+  if (
+    useFastPath
+  ) {
+
+    console.debug(
+      "[FrameLogic][Geometry] fast prototype preparation",
+      {
+        vertices:
+          totalVertexCount,
+        geometries:
+          sourceGeometries.size,
+      },
+    );
 
   }
 
