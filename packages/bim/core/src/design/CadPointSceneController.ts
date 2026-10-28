@@ -28,6 +28,10 @@ export class CadPointSceneController {
     >();
 
 
+  private readonly hiddenIds =
+    new Set<string>();
+
+
   constructor(
     scene:
       THREE.Scene,
@@ -66,6 +70,18 @@ export class CadPointSceneController {
       this.pointObjects.values(),
     );
 
+  }
+
+
+  isHidden(id: string): boolean {
+    return this.hiddenIds.has(id);
+  }
+
+
+  setHidden(id: string, hidden: boolean): void {
+    if (hidden) this.hiddenIds.add(id);
+    else this.hiddenIds.delete(id);
+    this.applyVisibility(id);
   }
 
 
@@ -167,6 +183,7 @@ export class CadPointSceneController {
       this.pointObjects.delete(
         id,
       );
+      this.hiddenIds.delete(id);
 
     }
 
@@ -253,17 +270,7 @@ export class CadPointSceneController {
       );
 
 
-      const layer =
-        this.designModel
-          .layers
-          .get(
-            point.layerId,
-          );
-
-
-      object.visible =
-        layer?.visible
-        ?? true;
+      this.applyVisibility(point.id);
 
 
       object.updateMatrix();
@@ -276,6 +283,15 @@ export class CadPointSceneController {
 
     this.updateSelectionAppearance();
 
+  }
+
+
+  private applyVisibility(id: string): void {
+    const object = this.pointObjects.get(id);
+    const point = this.designModel.cadPoints.get(id);
+    if (!object || !point) return;
+    const layer = this.designModel.layers.get(point.layerId);
+    object.visible = (layer?.visible ?? true) && !this.hiddenIds.has(id);
   }
 
 
@@ -371,6 +387,7 @@ export class CadPointSceneController {
 
 
     this.pointObjects.clear();
+    this.hiddenIds.clear();
 
   }
 
