@@ -38,6 +38,14 @@ import {
   AssemblyPdfProjectBridgeController,
 } from "../drawing/AssemblyPdfProjectBridgeController";
 
+import {
+  UnifiedPdfNavigationController,
+} from "../drawing/UnifiedPdfNavigationController";
+
+import {
+  UnifiedPdfProjectBridgeController,
+} from "../drawing/UnifiedPdfProjectBridgeController";
+
 export type PrecisionBimCoreInstance =
   DrawingPrecisionBimCoreInstance
   & {
@@ -113,6 +121,21 @@ export async function createBimCore(
     new AssemblyPdfProjectBridgeController({
       projectPackage: core.projectPackage,
       assemblyPdf,
+    });
+
+  const unifiedPdfNavigation =
+    new UnifiedPdfNavigationController({
+      container,
+      sectionDrawing: core.sectionDrawing,
+      drawingWorkspace: core.drawingWorkspace,
+      drawingProduction: core.drawingProduction,
+      assemblyPdf,
+    });
+
+  const unifiedPdfProjectBridge =
+    new UnifiedPdfProjectBridgeController({
+      projectPackage: core.projectPackage,
+      navigation: unifiedPdfNavigation,
     });
 
   const instanceTree = new InstanceTreeController({
@@ -247,6 +270,8 @@ export async function createBimCore(
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
+    unifiedPdfProjectBridge.dispose();
+    unifiedPdfNavigation.dispose();
     assemblyPdfTreeBridge.dispose();
     assemblyPdfProjectBridge.dispose();
     assemblyPdf.dispose();
