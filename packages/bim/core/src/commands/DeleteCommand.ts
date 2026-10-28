@@ -15,416 +15,188 @@ import type {
   CadHistoryController,
 } from "../interaction/CadHistoryController";
 
-
 interface DeletedPieceSnapshot {
-
-  id:
-    string;
-
-  definitionId:
-    string;
-
-  layerId:
-    string;
-
-  transform:
-    {
-      position: {
-        x: number;
-        y: number;
-        z: number;
-      };
-
-      rotation: {
-        x: number;
-        y: number;
-        z: number;
-      };
+  readonly id: string;
+  readonly name?: string;
+  readonly definitionId: string;
+  readonly layerId: string;
+  readonly transform: {
+    readonly position: {
+      readonly x: number;
+      readonly y: number;
+      readonly z: number;
     };
-
-  tags:
-    string[];
-
+    readonly rotation: {
+      readonly x: number;
+      readonly y: number;
+      readonly z: number;
+    };
+  };
+  readonly tags: readonly string[];
 }
 
+interface AssemblyMembershipSnapshot {
+  readonly id: string;
+  readonly pieceInstanceIds: readonly string[];
+}
+
+interface DeleteSnapshot {
+  readonly pieces: readonly DeletedPieceSnapshot[];
+  readonly assemblies: readonly AssemblyMembershipSnapshot[];
+}
 
 export class DeleteCommand {
+  readonly id = "DELETE";
 
-  readonly id =
-    "DELETE";
-
-
-  private readonly designModel:
-    DesignModel;
-
-
-  private readonly designScene:
-    DesignSceneController;
-
-
-  private readonly selection:
-    DesignSelectionController;
-
-
-  private readonly history:
-    CadHistoryController;
-
+  private readonly designModel: DesignModel;
+  private readonly designScene: DesignSceneController;
+  private readonly selection: DesignSelectionController;
+  private readonly history: CadHistoryController;
 
   constructor(
-    designModel:
-      DesignModel,
-
-    designScene:
-      DesignSceneController,
-
-    selection:
-      DesignSelectionController,
-
-    history:
-      CadHistoryController,
+    designModel: DesignModel,
+    designScene: DesignSceneController,
+    selection: DesignSelectionController,
+    history: CadHistoryController,
   ) {
-
-    this.designModel =
-      designModel;
-
-
-    this.designScene =
-      designScene;
-
-
-    this.selection =
-      selection;
-
-
-    this.history =
-      history;
-
+    this.designModel = designModel;
+    this.designScene = designScene;
+    this.selection = selection;
+    this.history = history;
   }
 
-
   execute(): boolean {
+    const selectedIds = this.selection.getSelectedIds();
+    if (selectedIds.length < 1) return false;
 
-    const selectedIds =
-      this.selection
-        .getSelectedIds();
+    for (const instanceId of selectedIds) {
+      const instance = this.designModel.pieceInstances.get(instanceId);
+      if (!instance) continue;
 
-
-    if (
-      selectedIds.length < 1
-    ) {
-
-      return false;
-
-    }
-
-
-    /*
-     * Validamos primero todas las piezas.
-     *
-     * Así evitamos borrar algunas y descubrir después
-     * que otra pertenece a un Assembly.
-     */
-    for (
-      const instanceId
-      of selectedIds
-    ) {
-
-      const instance =
-        this.designModel
-          .pieceInstances
-          .get(
-            instanceId,
-          );
-
-
-      if (
-        instance
-      ) {
-
-        const layer =
-          this.designModel
-            .layers
-            .get(
-              instance.layerId,
-            );
-
-
-        if (
-          layer?.locked
-        ) {
-
-          throw new Error(
-            `Cannot delete piece instance "${instanceId}" because layer "${layer.name}" is locked.`,
-          );
-
-        }
-
-      }
-
-
-      const usedBy =
-        this.designModel
-          .assemblies
-          .findByPieceInstanceId(
-            instanceId,
-          );
-
-
-      if (
-        usedBy.length > 0
-      ) {
-
+      const layer = this.designModel.layers.get(instance.layerId);
+      if (layer?.locked) {
         throw new Error(
-          `Cannot delete piece instance "${instanceId}" because it is used by ${usedBy.length} assembly/assemblies.`,
+          `Cannot delete piece instance "${instanceId}" because layer "${layer.name}" is locked.`,
         );
-
       }
-
     }
 
+    const deleting = new Set(selectedIds);
+    const pieces = selectedIds
+      .map((id) => this.designModel.pieceInstances.get(id))
+      .filter((instance): instance is PieceInstance => instance !== undefined)
+      .map((instance) => this.cloneInstance(instance));
 
-    const snapshots:
-      DeletedPieceSnapshot[] =
-        [];
+    if (pieces.length < 1) return false;
 
+    const assemblies = this.designModel.assemblies
+      .getAll()
+      .filter((assembly) =>
+        assembly.pieceInstanceIds.some((id) => deleting.has(id)),
+      )
+      .map((assembly) => ({
+        id: assembly.id,
+        pieceInstanceIds: [...assembly.pieceInstanceIds],
+      }));
 
-    for (
-      const instanceId
-      of selectedIds
-    ) {
+    const snapshot: DeleteSnapshot = {
+      pieces,
+      assemblies,
+    };
 
-      const instance =
-        this.designModel
-          .pieceInstances
-          .get(
-            instanceId,
-          );
-
-
-      if (
-        !instance
-      ) {
-
-        continue;
-
-      }
-
-
-      snapshots.push(
-        this.cloneInstance(
-          instance,
-        ),
-      );
-
-    }
-
-
-    if (
-      snapshots.length < 1
-    ) {
-
-      return false;
-
-    }
-
-
-    this.removeSnapshots(
-      snapshots,
-    );
-
+    this.removeSnapshot(snapshot);
 
     this.history.recordOperation(
       "DELETE",
-      () => {
-
-        this.restoreSnapshots(
-          snapshots,
-        );
-
-      },
-      () => {
-
-        this.removeSnapshots(
-          snapshots,
-        );
-
-      },
+      () => this.restoreSnapshot(snapshot),
+      () => this.removeSnapshot(snapshot),
     );
-
 
     return true;
-
   }
 
+  private restoreSnapshot(snapshot: DeleteSnapshot): void {
+    for (const piece of snapshot.pieces) {
+      if (this.designModel.pieceInstances.get(piece.id)) continue;
 
-  private restoreSnapshots(
-    snapshots:
-      readonly DeletedPieceSnapshot[],
-  ): void {
-
-    for (
-      const snapshot
-      of snapshots
-    ) {
-
-      if (
-        this.designModel
-          .pieceInstances
-          .get(
-            snapshot.id,
-          )
-      ) {
-
-        continue;
-
-      }
-
-
-      this.designModel
-        .registerPieceInstance({
-          id:
-            snapshot.id,
-
-          definitionId:
-            snapshot.definitionId,
-
-          layerId:
-            snapshot.layerId,
-
-          transform: {
-            position: {
-              ...snapshot
-                .transform
-                .position,
-            },
-
-            rotation: {
-              ...snapshot
-                .transform
-                .rotation,
-            },
-          },
-
-          tags: [
-            ...snapshot.tags,
-          ],
-        });
-
+      this.designModel.registerPieceInstance({
+        id: piece.id,
+        name: piece.name,
+        definitionId: piece.definitionId,
+        layerId: piece.layerId,
+        transform: {
+          position: { ...piece.transform.position },
+          rotation: { ...piece.transform.rotation },
+        },
+        tags: [...piece.tags],
+      });
     }
 
+    for (const membership of snapshot.assemblies) {
+      if (!this.designModel.assemblies.get(membership.id)) continue;
+      this.designModel.assemblies.updatePieceInstanceIds(
+        membership.id,
+        membership.pieceInstanceIds,
+      );
+    }
 
     this.designScene.sync();
-
-
     this.selection.setSelection(
-      snapshots.map(
-        (
-          snapshot,
-        ) =>
-          snapshot.id,
-      ),
+      snapshot.pieces.map((piece) => piece.id),
+    );
+  }
+
+  private removeSnapshot(snapshot: DeleteSnapshot): void {
+    const deletedIds = new Set(
+      snapshot.pieces.map((piece) => piece.id),
     );
 
-  }
+    /*
+     * El dominio protege las PieceInstance usadas por ensambles. Primero
+     * actualizamos esos ensambles y solo después eliminamos las piezas.
+     */
+    for (const membership of snapshot.assemblies) {
+      const current = this.designModel.assemblies.get(membership.id);
+      if (!current) continue;
 
-
-  private removeSnapshots(
-    snapshots:
-      readonly DeletedPieceSnapshot[],
-  ): void {
-
-    const deletedIds =
-      new Set(
-        snapshots.map(
-          (
-            snapshot,
-          ) =>
-            snapshot.id,
-        ),
+      this.designModel.assemblies.updatePieceInstanceIds(
+        membership.id,
+        current.pieceInstanceIds.filter((id) => !deletedIds.has(id)),
       );
-
-
-    for (
-      const snapshot
-      of snapshots
-    ) {
-
-      this.designModel
-        .removePieceInstance(
-          snapshot.id,
-        );
-
     }
 
+    for (const piece of snapshot.pieces) {
+      this.designModel.removePieceInstance(piece.id);
+    }
 
     this.designScene.sync();
 
-
-    const remainingSelection =
+    this.selection.setSelection(
       this.selection
         .getSelectedIds()
-        .filter(
-          (
-            instanceId,
-          ) =>
-            !deletedIds.has(
-              instanceId,
-            ),
-        );
-
-
-    this.selection.setSelection(
-      remainingSelection,
+        .filter((id) => !deletedIds.has(id)),
     );
-
   }
 
-
-  private cloneInstance(
-    instance:
-      PieceInstance,
-  ):
-    DeletedPieceSnapshot {
-
+  private cloneInstance(instance: PieceInstance): DeletedPieceSnapshot {
     return {
-      id:
-        instance.id,
-
-      definitionId:
-        instance.definitionId,
-
-      layerId:
-        instance.layerId,
-
+      id: instance.id,
+      name: instance.name,
+      definitionId: instance.definitionId,
+      layerId: instance.layerId,
       transform: {
         position: {
-          x:
-            instance.transform.position.x,
-
-          y:
-            instance.transform.position.y,
-
-          z:
-            instance.transform.position.z,
+          x: instance.transform.position.x,
+          y: instance.transform.position.y,
+          z: instance.transform.position.z,
         },
-
         rotation: {
-          x:
-            instance.transform.rotation.x,
-
-          y:
-            instance.transform.rotation.y,
-
-          z:
-            instance.transform.rotation.z,
+          x: instance.transform.rotation.x,
+          y: instance.transform.rotation.y,
+          z: instance.transform.rotation.z,
         },
       },
-
-      tags: [
-        ...instance.tags,
-      ],
+      tags: [...instance.tags],
     };
-
   }
-
 }
