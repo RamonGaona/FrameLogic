@@ -22,7 +22,9 @@ interface FocusedTreeItemRuntime {
 
 interface InstanceTreeRuntime {
   focusedItem: FocusedTreeItemRuntime | null;
+  contextMenu: HTMLDivElement | null;
   refresh(): void;
+  showAssemblyContextMenu(x: number, y: number, assemblyId: string): void;
 }
 
 interface PieceClipboardSnapshot {
@@ -69,6 +71,7 @@ interface Options {
 export class AssemblyClipboardController {
   private readonly options: Options;
   private readonly treeRuntime: InstanceTreeRuntime;
+  private readonly baseShowAssemblyContextMenu: InstanceTreeRuntime["showAssemblyContextMenu"];
   private clipboard: AssemblyClipboardSnapshot | null = null;
   private disposed = false;
 
@@ -76,6 +79,17 @@ export class AssemblyClipboardController {
     this.options = options;
     this.treeRuntime =
       options.instanceTree as unknown as InstanceTreeRuntime;
+    this.baseShowAssemblyContextMenu =
+      this.treeRuntime.showAssemblyContextMenu.bind(this.treeRuntime);
+
+    this.treeRuntime.showAssemblyContextMenu = (
+      x: number,
+      y: number,
+      assemblyId: string,
+    ): void => {
+      this.baseShowAssemblyContextMenu(x, y, assemblyId);
+      this.appendContextActions(assemblyId);
+    };
 
     window.addEventListener(
       "keydown",
@@ -92,6 +106,8 @@ export class AssemblyClipboardController {
       this.handleKeyDown,
       true,
     );
+    this.treeRuntime.showAssemblyContextMenu =
+      this.baseShowAssemblyContextMenu;
     this.clipboard = null;
   }
 
@@ -125,6 +141,79 @@ export class AssemblyClipboardController {
       this.pasteAssembly();
     }
   };
+
+  private appendContextActions(assemblyId: string): void {
+    const menu = this.treeRuntime.contextMenu;
+    if (!menu) return;
+
+    const separator = document.createElement("div");
+    Object.assign(separator.style, {
+      height: "1px",
+      margin: "4px 2px",
+      background: "rgba(255,255,255,0.10)",
+    });
+    menu.prepend(separator);
+
+    const copy = this.makeMenuButton(
+      "Copiar ensamble · Ctrl+C",
+      () => {
+        this.copyAssembly(assemblyId);
+        this.closeMenu(menu);
+      },
+    );
+    menu.prepend(copy);
+
+    if (this.clipboard) {
+      const paste = this.makeMenuButton(
+        "Pegar ensamble · Ctrl+V",
+        () => {
+          this.pasteAssembly();
+          this.closeMenu(menu);
+        },
+      );
+      menu.prepend(paste);
+    }
+  }
+
+  private makeMenuButton(
+    label: string,
+    action: () => void,
+  ): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    Object.assign(button.style, {
+      display: "block",
+      width: "100%",
+      padding: "6px 8px",
+      border: "0",
+      borderRadius: "3px",
+      background: "transparent",
+      color: "#e7f0f4",
+      textAlign: "left",
+      cursor: "pointer",
+      font: "12px system-ui, sans-serif",
+    });
+    button.addEventListener("mouseenter", () => {
+      button.style.background = "rgba(100,190,230,0.16)";
+    });
+    button.addEventListener("mouseleave", () => {
+      button.style.background = "transparent";
+    });
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      action();
+    });
+    return button;
+  }
+
+  private closeMenu(menu: HTMLDivElement): void {
+    menu.remove();
+    if (this.treeRuntime.contextMenu === menu) {
+      this.treeRuntime.contextMenu = null;
+    }
+  }
 
   private copyAssembly(assemblyId: string): boolean {
     const assembly = this.options.designModel.assemblies.get(assemblyId);
