@@ -13,6 +13,14 @@ import type {
   CadWorkPlaneController,
 } from "./CadWorkPlaneController";
 
+import {
+  getDesignOrthoController,
+} from "./DesignOrthoController";
+
+import type {
+  DesignOrthoController,
+} from "./DesignOrthoController";
+
 export interface SmartPieceInsertionControllerOptions {
   readonly container: HTMLElement;
   readonly canvas: HTMLElement;
@@ -37,8 +45,13 @@ type PlacementStage = "ANCHOR" | "DIRECTION";
  * - XYZ exacto: crea la instancia en las coordenadas indicadas.
  * - Dos puntos: primer clic = punto base; segundo clic = dirección local X.
  *
- * La dirección es completamente 3D. Un SNAP puede estar en cualquier plano;
- * cuando no hay SNAP se usa el WorkPlane activo como fallback de entrada.
+ * F8/ORTO también gobierna el segundo punto de dirección:
+ * - WorkPlane activo: X/Y locales del plano.
+ * - WorkPlane OFF: X/Y/Z globales.
+ *
+ * Con ORTO desactivado la dirección conserva el comportamiento 3D libre.
+ * Un SNAP puede estar en cualquier plano; cuando no hay SNAP se usa el
+ * WorkPlane activo como fallback de entrada.
  */
 export class SmartPieceInsertionController {
   private readonly options: SmartPieceInsertionControllerOptions;
@@ -47,6 +60,8 @@ export class SmartPieceInsertionController {
   private readonly inputs: readonly HTMLInputElement[];
   private readonly insertButton: HTMLButtonElement;
   private readonly cancelButton: HTMLButtonElement;
+  private readonly ortho: DesignOrthoController;
+  private readonly unsubscribeOrtho: () => void;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private readonly helperGeometry = new THREE.BufferGeometry();
@@ -76,12 +91,20 @@ export class SmartPieceInsertionController {
     options: SmartPieceInsertionControllerOptions,
   ) {
     this.options = options;
+    this.ortho = getDesignOrthoController(options.canvas);
+
     const ui = this.createPanel(options.container);
     this.panel = ui.panel;
     this.status = ui.status;
     this.inputs = ui.inputs;
     this.insertButton = ui.insertButton;
     this.cancelButton = ui.cancelButton;
+
+    this.unsubscribeOrtho = this.ortho.subscribe(
+      () => {
+        this.refreshDirectionFromCurrentPoint();
+      },
+    );
 
     this.directionHelper.visible = false;
     this.directionHelper.renderOrder = 999;
@@ -157,7 +180,7 @@ export class SmartPieceInsertionController {
     this.options.scene.add(this.preview);
     this.panel.style.display = "flex";
     this.status.textContent =
-      "1º clic: punto base · 2º clic: dirección 3D";
+      "1º clic: punto base · 2º clic: dirección 3D · F8 ORTO";
     this.options.canvas.style.cursor = "crosshair";
 
     return new Promise<PieceInstance | null>((resolve) => {
@@ -176,6 +199,7 @@ export class SmartPieceInsertionController {
     if (this.disposed) return;
     this.disposed = true;
     this.cancel();
+    this.unsubscribeOrtho();
     this.options.canvas.removeEventListener(
       "pointermove",
       this.handlePointerMove,
@@ -257,10 +281,7 @@ export class SmartPieceInsertionController {
       return;
     }
 
-    if (!this.anchor) return;
-    this.preview.position.copy(this.anchor);
-    this.applyDirectionToPreview(point);
-    this.updateDirectionHelper(this.anchor, point);
+    this.refreshDirectionFromCurrentPoint();
   };
 
   private readonly handlePointerDown = (
@@ -299,16 +320,18 @@ export class SmartPieceInsertionController {
 
     if (this.stage === "ANCHOR") {
       this.anchor = point.clone();
+      this.currentPoint = point.clone();
       this.preview.position.copy(point);
       this.preview.visible = true;
       this.stage = "DIRECTION";
       this.status.textContent =
-        "Punto base fijado · 2º clic: dirección / ángulo 3D";
+        "Punto base fijado · 2º clic: dirección · F8 ORTO";
       return;
     }
 
     if (!this.anchor) return;
-    const direction = point.clone().sub(this.anchor);
+    const constrainedPoint = this.constrainDirectionPoint(point);
+    const direction = constrainedPoint.clone().sub(this.anchor);
     if (direction.lengthSq() <= 1e-12) return;
     const quaternion = this.directionQuaternion(direction);
     this.confirm(this.anchor, quaternion);
@@ -392,6 +415,59 @@ export class SmartPieceInsertionController {
     source.normalize();
     const target = direction.clone().normalize();
     return new THREE.Quaternion().setFromUnitVectors(source, target);
+  }
+
+  private constrainDirectionPoint(
+    point: THREE.Vector3,
+  ): THREE.Vector3 {
+    if (!this.anchor || !this.ortho.isEnabled) {
+      return point.clone();
+    }
+
+    const workPlane = this.options.workPlane.getState();
+
+    if (workPlane.enabled) {
+      return this.ortho.constrainPoint(
+        this.anchor,
+        point,
+        {
+          axes: ["X", "Y"],
+          basis: {
+            xAxis: workPlane.xAxis,
+            yAxis: workPlane.yAxis,
+            zAxis: workPlane.normal,
+          },
+        },
+      );
+    }
+
+    return this.ortho.constrainPoint(
+      this.anchor,
+      point,
+      {
+        axes: ["X", "Y", "Z"],
+      },
+    );
+  }
+
+  private refreshDirectionFromCurrentPoint(): void {
+    if (
+      !this.isActive
+      || this.stage !== "DIRECTION"
+      || !this.preview
+      || !this.anchor
+      || !this.currentPoint
+    ) {
+      return;
+    }
+
+    const point = this.constrainDirectionPoint(
+      this.currentPoint,
+    );
+
+    this.preview.position.copy(this.anchor);
+    this.applyDirectionToPreview(point);
+    this.updateDirectionHelper(this.anchor, point);
   }
 
   private applyDirectionToPreview(point: THREE.Vector3): void {
@@ -504,6 +580,7 @@ export class SmartPieceInsertionController {
       input.type = "number";
       input.step = "any";
       input.value = "0";
+      input.dataset["cadNumeric"] = "true";
       Object.assign(input.style, {
         width: "72px",
         height: "27px",
