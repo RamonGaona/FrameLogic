@@ -9,17 +9,63 @@ import type {
   SectionViewDefinition,
 } from "./SectionDrawingController";
 
+type SupplementalHandleType =
+  | "BACK_CORNER_00"
+  | "BACK_CORNER_10"
+  | "BACK_CORNER_11"
+  | "BACK_CORNER_01"
+  | "NORMAL_MOVE";
+
+type RuntimeHandleType =
+  | "CORNER_00"
+  | "CORNER_10"
+  | "CORNER_11"
+  | "CORNER_01"
+  | "DEPTH"
+  | "MOVE"
+  | SupplementalHandleType;
+
+interface SectionHandleData {
+  readonly sectionId: string;
+  readonly type: RuntimeHandleType;
+}
+
+interface SectionDragRuntime {
+  readonly sectionId: string;
+  handleType: RuntimeHandleType;
+  readonly startSection: SectionViewDefinition;
+  readonly dragPlane: THREE.Plane;
+  readonly startWorldPoint: THREE.Vector3;
+}
+
 interface SectionVisualRuntime {
   readonly group: THREE.Group;
+  readonly handles: Map<
+    RuntimeHandleType,
+    THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>
+  >;
 }
 
 interface SectionDrawingRuntime {
   activeSectionId: string | null;
   creationStage: "IDLE" | "SECOND_POINT";
+  dragState: SectionDragRuntime | null;
   readonly visuals: Map<string, SectionVisualRuntime>;
+  createVisual(section: SectionViewDefinition): void;
+  replaceSection(section: SectionViewDefinition): void;
+  beginDrag(
+    hit: SectionHandleData,
+    clientX: number,
+    clientY: number,
+  ): void;
+  updateDrag(clientX: number, clientY: number): void;
+  intersectPointerWithPlane(
+    clientX: number,
+    clientY: number,
+    plane: THREE.Plane,
+  ): THREE.Vector3 | null;
   refreshUi(): void;
   setStatus(message: string): void;
-  replaceSection(section: SectionViewDefinition): void;
 }
 
 interface DrawingProfessionalRuntime {
@@ -36,29 +82,32 @@ interface Options {
   readonly drawingProfessional: DrawingProfessionalController;
 }
 
-interface NormalMoveDragState {
-  readonly sectionId: string;
-  readonly startSection: SectionViewDefinition;
-  readonly dragPlane: THREE.Plane;
-  readonly startWorldPoint: THREE.Vector3;
-  readonly pointerId: number;
-}
+const MIN_SECTION_SIZE = 0.01;
+const MARKER_GROUP_NAME = "FrameLogicSectionMarkers";
+const OLD_NORMAL_GIZMO_NAME = "FrameLogicSectionNormalMove";
 
-const NORMAL_GIZMO_NAME =
-  "FrameLogicSectionNormalMove";
-const NORMAL_HANDLE_NAME =
-  "FrameLogicSectionNormalMoveHandle";
+const BACK_TO_FRONT: Readonly<Record<SupplementalHandleType, RuntimeHandleType | null>> = {
+  BACK_CORNER_00: "CORNER_00",
+  BACK_CORNER_10: "CORNER_10",
+  BACK_CORNER_11: "CORNER_11",
+  BACK_CORNER_01: "CORNER_01",
+  NORMAL_MOVE: null,
+};
 
 /**
- * Interacción directa de vistas de sección en Model Space.
+ * Completa la edición del volumen de sección sin crear un segundo sistema de
+ * arrastre. Los handles extra se registran dentro de `visual.handles`, por lo
+ * que SectionDrawingController los selecciona con el mismo raycaster y la misma
+ * captura de pointer que los controles originales.
  *
- * - Elimina los sprites A-A del recuadro de sección. La identidad de la vista
- *   queda en el árbol INSTANCIAS, donde ya existe el nombre completo.
- * - Permite seleccionar una sección haciendo clic sobre su volumen 3D.
- * - Añade un handle magenta que desplaza TODO el plano de sección sobre su
- *   normal, sin modificar ancho, alto ni profundidad.
- * - Mantiene sincronizados el estado activo profesional y la fila resaltada
- *   del árbol de instancias.
+ * Controles:
+ * - Azul frontal + azul posterior: ancho/alto desde cualquiera de las caras.
+ * - Verde: desplaza dentro del plano de la sección.
+ * - Amarillo: modifica únicamente la profundidad.
+ * - Magenta: desplaza TODO el volumen sobre la normal del plano.
+ *
+ * También elimina definitivamente los sprites A-A y permite seleccionar el
+ * recuadro haciendo clic sobre su volumen para identificarlo en INSTANCIAS.
  */
 export class SectionModelInteractionController {
   private readonly options: Options;
@@ -66,10 +115,23 @@ export class SectionModelInteractionController {
   private readonly professionalRuntime: DrawingProfessionalRuntime;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
+
   private readonly originalEnsureSectionMarker: (
     section: SectionViewDefinition,
   ) => void;
-  private normalMoveDrag: NormalMoveDragState | null = null;
+  private readonly originalCreateVisual: (
+    section: SectionViewDefinition,
+  ) => void;
+  private readonly originalBeginDrag: (
+    hit: SectionHandleData,
+    clientX: number,
+    clientY: number,
+  ) => void;
+  private readonly originalUpdateDrag: (
+    clientX: number,
+    clientY: number,
+  ) => void;
+
   private disposed = false;
 
   constructor(options: Options) {
@@ -79,50 +141,110 @@ export class SectionModelInteractionController {
     this.professionalRuntime =
       options.drawingProfessional as unknown as DrawingProfessionalRuntime;
 
-    /*
-     * DrawingProfessionalController recreaba dos sprites A-A por sección cada
-     * vez que sincronizaba el estado profesional. Se sustituye ese marcador por
-     * el handle de desplazamiento perpendicular.
-     */
     this.originalEnsureSectionMarker =
       this.professionalRuntime.ensureSectionMarker.bind(
         this.professionalRuntime,
       );
+    this.originalCreateVisual =
+      this.sectionRuntime.createVisual.bind(
+        this.sectionRuntime,
+      );
+    this.originalBeginDrag =
+      this.sectionRuntime.beginDrag.bind(
+        this.sectionRuntime,
+      );
+    this.originalUpdateDrag =
+      this.sectionRuntime.updateDrag.bind(
+        this.sectionRuntime,
+      );
+
+    /* Las letras A-A dejan de existir. Los handles se reconstruyen siempre que
+     * la geometría de la sección se recrea, por eso el magenta ya no desaparece
+     * después de un arrastre, doble clic o cambio de profundidad. */
     this.professionalRuntime.ensureSectionMarker = (
       section: SectionViewDefinition,
     ): void => {
-      this.removeSectionMarkers(section.id);
-      this.ensureNormalMoveHandle(section);
+      this.removeLegacyDecorations(section.id);
+      this.ensureSupplementalHandles(section);
+    };
+
+    this.sectionRuntime.createVisual = (
+      section: SectionViewDefinition,
+    ): void => {
+      this.originalCreateVisual(section);
+      this.removeLegacyDecorations(section.id);
+      this.ensureSupplementalHandles(section);
+    };
+
+    /* Los nuevos tipos de handle usan el mismo dragState nativo. */
+    this.sectionRuntime.beginDrag = (
+      hit: SectionHandleData,
+      clientX: number,
+      clientY: number,
+    ): void => {
+      if (hit.type === "NORMAL_MOVE") {
+        this.beginNormalMove(hit, clientX, clientY);
+        return;
+      }
+
+      if (hit.type.startsWith("BACK_CORNER_")) {
+        this.beginBackCornerDrag(hit, clientX, clientY);
+        return;
+      }
+
+      this.originalBeginDrag(hit, clientX, clientY);
+    };
+
+    this.sectionRuntime.updateDrag = (
+      clientX: number,
+      clientY: number,
+    ): void => {
+      const drag = this.sectionRuntime.dragState;
+      if (!drag) return;
+
+      if (drag.handleType === "DEPTH") {
+        this.updateDepthDrag(drag, clientX, clientY);
+        return;
+      }
+
+      if (drag.handleType === "NORMAL_MOVE") {
+        this.updateNormalMove(drag, clientX, clientY);
+        return;
+      }
+
+      if (drag.handleType.startsWith("BACK_CORNER_")) {
+        const mapped =
+          BACK_TO_FRONT[
+            drag.handleType as SupplementalHandleType
+          ];
+        if (!mapped) return;
+
+        /* El algoritmo nativo de esquinas ya es correcto. Solo sustituimos el
+         * tipo durante el cálculo; el dragPlane permanece en la cara posterior. */
+        const originalType = drag.handleType;
+        drag.handleType = mapped;
+        try {
+          this.originalUpdateDrag(clientX, clientY);
+        }
+        finally {
+          if (this.sectionRuntime.dragState === drag) {
+            drag.handleType = originalType;
+          }
+        }
+        return;
+      }
+
+      this.originalUpdateDrag(clientX, clientY);
     };
 
     for (const section of options.sectionDrawing.getSections()) {
-      this.removeSectionMarkers(section.id);
-      this.ensureNormalMoveHandle(section);
+      this.removeLegacyDecorations(section.id);
+      this.ensureSupplementalHandles(section);
     }
 
     options.canvas.addEventListener(
       "pointerdown",
       this.handlePointerDown,
-      true,
-    );
-    options.canvas.addEventListener(
-      "pointermove",
-      this.handlePointerMove,
-      true,
-    );
-    options.canvas.addEventListener(
-      "pointerup",
-      this.handlePointerUp,
-      true,
-    );
-    options.canvas.addEventListener(
-      "pointercancel",
-      this.handlePointerCancel,
-      true,
-    );
-    window.addEventListener(
-      "keydown",
-      this.handleKeyDown,
       true,
     );
   }
@@ -136,33 +258,15 @@ export class SectionModelInteractionController {
       this.handlePointerDown,
       true,
     );
-    this.options.canvas.removeEventListener(
-      "pointermove",
-      this.handlePointerMove,
-      true,
-    );
-    this.options.canvas.removeEventListener(
-      "pointerup",
-      this.handlePointerUp,
-      true,
-    );
-    this.options.canvas.removeEventListener(
-      "pointercancel",
-      this.handlePointerCancel,
-      true,
-    );
-    window.removeEventListener(
-      "keydown",
-      this.handleKeyDown,
-      true,
-    );
 
     this.professionalRuntime.ensureSectionMarker =
       this.originalEnsureSectionMarker;
-
-    for (const section of this.options.sectionDrawing.getSections()) {
-      this.removeNormalMoveHandle(section.id);
-    }
+    this.sectionRuntime.createVisual =
+      this.originalCreateVisual;
+    this.sectionRuntime.beginDrag =
+      this.originalBeginDrag;
+    this.sectionRuntime.updateDrag =
+      this.originalUpdateDrag;
   }
 
   private readonly handlePointerDown = (
@@ -171,235 +275,140 @@ export class SectionModelInteractionController {
     if (
       event.button !== 0
       || this.sectionRuntime.creationStage !== "IDLE"
+      || this.sectionRuntime.dragState
     ) {
       return;
     }
 
-    const normalSectionId =
-      this.pickNormalMoveHandle(
-        event.clientX,
-        event.clientY,
-      );
-
-    if (normalSectionId) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      this.sectionRuntime.activeSectionId =
-        normalSectionId;
-      this.sectionRuntime.refreshUi();
-      this.professionalRuntime.applySectionVisibility();
-      this.professionalRuntime.renderSectionManager();
-      this.syncNormalMoveHandles();
-
-      this.beginNormalMove(
-        normalSectionId,
-        event.clientX,
-        event.clientY,
-        event.pointerId,
-      );
-
-      try {
-        this.options.canvas.setPointerCapture(
-          event.pointerId,
-        );
-      }
-      catch {
-        // El gesto continúa aunque el navegador no permita pointer capture.
-      }
-      return;
-    }
-
+    /* SectionDrawingController está registrado antes que este bridge. Si el
+     * usuario tocó un handle, aquel controlador ya consume el evento. Aquí solo
+     * seleccionamos el volumen cuando no hubo un handle. */
     const section = this.pickSection(
       event.clientX,
       event.clientY,
     );
-
     if (!section) return;
 
     event.preventDefault();
     event.stopImmediatePropagation();
 
-    this.sectionRuntime.activeSectionId =
-      section.id;
+    this.sectionRuntime.activeSectionId = section.id;
     this.sectionRuntime.refreshUi();
     this.professionalRuntime.applySectionVisibility();
     this.professionalRuntime.renderSectionManager();
     this.sectionRuntime.setStatus(
       `${section.name}: seleccionada desde Model Space.`,
     );
-    this.syncNormalMoveHandles();
     this.highlightTreeRow(section.id);
   };
 
-  private readonly handlePointerMove = (
-    event: PointerEvent,
-  ): void => {
-    if (this.normalMoveDrag) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      this.updateNormalMove(
-        event.clientX,
-        event.clientY,
-      );
-      return;
-    }
-
-    if (
-      this.sectionRuntime.creationStage === "IDLE"
-      && this.pickNormalMoveHandle(
-        event.clientX,
-        event.clientY,
-      )
-    ) {
-      this.options.canvas.style.cursor = "grab";
-    }
-  };
-
-  private readonly handlePointerUp = (
-    event: PointerEvent,
-  ): void => {
-    const drag = this.normalMoveDrag;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    this.finishNormalMove();
-
-    try {
-      if (
-        this.options.canvas.hasPointerCapture(
-          event.pointerId,
-        )
-      ) {
-        this.options.canvas.releasePointerCapture(
-          event.pointerId,
-        );
-      }
-    }
-    catch {
-      // Sin acción: el gesto ya terminó.
-    }
-  };
-
-  private readonly handlePointerCancel = (
-    event: PointerEvent,
-  ): void => {
-    const drag = this.normalMoveDrag;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    this.cancelNormalMove(true);
-  };
-
-  private readonly handleKeyDown = (
-    event: KeyboardEvent,
-  ): void => {
-    if (
-      event.key !== "Escape"
-      || !this.normalMoveDrag
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    this.cancelNormalMove(true);
-    this.sectionRuntime.setStatus(
-      "Desplazamiento perpendicular cancelado.",
-    );
-  };
-
-  private beginNormalMove(
-    sectionId: string,
+  private beginBackCornerDrag(
+    hit: SectionHandleData,
     clientX: number,
     clientY: number,
-    pointerId: number,
   ): void {
-    const section =
-      this.options.sectionDrawing.getSections().find(
-        (entry) => entry.id === sectionId,
-      );
+    const section = this.findSection(hit.sectionId);
     if (!section) return;
 
-    const visual =
-      this.sectionRuntime.visuals.get(sectionId);
-    const handle =
-      visual?.group.getObjectByName(
-        NORMAL_HANDLE_NAME,
-      );
-    if (!handle) return;
-
-    visual?.group.updateWorldMatrix(true, true);
-    const handlePoint =
-      handle.getWorldPosition(
-        new THREE.Vector3(),
-      );
-    const normal =
-      this.toVector3(section.normal).normalize();
-    const cameraDirection =
-      new THREE.Vector3();
-    this.options.cameraProvider().getWorldDirection(
-      cameraDirection,
-    );
-
-    let tangent =
-      cameraDirection.clone().addScaledVector(
-        normal,
-        -cameraDirection.dot(normal),
-      );
-
-    if (tangent.lengthSq() <= 1e-10) {
-      tangent = this.toVector3(section.xAxis);
-    }
-    tangent.normalize();
-
-    const planeNormal =
-      new THREE.Vector3().crossVectors(
-        normal,
-        tangent,
-      );
-
-    if (planeNormal.lengthSq() <= 1e-10) {
-      planeNormal.copy(
-        this.toVector3(section.yAxis),
-      );
-    }
-    planeNormal.normalize();
-
+    const normal = this.toVector3(section.normal).normalize();
+    const backPoint =
+      this.toVector3(section.origin)
+        .addScaledVector(normal, section.depth);
     const dragPlane =
-      new THREE.Plane().setFromNormalAndCoplanarPoint(
-        planeNormal,
-        handlePoint,
-      );
+      new THREE.Plane()
+        .setFromNormalAndCoplanarPoint(
+          normal,
+          backPoint,
+        );
     const startWorldPoint =
-      this.intersectPointerWithPlane(
+      this.sectionRuntime.intersectPointerWithPlane(
         clientX,
         clientY,
         dragPlane,
       );
     if (!startWorldPoint) return;
 
-    this.normalMoveDrag = {
-      sectionId,
+    this.sectionRuntime.dragState = {
+      sectionId: section.id,
+      handleType: hit.type,
       startSection: section,
       dragPlane,
       startWorldPoint,
-      pointerId,
     };
-    this.options.canvas.style.cursor = "grabbing";
-    this.sectionRuntime.setStatus(
-      `${section.name}: arrastra magenta para mover perpendicular al plano.`,
-    );
   }
 
-  private updateNormalMove(
+  private beginNormalMove(
+    hit: SectionHandleData,
     clientX: number,
     clientY: number,
   ): void {
-    const drag = this.normalMoveDrag;
-    if (!drag) return;
+    const section = this.findSection(hit.sectionId);
+    if (!section) return;
 
+    const normal = this.toVector3(section.normal).normalize();
+    const origin = this.toVector3(section.origin);
+    const xAxis = this.toVector3(section.xAxis).normalize();
+    const yAxis = this.toVector3(section.yAxis).normalize();
+    const handlePoint =
+      origin.clone()
+        .addScaledVector(xAxis, section.width / 2)
+        .addScaledVector(yAxis, section.height / 2);
+
+    const cameraDirection = new THREE.Vector3();
+    this.options.cameraProvider().getWorldDirection(cameraDirection);
+
+    let tangent =
+      cameraDirection.clone()
+        .addScaledVector(
+          normal,
+          -cameraDirection.dot(normal),
+        );
+    if (tangent.lengthSq() <= 1e-10) {
+      tangent = xAxis.clone();
+    }
+    tangent.normalize();
+
+    const planeNormal =
+      new THREE.Vector3()
+        .crossVectors(normal, tangent);
+    if (planeNormal.lengthSq() <= 1e-10) {
+      planeNormal.copy(yAxis);
+    }
+    planeNormal.normalize();
+
+    const dragPlane =
+      new THREE.Plane()
+        .setFromNormalAndCoplanarPoint(
+          planeNormal,
+          handlePoint,
+        );
+    const startWorldPoint =
+      this.sectionRuntime.intersectPointerWithPlane(
+        clientX,
+        clientY,
+        dragPlane,
+      );
+    if (!startWorldPoint) return;
+
+    this.sectionRuntime.dragState = {
+      sectionId: section.id,
+      handleType: "NORMAL_MOVE",
+      startSection: section,
+      dragPlane,
+      startWorldPoint,
+    };
+    this.sectionRuntime.setStatus(
+      `${section.name}: mueve magenta para desplazar perpendicular al plano.`,
+    );
+  }
+
+  private updateDepthDrag(
+    drag: SectionDragRuntime,
+    clientX: number,
+    clientY: number,
+  ): void {
     const worldPoint =
-      this.intersectPointerWithPlane(
+      this.sectionRuntime.intersectPointerWithPlane(
         clientX,
         clientY,
         drag.dragPlane,
@@ -407,119 +416,180 @@ export class SectionModelInteractionController {
     if (!worldPoint) return;
 
     const normal =
-      this.toVector3(
-        drag.startSection.normal,
-      ).normalize();
-    const distance =
+      this.toVector3(drag.startSection.normal).normalize();
+    const delta =
+      worldPoint.clone()
+        .sub(drag.startWorldPoint)
+        .dot(normal);
+    const depth = Math.max(
+      MIN_SECTION_SIZE,
+      drag.startSection.depth + delta,
+    );
+
+    this.sectionRuntime.replaceSection({
+      ...drag.startSection,
+      depth,
+    });
+    this.sectionRuntime.setStatus(
+      `${drag.startSection.name}: profundidad ${this.formatNumber(depth)} m.`,
+    );
+  }
+
+  private updateNormalMove(
+    drag: SectionDragRuntime,
+    clientX: number,
+    clientY: number,
+  ): void {
+    const worldPoint =
+      this.sectionRuntime.intersectPointerWithPlane(
+        clientX,
+        clientY,
+        drag.dragPlane,
+      );
+    if (!worldPoint) return;
+
+    const normal =
+      this.toVector3(drag.startSection.normal).normalize();
+    const delta =
       worldPoint.clone()
         .sub(drag.startWorldPoint)
         .dot(normal);
     const origin =
-      this.toVector3(
-        drag.startSection.origin,
-      ).addScaledVector(
-        normal,
-        distance,
-      );
-    const next: SectionViewDefinition = {
+      this.toVector3(drag.startSection.origin)
+        .addScaledVector(normal, delta);
+
+    this.sectionRuntime.replaceSection({
       ...drag.startSection,
       origin: this.vectorData(origin),
+    });
+    this.sectionRuntime.setStatus(
+      `${drag.startSection.name}: desplazamiento perpendicular ${this.formatSigned(delta)} m.`,
+    );
+  }
+
+  private ensureSupplementalHandles(
+    section: SectionViewDefinition,
+  ): void {
+    const visual = this.sectionRuntime.visuals.get(section.id);
+    if (!visual) return;
+
+    this.removeLegacyDecorations(section.id);
+
+    const template =
+      visual.handles.get("CORNER_00");
+    if (!template) return;
+
+    const halfW = section.width / 2;
+    const halfH = section.height / 2;
+    const frontZ = -section.depth / 2;
+    const backZ = section.depth / 2;
+
+    const addHandle = (
+      type: SupplementalHandleType,
+      position: THREE.Vector3,
+      color: number,
+    ): void => {
+      const current = visual.handles.get(type);
+      if (current) {
+        current.position.copy(position);
+        return;
+      }
+
+      const geometry = template.geometry.clone();
+      const material =
+        new THREE.MeshBasicMaterial({
+          color,
+          depthTest: false,
+          depthWrite: false,
+          toneMapped: false,
+        });
+      const handle =
+        new THREE.Mesh(geometry, material);
+      handle.name =
+        `SectionHandle:${section.name}:${type}`;
+      handle.position.copy(position);
+      handle.renderOrder = 72;
+      handle.userData["frameLogicSectionHandle"] = {
+        sectionId: section.id,
+        type,
+      } satisfies SectionHandleData;
+
+      visual.group.add(handle);
+      visual.handles.set(type, handle);
     };
 
-    this.sectionRuntime.replaceSection(next);
-    this.ensureNormalMoveHandle(next);
-    this.sectionRuntime.setStatus(
-      `${next.name}: offset perpendicular ${this.formatSigned(distance)} m.`,
+    addHandle(
+      "BACK_CORNER_00",
+      new THREE.Vector3(-halfW, -halfH, backZ),
+      0x72d7ff,
+    );
+    addHandle(
+      "BACK_CORNER_10",
+      new THREE.Vector3(halfW, -halfH, backZ),
+      0x72d7ff,
+    );
+    addHandle(
+      "BACK_CORNER_11",
+      new THREE.Vector3(halfW, halfH, backZ),
+      0x72d7ff,
+    );
+    addHandle(
+      "BACK_CORNER_01",
+      new THREE.Vector3(-halfW, halfH, backZ),
+      0x72d7ff,
+    );
+
+    const radius =
+      template.geometry.boundingSphere?.radius
+      ?? Math.max(
+        section.width,
+        section.height,
+        section.depth,
+        MIN_SECTION_SIZE,
+      ) * 0.018;
+    const normalOffset = Math.max(
+      radius * 5,
+      Math.max(section.width, section.height) * 0.04,
+      0.04,
+    );
+
+    addHandle(
+      "NORMAL_MOVE",
+      new THREE.Vector3(0, 0, frontZ - normalOffset),
+      0xd85cff,
     );
   }
 
-  private finishNormalMove(): void {
-    const drag = this.normalMoveDrag;
-    this.normalMoveDrag = null;
-    this.options.canvas.style.cursor = "";
-    if (!drag) return;
+  private removeLegacyDecorations(sectionId: string): void {
+    const visual = this.sectionRuntime.visuals.get(sectionId);
+    if (!visual) return;
 
-    const section =
-      this.options.sectionDrawing.getSections().find(
-        (entry) => entry.id === drag.sectionId,
-      );
-    if (!section) return;
-
-    const normal =
-      this.toVector3(
-        drag.startSection.normal,
-      ).normalize();
-    const distance =
-      this.toVector3(section.origin)
-        .sub(
-          this.toVector3(drag.startSection.origin),
-        )
-        .dot(normal);
-    this.ensureNormalMoveHandle(section);
-    this.sectionRuntime.setStatus(
-      `${section.name}: plano desplazado ${this.formatSigned(distance)} m perpendicularmente.`,
-    );
-  }
-
-  private cancelNormalMove(restore: boolean): void {
-    const drag = this.normalMoveDrag;
-    this.normalMoveDrag = null;
-    this.options.canvas.style.cursor = "";
-    if (!drag) return;
-
-    if (restore) {
-      this.sectionRuntime.replaceSection(
-        drag.startSection,
-      );
-      this.ensureNormalMoveHandle(
-        drag.startSection,
-      );
-    }
-  }
-
-  private pickNormalMoveHandle(
-    clientX: number,
-    clientY: number,
-  ): string | null {
-    if (!this.setPointer(clientX, clientY)) return null;
-
-    this.raycaster.setFromCamera(
-      this.pointer,
-      this.options.cameraProvider(),
-    );
-
-    const handles: THREE.Object3D[] = [];
-    for (const section of this.options.sectionDrawing.getSections()) {
-      const visual =
-        this.sectionRuntime.visuals.get(section.id);
-      const handle =
-        visual?.group.getObjectByName(
-          NORMAL_HANDLE_NAME,
-        );
-      if (
-        handle
-        && handle.visible
-        && visual?.group.visible
-        && visual.group.layers.mask !== 0
-      ) {
-        handles.push(handle);
-      }
+    const marker = visual.group.getObjectByName(MARKER_GROUP_NAME);
+    if (marker) {
+      marker.traverse((object) => {
+        if (!(object instanceof THREE.Sprite)) return;
+        object.material.map?.dispose();
+        object.material.dispose();
+      });
+      marker.removeFromParent();
     }
 
-    const hit =
-      this.raycaster.intersectObjects(
-        handles,
-        false,
-      )[0];
-    if (!hit) return null;
-
-    const sectionId =
-      hit.object.userData[
-        "frameLogicSectionId"
-      ];
-    return typeof sectionId === "string"
-      ? sectionId
-      : null;
+    const oldNormal =
+      visual.group.getObjectByName(OLD_NORMAL_GIZMO_NAME);
+    if (oldNormal) {
+      oldNormal.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          if (Array.isArray(object.material)) {
+            object.material.forEach((material) => material.dispose());
+          }
+          else {
+            object.material.dispose();
+          }
+        }
+      });
+      oldNormal.removeFromParent();
+    }
   }
 
   private pickSection(
@@ -541,9 +611,7 @@ export class SectionModelInteractionController {
       | null = null;
 
     for (const section of this.options.sectionDrawing.getSections()) {
-      const visual =
-        this.sectionRuntime.visuals.get(section.id);
-
+      const visual = this.sectionRuntime.visuals.get(section.id);
       if (
         !visual
         || !visual.group.visible
@@ -563,12 +631,9 @@ export class SectionModelInteractionController {
         this.toVector3(section.origin),
       );
 
-      const inverse =
-        worldMatrix.clone().invert();
+      const inverse = worldMatrix.clone().invert();
       const localRay =
-        this.raycaster.ray
-          .clone()
-          .applyMatrix4(inverse);
+        this.raycaster.ray.clone().applyMatrix4(inverse);
       const box =
         new THREE.Box3(
           new THREE.Vector3(0, 0, 0),
@@ -583,271 +648,22 @@ export class SectionModelInteractionController {
           box,
           new THREE.Vector3(),
         );
-
       if (!localHit) continue;
 
-      const worldHit =
-        localHit.applyMatrix4(worldMatrix);
+      const worldHit = localHit.applyMatrix4(worldMatrix);
       const distanceSq =
-        worldHit.distanceToSquared(
-          this.raycaster.ray.origin,
-        );
-
-      if (
-        !nearest
-        || distanceSq < nearest.distanceSq
-      ) {
-        nearest = {
-          section,
-          distanceSq,
-        };
+        worldHit.distanceToSquared(this.raycaster.ray.origin);
+      if (!nearest || distanceSq < nearest.distanceSq) {
+        nearest = { section, distanceSq };
       }
     }
 
     return nearest?.section ?? null;
   }
 
-  private ensureNormalMoveHandle(
-    section: SectionViewDefinition,
-  ): void {
-    const visual =
-      this.sectionRuntime.visuals.get(section.id);
-    if (!visual) return;
-
-    const old =
-      visual.group.getObjectByName(
-        NORMAL_GIZMO_NAME,
-      );
-    if (old) {
-      const active =
-        section.id === this.sectionRuntime.activeSectionId;
-      old.visible =
-        active
-        && visual.group.visible
-        && visual.group.layers.mask !== 0;
-      old.traverse(
-        (object) => {
-          object.layers.mask =
-            visual.group.layers.mask;
-        },
-      );
-      return;
-    }
-
-    const maxSize =
-      Math.max(
-        section.width,
-        section.height,
-        section.depth,
-        0.01,
-      );
-    const radius =
-      Math.max(
-        maxSize * 0.018,
-        0.018,
-      );
-    const normalOffset =
-      Math.max(
-        maxSize * 0.09,
-        radius * 4.5,
-      );
-    const frontZ =
-      -section.depth / 2;
-    const lateral =
-      Math.min(
-        section.width * 0.22,
-        maxSize * 0.12,
-      );
-    const anchor =
-      new THREE.Vector3(
-        lateral,
-        0,
-        frontZ,
-      );
-    const endpoint =
-      new THREE.Vector3(
-        lateral,
-        0,
-        frontZ - normalOffset,
-      );
-
-    const lineGeometry =
-      new THREE.BufferGeometry().setFromPoints([
-        anchor,
-        endpoint,
-      ]);
-    const lineMaterial =
-      new THREE.LineBasicMaterial({
-        color: 0xe879f9,
-        depthTest: false,
-        depthWrite: false,
-        transparent: true,
-        opacity: 0.9,
-        toneMapped: false,
-      });
-    const line =
-      new THREE.Line(
-        lineGeometry,
-        lineMaterial,
-      );
-    line.renderOrder = 74;
-    line.raycast = () => {};
-
-    const handle =
-      new THREE.Mesh(
-        new THREE.SphereGeometry(
-          radius,
-          16,
-          12,
-        ),
-        new THREE.MeshBasicMaterial({
-          color: 0xe879f9,
-          depthTest: false,
-          depthWrite: false,
-          toneMapped: false,
-        }),
-      );
-    handle.name = NORMAL_HANDLE_NAME;
-    handle.position.copy(endpoint);
-    handle.renderOrder = 75;
-    handle.userData[
-      "frameLogicSectionId"
-    ] = section.id;
-
-    const gizmo = new THREE.Group();
-    gizmo.name = NORMAL_GIZMO_NAME;
-    gizmo.add(line, handle);
-    gizmo.visible =
-      section.id === this.sectionRuntime.activeSectionId
-      && visual.group.visible
-      && visual.group.layers.mask !== 0;
-    gizmo.traverse(
-      (object) => {
-        object.layers.mask =
-          visual.group.layers.mask;
-      },
-    );
-    visual.group.add(gizmo);
-  }
-
-  private syncNormalMoveHandles(): void {
-    for (const section of this.options.sectionDrawing.getSections()) {
-      this.ensureNormalMoveHandle(section);
-      const visual =
-        this.sectionRuntime.visuals.get(section.id);
-      const gizmo =
-        visual?.group.getObjectByName(
-          NORMAL_GIZMO_NAME,
-        );
-      if (!visual || !gizmo) continue;
-      gizmo.visible =
-        section.id === this.sectionRuntime.activeSectionId
-        && visual.group.visible
-        && visual.group.layers.mask !== 0;
-    }
-  }
-
-  private removeNormalMoveHandle(
-    sectionId: string,
-  ): void {
-    const visual =
-      this.sectionRuntime.visuals.get(sectionId);
-    const gizmo =
-      visual?.group.getObjectByName(
-        NORMAL_GIZMO_NAME,
-      );
-    if (!gizmo) return;
-
-    gizmo.traverse(
-      (object) => {
-        if (
-          object instanceof THREE.Mesh
-          || object instanceof THREE.Line
-        ) {
-          object.geometry.dispose();
-          const material = object.material;
-          if (Array.isArray(material)) {
-            material.forEach((entry) => entry.dispose());
-          }
-          else {
-            material.dispose();
-          }
-        }
-      },
-    );
-    gizmo.removeFromParent();
-  }
-
-  private removeSectionMarkers(sectionId: string): void {
-    const visual =
-      this.sectionRuntime.visuals.get(sectionId);
-    if (!visual) return;
-
-    const markers =
-      visual.group.getObjectByName(
-        "FrameLogicSectionMarkers",
-      );
-    if (!markers) return;
-
-    markers.traverse(
-      (object) => {
-        if (!(object instanceof THREE.Sprite)) return;
-        const material = object.material;
-        material.map?.dispose();
-        material.dispose();
-      },
-    );
-    markers.removeFromParent();
-  }
-
-  private highlightTreeRow(sectionId: string): void {
-    const sections =
-      this.options.sectionDrawing.getSections();
-    const index =
-      sections.findIndex(
-        (section) => section.id === sectionId,
-      );
-    if (index < 0) return;
-
-    const content =
-      this.options.container.querySelector<HTMLElement>(
-        '[data-framelogic-section-tree-content="true"]',
-      );
-    if (!content) return;
-
-    const rows =
-      Array.from(content.children)
-        .filter(
-          (element): element is HTMLElement =>
-            element instanceof HTMLElement,
-        );
-
-    rows.forEach(
-      (row, rowIndex) => {
-        row.style.background =
-          rowIndex === index
-            ? "rgba(88,180,220,0.20)"
-            : "transparent";
-      },
-    );
-
-    rows[index]?.scrollIntoView({
-      block: "nearest",
-    });
-  }
-
-  private setPointer(
-    clientX: number,
-    clientY: number,
-  ): boolean {
-    const rect =
-      this.options.canvas.getBoundingClientRect();
-    if (
-      rect.width <= 0
-      || rect.height <= 0
-    ) {
-      return false;
-    }
+  private setPointer(clientX: number, clientY: number): boolean {
+    const rect = this.options.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
 
     this.pointer.x =
       ((clientX - rect.left) / rect.width) * 2 - 1;
@@ -856,48 +672,58 @@ export class SectionModelInteractionController {
     return true;
   }
 
-  private intersectPointerWithPlane(
-    clientX: number,
-    clientY: number,
-    plane: THREE.Plane,
-  ): THREE.Vector3 | null {
-    if (!this.setPointer(clientX, clientY)) return null;
-    this.raycaster.setFromCamera(
-      this.pointer,
-      this.options.cameraProvider(),
+  private highlightTreeRow(sectionId: string): void {
+    const sections = this.options.sectionDrawing.getSections();
+    const index = sections.findIndex(
+      (section) => section.id === sectionId,
     );
-    return this.raycaster.ray.intersectPlane(
-      plane,
-      new THREE.Vector3(),
-    );
+    if (index < 0) return;
+
+    const content =
+      this.options.container.querySelector<HTMLElement>(
+        '[data-framelogic-section-tree-content="true"]',
+      );
+    if (!content) return;
+
+    const rows = Array.from(content.children)
+      .filter(
+        (element): element is HTMLElement =>
+          element instanceof HTMLElement,
+      );
+
+    rows.forEach((row, rowIndex) => {
+      row.style.background =
+        rowIndex === index
+          ? "rgba(88,180,220,0.20)"
+          : "transparent";
+    });
+    rows[index]?.scrollIntoView({ block: "nearest" });
   }
 
-  private vectorData(
-    vector: THREE.Vector3,
-  ): {
+  private findSection(sectionId: string): SectionViewDefinition | null {
+    return this.options.sectionDrawing.getSections().find(
+      (section) => section.id === sectionId,
+    ) ?? null;
+  }
+
+  private vectorData(vector: THREE.Vector3): {
     readonly x: number;
     readonly y: number;
     readonly z: number;
   } {
-    return {
-      x: vector.x,
-      y: vector.y,
-      z: vector.z,
-    };
+    return { x: vector.x, y: vector.y, z: vector.z };
   }
 
-  private toVector3(
-    value: {
-      readonly x: number;
-      readonly y: number;
-      readonly z: number;
-    },
-  ): THREE.Vector3 {
-    return new THREE.Vector3(
-      value.x,
-      value.y,
-      value.z,
-    );
+  private toVector3(value: {
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+  }): THREE.Vector3 {
+    return new THREE.Vector3(value.x, value.y, value.z);
+  }
+
+  private formatNumber(value: number): string {
+    return Number(value.toFixed(4)).toString();
   }
 
   private formatSigned(value: number): string {
