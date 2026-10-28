@@ -58,15 +58,13 @@ interface ModelPanelProps {
 /**
  * La antigua UI "Modelo" ya no se renderiza.
  *
- * La visibilidad de PieceInstance vive ahora visualmente dentro del árbol
- * INSTANCIAS. Reutilizamos el mismo callback de visibilidad que ya usa
- * BimViewport, por lo que el ojo del árbol y el menú contextual del visor
- * comparten exactamente el mismo estado.
+ * La visibilidad de PieceInstance vive visualmente dentro del árbol INSTANCIAS.
+ * El ojo individual y el ojo de cada ensamble reutilizan el mismo callback de
+ * BimViewport, por lo que el estado continúa siendo único.
  *
- * Importante: deliberadamente NO usamos MutationObserver. El árbol reemplaza
- * sus filas cuando cambia selección/ensambles; un refresco liviano y acotado
- * vuelve a colocar únicamente los botones que falten. Esto evita el bucle de
- * mutaciones que podía saturar el hilo principal durante la importación STEP.
+ * No usamos MutationObserver. InstanceTreeController recrea filas en algunos
+ * cambios, así que una comprobación liviana repone únicamente los ojos que
+ * falten sin observar las propias mutaciones que hacemos aquí.
  */
 export function ModelPanel(
   {
@@ -99,6 +97,21 @@ export function ModelPanel(
             return;
           }
 
+          const pieceByPrefix =
+            new Map(
+              pieces.map(
+                (
+                  piece,
+                ) => [
+                  piece.id.slice(
+                    0,
+                    8,
+                  ),
+                  piece,
+                ] as const,
+              ),
+            );
+
           const spans =
             Array.from(
               body.querySelectorAll<HTMLSpanElement>(
@@ -106,6 +119,10 @@ export function ModelPanel(
               ),
             );
 
+
+          // --------------------------------------------------
+          // OJO POR INSTANCIA
+          // --------------------------------------------------
 
           for (
             const piece
@@ -161,53 +178,18 @@ export function ModelPanel(
                 "framelogicPieceVisibilityEye"
               ] = piece.id;
 
-              Object.assign(
-                eye.style,
-                {
-                  width:
-                    "24px",
-                  height:
-                    "22px",
-                  padding:
-                    "0",
-                  border:
-                    "0",
-                  borderRadius:
-                    "3px",
-                  background:
-                    "transparent",
-                  color:
-                    "#dce8ed",
-                  cursor:
-                    "pointer",
-                  font:
-                    "13px system-ui, sans-serif",
-                  lineHeight:
-                    "22px",
-                  textAlign:
-                    "center",
-                  userSelect:
-                    "none",
-                },
+              applyEyeStyle(
+                eye,
               );
 
               eye.addEventListener(
                 "pointerdown",
-                (
-                  event,
-                ) => {
-                  event.stopPropagation();
-                },
+                stopPointerPropagation,
               );
 
               eye.addEventListener(
                 "contextmenu",
-                (
-                  event,
-                ) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                },
+                preventContextMenuPropagation,
               );
 
               eye.addEventListener(
@@ -277,6 +259,284 @@ export function ModelPanel(
                 ? "1"
                 : "0.62";
           }
+
+
+          // --------------------------------------------------
+          // OJO POR ENSAMBLE
+          //
+          // InstanceTreeController renderiza cada ensamble como una fila
+          // seguida inmediatamente por un contenedor con sus piezas.
+          // Leemos los prefijos de esas filas hijas para obtener los IDs
+          // reales sin duplicar el modelo de ensambles en React.
+          // --------------------------------------------------
+
+          const candidateRows =
+            Array.from(
+              body.querySelectorAll<HTMLDivElement>(
+                "div",
+              ),
+            );
+
+          for (
+            const row
+            of candidateRows
+          ) {
+            const directSpans =
+              Array.from(
+                row.children,
+              ).filter(
+                (
+                  child,
+                ): child is HTMLSpanElement =>
+                  child instanceof HTMLSpanElement,
+              );
+
+            const nameSpan =
+              directSpans[0];
+
+            if (
+              !nameSpan?.textContent
+                ?.startsWith(
+                  "▦ ",
+                )
+            ) {
+              continue;
+            }
+
+            const children =
+              row.nextElementSibling;
+
+            if (
+              !(children instanceof HTMLDivElement)
+            ) {
+              continue;
+            }
+
+            const memberById =
+              new Map<
+                string,
+                PiecePanelItem
+              >();
+
+            for (
+              const childSpan
+              of Array.from(
+                children.querySelectorAll<HTMLSpanElement>(
+                  "span",
+                ),
+              )
+            ) {
+              const prefix =
+                childSpan.textContent
+                ?? "";
+
+              const piece =
+                pieceByPrefix.get(
+                  prefix,
+                );
+
+              if (piece) {
+                memberById.set(
+                  piece.id,
+                  piece,
+                );
+              }
+            }
+
+            const members =
+              Array.from(
+                memberById.values(),
+              );
+
+            let eye =
+              row.querySelector<HTMLButtonElement>(
+                "button[data-framelogic-assembly-visibility-eye]",
+              );
+
+            if (!eye) {
+              eye =
+                document.createElement(
+                  "button",
+                );
+
+              eye.type =
+                "button";
+
+              eye.dataset[
+                "framelogicAssemblyVisibilityEye"
+              ] = "true";
+
+              applyEyeStyle(
+                eye,
+              );
+
+              eye.addEventListener(
+                "pointerdown",
+                stopPointerPropagation,
+              );
+
+              eye.addEventListener(
+                "contextmenu",
+                preventContextMenuPropagation,
+              );
+
+              eye.addEventListener(
+                "click",
+                (
+                  event,
+                ) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+
+                  const memberIds =
+                    parseMemberIds(
+                      eye?.dataset[
+                        "framelogicAssemblyMemberIds"
+                      ],
+                    );
+
+                  if (
+                    memberIds.length < 1
+                  ) {
+                    return;
+                  }
+
+                  const targetVisible =
+                    eye?.dataset[
+                      "framelogicAssemblyAllVisible"
+                    ] !== "true";
+
+                  const changeIds =
+                    parseMemberIds(
+                      eye?.dataset[
+                        "framelogicAssemblyChangeIds"
+                      ],
+                    );
+
+                  for (
+                    const memberId
+                    of changeIds.length > 0
+                      ? changeIds
+                      : memberIds
+                  ) {
+                    onPieceVisibilityChange(
+                      memberId,
+                      targetVisible,
+                    );
+                  }
+                },
+              );
+
+              row.insertBefore(
+                eye,
+                row.firstElementChild,
+              );
+            }
+
+            const visibleCount =
+              members.filter(
+                (
+                  member,
+                ) =>
+                  member.visible,
+              ).length;
+
+            const allVisible =
+              members.length > 0
+              && visibleCount
+                === members.length;
+
+            const allHidden =
+              members.length > 0
+              && visibleCount === 0;
+
+            const targetVisible =
+              !allVisible;
+
+            const changeIds =
+              members
+                .filter(
+                  (
+                    member,
+                  ) =>
+                    member.visible
+                    !== targetVisible,
+                )
+                .map(
+                  (
+                    member,
+                  ) =>
+                    member.id,
+                );
+
+            eye.dataset[
+              "framelogicAssemblyMemberIds"
+            ] = JSON.stringify(
+              members.map(
+                (
+                  member,
+                ) =>
+                  member.id,
+              ),
+            );
+
+            eye.dataset[
+              "framelogicAssemblyChangeIds"
+            ] = JSON.stringify(
+              changeIds,
+            );
+
+            eye.dataset[
+              "framelogicAssemblyAllVisible"
+            ] = allVisible
+              ? "true"
+              : "false";
+
+            eye.disabled =
+              members.length < 1;
+
+            eye.textContent =
+              members.length < 1
+                ? "◌"
+                : allVisible
+                  ? "👁"
+                  : allHidden
+                    ? "◌"
+                    : "◐";
+
+            const assemblyName =
+              nameSpan.textContent
+                .slice(
+                  2,
+                )
+                .trim()
+              || "ensamble";
+
+            eye.title =
+              members.length < 1
+                ? `${assemblyName} no contiene piezas`
+                : allVisible
+                  ? `Ocultar todas las piezas de ${assemblyName}`
+                  : `Mostrar todas las piezas de ${assemblyName}`;
+
+            eye.setAttribute(
+              "aria-label",
+              eye.title,
+            );
+
+            row.style.gridTemplateColumns =
+              "auto minmax(0, 1fr) auto";
+
+            row.style.gap =
+              "6px";
+
+            row.style.opacity =
+              allHidden
+                ? "0.62"
+                : allVisible
+                  ? "1"
+                  : "0.82";
+          }
         };
 
 
@@ -287,11 +547,6 @@ export function ModelPanel(
           decorateInstanceTree,
         );
 
-      /*
-       * InstanceTreeController recrea sus filas internamente en algunos
-       * cambios (F2, ensambles, selección). Esta comprobación es barata y no
-       * observa mutaciones; solo repone un ojo si la fila fue reconstruida.
-       */
       const timer =
         window.setInterval(
           decorateInstanceTree,
@@ -324,4 +579,85 @@ export function ModelPanel(
 
 
   return null;
+}
+
+
+function applyEyeStyle(
+  eye: HTMLButtonElement,
+): void {
+  Object.assign(
+    eye.style,
+    {
+      width:
+        "24px",
+      height:
+        "22px",
+      padding:
+        "0",
+      border:
+        "0",
+      borderRadius:
+        "3px",
+      background:
+        "transparent",
+      color:
+        "#dce8ed",
+      cursor:
+        "pointer",
+      font:
+        "13px system-ui, sans-serif",
+      lineHeight:
+        "22px",
+      textAlign:
+        "center",
+      userSelect:
+        "none",
+    },
+  );
+}
+
+
+function stopPointerPropagation(
+  event: PointerEvent,
+): void {
+  event.stopPropagation();
+}
+
+
+function preventContextMenuPropagation(
+  event: MouseEvent,
+): void {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+
+function parseMemberIds(
+  value: string | undefined,
+): string[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed: unknown =
+      JSON.parse(
+        value,
+      );
+
+    return Array.isArray(
+      parsed,
+    )
+      ? parsed.filter(
+          (
+            memberId,
+          ): memberId is string =>
+            typeof memberId
+            === "string",
+        )
+      : [];
+  }
+  catch {
+    return [];
+  }
 }
