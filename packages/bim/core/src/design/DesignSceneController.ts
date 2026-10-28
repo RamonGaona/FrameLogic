@@ -9,12 +9,6 @@ import {
 } from "./preparePiecePrototypeGeometry";
 
 
-export type DesignSceneVisibilityListener = (
-  instanceId: string,
-  visible: boolean,
-) => void;
-
-
 export class DesignSceneController {
 
   // ==========================================================
@@ -37,18 +31,6 @@ export class DesignSceneController {
     )
     | null =
       null;
-
-
-  // ==========================================================
-  // INDIVIDUAL INSTANCE VISIBILITY
-  // ==========================================================
-
-  private readonly hiddenInstanceIds =
-    new Set<string>();
-
-
-  private readonly visibilityListeners =
-    new Set<DesignSceneVisibilityListener>();
 
 
   // ==========================================================
@@ -136,114 +118,6 @@ export class DesignSceneController {
 
 
     this.sync();
-
-  }
-
-
-  // ==========================================================
-  // INDIVIDUAL INSTANCE VISIBILITY
-  // ==========================================================
-
-  isInstanceVisible(
-    instanceId: string,
-  ): boolean {
-
-    return !this.hiddenInstanceIds.has(
-      instanceId,
-    );
-
-  }
-
-
-  setInstanceVisible(
-    instanceId: string,
-    visible: boolean,
-  ): void {
-
-    const current =
-      this.isInstanceVisible(
-        instanceId,
-      );
-
-
-    if (
-      current === visible
-    ) {
-
-      return;
-
-    }
-
-
-    if (visible) {
-
-      this.hiddenInstanceIds.delete(
-        instanceId,
-      );
-
-    }
-    else {
-
-      this.hiddenInstanceIds.add(
-        instanceId,
-      );
-
-    }
-
-
-    this.sync();
-
-
-    for (
-      const listener
-      of this.visibilityListeners
-    ) {
-
-      listener(
-        instanceId,
-        visible,
-      );
-
-    }
-
-  }
-
-
-  toggleInstanceVisibility(
-    instanceId: string,
-  ): boolean {
-
-    const visible =
-      !this.isInstanceVisible(
-        instanceId,
-      );
-
-
-    this.setInstanceVisible(
-      instanceId,
-      visible,
-    );
-
-
-    return visible;
-
-  }
-
-
-  subscribeInstanceVisibility(
-    listener: DesignSceneVisibilityListener,
-  ): () => void {
-
-    this.visibilityListeners.add(
-      listener,
-    );
-
-
-    return () => {
-      this.visibilityListeners.delete(
-        listener,
-      );
-    };
 
   }
 
@@ -573,28 +447,6 @@ export class DesignSceneController {
       );
 
 
-    for (
-      const instanceId
-      of Array.from(
-        this.hiddenInstanceIds,
-      )
-    ) {
-
-      if (
-        !activeInstanceIds.has(
-          instanceId,
-        )
-      ) {
-
-        this.hiddenInstanceIds.delete(
-          instanceId,
-        );
-
-      }
-
-    }
-
-
     // --------------------------------------------------------
     // REMOVE OBJECTS WHOSE INSTANCE NO LONGER EXISTS
     // --------------------------------------------------------
@@ -765,7 +617,7 @@ export class DesignSceneController {
 
 
       // ------------------------------------------------------
-      // LAYER + INDIVIDUAL VISIBILITY
+      // LAYER VISIBILITY
       // ------------------------------------------------------
 
       const layer =
@@ -780,9 +632,6 @@ export class DesignSceneController {
         (
           layer?.visible
           ?? true
-        )
-        && this.isInstanceVisible(
-          instance.id,
         )
         && (
           this.visibilityFilter
@@ -1004,10 +853,6 @@ export class DesignSceneController {
   // ==========================================================
 
   dispose(): void {
-
-    this.visibilityListeners.clear();
-    this.hiddenInstanceIds.clear();
-
 
     // Las instancias comparten los recursos de sus prototipos.
     // Primero las sacamos de la escena.
