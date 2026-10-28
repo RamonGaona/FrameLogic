@@ -28,6 +28,10 @@ export class CadLineSceneController {
     >();
 
 
+  private readonly hiddenIds =
+    new Set<string>();
+
+
   constructor(
     scene:
       THREE.Scene,
@@ -81,6 +85,18 @@ export class CadLineSceneController {
       this.lineObjects.entries(),
     );
 
+  }
+
+
+  isHidden(id: string): boolean {
+    return this.hiddenIds.has(id);
+  }
+
+
+  setHidden(id: string, hidden: boolean): void {
+    if (hidden) this.hiddenIds.add(id);
+    else this.hiddenIds.delete(id);
+    this.applyVisibility(id);
   }
 
 
@@ -183,6 +199,7 @@ export class CadLineSceneController {
       this.lineObjects.delete(
         id,
       );
+      this.hiddenIds.delete(id);
 
     }
 
@@ -263,17 +280,7 @@ export class CadLineSceneController {
       object.geometry.computeBoundingSphere();
 
 
-      const layer =
-        this.designModel
-          .layers
-          .get(
-            line.layerId,
-          );
-
-
-      object.visible =
-        layer?.visible
-        ?? true;
+      this.applyVisibility(line.id);
 
 
       object.updateMatrixWorld(
@@ -285,6 +292,15 @@ export class CadLineSceneController {
 
     this.updateSelectionAppearance();
 
+  }
+
+
+  private applyVisibility(id: string): void {
+    const object = this.lineObjects.get(id);
+    const line = this.designModel.cadLines.get(id);
+    if (!object || !line) return;
+    const layer = this.designModel.layers.get(line.layerId);
+    object.visible = (layer?.visible ?? true) && !this.hiddenIds.has(id);
   }
 
 
@@ -381,6 +397,7 @@ export class CadLineSceneController {
 
 
     this.lineObjects.clear();
+    this.hiddenIds.clear();
 
   }
 
