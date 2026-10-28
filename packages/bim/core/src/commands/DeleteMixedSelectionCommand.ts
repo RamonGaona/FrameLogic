@@ -70,17 +70,37 @@ interface MixedDeleteSnapshot {
 export class DeleteMixedSelectionCommand {
   readonly id = "DELETE_MIXED";
 
+  private readonly designModel: DesignModel;
+  private readonly designScene: DesignSceneController;
+  private readonly pointScene: CadPointSceneController;
+  private readonly lineScene: CadLineSceneController;
+  private readonly unifiedSelection: CadUnifiedSelectionController;
+  private readonly designSelection: DesignSelectionController;
+  private readonly pointSelection: CadPointSelectionController;
+  private readonly lineSelection: CadLineSelectionController;
+  private readonly history: CadHistoryController;
+
   constructor(
-    private readonly designModel: DesignModel,
-    private readonly designScene: DesignSceneController,
-    private readonly pointScene: CadPointSceneController,
-    private readonly lineScene: CadLineSceneController,
-    private readonly unifiedSelection: CadUnifiedSelectionController,
-    private readonly designSelection: DesignSelectionController,
-    private readonly pointSelection: CadPointSelectionController,
-    private readonly lineSelection: CadLineSelectionController,
-    private readonly history: CadHistoryController,
-  ) {}
+    designModel: DesignModel,
+    designScene: DesignSceneController,
+    pointScene: CadPointSceneController,
+    lineScene: CadLineSceneController,
+    unifiedSelection: CadUnifiedSelectionController,
+    designSelection: DesignSelectionController,
+    pointSelection: CadPointSelectionController,
+    lineSelection: CadLineSelectionController,
+    history: CadHistoryController,
+  ) {
+    this.designModel = designModel;
+    this.designScene = designScene;
+    this.pointScene = pointScene;
+    this.lineScene = lineScene;
+    this.unifiedSelection = unifiedSelection;
+    this.designSelection = designSelection;
+    this.pointSelection = pointSelection;
+    this.lineSelection = lineSelection;
+    this.history = history;
+  }
 
   execute(): boolean {
     const state = this.unifiedSelection.getState();
