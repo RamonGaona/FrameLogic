@@ -55,6 +55,10 @@ import {
 } from "../drawing/SectionModelInteractionController";
 
 import {
+  SectionAxisDragStabilityController,
+} from "../drawing/SectionAxisDragStabilityController";
+
+import {
   UnifiedPdfNavigationController,
 } from "../drawing/UnifiedPdfNavigationController";
 
@@ -193,6 +197,14 @@ export async function createBimCore(
       drawingProfessional: core.drawingProfessional,
     });
 
+  const sectionAxisDragStability =
+    new SectionAxisDragStabilityController({
+      canvas,
+      cameraProvider: () =>
+        core.world.camera.three,
+      sectionDrawing: core.sectionDrawing,
+    });
+
   const assemblyPdfTreeBridge =
     new AssemblyPdfTreeBridgeController({
       designModel: core.designModel,
@@ -317,6 +329,7 @@ export async function createBimCore(
     unifiedPdfProjectBridge.dispose();
     unifiedPdfNavigation.dispose();
     assemblyPdfTreeBridge.dispose();
+    sectionAxisDragStability.dispose();
     sectionModelInteraction.dispose();
     sectionInstanceTreeBridge.dispose();
     assemblyPdfProjectBridge.dispose();
