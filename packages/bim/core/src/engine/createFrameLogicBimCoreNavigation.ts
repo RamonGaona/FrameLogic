@@ -39,6 +39,14 @@ import {
 } from "../drawing/AssemblyPdfProjectBridgeController";
 
 import {
+  AssemblyPdfViewEditingController,
+} from "../drawing/AssemblyPdfViewEditingController";
+
+import {
+  SectionInstanceTreeBridgeController,
+} from "../drawing/SectionInstanceTreeBridgeController";
+
+import {
   UnifiedPdfNavigationController,
 } from "../drawing/UnifiedPdfNavigationController";
 
@@ -117,6 +125,11 @@ export async function createBimCore(
       designScene: core.designScene,
     });
 
+  const assemblyPdfViewEditing =
+    new AssemblyPdfViewEditingController({
+      assemblyPdf,
+    });
+
   const assemblyPdfProjectBridge =
     new AssemblyPdfProjectBridgeController({
       projectPackage: core.projectPackage,
@@ -148,6 +161,13 @@ export async function createBimCore(
     cancelActiveCommand: () =>
       core.cancelActiveCadCommand(),
   });
+
+  const sectionInstanceTreeBridge =
+    new SectionInstanceTreeBridgeController({
+      container,
+      sectionDrawing: core.sectionDrawing,
+      drawingWorkspace: core.drawingWorkspace,
+    });
 
   const assemblyPdfTreeBridge =
     new AssemblyPdfTreeBridgeController({
@@ -273,7 +293,9 @@ export async function createBimCore(
     unifiedPdfProjectBridge.dispose();
     unifiedPdfNavigation.dispose();
     assemblyPdfTreeBridge.dispose();
+    sectionInstanceTreeBridge.dispose();
     assemblyPdfProjectBridge.dispose();
+    assemblyPdfViewEditing.dispose();
     assemblyPdf.dispose();
     moveRuler.dispose();
     smartPieceInsertion.dispose();
