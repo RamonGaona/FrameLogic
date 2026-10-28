@@ -18,9 +18,14 @@ interface AssemblyPdfTreeBridgeControllerOptions {
 }
 
 /**
- * Añade la acción PDF a las filas de ENSAMBLAJES sin modificar el árbol base.
- * Se inserta dentro del span de metadatos para convivir con los ojos que la UI
- * web agrega a la fila sin alterar sus columnas ni la selección del ensamble.
+ * Integra la acción PDF con el árbol de ENSAMBLAJES sin modificar el
+ * InstanceTreeController base.
+ *
+ * - Mantiene un acceso compacto PDF en la fila cuando hay espacio.
+ * - Añade siempre "Enviar a PDF" al menú contextual del ensamble.
+ *
+ * La segunda vía es la principal: el usuario hace clic derecho sobre el
+ * ensamble y encuentra la acción junto a Renombrar/Mover/Copiar/Eliminar.
  */
 export class AssemblyPdfTreeBridgeController {
   private readonly options: AssemblyPdfTreeBridgeControllerOptions;
@@ -68,13 +73,21 @@ export class AssemblyPdfTreeBridgeController {
             child instanceof HTMLSpanElement,
         );
         const name = spans[0]?.textContent?.slice(2).trim();
-        const existing = candidate.querySelector<HTMLButtonElement>(
-          `button[data-framelogic-assembly-pdf-id="${assembly.id}"]`,
-        );
-        return name === assembly.name && !existing;
+        return name === assembly.name;
       });
 
       if (!row) continue;
+
+      this.installContextMenuBridge(
+        row,
+        assembly.id,
+      );
+
+      const existing = row.querySelector<HTMLButtonElement>(
+        `button[data-framelogic-assembly-pdf-id="${assembly.id}"]`,
+      );
+      if (existing) continue;
+
       const spans = Array.from(row.children).filter(
         (child): child is HTMLSpanElement =>
           child instanceof HTMLSpanElement,
@@ -110,17 +123,152 @@ export class AssemblyPdfTreeBridgeController {
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const current = this.options.designModel.assemblies.get(assembly.id);
-        if (!current) return;
-        this.options.assemblyPdf.sendAssembly({
-          assemblyId: current.id,
-          assemblyName: current.name,
-          instanceIds: current.pieceInstanceIds,
-          workPlane: this.options.workPlane.getState(),
-        });
+        this.sendAssembly(assembly.id);
       });
 
       meta.append(button);
     }
+  }
+
+  private installContextMenuBridge(
+    row: HTMLDivElement,
+    assemblyId: string,
+  ): void {
+    if (
+      row.dataset["framelogicAssemblyPdfContextId"]
+      === assemblyId
+    ) {
+      return;
+    }
+
+    row.dataset["framelogicAssemblyPdfContextId"] =
+      assemblyId;
+
+    row.addEventListener(
+      "contextmenu",
+      () => {
+        window.setTimeout(
+          () =>
+            this.decorateOpenAssemblyContextMenu(
+              assemblyId,
+            ),
+          0,
+        );
+      },
+    );
+  }
+
+  private decorateOpenAssemblyContextMenu(
+    assemblyId: string,
+  ): void {
+    if (this.disposed) return;
+
+    const menus = Array.from(
+      document.body.querySelectorAll<HTMLDivElement>(
+        "div",
+      ),
+    ).filter((element) => {
+      const buttons = Array.from(
+        element.children,
+      ).filter(
+        (child): child is HTMLButtonElement =>
+          child instanceof HTMLButtonElement,
+      );
+
+      return buttons.some(
+        (button) =>
+          button.textContent
+          === "Renombrar ensamble · F2",
+      );
+    });
+
+    const menu = menus.at(-1);
+    if (!menu) return;
+
+    const alreadyAdded = Array.from(
+      menu.querySelectorAll<HTMLButtonElement>("button"),
+    ).some(
+      (button) =>
+        button.dataset["framelogicAssemblyPdfMenu"]
+        === assemblyId,
+    );
+    if (alreadyAdded) return;
+
+    const referenceButton =
+      menu.querySelector<HTMLButtonElement>("button");
+    const button =
+      document.createElement("button");
+
+    button.type = "button";
+    button.textContent = "Enviar a PDF";
+    button.dataset["framelogicAssemblyPdfMenu"] =
+      assemblyId;
+
+    if (referenceButton) {
+      Object.assign(
+        button.style,
+        {
+          cssText:
+            referenceButton.style.cssText,
+        },
+      );
+    }
+    else {
+      Object.assign(button.style, {
+        display: "block",
+        width: "100%",
+        padding: "6px 8px",
+        border: "0",
+        borderRadius: "3px",
+        background: "transparent",
+        color: "#e7f0f4",
+        textAlign: "left",
+        cursor: "pointer",
+        font: "12px system-ui, sans-serif",
+      });
+    }
+
+    button.addEventListener(
+      "mouseenter",
+      () => {
+        button.style.background =
+          "rgba(100,190,230,0.16)";
+      },
+    );
+    button.addEventListener(
+      "mouseleave",
+      () => {
+        button.style.background =
+          "transparent";
+      },
+    );
+    button.addEventListener(
+      "click",
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.sendAssembly(assemblyId);
+        menu.remove();
+      },
+    );
+
+    menu.prepend(button);
+  }
+
+  private sendAssembly(
+    assemblyId: string,
+  ): void {
+    const current =
+      this.options.designModel.assemblies.get(
+        assemblyId,
+      );
+    if (!current) return;
+
+    this.options.assemblyPdf.sendAssembly({
+      assemblyId: current.id,
+      assemblyName: current.name,
+      instanceIds: current.pieceInstanceIds,
+      workPlane: this.options.workPlane.getState(),
+    });
   }
 }
