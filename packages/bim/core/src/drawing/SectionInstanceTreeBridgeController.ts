@@ -1,4 +1,8 @@
 import type {
+  DrawingProductionController,
+} from "./DrawingProductionController";
+
+import type {
   DrawingWorkspaceController,
 } from "./DrawingWorkspaceController";
 
@@ -23,19 +27,26 @@ interface SectionDrawingRuntime {
   setStatus(message: string): void;
 }
 
+interface DrawingProductionRuntime {
+  syncSectionLayerVisibility(): void;
+}
+
 interface Options {
   readonly container: HTMLElement;
   readonly sectionDrawing: SectionDrawingController;
   readonly drawingWorkspace: DrawingWorkspaceController;
+  readonly drawingProduction: DrawingProductionController;
 }
 
 export class SectionInstanceTreeBridgeController {
   private readonly options: Options;
   private readonly runtime: SectionDrawingRuntime;
+  private readonly productionRuntime: DrawingProductionRuntime;
   private readonly hidden = new Set<string>();
   private readonly originalCreateVisual: (
     section: SectionViewDefinition,
   ) => void;
+  private readonly originalSyncSectionLayerVisibility: () => void;
   private readonly timer: number;
   private contextMenu: HTMLDivElement | null = null;
   private lastSignature = "";
@@ -44,14 +55,12 @@ export class SectionInstanceTreeBridgeController {
   constructor(options: Options) {
     this.options = options;
     this.runtime = options.sectionDrawing as unknown as SectionDrawingRuntime;
+    this.productionRuntime = options.drawingProduction as unknown as DrawingProductionRuntime;
 
     /*
      * SectionDrawingController recrea la geometría visual al editar/renombrar
-     * una sección. Antes, esa geometría nacía visible y el timer del árbol la
-     * volvía a ocultar hasta 300 ms después, provocando el parpadeo.
-     *
-     * Envolvemos la creación visual para aplicar el estado de visibilidad en
-     * el mismo task JS, antes de que el navegador pueda pintar el nuevo grupo.
+     * una sección. La sección oculta debe nacer oculta en el mismo task JS,
+     * antes de que el navegador pueda pintarla.
      */
     this.originalCreateVisual =
       this.runtime.createVisual.bind(this.runtime);
@@ -59,7 +68,26 @@ export class SectionInstanceTreeBridgeController {
       section: SectionViewDefinition,
     ): void => {
       this.originalCreateVisual(section);
-      this.applyVisibility(section.id);
+      if (this.hidden.has(section.id)) {
+        const visual = this.runtime.visuals.get(section.id);
+        if (visual) visual.group.visible = false;
+      }
+    };
+
+    /*
+     * DrawingProductionController sincroniza la capa SECCIONES periódicamente.
+     * Antes esa sincronización volvía visible cualquier sección oculta por el
+     * árbol y, 300 ms después, este bridge la ocultaba otra vez: de ahí el
+     * parpadeo. La sincronización sigue controlando la capa global, pero al
+     * terminar aplicamos únicamente las excepciones ocultas por el usuario.
+     */
+    this.originalSyncSectionLayerVisibility =
+      this.productionRuntime.syncSectionLayerVisibility.bind(
+        this.productionRuntime,
+      );
+    this.productionRuntime.syncSectionLayerVisibility = (): void => {
+      this.originalSyncSectionLayerVisibility();
+      this.reapplyHiddenVisibility();
     };
 
     this.decorate();
@@ -73,6 +101,8 @@ export class SectionInstanceTreeBridgeController {
     window.clearInterval(this.timer);
     window.removeEventListener("pointerdown", this.handleGlobalPointerDown, true);
     this.runtime.createVisual = this.originalCreateVisual;
+    this.productionRuntime.syncSectionLayerVisibility =
+      this.originalSyncSectionLayerVisibility;
     this.hideContextMenu();
     this.options.container
       .querySelector('[data-framelogic-section-tree="true"]')
@@ -96,7 +126,7 @@ export class SectionInstanceTreeBridgeController {
     );
     if (!body) return;
 
-    this.reapplyVisibility();
+    this.reapplyHiddenVisibility();
 
     const sections = this.options.sectionDrawing.getSections();
     const activeId = this.options.sectionDrawing.getActiveSection()?.id ?? null;
@@ -252,23 +282,20 @@ export class SectionInstanceTreeBridgeController {
   private toggleVisibility(sectionId: string): void {
     if (this.hidden.has(sectionId)) {
       this.hidden.delete(sectionId);
+      /* Respeta también el estado global de la capa SECCIONES. */
+      this.productionRuntime.syncSectionLayerVisibility();
     }
     else {
       this.hidden.add(sectionId);
+      const visual = this.runtime.visuals.get(sectionId);
+      if (visual) visual.group.visible = false;
     }
 
-    this.applyVisibility(sectionId);
     this.lastSignature = "";
     this.decorate();
   }
 
-  private applyVisibility(sectionId: string): void {
-    const visual = this.runtime.visuals.get(sectionId);
-    if (!visual) return;
-    visual.group.visible = !this.hidden.has(sectionId);
-  }
-
-  private reapplyVisibility(): void {
+  private reapplyHiddenVisibility(): void {
     const sections = this.options.sectionDrawing.getSections();
     const existing = new Set(
       sections.map((section) => section.id),
@@ -277,11 +304,10 @@ export class SectionInstanceTreeBridgeController {
     for (const id of Array.from(this.hidden)) {
       if (!existing.has(id)) {
         this.hidden.delete(id);
+        continue;
       }
-    }
-
-    for (const section of sections) {
-      this.applyVisibility(section.id);
+      const visual = this.runtime.visuals.get(id);
+      if (visual) visual.group.visible = false;
     }
   }
 
