@@ -89,31 +89,22 @@ interface RuntimeDocument {
 }
 
 
-interface SurfaceExtraction {
-  readonly cylinders: BrepExactCylinder[];
-  readonly planes: BrepExactPlane[];
-}
-
-
 let sharedKernel:
   OpenCascadeBrepKernel
   | null =
     null;
 
 
+/**
+ * Convierte los valores enum expuestos por embind al tipo nominal que los
+ * constructores de opencascade.js esperan. Algunas versiones del paquete
+ * generan los miembros TopAbs_* como `{}` en sus declaraciones TypeScript,
+ * aunque en runtime son los valores enum correctos de OCCT.
+ */
 function asShapeEnum(
   value: unknown,
 ): TopAbs_ShapeEnum {
   return value as TopAbs_ShapeEnum;
-}
-
-
-function yieldToBrowser(): Promise<void> {
-  return new Promise(
-    (resolve) => {
-      setTimeout(resolve, 0);
-    },
-  );
 }
 
 
@@ -122,11 +113,8 @@ function yieldToBrowser(): Promise<void> {
  *
  * Mantiene el TopoDS_Shape vivo en WASM mientras el documento siga cargado.
  * Las consultas de interacción no recorren OCCT en cada pointermove: durante
- * la carga se indexan vértices, aristas analíticas y superficies exactas.
- *
- * El indexado cede brevemente entre familias geométricas para evitar bloquear
- * la UI durante toda la carga de una pieza compleja. Planos y cilindros se
- * extraen ahora en una sola pasada por las caras.
+ * la carga se indexan vértices, aristas analíticas y superficies exactas, y
+ * GeometryQueryProvider consulta ese índice de forma síncrona.
  */
 export class OpenCascadeBrepKernel {
   private ocPromise:
@@ -205,28 +193,6 @@ export class OpenCascadeBrepKernel {
       }
 
       try {
-        const vertices =
-          this.extractVertices(
-            oc,
-            shape,
-          );
-
-        await yieldToBrowser();
-
-        const edges =
-          this.extractEdges(
-            oc,
-            shape,
-          );
-
-        await yieldToBrowser();
-
-        const surfaces =
-          this.extractSurfaces(
-            oc,
-            shape,
-          );
-
         const runtime:
           RuntimeDocument = {
             id,
@@ -234,12 +200,26 @@ export class OpenCascadeBrepKernel {
             shape,
             modelScale:
               1,
-            vertices,
-            edges,
+            vertices:
+              this.extractVertices(
+                oc,
+                shape,
+              ),
+            edges:
+              this.extractEdges(
+                oc,
+                shape,
+              ),
             cylinders:
-              surfaces.cylinders,
+              this.extractCylinders(
+                oc,
+                shape,
+              ),
             planes:
-              surfaces.planes,
+              this.extractPlanes(
+                oc,
+                shape,
+              ),
           };
 
         this.documents.set(
@@ -584,14 +564,12 @@ export class OpenCascadeBrepKernel {
   }
 
 
-  private extractSurfaces(
+  private extractCylinders(
     oc: OpenCascadeInstance,
     shape: TopoDS_Shape,
-  ): SurfaceExtraction {
+  ): BrepExactCylinder[] {
     const cylinders:
       BrepExactCylinder[] = [];
-    const planes:
-      BrepExactPlane[] = [];
     const explorer =
       new oc.TopExp_Explorer_2(
         shape,
@@ -622,11 +600,8 @@ export class OpenCascadeBrepKernel {
           );
 
         try {
-          const type =
-            adaptor.GetType();
-
           if (
-            type
+            adaptor.GetType()
               === oc.GeomAbs_SurfaceType
                 .GeomAbs_Cylinder
           ) {
@@ -659,8 +634,62 @@ export class OpenCascadeBrepKernel {
             axis.delete();
             cylinder.delete();
           }
-          else if (
-            type
+        }
+        finally {
+          adaptor.delete();
+          face.delete();
+        }
+
+        explorer.Next();
+        index += 1;
+      }
+    }
+    finally {
+      explorer.delete();
+    }
+
+    return cylinders;
+  }
+
+
+  private extractPlanes(
+    oc: OpenCascadeInstance,
+    shape: TopoDS_Shape,
+  ): BrepExactPlane[] {
+    const planes:
+      BrepExactPlane[] = [];
+    const explorer =
+      new oc.TopExp_Explorer_2(
+        shape,
+        asShapeEnum(
+          oc.TopAbs_ShapeEnum
+            .TopAbs_FACE,
+        ),
+        asShapeEnum(
+          oc.TopAbs_ShapeEnum
+            .TopAbs_SHAPE,
+        ),
+      );
+    let index =
+      0;
+
+    try {
+      while (
+        explorer.More()
+      ) {
+        const face =
+          oc.TopoDS.Face_1(
+            explorer.Current(),
+          );
+        const adaptor =
+          new oc.BRepAdaptor_Surface_2(
+            face,
+            true,
+          );
+
+        try {
+          if (
+            adaptor.GetType()
               === oc.GeomAbs_SurfaceType
                 .GeomAbs_Plane
           ) {
@@ -705,10 +734,7 @@ export class OpenCascadeBrepKernel {
       explorer.delete();
     }
 
-    return {
-      cylinders,
-      planes,
-    };
+    return planes;
   }
 
 
