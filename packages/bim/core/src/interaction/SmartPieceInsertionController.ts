@@ -69,6 +69,9 @@ export class SmartPieceInsertionController {
   private pointerDownX = 0;
   private pointerDownY = 0;
   private pointerDownActive = false;
+  private pointerMoveFrame: number | null = null;
+  private pendingPointerClientX = 0;
+  private pendingPointerClientY = 0;
   private resolver: ((value: PieceInstance | null) => void) | null = null;
   private disposed = false;
 
@@ -85,6 +88,7 @@ export class SmartPieceInsertionController {
 
     this.directionHelper.visible = false;
     this.directionHelper.renderOrder = 999;
+    this.directionHelper.frustumCulled = false;
     this.directionHelper.name = "FrameLogicInsertionDirection";
     options.scene.add(this.directionHelper);
 
@@ -148,6 +152,7 @@ export class SmartPieceInsertionController {
       );
     }
 
+    this.cancelPendingPointerMove();
     this.options.beforeStart?.();
     this.activeDefinitionId = definitionId;
     this.stage = "ANCHOR";
@@ -175,6 +180,7 @@ export class SmartPieceInsertionController {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.cancelPendingPointerMove();
     this.cancel();
     this.options.canvas.removeEventListener(
       "pointermove",
@@ -246,14 +252,38 @@ export class SmartPieceInsertionController {
     event: PointerEvent,
   ): void => {
     if (!this.isActive || !this.preview) return;
-    const point = this.pickPoint(event.clientX, event.clientY);
+
+    this.pendingPointerClientX = event.clientX;
+    this.pendingPointerClientY = event.clientY;
+
+    if (this.pointerMoveFrame !== null) {
+      return;
+    }
+
+    this.pointerMoveFrame = window.requestAnimationFrame(
+      () => {
+        this.pointerMoveFrame = null;
+        this.updatePointerPreview(
+          this.pendingPointerClientX,
+          this.pendingPointerClientY,
+        );
+      },
+    );
+  };
+
+  private updatePointerPreview(
+    clientX: number,
+    clientY: number,
+  ): void {
+    if (!this.isActive || !this.preview) return;
+
+    const point = this.pickPoint(clientX, clientY);
     if (!point) return;
     this.currentPoint = point;
 
     if (this.stage === "ANCHOR") {
       this.preview.position.copy(point);
       this.preview.visible = true;
-      this.preview.updateMatrixWorld(true);
       return;
     }
 
@@ -261,7 +291,18 @@ export class SmartPieceInsertionController {
     this.preview.position.copy(this.anchor);
     this.applyDirectionToPreview(point);
     this.updateDirectionHelper(this.anchor, point);
-  };
+  }
+
+  private cancelPendingPointerMove(): void {
+    if (this.pointerMoveFrame === null) {
+      return;
+    }
+
+    window.cancelAnimationFrame(
+      this.pointerMoveFrame,
+    );
+    this.pointerMoveFrame = null;
+  }
 
   private readonly handlePointerDown = (
     event: PointerEvent,
@@ -291,6 +332,8 @@ export class SmartPieceInsertionController {
     ) {
       return;
     }
+
+    this.cancelPendingPointerMove();
 
     const point = this.pickPoint(event.clientX, event.clientY);
     if (!point || !this.preview) return;
@@ -402,7 +445,6 @@ export class SmartPieceInsertionController {
       this.directionQuaternion(direction),
     );
     this.preview.visible = true;
-    this.preview.updateMatrixWorld(true);
   }
 
   private updateDirectionHelper(
@@ -454,6 +496,8 @@ export class SmartPieceInsertionController {
   }
 
   private finish(): void {
+    this.cancelPendingPointerMove();
+
     if (this.preview) {
       this.options.scene.remove(this.preview);
       this.disposePreview(this.preview);
