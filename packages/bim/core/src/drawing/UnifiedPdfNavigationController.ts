@@ -360,33 +360,38 @@ export class UnifiedPdfNavigationController {
   ): void {
     if (!select) return;
 
-    const signature = entries
-      .map((entry, index) =>
-        `${index + 1}:${entry.key}:${entry.label}`,
-      )
+    const optionRows = entries.map((entry, index) => ({
+      value: entry.key,
+      label: entry.kind === "SECTION"
+        ? `${index + 1} · ${entry.label} · SECCIÓN`
+        : `${index + 1} · ${entry.label} · ENSAMBLE`,
+    }));
+    const signature = optionRows
+      .map((row) => `${row.value}:${row.label}`)
+      .join("|");
+    const actualSignature = Array.from(select.options)
+      .map((option) => `${option.value}:${option.textContent ?? ""}`)
       .join("|");
 
     if (
-      select.dataset["framelogicUnifiedPdfSignature"]
-      !== signature
+      select.dataset["framelogicUnifiedPdfSignature"] !== signature
+      || actualSignature !== signature
     ) {
       select.replaceChildren();
 
-      if (entries.length < 1) {
+      if (optionRows.length < 1) {
         const option = document.createElement("option");
         option.value = "";
         option.textContent = "Sin planos PDF";
         select.append(option);
       }
       else {
-        entries.forEach((entry, index) => {
+        for (const row of optionRows) {
           const option = document.createElement("option");
-          option.value = entry.key;
-          option.textContent = entry.kind === "SECTION"
-            ? `${index + 1} · ${entry.label} · SECCIÓN`
-            : `${index + 1} · ${entry.label} · ENSAMBLE`;
+          option.value = row.value;
+          option.textContent = row.label;
           select.append(option);
-        });
+        }
       }
 
       select.dataset["framelogicUnifiedPdfSignature"] = signature;
