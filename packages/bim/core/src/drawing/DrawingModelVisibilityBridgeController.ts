@@ -1,3 +1,5 @@
+import type * as THREE from "three";
+
 import type {
   DesignModel,
 } from "@framelogic/domain";
