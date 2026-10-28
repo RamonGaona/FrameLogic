@@ -27,8 +27,16 @@ import {
 } from "../navigation/LinkedAssemblyInstanceController";
 
 import {
+  LinkedAssemblyInteractionController,
+} from "../navigation/LinkedAssemblyInteractionController";
+
+import {
   InstanceTreeGroupVisibilityController,
 } from "../navigation/InstanceTreeGroupVisibilityController";
+
+import {
+  BuildVersionBadgeController,
+} from "../navigation/BuildVersionBadgeController";
 
 import {
   AlignController,
@@ -120,6 +128,8 @@ export async function createBimCore(
   }
 
   const canvas = renderer.three.domElement;
+  const buildVersion =
+    new BuildVersionBadgeController(container);
 
   const smartPieceInsertion =
     new SmartPieceInsertionController({
@@ -220,6 +230,15 @@ export async function createBimCore(
       designScene: core.designScene,
       designSelection: core.designSelection,
       instanceTree,
+    });
+
+  const linkedAssemblyInteraction =
+    new LinkedAssemblyInteractionController({
+      designModel: core.designModel,
+      designScene: core.designScene,
+      designSelection: core.designSelection,
+      instanceTree,
+      linkedAssemblies: linkedAssemblyInstances,
     });
 
   const modelSpaceInstanceTreeBridge =
@@ -399,6 +418,7 @@ export async function createBimCore(
     unifiedPdfProjectBridge.dispose();
     instanceTreeGroupVisibility.dispose();
     modelSpaceInstanceTreeBridge.dispose();
+    linkedAssemblyInteraction.dispose();
     linkedAssemblyInstances.dispose();
     assemblyClipboard.dispose();
     unifiedPdfNavigation.dispose();
@@ -415,6 +435,7 @@ export async function createBimCore(
     smartPieceInsertion.dispose();
     align.dispose();
     instanceTree.dispose();
+    buildVersion.dispose();
     baseDispose();
   };
 
