@@ -23,6 +23,14 @@ import {
 } from "../navigation/AssemblyClipboardController";
 
 import {
+  LinkedAssemblyInstanceController,
+} from "../navigation/LinkedAssemblyInstanceController";
+
+import {
+  InstanceTreeGroupVisibilityController,
+} from "../navigation/InstanceTreeGroupVisibilityController";
+
+import {
   AlignController,
 } from "../interaction/AlignController";
 
@@ -206,6 +214,14 @@ export async function createBimCore(
       instanceTree,
     });
 
+  const linkedAssemblyInstances =
+    new LinkedAssemblyInstanceController({
+      designModel: core.designModel,
+      designScene: core.designScene,
+      designSelection: core.designSelection,
+      instanceTree,
+    });
+
   const modelSpaceInstanceTreeBridge =
     new ModelSpaceInstanceTreeBridgeController({
       container,
@@ -227,6 +243,18 @@ export async function createBimCore(
       sectionDrawing: core.sectionDrawing,
       drawingWorkspace: core.drawingWorkspace,
       drawingProduction: core.drawingProduction,
+    });
+
+  const instanceTreeGroupVisibility =
+    new InstanceTreeGroupVisibilityController({
+      container,
+      designModel: core.designModel,
+      lineScene: core.cadLineScene,
+      pointScene: core.cadPointScene,
+      lineSelection: core.cadLineSelection,
+      pointSelection: core.cadPointSelection,
+      sectionDrawing: core.sectionDrawing,
+      sectionTree: sectionInstanceTreeBridge,
     });
 
   const sectionModelInteraction =
@@ -369,7 +397,9 @@ export async function createBimCore(
     if (disposed) return;
     disposed = true;
     unifiedPdfProjectBridge.dispose();
+    instanceTreeGroupVisibility.dispose();
     modelSpaceInstanceTreeBridge.dispose();
+    linkedAssemblyInstances.dispose();
     assemblyClipboard.dispose();
     unifiedPdfNavigation.dispose();
     assemblyPdfTreeBridge.dispose();
