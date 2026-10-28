@@ -1,0 +1,237 @@
+import type {
+  DesignModel,
+} from "@framelogic/domain";
+
+import type {
+  CadLineSceneController,
+} from "../design/CadLineSceneController";
+
+import type {
+  CadPointSceneController,
+} from "../design/CadPointSceneController";
+
+import type {
+  CadLineSelectionController,
+} from "../interaction/CadLineSelectionController";
+
+import type {
+  CadPointSelectionController,
+} from "../interaction/CadPointSelectionController";
+
+import type {
+  SectionDrawingController,
+} from "../drawing/SectionDrawingController";
+
+import type {
+  SectionInstanceTreeBridgeController,
+} from "../drawing/SectionInstanceTreeBridgeController";
+
+
+interface SectionTreeRuntime {
+  readonly hidden: Set<string>;
+  toggleVisibility(sectionId: string): void;
+}
+
+interface Options {
+  readonly container: HTMLElement;
+  readonly designModel: DesignModel;
+  readonly lineScene: CadLineSceneController;
+  readonly pointScene: CadPointSceneController;
+  readonly lineSelection: CadLineSelectionController;
+  readonly pointSelection: CadPointSelectionController;
+  readonly sectionDrawing: SectionDrawingController;
+  readonly sectionTree: SectionInstanceTreeBridgeController;
+}
+
+/**
+ * Ojos globales de categorías en INSTANCIAS.
+ *
+ * No sustituyen los ojos individuales; solamente ofrecen una operación masiva
+ * sobre el grupo completo.
+ */
+export class InstanceTreeGroupVisibilityController {
+  private readonly options: Options;
+  private readonly sectionRuntime: SectionTreeRuntime;
+  private readonly timer: number;
+  private disposed = false;
+
+  constructor(options: Options) {
+    this.options = options;
+    this.sectionRuntime =
+      options.sectionTree as unknown as SectionTreeRuntime;
+
+    this.decorate();
+    this.timer = window.setInterval(
+      () => this.decorate(),
+      250,
+    );
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    window.clearInterval(this.timer);
+
+    this.options.container
+      .querySelectorAll('[data-framelogic-group-eye="true"]')
+      .forEach((element) => element.remove());
+  }
+
+  private decorate(): void {
+    if (this.disposed) return;
+
+    const cadDetails = this.options.container.querySelector<HTMLDetailsElement>(
+      'details[data-framelogic-cad-entity-tree="true"]',
+    );
+    const sectionDetails = this.options.container.querySelector<HTMLDetailsElement>(
+      'details[data-framelogic-section-tree="true"]',
+    );
+
+    if (cadDetails) {
+      const lines = this.options.designModel.cadLines.getAll();
+      const points = this.options.designModel.cadPoints.getAll();
+      const total = lines.length + points.length;
+      const allHidden = total > 0
+        && lines.every((line) => this.options.lineScene.isHidden(line.id))
+        && points.every((point) => this.options.pointScene.isHidden(point.id));
+
+      this.ensureEye(
+        cadDetails,
+        "cad",
+        allHidden,
+        total > 0,
+        () => this.toggleAllCad(),
+      );
+    }
+
+    if (sectionDetails) {
+      const sections = this.options.sectionDrawing.getSections();
+      const allHidden = sections.length > 0
+        && sections.every((section) =>
+          this.sectionRuntime.hidden.has(section.id),
+        );
+
+      this.ensureEye(
+        sectionDetails,
+        "sections",
+        allHidden,
+        sections.length > 0,
+        () => this.toggleAllSections(),
+      );
+    }
+  }
+
+  private ensureEye(
+    details: HTMLDetailsElement,
+    key: string,
+    allHidden: boolean,
+    enabled: boolean,
+    action: () => void,
+  ): void {
+    const summary = details.querySelector<HTMLElement>(":scope > summary");
+    if (!summary) return;
+
+    let button = summary.querySelector<HTMLButtonElement>(
+      `button[data-framelogic-group-eye-key="${key}"]`,
+    );
+
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.dataset["framelogicGroupEye"] = "true";
+      button.dataset["framelogicGroupEyeKey"] = key;
+      Object.assign(button.style, {
+        float: "right",
+        width: "22px",
+        height: "18px",
+        margin: "-1px 0 0 6px",
+        padding: "0",
+        border: "0",
+        background: "transparent",
+        color: "#cfe8f3",
+        cursor: "pointer",
+      });
+      button.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        action();
+      });
+      summary.append(button);
+    }
+
+    button.disabled = !enabled;
+    button.style.opacity = enabled ? "1" : "0.35";
+    button.style.cursor = enabled ? "pointer" : "default";
+    button.title = allHidden
+      ? "Mostrar todo el grupo"
+      : "Ocultar todo el grupo";
+    button.innerHTML = eyeSvg(allHidden);
+  }
+
+  private toggleAllCad(): void {
+    const lines = this.options.designModel.cadLines.getAll();
+    const points = this.options.designModel.cadPoints.getAll();
+    if (lines.length + points.length < 1) return;
+
+    const anyVisible =
+      lines.some((line) => !this.options.lineScene.isHidden(line.id))
+      || points.some((point) => !this.options.pointScene.isHidden(point.id));
+    const hide = anyVisible;
+
+    for (const line of lines) {
+      this.options.lineScene.setHidden(line.id, hide);
+    }
+    for (const point of points) {
+      this.options.pointScene.setHidden(point.id, hide);
+    }
+
+    if (hide) {
+      this.options.lineSelection.clearSelection();
+      this.options.pointSelection.clearSelection();
+    }
+
+    this.decorate();
+  }
+
+  private toggleAllSections(): void {
+    const sections = this.options.sectionDrawing.getSections();
+    if (sections.length < 1) return;
+
+    const anyVisible = sections.some((section) =>
+      !this.sectionRuntime.hidden.has(section.id),
+    );
+    const hide = anyVisible;
+
+    for (const section of sections) {
+      const currentlyHidden =
+        this.sectionRuntime.hidden.has(section.id);
+      if (currentlyHidden === hide) continue;
+      this.sectionRuntime.toggleVisibility(section.id);
+    }
+
+    this.decorate();
+  }
+}
+
+
+function eyeSvg(hidden: boolean): string {
+  if (hidden) {
+    return [
+      '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">',
+      '<path d="M3 3l18 18" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+      '<path d="M2.5 12s3.5-6 9.5-6c2.1 0 3.9.7 5.4 1.7M21.5 12s-3.5 6-9.5 6c-2.1 0-3.9-.7-5.4-1.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+      '</svg>',
+    ].join("");
+  }
+
+  return [
+    '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">',
+    '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.6"/>',
+    '<circle cx="12" cy="12" r="2.6" fill="currentColor"/>',
+    '</svg>',
+  ].join("");
+}
