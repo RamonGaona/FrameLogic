@@ -5,9 +5,9 @@ import type {
 } from "../design/DesignSceneController";
 
 import type {
+  CadWorkPlaneMode,
   CadWorkPlaneState,
 } from "../interaction/CadWorkPlaneController";
-
 
 interface AssemblyPdfControllerOptions {
   readonly container: HTMLElement;
@@ -21,6 +21,41 @@ export interface AssemblyPdfRequest {
   readonly workPlane: CadWorkPlaneState;
 }
 
+interface VectorSnapshot {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+}
+
+export interface AssemblyPdfWorkPlaneSnapshot {
+  readonly mode: CadWorkPlaneMode;
+  readonly enabled: boolean;
+  readonly origin: VectorSnapshot;
+  readonly xAxis: VectorSnapshot;
+  readonly yAxis: VectorSnapshot;
+  readonly normal: VectorSnapshot;
+}
+
+export interface AssemblyPdfViewSnapshot {
+  readonly id: string;
+  readonly assemblyId: string;
+  readonly assemblyName: string;
+  readonly instanceIds: readonly string[];
+  readonly workPlane: AssemblyPdfWorkPlaneSnapshot;
+}
+
+export interface AssemblyPdfSheetSnapshot {
+  readonly id: string;
+  readonly name: string;
+  readonly views: readonly AssemblyPdfViewSnapshot[];
+}
+
+export interface AssemblyPdfSnapshot {
+  readonly version: 1;
+  readonly activeSheetId: string | null;
+  readonly sheets: readonly AssemblyPdfSheetSnapshot[];
+}
+
 interface PlanSegment {
   readonly x1: number;
   readonly y1: number;
@@ -28,14 +63,22 @@ interface PlanSegment {
   readonly y2: number;
 }
 
+interface PlanGeometry {
+  readonly width: number;
+  readonly height: number;
+  readonly segments: readonly PlanSegment[];
+}
+
 interface AssemblyPlanView {
   readonly id: string;
   readonly assemblyId: string;
   readonly assemblyName: string;
-  readonly workPlaneMode: string;
-  readonly width: number;
-  readonly height: number;
-  readonly segments: readonly PlanSegment[];
+  readonly instanceIds: readonly string[];
+  readonly workPlane: CadWorkPlaneState;
+  width: number;
+  height: number;
+  segments: readonly PlanSegment[];
+  resolved: boolean;
 }
 
 interface AssemblyPdfSheet {
@@ -82,9 +125,10 @@ const EPSILON = 1e-8;
 /**
  * Hojas PDF de vistas en planta de ensambles.
  *
- * Cada vista se proyecta con el WorkPlane activo en el instante de enviarla:
- * X/Y del WorkPlane son los ejes del papel y su normal define la vista en planta.
- * Solo se recorren las PieceInstance pertenecientes al ensamble solicitado.
+ * La persistencia guarda únicamente definición de hoja, IDs de instancias y
+ * orientación del WorkPlane. Los segmentos 2D se consideran caché runtime y
+ * se regeneran de forma perezosa al abrir/exportar la hoja. De esta manera el
+ * proyecto no duplica la geometría STEP ni crece con miles de líneas PDF.
  */
 export class AssemblyPdfController {
   private readonly designScene: DesignSceneController;
@@ -208,9 +252,12 @@ export class AssemblyPdfController {
       return false;
     }
 
-    const view = this.buildPlanView(request);
-    if (!view) {
-      window.alert("No se encontró geometría visible para generar la planta del ensamble.");
+    const geometry = this.buildPlanGeometry(
+      request.instanceIds,
+      request.workPlane,
+    );
+    if (!geometry) {
+      window.alert("No se encontró geometría para generar la planta del ensamble.");
       return false;
     }
 
@@ -235,8 +282,91 @@ export class AssemblyPdfController {
       sheet = existing;
     }
 
-    sheet.views.push(view);
+    sheet.views.push({
+      id: crypto.randomUUID(),
+      assemblyId: request.assemblyId,
+      assemblyName: request.assemblyName,
+      instanceIds: [...request.instanceIds],
+      workPlane: cloneWorkPlaneState(request.workPlane),
+      width: geometry.width,
+      height: geometry.height,
+      segments: geometry.segments,
+      resolved: true,
+    });
     this.activeSheetId = sheet.id;
+    this.refreshSheetSelect();
+    this.overlay.style.display = "flex";
+    this.render();
+    return true;
+  }
+
+  createSnapshot(): AssemblyPdfSnapshot {
+    return {
+      version: 1,
+      activeSheetId: this.activeSheetId,
+      sheets: this.sheets.map((sheet) => ({
+        id: sheet.id,
+        name: sheet.name,
+        views: sheet.views.map((view) => ({
+          id: view.id,
+          assemblyId: view.assemblyId,
+          assemblyName: view.assemblyName,
+          instanceIds: [...view.instanceIds],
+          workPlane: snapshotWorkPlane(view.workPlane),
+        })),
+      })),
+    };
+  }
+
+  restoreSnapshot(snapshot: AssemblyPdfSnapshot | undefined): void {
+    this.overlay.style.display = "none";
+    this.sheets.length = 0;
+
+    if (!snapshot || snapshot.version !== 1) {
+      this.activeSheetId = null;
+      this.refreshSheetSelect();
+      this.svg.replaceChildren();
+      return;
+    }
+
+    for (const sheet of snapshot.sheets) {
+      this.sheets.push({
+        id: sheet.id,
+        name: sheet.name,
+        views: sheet.views.map((view) => ({
+          id: view.id,
+          assemblyId: view.assemblyId,
+          assemblyName: view.assemblyName,
+          instanceIds: [...view.instanceIds],
+          workPlane: restoreWorkPlane(view.workPlane),
+          width: 1,
+          height: 1,
+          segments: [],
+          resolved: false,
+        })),
+      });
+    }
+
+    this.activeSheetId =
+      snapshot.activeSheetId
+      && this.sheets.some((sheet) => sheet.id === snapshot.activeSheetId)
+        ? snapshot.activeSheetId
+        : this.sheets[0]?.id ?? null;
+    this.refreshSheetSelect();
+    this.svg.replaceChildren();
+  }
+
+  hasSheets(): boolean {
+    return this.sheets.length > 0;
+  }
+
+  openExisting(): boolean {
+    if (this.disposed || this.sheets.length < 1) {
+      return false;
+    }
+    if (!this.getActiveSheet()) {
+      this.activeSheetId = this.sheets[0]?.id ?? null;
+    }
     this.refreshSheetSelect();
     this.overlay.style.display = "flex";
     this.render();
@@ -279,11 +409,32 @@ export class AssemblyPdfController {
     return this.sheets[index - 1]?.id ?? null;
   }
 
-  private buildPlanView(
-    request: AssemblyPdfRequest,
-  ): AssemblyPlanView | null {
-    const ids = new Set(request.instanceIds);
-    const state = request.workPlane;
+  private ensureSheetResolved(sheet: AssemblyPdfSheet): void {
+    for (const view of sheet.views) {
+      if (view.resolved) continue;
+      const geometry = this.buildPlanGeometry(
+        view.instanceIds,
+        view.workPlane,
+      );
+      if (geometry) {
+        view.width = geometry.width;
+        view.height = geometry.height;
+        view.segments = geometry.segments;
+      }
+      else {
+        view.width = 1;
+        view.height = 1;
+        view.segments = [];
+      }
+      view.resolved = true;
+    }
+  }
+
+  private buildPlanGeometry(
+    instanceIds: readonly string[],
+    state: CadWorkPlaneState,
+  ): PlanGeometry | null {
+    const ids = new Set(instanceIds);
     const worldToPlane = new THREE.Matrix4()
       .makeBasis(
         state.xAxis.clone().normalize(),
@@ -345,10 +496,6 @@ export class AssemblyPdfController {
     const offsetY = minY - padding;
 
     return {
-      id: crypto.randomUUID(),
-      assemblyId: request.assemblyId,
-      assemblyName: request.assemblyName,
-      workPlaneMode: state.mode,
       width,
       height,
       segments: raw.map((segment) => ({
@@ -370,7 +517,12 @@ export class AssemblyPdfController {
     const cellHeight = (availableHeight - VIEW_GAP * (rows - 1)) / rows;
     const lines: PaperLine[] = [];
     const labels: PaperLabel[] = [];
-    const frames: PaperLayout["frames"] extends readonly (infer T)[] ? T[] : never = [];
+    const frames: Array<{
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }> = [];
 
     sheet.views.forEach((view, index) => {
       const column = index % columns;
@@ -398,7 +550,7 @@ export class AssemblyPdfController {
       labels.push({
         x: cellX + 8,
         y: cellY + 17,
-        text: `${view.assemblyName} · planta ${view.workPlaneMode}`,
+        text: `${view.assemblyName} · planta ${view.workPlane.mode}`,
         size: 11,
       });
 
@@ -431,6 +583,7 @@ export class AssemblyPdfController {
     this.svg.replaceChildren();
     if (!sheet) return;
 
+    this.ensureSheetResolved(sheet);
     this.title.textContent = `PDF · ${sheet.name}`;
     const layout = this.layout(sheet);
     this.appendRect(0.5, 0.5, SHEET_WIDTH - 1, SHEET_HEIGHT - 1, "#111", 1);
@@ -449,6 +602,7 @@ export class AssemblyPdfController {
   private exportActiveSheet(): void {
     const sheet = this.getActiveSheet();
     if (!sheet) return;
+    this.ensureSheetResolved(sheet);
     const bytes = this.createPdf(sheet);
     const blob = new Blob([bytes], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
@@ -610,4 +764,59 @@ export class AssemblyPdfController {
   private fileSafeName(value: string): string {
     return this.pdfText(value).replace(/[^A-Za-z0-9_-]+/g, "_");
   }
+}
+
+function cloneWorkPlaneState(
+  state: CadWorkPlaneState,
+): CadWorkPlaneState {
+  return {
+    mode: state.mode,
+    enabled: state.enabled,
+    origin: state.origin.clone(),
+    xAxis: state.xAxis.clone(),
+    yAxis: state.yAxis.clone(),
+    normal: state.normal.clone(),
+  };
+}
+
+function snapshotVector(vector: THREE.Vector3): VectorSnapshot {
+  return {
+    x: vector.x,
+    y: vector.y,
+    z: vector.z,
+  };
+}
+
+function snapshotWorkPlane(
+  state: CadWorkPlaneState,
+): AssemblyPdfWorkPlaneSnapshot {
+  return {
+    mode: state.mode,
+    enabled: state.enabled,
+    origin: snapshotVector(state.origin),
+    xAxis: snapshotVector(state.xAxis),
+    yAxis: snapshotVector(state.yAxis),
+    normal: snapshotVector(state.normal),
+  };
+}
+
+function restoreVector(snapshot: VectorSnapshot): THREE.Vector3 {
+  return new THREE.Vector3(
+    snapshot.x,
+    snapshot.y,
+    snapshot.z,
+  );
+}
+
+function restoreWorkPlane(
+  snapshot: AssemblyPdfWorkPlaneSnapshot,
+): CadWorkPlaneState {
+  return {
+    mode: snapshot.mode,
+    enabled: snapshot.enabled,
+    origin: restoreVector(snapshot.origin),
+    xAxis: restoreVector(snapshot.xAxis),
+    yAxis: restoreVector(snapshot.yAxis),
+    normal: restoreVector(snapshot.normal),
+  };
 }
