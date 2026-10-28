@@ -73,6 +73,9 @@ export class AssemblyPdfViewEditingController {
     if (this.disposed) return;
     this.disposed = true;
     this.runtime.render = this.baseRender;
+    delete this.runtime.overlay.dataset[
+      "framelogicSelectedAssemblyPdfViewId"
+    ];
     for (const control of this.controls) {
       control.remove();
     }
@@ -249,6 +252,10 @@ export class AssemblyPdfViewEditingController {
 
   private updateControls(): void {
     const selected = this.getSelected();
+    this.runtime.overlay.dataset[
+      "framelogicSelectedAssemblyPdfViewId"
+    ] = this.selectedViewId ?? "";
+
     const info = this.runtime.overlay.querySelector<HTMLElement>(
       '[data-framelogic-assembly-pdf-view-info="true"]',
     );
