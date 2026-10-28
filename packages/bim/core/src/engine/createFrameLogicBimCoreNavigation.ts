@@ -43,6 +43,10 @@ import {
 } from "../drawing/AssemblyPdfViewEditingController";
 
 import {
+  AssemblyPdfAnnotationController,
+} from "../drawing/AssemblyPdfAnnotationController";
+
+import {
   SectionInstanceTreeBridgeController,
 } from "../drawing/SectionInstanceTreeBridgeController";
 
@@ -130,6 +134,11 @@ export async function createBimCore(
       assemblyPdf,
     });
 
+  const assemblyPdfAnnotations =
+    new AssemblyPdfAnnotationController({
+      assemblyPdf,
+    });
+
   const assemblyPdfProjectBridge =
     new AssemblyPdfProjectBridgeController({
       projectPackage: core.projectPackage,
@@ -167,6 +176,7 @@ export async function createBimCore(
       container,
       sectionDrawing: core.sectionDrawing,
       drawingWorkspace: core.drawingWorkspace,
+      drawingProduction: core.drawingProduction,
     });
 
   const assemblyPdfTreeBridge =
@@ -295,6 +305,7 @@ export async function createBimCore(
     assemblyPdfTreeBridge.dispose();
     sectionInstanceTreeBridge.dispose();
     assemblyPdfProjectBridge.dispose();
+    assemblyPdfAnnotations.dispose();
     assemblyPdfViewEditing.dispose();
     assemblyPdf.dispose();
     moveRuler.dispose();
