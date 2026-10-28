@@ -18,14 +18,15 @@ interface AssemblyPdfTreeBridgeControllerOptions {
 }
 
 /**
- * Integra la acción PDF con el árbol de ENSAMBLAJES sin modificar el
- * InstanceTreeController base.
+ * Integra las hojas PDF de ensambles con el árbol de INSTANCIAS.
  *
- * - Mantiene un acceso compacto PDF en la fila cuando hay espacio.
- * - Añade siempre "Enviar a PDF" al menú contextual del ensamble.
+ * - "PDF Ensambles" en el encabezado reabre las hojas ya creadas sin añadir
+ *   ninguna vista nueva.
+ * - "PDF" en la fila permite enviar rápidamente un ensamble.
+ * - "Enviar a PDF" aparece en el menú contextual del ensamble.
  *
- * La segunda vía es la principal: el usuario hace clic derecho sobre el
- * ensamble y encuentra la acción junto a Renombrar/Mover/Copiar/Eliminar.
+ * Las hojas permanecen en memoria durante la sesión aunque el usuario vuelva
+ * al Model Space. El acceso del encabezado permite regresar a ellas.
  */
 export class AssemblyPdfTreeBridgeController {
   private readonly options: AssemblyPdfTreeBridgeControllerOptions;
@@ -51,6 +52,9 @@ export class AssemblyPdfTreeBridgeController {
 
   private decorate(): void {
     if (this.disposed) return;
+
+    this.installOpenPdfButton();
+
     const body = document.querySelector<HTMLElement>(
       '[data-framelogic-instance-tree-body="true"]',
     );
@@ -130,6 +134,97 @@ export class AssemblyPdfTreeBridgeController {
     }
   }
 
+  private installOpenPdfButton(): void {
+    const panel = document.querySelector<HTMLElement>(
+      '[data-framelogic-instance-tree="true"]',
+    );
+    if (!panel) return;
+
+    const addAssembly = panel.querySelector<HTMLButtonElement>(
+      '[data-framelogic-instance-tree-add-assembly="true"]',
+    );
+    const header = addAssembly?.parentElement;
+    if (!addAssembly || !header) return;
+
+    let button = header.querySelector<HTMLButtonElement>(
+      'button[data-framelogic-open-assembly-pdf="true"]',
+    );
+
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.dataset["framelogicOpenAssemblyPdf"] = "true";
+      button.textContent = "PDF Ensambles";
+      Object.assign(button.style, {
+        height: "22px",
+        padding: "0 6px",
+        border: "1px solid rgba(255,255,255,0.12)",
+        borderRadius: "4px",
+        background: "rgba(255,255,255,0.05)",
+        color: "#bfe8f8",
+        cursor: "pointer",
+        font: "10px system-ui, sans-serif",
+        whiteSpace: "nowrap",
+      });
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.openExistingPdf();
+      });
+      header.insertBefore(button, addAssembly);
+      header.style.gridTemplateColumns =
+        "1fr auto auto auto";
+    }
+
+    const hasSheets =
+      this.hasAssemblyPdfSheets();
+    button.disabled = !hasSheets;
+    button.style.opacity = hasSheets
+      ? "1"
+      : "0.45";
+    button.style.cursor = hasSheets
+      ? "pointer"
+      : "default";
+    button.title = hasSheets
+      ? "Abrir las hojas PDF de ensambles existentes"
+      : "Aún no hay hojas PDF de ensambles";
+  }
+
+  private hasAssemblyPdfSheets(): boolean {
+    const overlay = document.querySelector<HTMLElement>(
+      '[data-framelogic-assembly-pdf="true"]',
+    );
+    const select = overlay?.querySelector<HTMLSelectElement>(
+      "select",
+    );
+    return Boolean(
+      select
+      && select.options.length > 0,
+    );
+  }
+
+  private openExistingPdf(): void {
+    const overlay = document.querySelector<HTMLElement>(
+      '[data-framelogic-assembly-pdf="true"]',
+    );
+    const select = overlay?.querySelector<HTMLSelectElement>(
+      "select",
+    );
+
+    if (
+      !overlay
+      || !select
+      || select.options.length < 1
+    ) {
+      window.alert(
+        "Aún no hay hojas PDF de ensambles. Usa clic derecho sobre un ensamble → Enviar a PDF.",
+      );
+      return;
+    }
+
+    overlay.style.display = "flex";
+  }
+
   private installContextMenuBridge(
     row: HTMLDivElement,
     assemblyId: string,
@@ -205,13 +300,8 @@ export class AssemblyPdfTreeBridgeController {
       assemblyId;
 
     if (referenceButton) {
-      Object.assign(
-        button.style,
-        {
-          cssText:
-            referenceButton.style.cssText,
-        },
-      );
+      button.style.cssText =
+        referenceButton.style.cssText;
     }
     else {
       Object.assign(button.style, {
