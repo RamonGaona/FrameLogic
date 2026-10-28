@@ -51,6 +51,10 @@ import {
 } from "../drawing/SectionInstanceTreeBridgeController";
 
 import {
+  SectionModelInteractionController,
+} from "../drawing/SectionModelInteractionController";
+
+import {
   UnifiedPdfNavigationController,
 } from "../drawing/UnifiedPdfNavigationController";
 
@@ -179,6 +183,16 @@ export async function createBimCore(
       drawingProduction: core.drawingProduction,
     });
 
+  const sectionModelInteraction =
+    new SectionModelInteractionController({
+      container,
+      canvas,
+      cameraProvider: () =>
+        core.world.camera.three,
+      sectionDrawing: core.sectionDrawing,
+      drawingProfessional: core.drawingProfessional,
+    });
+
   const assemblyPdfTreeBridge =
     new AssemblyPdfTreeBridgeController({
       designModel: core.designModel,
@@ -303,6 +317,7 @@ export async function createBimCore(
     unifiedPdfProjectBridge.dispose();
     unifiedPdfNavigation.dispose();
     assemblyPdfTreeBridge.dispose();
+    sectionModelInteraction.dispose();
     sectionInstanceTreeBridge.dispose();
     assemblyPdfProjectBridge.dispose();
     assemblyPdfAnnotations.dispose();
