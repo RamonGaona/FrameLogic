@@ -34,6 +34,10 @@ import {
   AssemblyPdfTreeBridgeController,
 } from "../drawing/AssemblyPdfTreeBridgeController";
 
+import {
+  AssemblyPdfProjectBridgeController,
+} from "../drawing/AssemblyPdfProjectBridgeController";
+
 export type PrecisionBimCoreInstance =
   DrawingPrecisionBimCoreInstance
   & {
@@ -103,6 +107,12 @@ export async function createBimCore(
     new AssemblyPdfController({
       container,
       designScene: core.designScene,
+    });
+
+  const assemblyPdfProjectBridge =
+    new AssemblyPdfProjectBridgeController({
+      projectPackage: core.projectPackage,
+      assemblyPdf,
     });
 
   const instanceTree = new InstanceTreeController({
@@ -238,6 +248,7 @@ export async function createBimCore(
     if (disposed) return;
     disposed = true;
     assemblyPdfTreeBridge.dispose();
+    assemblyPdfProjectBridge.dispose();
     assemblyPdf.dispose();
     moveRuler.dispose();
     smartPieceInsertion.dispose();
