@@ -22,64 +22,41 @@ interface SectionDrawingRuntime {
   setStatus(message: string): void;
 }
 
-interface SectionInstanceTreeBridgeControllerOptions {
+interface Options {
   readonly container: HTMLElement;
   readonly sectionDrawing: SectionDrawingController;
   readonly drawingWorkspace: DrawingWorkspaceController;
 }
 
-/**
- * Integra los volúmenes/vistas de sección dentro del árbol de INSTANCIAS.
- *
- * La sección sigue perteneciendo al motor de documentación; el árbol solo
- * ofrece un punto único para activarla, ocultarla, abrir su plano, renombrarla
- * o eliminarla. La visibilidad es de sesión y no altera la geometría de la
- * sección ni su PDF.
- */
 export class SectionInstanceTreeBridgeController {
-  private readonly options: SectionInstanceTreeBridgeControllerOptions;
+  private readonly options: Options;
   private readonly runtime: SectionDrawingRuntime;
-  private readonly hiddenSectionIds = new Set<string>();
+  private readonly hidden = new Set<string>();
   private readonly timer: number;
   private contextMenu: HTMLDivElement | null = null;
   private lastSignature = "";
   private disposed = false;
 
-  constructor(
-    options: SectionInstanceTreeBridgeControllerOptions,
-  ) {
+  constructor(options: Options) {
     this.options = options;
     this.runtime = options.sectionDrawing as unknown as SectionDrawingRuntime;
     this.decorate();
-    this.timer = window.setInterval(
-      () => this.decorate(),
-      300,
-    );
-    window.addEventListener(
-      "pointerdown",
-      this.handleGlobalPointerDown,
-      true,
-    );
+    this.timer = window.setInterval(() => this.decorate(), 300);
+    window.addEventListener("pointerdown", this.handleGlobalPointerDown, true);
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     window.clearInterval(this.timer);
-    window.removeEventListener(
-      "pointerdown",
-      this.handleGlobalPointerDown,
-      true,
-    );
+    window.removeEventListener("pointerdown", this.handleGlobalPointerDown, true);
     this.hideContextMenu();
     this.options.container
       .querySelector('[data-framelogic-section-tree="true"]')
       ?.remove();
   }
 
-  private readonly handleGlobalPointerDown = (
-    event: PointerEvent,
-  ): void => {
+  private readonly handleGlobalPointerDown = (event: PointerEvent): void => {
     if (
       this.contextMenu
       && event.target instanceof Node
@@ -91,31 +68,30 @@ export class SectionInstanceTreeBridgeController {
 
   private decorate(): void {
     if (this.disposed) return;
-
     const body = this.options.container.querySelector<HTMLElement>(
       '[data-framelogic-instance-tree-body="true"]',
     );
     if (!body) return;
 
-    this.applyHiddenState();
+    this.reapplyHiddenVisibility();
 
     const sections = this.options.sectionDrawing.getSections();
     const activeId = this.options.sectionDrawing.getActiveSection()?.id ?? null;
     const signature = sections
       .map((section) =>
-        `${section.id}:${section.name}:${section.depth}:${this.hiddenSectionIds.has(section.id)}`,
+        `${section.id}:${section.name}:${section.depth}:${this.hidden.has(section.id)}`,
       )
       .join("|") + `|active:${activeId}`;
 
     let details = body.querySelector<HTMLDetailsElement>(
       'details[data-framelogic-section-tree="true"]',
     );
+    const created = !details;
 
     if (!details) {
       details = document.createElement("details");
       details.dataset["framelogicSectionTree"] = "true";
       details.open = true;
-
       const summary = document.createElement("summary");
       summary.textContent = "VISTAS DE SECCIÓN";
       Object.assign(summary.style, {
@@ -126,27 +102,19 @@ export class SectionInstanceTreeBridgeController {
         userSelect: "none",
         borderBottom: "1px solid rgba(255,255,255,0.05)",
       });
-
       const content = document.createElement("div");
       content.dataset["framelogicSectionTreeContent"] = "true";
       details.append(summary, content);
 
-      const cadGroup = Array.from(
-        body.querySelectorAll<HTMLDetailsElement>("details"),
-      ).find((candidate) =>
-        candidate.querySelector("summary")?.textContent
-        === "REFERENCIAS CAD",
-      );
-
-      if (cadGroup) {
-        body.insertBefore(details, cadGroup);
-      }
-      else {
-        body.append(details);
-      }
+      const cad = Array.from(body.querySelectorAll<HTMLDetailsElement>("details"))
+        .find((candidate) =>
+          candidate.querySelector("summary")?.textContent === "REFERENCIAS CAD",
+        );
+      if (cad) body.insertBefore(details, cad);
+      else body.append(details);
     }
 
-    if (this.lastSignature === signature) return;
+    if (!created && this.lastSignature === signature) return;
     this.lastSignature = signature;
 
     const content = details.querySelector<HTMLElement>(
@@ -168,20 +136,15 @@ export class SectionInstanceTreeBridgeController {
     }
 
     for (const section of sections) {
-      content.append(
-        this.createSectionRow(
-          section,
-          activeId === section.id,
-        ),
-      );
+      content.append(this.createRow(section, section.id === activeId));
     }
   }
 
-  private createSectionRow(
+  private createRow(
     section: SectionViewDefinition,
     selected: boolean,
   ): HTMLDivElement {
-    const hidden = this.hiddenSectionIds.has(section.id);
+    const hidden = this.hidden.has(section.id);
     const row = document.createElement("div");
     Object.assign(row.style, {
       display: "grid",
@@ -191,14 +154,8 @@ export class SectionInstanceTreeBridgeController {
       padding: "4px 8px",
       cursor: "pointer",
       borderBottom: "1px solid rgba(255,255,255,0.035)",
-      background: selected
-        ? "rgba(88,180,220,0.20)"
-        : "transparent",
-      color: hidden
-        ? "#71838c"
-        : selected
-          ? "#dff6ff"
-          : "#c8d5db",
+      background: selected ? "rgba(88,180,220,0.20)" : "transparent",
+      color: hidden ? "#71838c" : selected ? "#dff6ff" : "#c8d5db",
       userSelect: "none",
     });
 
@@ -235,34 +192,25 @@ export class SectionInstanceTreeBridgeController {
     meta.style.fontSize = "10px";
 
     row.append(eye, name, meta);
-    row.title = "Clic = activar sección · doble clic = abrir plano · clic derecho = opciones";
-    row.addEventListener("click", () => {
-      this.activateSection(section.id);
-    });
+    row.title = "Clic = activar · doble clic = abrir plano · clic derecho = opciones";
+    row.addEventListener("click", () => this.activate(section.id));
     row.addEventListener("dblclick", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      this.openSectionDrawing(section.id);
+      this.openDrawing(section.id);
     });
     row.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      this.activateSection(section.id);
-      this.showContextMenu(
-        event.clientX,
-        event.clientY,
-        section.id,
-      );
+      this.activate(section.id);
+      this.showContextMenu(event.clientX, event.clientY, section.id);
     });
     return row;
   }
 
-  private activateSection(sectionId: string): boolean {
-    const section = this.options.sectionDrawing
-      .getSections()
-      .find((candidate) => candidate.id === sectionId);
+  private activate(sectionId: string): boolean {
+    const section = this.findSection(sectionId);
     if (!section) return false;
-
     this.runtime.activeSectionId = section.id;
     this.runtime.refreshUi();
     this.runtime.setStatus(
@@ -273,80 +221,71 @@ export class SectionInstanceTreeBridgeController {
     return true;
   }
 
-  private openSectionDrawing(sectionId: string): void {
-    if (!this.activateSection(sectionId)) return;
+  private openDrawing(sectionId: string): void {
+    if (!this.activate(sectionId)) return;
     this.options.drawingWorkspace.openActiveSection();
   }
 
   private toggleVisibility(sectionId: string): void {
-    if (this.hiddenSectionIds.has(sectionId)) {
-      this.hiddenSectionIds.delete(sectionId);
+    const visual = this.runtime.visuals.get(sectionId);
+    if (this.hidden.has(sectionId)) {
+      this.hidden.delete(sectionId);
+      if (visual) visual.group.visible = true;
     }
     else {
-      this.hiddenSectionIds.add(sectionId);
+      this.hidden.add(sectionId);
+      if (visual) visual.group.visible = false;
     }
-    this.applyHiddenState();
     this.lastSignature = "";
     this.decorate();
   }
 
-  private applyHiddenState(): void {
-    for (const section of this.options.sectionDrawing.getSections()) {
-      const visual = this.runtime.visuals.get(section.id);
-      if (!visual) continue;
-      if (this.hiddenSectionIds.has(section.id)) {
-        visual.group.visible = false;
+  private reapplyHiddenVisibility(): void {
+    const existing = new Set(
+      this.options.sectionDrawing.getSections().map((section) => section.id),
+    );
+    for (const id of Array.from(this.hidden)) {
+      if (!existing.has(id)) {
+        this.hidden.delete(id);
+        continue;
       }
-    }
-
-    for (const id of Array.from(this.hiddenSectionIds)) {
-      if (!this.options.sectionDrawing.getSections().some((section) => section.id === id)) {
-        this.hiddenSectionIds.delete(id);
-      }
+      const visual = this.runtime.visuals.get(id);
+      if (visual) visual.group.visible = false;
     }
   }
 
-  private renameSection(sectionId: string): void {
-    const section = this.options.sectionDrawing
-      .getSections()
-      .find((candidate) => candidate.id === sectionId);
+  private rename(sectionId: string): void {
+    const section = this.findSection(sectionId);
     if (!section) return;
     const name = window.prompt(
       "Nuevo nombre de la vista de sección",
       section.name,
     )?.trim();
     if (!name || name === section.name) return;
-    this.runtime.replaceSection({
-      ...section,
-      name,
-    });
+    this.runtime.replaceSection({ ...section, name });
     this.lastSignature = "";
     this.decorate();
   }
 
-  private deleteSection(sectionId: string): void {
-    const section = this.options.sectionDrawing
-      .getSections()
-      .find((candidate) => candidate.id === sectionId);
+  private remove(sectionId: string): void {
+    const section = this.findSection(sectionId);
     if (!section) return;
-    const confirmed = window.confirm(
-      `¿Eliminar ${section.name}?`,
-    );
-    if (!confirmed) return;
+    if (!window.confirm(`¿Eliminar ${section.name}?`)) return;
     this.runtime.activeSectionId = section.id;
     this.runtime.removeActiveSection();
-    this.hiddenSectionIds.delete(section.id);
+    this.hidden.delete(section.id);
     this.lastSignature = "";
     this.decorate();
   }
 
-  private showContextMenu(
-    x: number,
-    y: number,
-    sectionId: string,
-  ): void {
+  private findSection(sectionId: string): SectionViewDefinition | undefined {
+    return this.options.sectionDrawing
+      .getSections()
+      .find((section) => section.id === sectionId);
+  }
+
+  private showContextMenu(x: number, y: number, sectionId: string): void {
     this.hideContextMenu();
-    const hidden = this.hiddenSectionIds.has(sectionId);
     const menu = document.createElement("div");
     Object.assign(menu.style, {
       position: "fixed",
@@ -362,11 +301,11 @@ export class SectionInstanceTreeBridgeController {
       font: "12px system-ui, sans-serif",
     });
 
-    const entries: Array<readonly [string, () => void]> = [
-      ["Abrir plano PDF", () => this.openSectionDrawing(sectionId)],
-      [hidden ? "Mostrar vista" : "Ocultar vista", () => this.toggleVisibility(sectionId)],
-      ["Renombrar vista", () => this.renameSection(sectionId)],
-      ["Eliminar vista", () => this.deleteSection(sectionId)],
+    const entries: Array<[string, () => void]> = [
+      ["Abrir plano PDF", () => this.openDrawing(sectionId)],
+      [this.hidden.has(sectionId) ? "Mostrar vista" : "Ocultar vista", () => this.toggleVisibility(sectionId)],
+      ["Renombrar vista", () => this.rename(sectionId)],
+      ["Eliminar vista", () => this.remove(sectionId)],
     ];
 
     for (const [label, action] of entries) {
