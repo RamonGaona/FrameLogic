@@ -15,6 +15,10 @@ import {
 } from "../navigation/InstanceTreeController";
 
 import {
+  ModelSpaceInstanceTreeBridgeController,
+} from "../navigation/ModelSpaceInstanceTreeBridgeController";
+
+import {
   AlignController,
 } from "../interaction/AlignController";
 
@@ -179,6 +183,21 @@ export async function createBimCore(
       core.cancelActiveCadCommand(),
   });
 
+  const modelSpaceInstanceTreeBridge =
+    new ModelSpaceInstanceTreeBridgeController({
+      container,
+      designModel: core.designModel,
+      lineScene: core.cadLineScene,
+      pointScene: core.cadPointScene,
+      lineSelection: core.cadLineSelection,
+      pointSelection: core.cadPointSelection,
+      unifiedPdfNavigation,
+      cancelActiveCommand: () =>
+        core.cancelActiveCadCommand(),
+      deleteCadSelection: () =>
+        core.deleteCadSelection(),
+    });
+
   const sectionInstanceTreeBridge =
     new SectionInstanceTreeBridgeController({
       container,
@@ -327,6 +346,7 @@ export async function createBimCore(
     if (disposed) return;
     disposed = true;
     unifiedPdfProjectBridge.dispose();
+    modelSpaceInstanceTreeBridge.dispose();
     unifiedPdfNavigation.dispose();
     assemblyPdfTreeBridge.dispose();
     sectionAxisDragStability.dispose();
