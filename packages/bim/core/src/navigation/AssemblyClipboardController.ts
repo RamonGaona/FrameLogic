@@ -15,6 +15,12 @@ import type {
   InstanceTreeController,
 } from "./InstanceTreeController";
 
+import {
+  getLinkedAssemblyComponentId,
+  getLinkedAssemblyId,
+  setLinkedAssemblyMetadata,
+} from "./LinkedAssemblyMetadata";
+
 interface FocusedTreeItemRuntime {
   readonly kind: "PIECE" | "ASSEMBLY";
   readonly id: string;
@@ -47,6 +53,7 @@ interface PieceClipboardSnapshot {
 }
 
 interface AssemblyClipboardSnapshot {
+  readonly linkId: string;
   readonly name: string;
   readonly layerId: string;
   readonly classification?: string;
@@ -62,11 +69,14 @@ interface Options {
 }
 
 /**
- * Copiar/pegar de ENSAMBLES como entidad lógica.
+ * Copiar/pegar de colocaciones del MISMO ensamble lógico.
  *
- * Ctrl/Cmd+C sobre una fila de ensamble guarda no solo sus piezas sino también
- * los metadatos del propio ensamble. Ctrl/Cmd+V crea nuevas PieceInstance y un
- * nuevo Assembly que las agrupa, conservando capa, clasificación y tags.
+ * Ctrl/Cmd+C sobre una fila de ensamble asigna, si hace falta, un vínculo
+ * compartido y un componentId estable a cada miembro. Ctrl/Cmd+V crea otra
+ * colocación con PieceInstance independientes, pero conserva esos IDs comunes.
+ * LinkedAssemblyInstanceController se encarga de reflejar las ediciones
+ * internas entre todas las colocaciones sin impedir que cada una se mueva de
+ * forma independiente en Model Space.
  */
 export class AssemblyClipboardController {
   private readonly options: Options;
@@ -155,7 +165,7 @@ export class AssemblyClipboardController {
     menu.prepend(separator);
 
     const copy = this.makeMenuButton(
-      "Copiar ensamble · Ctrl+C",
+      "Copiar instancia de ensamble · Ctrl+C",
       () => {
         this.copyAssembly(assemblyId);
         this.closeMenu(menu);
@@ -165,7 +175,7 @@ export class AssemblyClipboardController {
 
     if (this.clipboard) {
       const paste = this.makeMenuButton(
-        "Pegar ensamble · Ctrl+V",
+        "Pegar instancia del mismo ensamble · Ctrl+V",
         () => {
           this.pasteAssembly();
           this.closeMenu(menu);
@@ -219,14 +229,47 @@ export class AssemblyClipboardController {
     const assembly = this.options.designModel.assemblies.get(assemblyId);
     if (!assembly) return false;
 
-    const pieces = assembly.pieceInstanceIds
+    const sourcePieces = assembly.pieceInstanceIds
       .map((id) => this.options.designModel.pieceInstances.get(id))
-      .filter((piece): piece is PieceInstance => piece !== undefined)
-      .map((piece) => this.clonePiece(piece));
+      .filter((piece): piece is PieceInstance => piece !== undefined);
+    if (sourcePieces.length < 1) return false;
 
-    if (pieces.length < 1) return false;
+    const linkId = sourcePieces
+      .map((piece) => getLinkedAssemblyId(piece.tags))
+      .find((value): value is string => Boolean(value))
+      ?? crypto.randomUUID();
+
+    const pieces: PieceClipboardSnapshot[] = [];
+
+    for (const piece of sourcePieces) {
+      const componentId =
+        getLinkedAssemblyComponentId(piece.tags)
+        ?? crypto.randomUUID();
+      const tags = setLinkedAssemblyMetadata(
+        piece.tags,
+        linkId,
+        componentId,
+      );
+
+      this.options.designModel.pieceInstances.updateTags(
+        piece.id,
+        tags,
+      );
+
+      pieces.push({
+        definitionId: piece.definitionId,
+        name: piece.name,
+        layerId: piece.layerId,
+        transform: {
+          position: { ...piece.transform.position },
+          rotation: { ...piece.transform.rotation },
+        },
+        tags,
+      });
+    }
 
     this.clipboard = {
+      linkId,
       name: assembly.name,
       layerId: assembly.layerId,
       classification: assembly.classification,
@@ -234,6 +277,7 @@ export class AssemblyClipboardController {
       pieces,
     };
 
+    this.treeRuntime.refresh();
     return true;
   }
 
@@ -244,6 +288,9 @@ export class AssemblyClipboardController {
     const createdIds: string[] = [];
 
     for (const piece of snapshot.pieces) {
+      const componentId =
+        getLinkedAssemblyComponentId(piece.tags)
+        ?? crypto.randomUUID();
       const created = this.options.designModel.registerPieceInstance({
         name: piece.name,
         definitionId: piece.definitionId,
@@ -252,7 +299,11 @@ export class AssemblyClipboardController {
           position: { ...piece.transform.position },
           rotation: { ...piece.transform.rotation },
         },
-        tags: [...piece.tags],
+        tags: setLinkedAssemblyMetadata(
+          piece.tags,
+          snapshot.linkId,
+          componentId,
+        ),
       });
       createdIds.push(created.id);
     }
@@ -260,7 +311,7 @@ export class AssemblyClipboardController {
     if (createdIds.length < 1) return false;
 
     const assembly = this.options.designModel.assemblies.register({
-      name: this.nextCopyName(snapshot.name),
+      name: snapshot.name,
       layerId: snapshot.layerId,
       classification: snapshot.classification,
       tags: [...snapshot.tags],
@@ -275,36 +326,6 @@ export class AssemblyClipboardController {
     };
     this.treeRuntime.refresh();
     return true;
-  }
-
-  private clonePiece(piece: PieceInstance): PieceClipboardSnapshot {
-    return {
-      definitionId: piece.definitionId,
-      name: piece.name,
-      layerId: piece.layerId,
-      transform: {
-        position: { ...piece.transform.position },
-        rotation: { ...piece.transform.rotation },
-      },
-      tags: [...piece.tags],
-    };
-  }
-
-  private nextCopyName(baseName: string): string {
-    const existing = new Set(
-      this.options.designModel.assemblies
-        .getAll()
-        .map((assembly) => assembly.name),
-    );
-
-    const first = `${baseName} copia`;
-    if (!existing.has(first)) return first;
-
-    let index = 2;
-    while (existing.has(`${baseName} copia ${index}`)) {
-      index += 1;
-    }
-    return `${baseName} copia ${index}`;
   }
 }
 
