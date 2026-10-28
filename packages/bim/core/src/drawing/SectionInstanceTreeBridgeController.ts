@@ -1,3 +1,5 @@
+import * as THREE from "three";
+
 import type {
   DrawingProductionController,
 } from "./DrawingProductionController";
@@ -12,9 +14,7 @@ import type {
 } from "./SectionDrawingController";
 
 interface SectionVisualRuntime {
-  readonly group: {
-    visible: boolean;
-  };
+  readonly group: THREE.Group;
 }
 
 interface SectionDrawingRuntime {
@@ -38,6 +38,19 @@ interface Options {
   readonly drawingProduction: DrawingProductionController;
 }
 
+/**
+ * Integra las vistas de sección dentro del árbol INSTANCIAS.
+ *
+ * La visibilidad individual se protege en dos niveles:
+ * 1. `visible`, para el comportamiento normal de Three.js.
+ * 2. `layers.mask = 0` en todo el subárbol cuando está oculta.
+ *
+ * El segundo nivel es deliberado: otros controladores pueden sincronizar
+ * `visible` por la capa global SECCIONES, pero una máscara 0 no pertenece a
+ * ninguna capa de cámara y por tanto el renderer no puede dibujar el objeto.
+ * Así se elimina cualquier destello incluso si otra rutina escribe `visible`
+ * entre sincronizaciones.
+ */
 export class SectionInstanceTreeBridgeController {
   private readonly options: Options;
   private readonly runtime: SectionDrawingRuntime;
@@ -58,16 +71,6 @@ export class SectionInstanceTreeBridgeController {
     this.productionRuntime =
       options.drawingProduction as unknown as DrawingProductionRuntime;
 
-    /*
-     * DrawingProductionController sincroniza la capa SECCIONES periódicamente.
-     * Esa sincronización establece group.visible según la capa global. Antes,
-     * una sección ocultada individualmente podía quedar visible hasta que el
-     * timer del árbol (300 ms) volviera a apagarla, produciendo parpadeo.
-     *
-     * Interceptamos la sincronización en su propia llamada: la capa global se
-     * aplica primero y las secciones ocultas se fuerzan a false inmediatamente,
-     * dentro del mismo task JavaScript y antes de que el navegador pueda pintar.
-     */
     this.originalSyncSectionLayerVisibility =
       this.productionRuntime.syncSectionLayerVisibility.bind(
         this.productionRuntime,
@@ -77,11 +80,6 @@ export class SectionInstanceTreeBridgeController {
       this.reapplyHiddenVisibility();
     };
 
-    /*
-     * SectionDrawingController recrea la geometría visual al editar/renombrar
-     * una sección. La visual nueva debe heredar el estado oculto antes de que
-     * pueda llegar a un frame de render.
-     */
     this.originalCreateVisual =
       this.runtime.createVisual.bind(this.runtime);
     this.runtime.createVisual = (
@@ -102,6 +100,15 @@ export class SectionInstanceTreeBridgeController {
     this.disposed = true;
     window.clearInterval(this.timer);
     window.removeEventListener("pointerdown", this.handleGlobalPointerDown, true);
+
+    /*
+     * Antes de retirar el bridge devolvemos las secciones a la capa normal,
+     * para no dejar objetos con mask=0 en un core reutilizado.
+     */
+    for (const id of this.hidden) {
+      this.setRenderLayerHidden(id, false);
+    }
+
     this.runtime.createVisual = this.originalCreateVisual;
     this.productionRuntime.syncSectionLayerVisibility =
       this.originalSyncSectionLayerVisibility;
@@ -284,18 +291,20 @@ export class SectionInstanceTreeBridgeController {
   }
 
   private toggleVisibility(sectionId: string): void {
-    if (this.hidden.has(sectionId)) {
-      this.hidden.delete(sectionId);
+    const hide = !this.hidden.has(sectionId);
+
+    if (hide) {
+      this.hidden.add(sectionId);
     }
     else {
-      this.hidden.add(sectionId);
+      this.hidden.delete(sectionId);
     }
 
     /*
-     * Se usa la misma sincronización que controla capa/handles. La función
-     * parcheada reaplica el estado oculto inmediatamente después, por lo que
-     * no existe una ventana visible entre ambos estados.
+     * Se aplica primero la máscara de render. A partir de este punto ningún
+     * frame puede dibujar una sección oculta aunque otra rutina cambie visible.
      */
+    this.setRenderLayerHidden(sectionId, hide);
     this.productionRuntime.syncSectionLayerVisibility();
     this.lastSignature = "";
     this.decorate();
@@ -314,11 +323,23 @@ export class SectionInstanceTreeBridgeController {
 
   private reapplyHiddenVisibility(): void {
     for (const id of this.hidden) {
-      const visual = this.runtime.visuals.get(id);
-      if (visual) {
-        visual.group.visible = false;
-      }
+      this.setRenderLayerHidden(id, true);
     }
+  }
+
+  private setRenderLayerHidden(sectionId: string, hidden: boolean): void {
+    const visual = this.runtime.visuals.get(sectionId);
+    if (!visual) return;
+
+    visual.group.visible = !hidden;
+    visual.group.traverse((object) => {
+      /*
+       * mask=0 significa que el objeto no pertenece a ninguna capa y por tanto
+       * ninguna cámara/raycaster puede verlo. Las visuales de sección usan la
+       * capa 0 normalmente, por eso al mostrar se restaura mask=1.
+       */
+      object.layers.mask = hidden ? 0 : 1;
+    });
   }
 
   private rename(sectionId: string): void {
