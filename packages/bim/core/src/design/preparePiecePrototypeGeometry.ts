@@ -5,27 +5,23 @@ import {
 } from "three/addons/utils/BufferGeometryUtils.js";
 
 
-const MAX_CREASED_NORMAL_VERTICES =
-  200_000;
-
-
 /**
  * Prepara la geometría visual de una PieceDefinition para un visor CAD/BIM.
  *
- * Para mallas pequeñas conservamos el suavizado por crease. En mallas grandes
- * importadas por OCCT reutilizamos las normales existentes para evitar clonar
- * y desindexar cientos de miles de vértices durante la apertura. Esto solo
- * afecta sombreado visual: el STEP/B-Rep exacto permanece intacto.
+ * El objetivo no es modificar la forma real del IFC, sino recalcular normales
+ * de sombreado de forma coherente:
+ *
+ * - triángulos coplanares se ven como una sola cara plana;
+ * - facetas consecutivas de una curva se suavizan visualmente;
+ * - aristas mecánicas marcadas se conservan duras.
+ *
+ * 35° es suficientemente alto para suavizar una circunferencia IFC de
+ * 12 segmentos (30° entre facetas), pero mantiene una esquina de 90°.
  */
 export function preparePiecePrototypeGeometry(
   prototype:
     THREE.Object3D,
 ): void {
-
-  const startedAt =
-    typeof performance !== "undefined"
-      ? performance.now()
-      : Date.now();
 
   const creaseAngle =
     THREE.MathUtils.degToRad(
@@ -44,10 +40,6 @@ export function preparePiecePrototypeGeometry(
     new Set<
       THREE.BufferGeometry
     >();
-
-
-  let reusedLargeGeometryCount =
-    0;
 
 
   prototype.traverse(
@@ -78,80 +70,27 @@ export function preparePiecePrototypeGeometry(
         !preparedGeometry
       ) {
 
-        const position =
-          sourceGeometry.getAttribute(
-            "position",
-          );
-
-        const normal =
-          sourceGeometry.getAttribute(
-            "normal",
-          );
-
-        const canReuseImportedNormals =
-          Boolean(
-            normal
-            && position
-            && position.count
-              >= MAX_CREASED_NORMAL_VERTICES,
+        preparedGeometry =
+          toCreasedNormals(
+            sourceGeometry.clone(),
+            creaseAngle,
           );
 
 
-        const nextGeometry:
-          THREE.BufferGeometry =
-            canReuseImportedNormals
-              ? sourceGeometry
-              : toCreasedNormals(
-                  sourceGeometry.clone(),
-                  creaseAngle,
-                );
+        preparedGeometry.computeBoundingBox();
 
-
-        if (
-          canReuseImportedNormals
-        ) {
-
-          reusedLargeGeometryCount +=
-            1;
-
-        }
-        else {
-
-          replacedSources.add(
-            sourceGeometry,
-          );
-
-        }
-
-
-        if (
-          nextGeometry.boundingBox
-          === null
-        ) {
-
-          nextGeometry.computeBoundingBox();
-
-        }
-
-
-        if (
-          nextGeometry.boundingSphere
-          === null
-        ) {
-
-          nextGeometry.computeBoundingSphere();
-
-        }
+        preparedGeometry.computeBoundingSphere();
 
 
         preparedBySource.set(
           sourceGeometry,
-          nextGeometry,
+          preparedGeometry,
         );
 
 
-        preparedGeometry =
-          nextGeometry;
+        replacedSources.add(
+          sourceGeometry,
+        );
 
       }
 
@@ -169,36 +108,6 @@ export function preparePiecePrototypeGeometry(
   ) {
 
     sourceGeometry.dispose();
-
-  }
-
-
-  const elapsed =
-    (
-      typeof performance !== "undefined"
-        ? performance.now()
-        : Date.now()
-    )
-    - startedAt;
-
-
-  if (
-    elapsed >= 25
-    || reusedLargeGeometryCount > 0
-  ) {
-
-    console.debug(
-      "[FrameLogic][Geometry] prototype preparation",
-      {
-        ms:
-          Math.round(
-            elapsed * 10,
-          ) / 10,
-        geometries:
-          preparedBySource.size,
-        reusedLargeGeometryCount,
-      },
-    );
 
   }
 
