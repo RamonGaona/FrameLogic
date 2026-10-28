@@ -16,6 +16,7 @@ interface SectionVisualRuntime {
 interface SectionDrawingRuntime {
   activeSectionId: string | null;
   readonly visuals: Map<string, SectionVisualRuntime>;
+  createVisual(section: SectionViewDefinition): void;
   refreshUi(): void;
   replaceSection(section: SectionViewDefinition): void;
   removeActiveSection(): boolean;
@@ -32,6 +33,9 @@ export class SectionInstanceTreeBridgeController {
   private readonly options: Options;
   private readonly runtime: SectionDrawingRuntime;
   private readonly hidden = new Set<string>();
+  private readonly originalCreateVisual: (
+    section: SectionViewDefinition,
+  ) => void;
   private readonly timer: number;
   private contextMenu: HTMLDivElement | null = null;
   private lastSignature = "";
@@ -40,6 +44,24 @@ export class SectionInstanceTreeBridgeController {
   constructor(options: Options) {
     this.options = options;
     this.runtime = options.sectionDrawing as unknown as SectionDrawingRuntime;
+
+    /*
+     * SectionDrawingController recrea la geometría visual al editar/renombrar
+     * una sección. Antes, esa geometría nacía visible y el timer del árbol la
+     * volvía a ocultar hasta 300 ms después, provocando el parpadeo.
+     *
+     * Envolvemos la creación visual para aplicar el estado de visibilidad en
+     * el mismo task JS, antes de que el navegador pueda pintar el nuevo grupo.
+     */
+    this.originalCreateVisual =
+      this.runtime.createVisual.bind(this.runtime);
+    this.runtime.createVisual = (
+      section: SectionViewDefinition,
+    ): void => {
+      this.originalCreateVisual(section);
+      this.applyVisibility(section.id);
+    };
+
     this.decorate();
     this.timer = window.setInterval(() => this.decorate(), 300);
     window.addEventListener("pointerdown", this.handleGlobalPointerDown, true);
@@ -50,6 +72,7 @@ export class SectionInstanceTreeBridgeController {
     this.disposed = true;
     window.clearInterval(this.timer);
     window.removeEventListener("pointerdown", this.handleGlobalPointerDown, true);
+    this.runtime.createVisual = this.originalCreateVisual;
     this.hideContextMenu();
     this.options.container
       .querySelector('[data-framelogic-section-tree="true"]')
@@ -73,7 +96,7 @@ export class SectionInstanceTreeBridgeController {
     );
     if (!body) return;
 
-    this.reapplyHiddenVisibility();
+    this.reapplyVisibility();
 
     const sections = this.options.sectionDrawing.getSections();
     const activeId = this.options.sectionDrawing.getActiveSection()?.id ?? null;
@@ -227,30 +250,38 @@ export class SectionInstanceTreeBridgeController {
   }
 
   private toggleVisibility(sectionId: string): void {
-    const visual = this.runtime.visuals.get(sectionId);
     if (this.hidden.has(sectionId)) {
       this.hidden.delete(sectionId);
-      if (visual) visual.group.visible = true;
     }
     else {
       this.hidden.add(sectionId);
-      if (visual) visual.group.visible = false;
     }
+
+    this.applyVisibility(sectionId);
     this.lastSignature = "";
     this.decorate();
   }
 
-  private reapplyHiddenVisibility(): void {
+  private applyVisibility(sectionId: string): void {
+    const visual = this.runtime.visuals.get(sectionId);
+    if (!visual) return;
+    visual.group.visible = !this.hidden.has(sectionId);
+  }
+
+  private reapplyVisibility(): void {
+    const sections = this.options.sectionDrawing.getSections();
     const existing = new Set(
-      this.options.sectionDrawing.getSections().map((section) => section.id),
+      sections.map((section) => section.id),
     );
+
     for (const id of Array.from(this.hidden)) {
       if (!existing.has(id)) {
         this.hidden.delete(id);
-        continue;
       }
-      const visual = this.runtime.visuals.get(id);
-      if (visual) visual.group.visible = false;
+    }
+
+    for (const section of sections) {
+      this.applyVisibility(section.id);
     }
   }
 
