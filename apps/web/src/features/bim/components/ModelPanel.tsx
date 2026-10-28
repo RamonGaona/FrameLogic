@@ -1,10 +1,5 @@
 import {
   useEffect,
-  useState,
-} from "react";
-
-import type {
-  MouseEvent as ReactMouseEvent,
 } from "react";
 
 import type {
@@ -14,48 +9,15 @@ import type {
 
 
 export interface PiecePanelItem {
-
   id: string;
-
   name: string;
-
   code: string;
-
   layerId: string;
-
   visible: boolean;
-
-}
-
-
-type VisibilityContextTarget =
-  | {
-      kind: "PIECE";
-      id: string;
-      name: string;
-      visible: boolean;
-    }
-  | {
-      kind: "MODEL";
-      id: string;
-      name: string;
-      visible: boolean;
-    };
-
-
-interface VisibilityContextMenu {
-
-  x: number;
-
-  y: number;
-
-  target: VisibilityContextTarget;
-
 }
 
 
 interface ModelPanelProps {
-
   models:
     LoadedModelInfo[];
 
@@ -90,580 +52,276 @@ interface ModelPanelProps {
 
   onClear:
     () => void;
-
 }
 
 
+/**
+ * La antigua UI "Modelo" ya no se renderiza.
+ *
+ * La visibilidad de PieceInstance vive ahora visualmente dentro del árbol
+ * INSTANCIAS. Reutilizamos el mismo callback de visibilidad que ya usa
+ * BimViewport, por lo que el ojo del árbol y el menú contextual del visor
+ * comparten exactamente el mismo estado.
+ *
+ * Importante: deliberadamente NO usamos MutationObserver. El árbol reemplaza
+ * sus filas cuando cambia selección/ensambles; un refresco liviano y acotado
+ * vuelve a colocar únicamente los botones que falten. Esto evita el bucle de
+ * mutaciones que podía saturar el hilo principal durante la importación STEP.
+ */
 export function ModelPanel(
   {
-    models,
     pieces,
-    layers,
-    onVisibilityChange,
     onPieceVisibilityChange,
-    onLayerChange,
-    onRemove,
-    onClear,
   }: ModelPanelProps,
 ) {
-
-  const [contextMenu, setContextMenu] =
-    useState<VisibilityContextMenu | null>(
-      null,
-    );
-
-
   useEffect(
     () => {
+      let disposed =
+        false;
 
-      if (
-        !contextMenu
-      ) {
-
-        return;
-
-      }
+      let frameId:
+        number | null =
+          null;
 
 
-      const close =
+      const decorateInstanceTree =
         (): void => {
-          setContextMenu(
-            null,
-          );
-        };
-
-
-      const handleKeyDown =
-        (
-          event:
-            KeyboardEvent,
-        ): void => {
-
-          if (
-            event.key === "Escape"
-          ) {
-
-            close();
-
+          if (disposed) {
+            return;
           }
 
+          const body =
+            document.querySelector<HTMLElement>(
+              '[data-framelogic-instance-tree-body="true"]',
+            );
+
+          if (!body) {
+            return;
+          }
+
+          const spans =
+            Array.from(
+              body.querySelectorAll<HTMLSpanElement>(
+                "span",
+              ),
+            );
+
+
+          for (
+            const piece
+            of pieces
+          ) {
+            const instancePrefix =
+              piece.id.slice(
+                0,
+                8,
+              );
+
+            const meta =
+              spans.find(
+                (
+                  span,
+                ) =>
+                  span.textContent
+                  === instancePrefix,
+              );
+
+            const row =
+              meta?.parentElement;
+
+            if (!row) {
+              continue;
+            }
+
+            let eye =
+              Array.from(
+                row.querySelectorAll<HTMLButtonElement>(
+                  "button[data-framelogic-piece-visibility-eye]",
+                ),
+              ).find(
+                (
+                  button,
+                ) =>
+                  button.dataset[
+                    "framelogicPieceVisibilityEye"
+                  ] === piece.id,
+              );
+
+
+            if (!eye) {
+              eye =
+                document.createElement(
+                  "button",
+                );
+
+              eye.type =
+                "button";
+
+              eye.dataset[
+                "framelogicPieceVisibilityEye"
+              ] = piece.id;
+
+              Object.assign(
+                eye.style,
+                {
+                  width:
+                    "24px",
+                  height:
+                    "22px",
+                  padding:
+                    "0",
+                  border:
+                    "0",
+                  borderRadius:
+                    "3px",
+                  background:
+                    "transparent",
+                  color:
+                    "#dce8ed",
+                  cursor:
+                    "pointer",
+                  font:
+                    "13px system-ui, sans-serif",
+                  lineHeight:
+                    "22px",
+                  textAlign:
+                    "center",
+                  userSelect:
+                    "none",
+                },
+              );
+
+              eye.addEventListener(
+                "pointerdown",
+                (
+                  event,
+                ) => {
+                  event.stopPropagation();
+                },
+              );
+
+              eye.addEventListener(
+                "contextmenu",
+                (
+                  event,
+                ) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                },
+              );
+
+              eye.addEventListener(
+                "click",
+                (
+                  event,
+                ) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+
+                  const currentlyVisible =
+                    eye?.dataset[
+                      "framelogicPieceVisible"
+                    ] !== "false";
+
+                  onPieceVisibilityChange(
+                    piece.id,
+                    !currentlyVisible,
+                  );
+                },
+              );
+
+              row.insertBefore(
+                eye,
+                row.firstElementChild,
+              );
+            }
+
+
+            const visibilityText =
+              piece.visible
+                ? "👁"
+                : "◌";
+
+            if (
+              eye.textContent
+              !== visibilityText
+            ) {
+              eye.textContent =
+                visibilityText;
+            }
+
+            eye.dataset[
+              "framelogicPieceVisible"
+            ] = piece.visible
+              ? "true"
+              : "false";
+
+            eye.title =
+              piece.visible
+                ? `Ocultar ${piece.name}`
+                : `Mostrar ${piece.name}`;
+
+            eye.setAttribute(
+              "aria-label",
+              eye.title,
+            );
+
+            row.style.gridTemplateColumns =
+              "auto minmax(0, 1fr) auto";
+
+            row.style.gap =
+              "6px";
+
+            row.style.opacity =
+              piece.visible
+                ? "1"
+                : "0.62";
+          }
         };
 
 
-      window.addEventListener(
-        "pointerdown",
-        close,
-      );
+      decorateInstanceTree();
 
-      window.addEventListener(
-        "resize",
-        close,
-      );
+      frameId =
+        window.requestAnimationFrame(
+          decorateInstanceTree,
+        );
 
-      window.addEventListener(
-        "blur",
-        close,
-      );
-
-      window.addEventListener(
-        "keydown",
-        handleKeyDown,
-      );
+      /*
+       * InstanceTreeController recrea sus filas internamente en algunos
+       * cambios (F2, ensambles, selección). Esta comprobación es barata y no
+       * observa mutaciones; solo repone un ojo si la fila fue reconstruida.
+       */
+      const timer =
+        window.setInterval(
+          decorateInstanceTree,
+          1000,
+        );
 
 
       return () => {
+        disposed =
+          true;
 
-        window.removeEventListener(
-          "pointerdown",
-          close,
+        if (
+          frameId !== null
+        ) {
+          window.cancelAnimationFrame(
+            frameId,
+          );
+        }
+
+        window.clearInterval(
+          timer,
         );
-
-        window.removeEventListener(
-          "resize",
-          close,
-        );
-
-        window.removeEventListener(
-          "blur",
-          close,
-        );
-
-        window.removeEventListener(
-          "keydown",
-          handleKeyDown,
-        );
-
       };
-
     },
-    [contextMenu],
+    [
+      pieces,
+      onPieceVisibilityChange,
+    ],
   );
 
 
-  function openContextMenu(
-    event:
-      ReactMouseEvent,
-    target:
-      VisibilityContextTarget,
-  ): void {
-
-    event.preventDefault();
-    event.stopPropagation();
-
-
-    setContextMenu({
-      x:
-        event.clientX,
-      y:
-        event.clientY,
-      target,
-    });
-
-  }
-
-
-  function toggleContextVisibility():
-    void {
-
-    if (
-      !contextMenu
-    ) {
-
-      return;
-
-    }
-
-
-    const {
-      target,
-    } =
-      contextMenu;
-
-
-    if (
-      target.kind === "PIECE"
-    ) {
-
-      onPieceVisibilityChange(
-        target.id,
-        !target.visible,
-      );
-
-    }
-    else {
-
-      onVisibilityChange(
-        target.id,
-        !target.visible,
-      );
-
-    }
-
-
-    setContextMenu(
-      null,
-    );
-
-  }
-
-
-  const totalItems =
-    pieces.length
-    + models.length;
-
-
-  return (
-    <>
-      <div
-        className="model-panel"
-      >
-
-        <div
-          className="model-panel-header"
-        >
-
-          <strong>
-            Modelo
-          </strong>
-
-          <span>
-            {totalItems}
-          </span>
-
-        </div>
-
-
-        {
-          totalItems === 0
-            ? (
-                <div
-                  className="model-panel-empty"
-                >
-                  No hay piezas ni modelos cargados.
-                </div>
-              )
-            : (
-                <div
-                  className="model-list"
-                >
-
-                  {
-                    pieces.length > 0
-                    && (
-                      <div
-                        className="model-section"
-                      >
-
-                        <div
-                          className="model-section-title"
-                        >
-                          Piezas · {pieces.length}
-                        </div>
-
-
-                        {
-                          pieces.map(
-                            (
-                              piece,
-                            ) => {
-
-                              const layerName =
-                                layers.find(
-                                  (
-                                    layer,
-                                  ) =>
-                                    layer.id
-                                    === piece.layerId,
-                                )?.name;
-
-
-                              return (
-                                <div
-                                  key={piece.id}
-                                  className={
-                                    piece.visible
-                                      ? "model-row"
-                                      : "model-row model-row-hidden"
-                                  }
-                                  onContextMenu={
-                                    (
-                                      event,
-                                    ) => {
-                                      openContextMenu(
-                                        event,
-                                        {
-                                          kind:
-                                            "PIECE",
-                                          id:
-                                            piece.id,
-                                          name:
-                                            piece.name,
-                                          visible:
-                                            piece.visible,
-                                        },
-                                      );
-                                    }
-                                  }
-                                >
-
-                                  <button
-                                    type="button"
-                                    className="model-visibility-button"
-                                    title={
-                                      piece.visible
-                                        ? "Ocultar pieza"
-                                        : "Mostrar pieza"
-                                    }
-                                    aria-label={
-                                      piece.visible
-                                        ? `Ocultar ${piece.name}`
-                                        : `Mostrar ${piece.name}`
-                                    }
-                                    onClick={
-                                      () => {
-                                        onPieceVisibilityChange(
-                                          piece.id,
-                                          !piece.visible,
-                                        );
-                                      }
-                                    }
-                                  >
-                                    {
-                                      piece.visible
-                                        ? "👁"
-                                        : "◌"
-                                    }
-                                  </button>
-
-
-                                  <div
-                                    className="model-info"
-                                  >
-
-                                    <div
-                                      className="model-name"
-                                      title={piece.name}
-                                    >
-                                      {piece.name}
-                                    </div>
-
-
-                                    <div
-                                      className="model-source"
-                                    >
-                                      {piece.code}
-                                      {layerName
-                                        ? ` · ${layerName}`
-                                        : " · Pieza"}
-                                    </div>
-
-                                  </div>
-
-                                </div>
-                              );
-
-                            },
-                          )
-                        }
-
-                      </div>
-                    )
-                  }
-
-
-                  {
-                    models.length > 0
-                    && (
-                      <div
-                        className="model-section"
-                      >
-
-                        <div
-                          className="model-section-title"
-                        >
-                          Referencias · {models.length}
-                        </div>
-
-
-                        {
-                          models.map(
-                            (
-                              model,
-                            ) => (
-
-                              <div
-                                key={model.id}
-                                className={
-                                  model.visible
-                                    ? "model-row"
-                                    : "model-row model-row-hidden"
-                                }
-                                onContextMenu={
-                                  (
-                                    event,
-                                  ) => {
-                                    openContextMenu(
-                                      event,
-                                      {
-                                        kind:
-                                          "MODEL",
-                                        id:
-                                          model.id,
-                                        name:
-                                          model.name,
-                                        visible:
-                                          model.visible,
-                                      },
-                                    );
-                                  }
-                                }
-                              >
-
-                                <button
-                                  type="button"
-                                  className="model-visibility-button"
-                                  title={
-                                    model.visible
-                                      ? "Ocultar modelo"
-                                      : "Mostrar modelo"
-                                  }
-                                  aria-label={
-                                    model.visible
-                                      ? `Ocultar ${model.name}`
-                                      : `Mostrar ${model.name}`
-                                  }
-                                  onClick={
-                                    () => {
-                                      onVisibilityChange(
-                                        model.id,
-                                        !model.visible,
-                                      );
-                                    }
-                                  }
-                                >
-                                  {
-                                    model.visible
-                                      ? "👁"
-                                      : "◌"
-                                  }
-                                </button>
-
-
-                                <div
-                                  className="model-info"
-                                >
-
-                                  <div
-                                    className="model-name"
-                                    title={model.name}
-                                  >
-                                    {model.name}
-                                  </div>
-
-
-                                  <div
-                                    className="model-source"
-                                  >
-                                    {model.source}
-                                    {" · "}
-                                    {model.role}
-                                  </div>
-
-
-                                  <select
-                                    className="model-layer-select"
-                                    value={model.layerId}
-                                    onChange={
-                                      (
-                                        event,
-                                      ) => {
-                                        onLayerChange(
-                                          model.id,
-                                          event.target.value,
-                                        );
-                                      }
-                                    }
-                                  >
-                                    {
-                                      layers.map(
-                                        (
-                                          layer,
-                                        ) => (
-                                          <option
-                                            key={layer.id}
-                                            value={layer.id}
-                                          >
-                                            {layer.name}
-                                          </option>
-                                        ),
-                                      )
-                                    }
-                                  </select>
-
-                                </div>
-
-
-                                <button
-                                  type="button"
-                                  className="model-remove-button"
-                                  title="Eliminar modelo"
-                                  onClick={
-                                    () => {
-                                      onRemove(
-                                        model.id,
-                                      );
-                                    }
-                                  }
-                                >
-                                  ×
-                                </button>
-
-                              </div>
-
-                            ),
-                          )
-                        }
-
-                      </div>
-                    )
-                  }
-
-                </div>
-              )
-        }
-
-
-        {
-          models.length > 0
-          && (
-            <button
-              type="button"
-              className="model-clear-button"
-              onClick={onClear}
-            >
-              Eliminar todos los modelos externos
-            </button>
-          )
-        }
-
-      </div>
-
-
-      {
-        contextMenu
-        && (
-          <div
-            className="model-context-menu"
-            style={{
-              left:
-                contextMenu.x,
-              top:
-                contextMenu.y,
-            }}
-            onPointerDown={
-              (
-                event,
-              ) => {
-                event.stopPropagation();
-              }
-            }
-          >
-            <div
-              className="model-context-title"
-              title={contextMenu.target.name}
-            >
-              {contextMenu.target.name}
-            </div>
-
-            <button
-              type="button"
-              className="model-context-action"
-              onClick={toggleContextVisibility}
-            >
-              <span
-                aria-hidden="true"
-              >
-                {
-                  contextMenu.target.visible
-                    ? "◌"
-                    : "👁"
-                }
-              </span>
-
-              {
-                contextMenu.target.visible
-                  ? contextMenu.target.kind === "PIECE"
-                    ? "Ocultar pieza"
-                    : "Ocultar modelo"
-                  : contextMenu.target.kind === "PIECE"
-                    ? "Mostrar pieza"
-                    : "Mostrar modelo"
-              }
-            </button>
-          </div>
-        )
-      }
-    </>
-  );
-
+  return null;
 }
