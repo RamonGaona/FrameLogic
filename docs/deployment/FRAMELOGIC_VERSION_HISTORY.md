@@ -10,6 +10,15 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.14 — Zoom al cursor y Pan unificados en PDFs
+
+- La rueda del mouse hace zoom directamente en cualquier PDF, incluidas las hojas con views de ensamble/pieza.
+- El zoom toma como referencia la posición del cursor en lugar del borde izquierdo de la hoja.
+- Se añade PAN del papel con botón central + arrastre.
+- Como alternativa para mouse/touchpad, `Shift + arrastre izquierdo` también desplaza el papel.
+- El PAN permite llevar la hoja hacia la derecha, izquierda, arriba o abajo sin quedar anclada al origen del viewport.
+- Los botones `+` y `−` del PDF de sección usan el mismo estado de zoom visual.
+
 ### v0.1.13 — PDFs unificados, pestañas y edición independiente de Views
 
 - Se elimina de la navegación visible la categoría especial `PDF Ensambles`; todos los documentos se presentan como PDFs equivalentes.
