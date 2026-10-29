@@ -20,9 +20,9 @@ Esta regla aplica a todo dato lineal propio del Model Space:
 
 ## Importación
 
-STEP e IFC son formatos externos y pueden declarar otras unidades. La frontera de importación debe normalizar su geometría al sistema interno de FrameLogic. Una vez dentro del Model Space, la geometría se expresa en milímetros.
+STEP, IFC, DWG y DXF son formatos externos y pueden declarar otras unidades. La frontera de importación debe normalizar su geometría al sistema interno de FrameLogic. Una vez dentro del Model Space, la geometría se expresa en milímetros.
 
-STEP se solicita directamente a OpenCascade en milímetros. IFC se normaliza a milímetros en la frontera de importación antes de usarse como geometría propia de FrameLogic.
+STEP se solicita directamente a OpenCascade en milímetros. IFC se normaliza a milímetros en la frontera de importación antes de usarse como geometría propia de FrameLogic. DWG/DXF respeta `$INSUNITS`; si el archivo no declara unidad, FrameLogic solicita al usuario `mm`, `cm`, `m`, `in` o `ft` y convierte el resultado a milímetros antes de crear puntos o líneas CAD.
 
 ## Paper Space
 
