@@ -47,6 +47,10 @@ import {
 } from "../navigation/BuildVersionBadgeController";
 
 import {
+  PieceAppearanceController,
+} from "../navigation/PieceAppearanceController";
+
+import {
   ModelRenderModeController,
 } from "../navigation/ModelRenderModeController";
 
@@ -154,6 +158,13 @@ export async function createBimCore(
   const canvas = renderer.three.domElement;
   const buildVersion =
     new BuildVersionBadgeController(container);
+
+  const pieceAppearance =
+    new PieceAppearanceController({
+      container,
+      designModel: core.designModel,
+      designScene: core.designScene,
+    });
 
   const modelRenderMode =
     new ModelRenderModeController({
@@ -505,6 +516,7 @@ export async function createBimCore(
     align.dispose();
     instanceTree.dispose();
     modelRenderMode.dispose();
+    pieceAppearance.dispose();
     buildVersion.dispose();
     baseDispose();
   };
