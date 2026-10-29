@@ -26,6 +26,10 @@ import type {
   SectionInstanceTreeBridgeController,
 } from "../drawing/SectionInstanceTreeBridgeController";
 
+import {
+  parseCadReferenceLayerName,
+} from "../import/CadReferenceBlockController";
+
 
 interface SectionTreeRuntime {
   readonly hidden: Set<string>;
@@ -47,7 +51,8 @@ interface Options {
  * Ojos globales de categorías en INSTANCIAS.
  *
  * No sustituyen los ojos individuales; solamente ofrecen una operación masiva
- * sobre el grupo completo.
+ * sobre el grupo completo. El ojo de REFERENCIAS CAD permanece visible aun
+ * cuando todavía no existen DWG/DXF cargados.
  */
 export class InstanceTreeGroupVisibilityController {
   private readonly options: Options;
@@ -86,6 +91,7 @@ export class InstanceTreeGroupVisibilityController {
     const sectionDetails = this.options.container.querySelector<HTMLDetailsElement>(
       'details[data-framelogic-section-tree="true"]',
     );
+    const referenceDetails = this.findGroup("REFERENCIAS CAD");
 
     if (cadDetails) {
       const lines = this.options.designModel.cadLines.getAll();
@@ -117,6 +123,20 @@ export class InstanceTreeGroupVisibilityController {
         allHidden,
         sections.length > 0,
         () => this.toggleAllSections(),
+      );
+    }
+
+    if (referenceDetails) {
+      const references = this.getReferenceLayers();
+      const allHidden = references.length > 0
+        && references.every((layer) => !layer.visible);
+
+      this.ensureEye(
+        referenceDetails,
+        "references",
+        allHidden,
+        references.length > 0,
+        () => this.toggleAllReferences(),
       );
     }
   }
@@ -166,9 +186,11 @@ export class InstanceTreeGroupVisibilityController {
     button.disabled = !enabled;
     button.style.opacity = enabled ? "1" : "0.35";
     button.style.cursor = enabled ? "pointer" : "default";
-    button.title = allHidden
-      ? "Mostrar todo el grupo"
-      : "Ocultar todo el grupo";
+    button.title = enabled
+      ? allHidden
+        ? "Mostrar todo el grupo"
+        : "Ocultar todo el grupo"
+      : "Grupo vacío";
     button.innerHTML = eyeSvg(allHidden);
   }
 
@@ -214,6 +236,47 @@ export class InstanceTreeGroupVisibilityController {
     }
 
     this.decorate();
+  }
+
+  private toggleAllReferences(): void {
+    const references = this.getReferenceLayers();
+    if (references.length < 1) return;
+
+    const anyVisible = references.some((layer) => layer.visible);
+    const targetVisible = !anyVisible;
+    for (const layer of references) {
+      this.options.designModel.layers.update(
+        layer.id,
+        { visible: targetVisible },
+      );
+    }
+    this.decorate();
+  }
+
+  private getReferenceLayers(): ReturnType<DesignModel["layers"]["getAll"]> {
+    return this.options.designModel.layers
+      .getAll()
+      .filter((layer) => parseCadReferenceLayerName(layer) !== null);
+  }
+
+  private findGroup(title: string): HTMLDetailsElement | null {
+    const body = this.options.container.querySelector<HTMLElement>(
+      '[data-framelogic-instance-tree-body="true"]',
+    );
+    if (!body) return null;
+
+    return Array.from(
+      body.querySelectorAll<HTMLDetailsElement>(":scope > details"),
+    ).find((details) => {
+      const summary = details.querySelector<HTMLElement>(":scope > summary");
+      if (!summary) return false;
+      const text = Array.from(summary.childNodes)
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent ?? "")
+        .join("")
+        .trim();
+      return text === title;
+    }) ?? null;
   }
 }
 
