@@ -1,4 +1,4 @@
-const FRAMELOGIC_VERSION = "0.1.12";
+const FRAMELOGIC_VERSION = "0.1.13";
 
 
 /**
@@ -26,7 +26,7 @@ export class BuildVersionBadgeController {
     Object.assign(element.style, {
       position: "fixed",
       right: "10px",
-      bottom: "10px",
+      bottom: "42px",
       zIndex: "2147483000",
       padding: "4px 8px",
       border: "1px solid rgba(120,190,220,0.38)",
