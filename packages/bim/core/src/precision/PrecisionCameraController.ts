@@ -1,9 +1,14 @@
 import * as THREE from "three";
 
 
+const DEFAULT_MIN_ORTHO_ZOOM =
+  0.0001;
+
+
 export interface PrecisionCameraControls {
   readonly distance: number;
   readonly minDistance: number;
+  readonly minZoom?: number;
   truckSpeed?: number;
   dollyToCursor?: boolean;
   infinityDolly?: boolean;
@@ -227,9 +232,12 @@ export class PrecisionCameraController {
           * safePadding,
           0.001,
         );
+      const minZoom =
+        this.controls.minZoom
+        ?? DEFAULT_MIN_ORTHO_ZOOM;
       const desiredZoom =
         Math.max(
-          0.01,
+          minZoom,
           Math.min(
             availableWidth
             / diameter,
