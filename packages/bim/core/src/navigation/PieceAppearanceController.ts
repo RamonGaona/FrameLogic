@@ -13,6 +13,10 @@ import {
   setPieceColorInTags,
 } from "../design/PieceAppearanceMetadata";
 
+import type {
+  DesignSelectionController,
+} from "../interaction/DesignSelectionController";
+
 import {
   getLinkedAssemblyComponentId,
   getLinkedAssemblyId,
@@ -23,6 +27,7 @@ interface Options {
   readonly container: HTMLElement;
   readonly designModel: DesignModel;
   readonly designScene: DesignSceneController;
+  readonly designSelection: DesignSelectionController;
 }
 
 
@@ -54,19 +59,21 @@ const PASTEL_PALETTE: readonly PaletteEntry[] = [
 
 
 /**
- * Apariencia persistente de piezas.
+ * Apariencia persistente de piezas y visibilidad de trabajo del Model Space.
  *
  * El color se guarda en PieceInstance.tags, por lo que viaja automáticamente
  * dentro del .flproject. Si una .flpiece trae el color en PieceDefinition.tags,
  * ese valor funciona como color base para todas sus nuevas instancias.
  *
- * Los materiales se clonan por instancia antes de aplicar color para evitar
- * que dos piezas que comparten el mismo asset se coloreen accidentalmente.
+ * La visibilidad del ojo es únicamente de trabajo y no se persiste: el motor
+ * documental puede seguir mostrando la pieza aunque esté oculta en Model Space.
  */
 export class PieceAppearanceController {
   private readonly options: Options;
   private readonly materialStates =
     new WeakMap<THREE.Mesh, MaterialState>();
+  private readonly hiddenInstanceIds =
+    new Set<string>();
   private readonly baseSceneSync: () => void;
   private readonly timer: number;
   private palette: HTMLDivElement | null = null;
@@ -129,6 +136,7 @@ export class PieceAppearanceController {
       true,
     );
     this.hidePalette();
+    this.hiddenInstanceIds.clear();
   }
 
 
@@ -200,6 +208,13 @@ export class PieceAppearanceController {
     );
     if (!body) return;
 
+    const activeIds = new Set(
+      this.options.designModel.pieceInstances.getAll().map((piece) => piece.id),
+    );
+    for (const hiddenId of [...this.hiddenInstanceIds]) {
+      if (!activeIds.has(hiddenId)) this.hiddenInstanceIds.delete(hiddenId);
+    }
+
     const rows = Array.from(
       body.querySelectorAll<HTMLDivElement>("div"),
     );
@@ -225,8 +240,72 @@ export class PieceAppearanceController {
         const spans = this.directSpans(candidate);
         return spans[1]?.textContent?.trim().startsWith(shortId) ?? false;
       });
-      if (row) row.dataset["framelogicPieceId"] = piece.id;
+      if (!row) continue;
+      row.dataset["framelogicPieceId"] = piece.id;
+      this.ensurePieceVisibilityEye(row, piece.id);
     }
+  }
+
+
+  private ensurePieceVisibilityEye(
+    row: HTMLDivElement,
+    pieceId: string,
+  ): void {
+    let eye = row.querySelector<HTMLButtonElement>(
+      'button[data-framelogic-piece-visibility-eye="true"]',
+    );
+    if (!eye) {
+      eye = document.createElement("button");
+      eye.type = "button";
+      eye.dataset["framelogicPieceVisibilityEye"] = "true";
+      Object.assign(eye.style, {
+        width: "20px",
+        height: "18px",
+        padding: "0",
+        border: "0",
+        background: "transparent",
+        color: "#cfe8f3",
+        cursor: "pointer",
+        display: "grid",
+        placeItems: "center",
+      });
+      eye.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      eye.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const id = eye?.dataset["framelogicPieceId"];
+        if (id) this.togglePieceVisibility(id);
+      });
+      row.prepend(eye);
+    }
+
+    eye.dataset["framelogicPieceId"] = pieceId;
+    const hidden = this.hiddenInstanceIds.has(pieceId);
+    eye.dataset["framelogicPieceVisible"] = hidden ? "false" : "true";
+    eye.innerHTML = eyeSvg(hidden);
+    eye.title = hidden ? "Mostrar pieza" : "Ocultar pieza";
+    eye.style.opacity = hidden ? "0.55" : "1";
+    row.style.gridTemplateColumns = "22px minmax(0,1fr) auto";
+  }
+
+
+  private togglePieceVisibility(pieceId: string): void {
+    if (this.hiddenInstanceIds.has(pieceId)) {
+      this.hiddenInstanceIds.delete(pieceId);
+    }
+    else {
+      this.hiddenInstanceIds.add(pieceId);
+      const selection = this.options.designSelection
+        .getSelectedIds()
+        .filter((id) => id !== pieceId);
+      this.options.designSelection.setSelection(selection);
+    }
+
+    this.options.designScene.sync();
+    this.decorateRows();
   }
 
 
@@ -492,6 +571,9 @@ export class PieceAppearanceController {
         const state = this.ensureMaterialState(object);
         this.applyMaterialColor(object, state, color);
       });
+      if (this.hiddenInstanceIds.has(instanceId)) {
+        root.visible = false;
+      }
     }
   }
 
@@ -573,4 +655,22 @@ export class PieceAppearanceController {
     }
     material.needsUpdate = true;
   }
+}
+
+
+function eyeSvg(hidden: boolean): string {
+  if (hidden) {
+    return [
+      '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">',
+      '<path d="M3 3l18 18" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+      '<path d="M2.5 12s3.5-6 9.5-6c2.1 0 3.9.7 5.4 1.7M21.5 12s-3.5 6-9.5 6c-2.1 0-3.9-.7-5.4-1.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+      '</svg>',
+    ].join("");
+  }
+  return [
+    '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">',
+    '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.6"/>',
+    '<circle cx="12" cy="12" r="2.6" fill="currentColor"/>',
+    '</svg>',
+  ].join("");
 }
