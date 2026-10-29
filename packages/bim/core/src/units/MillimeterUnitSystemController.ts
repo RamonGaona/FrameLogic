@@ -17,6 +17,10 @@ import {
 } from "../drawing/SectionInstanceTreeBridgeController";
 
 import {
+  CadReferenceImportController,
+} from "../import/CadReferenceImportController";
+
+import {
   migrateLegacyProjectPackage,
 } from "./MillimeterProjectMigration";
 
@@ -158,6 +162,7 @@ export function installMillimeterUnitSystem(): void {
   patchDrawingProductionScale();
   patchGeneralPdfScale();
   patchAssemblySnapScale();
+  patchCadReferenceImportScale();
 }
 
 export function configureMillimeterRuntime(
@@ -253,6 +258,24 @@ function patchAssemblySnapScale(): void {
     denominator: number,
   ): number {
     return modelToPaperScale(sheet, denominator);
+  };
+}
+
+/**
+ * El importador CAD histórico convertía cualquier $INSUNITS a metros.
+ * Conservamos su parser y su diálogo de unidades, pero la salida final pasa
+ * a milímetros antes de registrar CadPoint/CadLine en DesignModel.
+ */
+function patchCadReferenceImportScale(): void {
+  const prototype = CadReferenceImportController.prototype as unknown as {
+    resolveUnitScale(insUnits: number): number;
+  };
+  const base = prototype.resolveUnitScale;
+  prototype.resolveUnitScale = function (
+    this: unknown,
+    insUnits: number,
+  ): number {
+    return base.call(this, insUnits) * MM_PER_METER;
   };
 }
 
