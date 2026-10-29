@@ -55,6 +55,10 @@ import {
 } from "../navigation/ModelRenderModeController";
 
 import {
+  CadMouseNavigationController,
+} from "../navigation/CadMouseNavigationController";
+
+import {
   AlignController,
 } from "../interaction/AlignController";
 
@@ -156,6 +160,12 @@ export async function createBimCore(
   }
 
   const canvas = renderer.three.domElement;
+  const cadMouseNavigation =
+    new CadMouseNavigationController({
+      canvas,
+      controls: core.world.camera.controls,
+    });
+
   const buildVersion =
     new BuildVersionBadgeController(container);
 
@@ -518,6 +528,7 @@ export async function createBimCore(
     instanceTree.dispose();
     modelRenderMode.dispose();
     pieceAppearance.dispose();
+    cadMouseNavigation.dispose();
     buildVersion.dispose();
     baseDispose();
   };
