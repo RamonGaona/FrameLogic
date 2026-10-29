@@ -126,6 +126,10 @@ import {
   UnifiedPdfProjectBridgeController,
 } from "../drawing/UnifiedPdfProjectBridgeController";
 
+import {
+  UnifiedPdfMixedViewsController,
+} from "../drawing/UnifiedPdfMixedViewsController";
+
 export type PrecisionBimCoreInstance =
   DrawingPrecisionBimCoreInstance
   & {
@@ -459,6 +463,17 @@ export async function createBimCore(
       assemblyPdf,
     });
 
+  const unifiedPdfMixedViews =
+    new UnifiedPdfMixedViewsController({
+      designModel: core.designModel,
+      assemblyPdf,
+      drawingProduction: core.drawingProduction,
+      drawingProfessional: core.drawingProfessional,
+      drawingWorkspace: core.drawingWorkspace,
+      sectionDrawing: core.sectionDrawing,
+      unifiedPdfNavigation,
+    });
+
   const align = new AlignController({
     container,
     canvas,
@@ -581,6 +596,7 @@ export async function createBimCore(
       snapFeedbackFrame = null;
     }
     core.designSnap.setEnabled(false);
+    unifiedPdfMixedViews.dispose();
     unifiedPdfProjectBridge.dispose();
     instanceTreeGroupVisibility.dispose();
     instanceTreeConsistency.dispose();
