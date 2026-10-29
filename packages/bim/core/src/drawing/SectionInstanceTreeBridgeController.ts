@@ -27,8 +27,59 @@ interface SectionDrawingRuntime {
   setStatus(message: string): void;
 }
 
+interface AssemblyReferenceRuntime {
+  instanceId: string;
+  x: number;
+  y: number;
+  snapKind?: string;
+  precision?: "DERIVED_MESH" | "BREP_EXACT";
+  framelogicPdfViewId?: string;
+}
+
+interface AssemblyPlanSegmentRuntime {
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+  readonly instanceId?: string;
+}
+
+interface AssemblyViewRuntime {
+  readonly id: string;
+  readonly sectionId: string;
+  readonly kind?: string;
+  readonly instanceIds?: readonly string[];
+  readonly width?: number;
+  readonly height?: number;
+  readonly segments?: readonly AssemblyPlanSegmentRuntime[];
+}
+
+interface SheetRuntime {
+  readonly size: string;
+  readonly orientation: string;
+  readonly views: readonly AssemblyViewRuntime[];
+}
+
 interface DrawingProductionRuntime {
+  readonly sheets: Map<string, SheetRuntime>;
   syncSectionLayerVisibility(): void;
+  pickReference(
+    x: number,
+    y: number,
+  ): AssemblyReferenceRuntime | null;
+  resolveReference(reference: AssemblyReferenceRuntime): {
+    readonly point: THREE.Vector2;
+    readonly lost: boolean;
+  };
+}
+
+interface DrawingWorkspaceRuntime {
+  activeSectionId: string | null;
+  pendingDimensionStart: AssemblyReferenceRuntime | null;
+  tool: string;
+  readonly svg: SVGSVGElement;
+  readonly overlay: HTMLElement;
+  eventToSheetPoint(event: PointerEvent | MouseEvent): THREE.Vector2 | null;
 }
 
 interface Options {
@@ -38,30 +89,60 @@ interface Options {
   readonly drawingProduction: DrawingProductionController;
 }
 
+interface AssemblyViewTransform {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly scale: number;
+  readonly originX: number;
+  readonly baseY: number;
+}
+
+const SHEET_WIDTH = 1120;
+const SHEET_HEIGHT = 792;
+const SHEET_MM: Record<string, readonly [number, number]> = {
+  A4: [297, 210],
+  A3: [420, 297],
+  A2: [594, 420],
+  A1: [841, 594],
+  A0: [1189, 841],
+};
+const SNAP_DISTANCE = 17;
+
 /**
- * Integra las vistas de sección dentro del árbol INSTANCIAS.
+ * Integra las vistas de sección dentro del árbol INSTANCIAS y completa el
+ * sistema de SNAP 2D para Views de ensamble dentro del motor PDF general.
  *
- * La visibilidad individual se protege en dos niveles:
- * 1. `visible`, para el comportamiento normal de Three.js.
- * 2. `layers.mask = 0` en todo el subárbol cuando está oculta.
- *
- * El segundo nivel es deliberado: otros controladores pueden sincronizar
- * `visible` por la capa global SECCIONES, pero una máscara 0 no pertenece a
- * ninguna capa de cámara y por tanto el renderer no puede dibujar el objeto.
- * Así se elimina cualquier destello incluso si otra rutina escribe `visible`
- * entre sincronizaciones.
+ * Las Views de ensamble se dibujan como segmentos SVG, pero no forman parte
+ * del snapshot de sección. Este bridge registra ENDPOINT, MIDPOINT e
+ * INTERSECTION sobre esos segmentos y resuelve las referencias usando la
+ * posición/escala actual de la View, de forma que una cota siga anclada aunque
+ * la View se mueva o cambie de escala.
  */
 export class SectionInstanceTreeBridgeController {
   private readonly options: Options;
   private readonly runtime: SectionDrawingRuntime;
   private readonly productionRuntime: DrawingProductionRuntime;
+  private readonly workspaceRuntime: DrawingWorkspaceRuntime;
   private readonly hidden = new Set<string>();
   private readonly originalCreateVisual: (
     section: SectionViewDefinition,
   ) => void;
   private readonly originalSyncSectionLayerVisibility: () => void;
+  private readonly originalPickReference: (
+    x: number,
+    y: number,
+  ) => AssemblyReferenceRuntime | null;
+  private readonly originalResolveReference: (
+    reference: AssemblyReferenceRuntime,
+  ) => {
+    readonly point: THREE.Vector2;
+    readonly lost: boolean;
+  };
   private readonly timer: number;
   private contextMenu: HTMLDivElement | null = null;
+  private snapMarker: SVGGElement | null = null;
   private lastSignature = "";
   private disposed = false;
 
@@ -70,6 +151,8 @@ export class SectionInstanceTreeBridgeController {
     this.runtime = options.sectionDrawing as unknown as SectionDrawingRuntime;
     this.productionRuntime =
       options.drawingProduction as unknown as DrawingProductionRuntime;
+    this.workspaceRuntime =
+      options.drawingWorkspace as unknown as DrawingWorkspaceRuntime;
 
     this.originalSyncSectionLayerVisibility =
       this.productionRuntime.syncSectionLayerVisibility.bind(
@@ -80,6 +163,16 @@ export class SectionInstanceTreeBridgeController {
       this.reapplyHiddenVisibility();
     };
 
+    this.originalPickReference =
+      this.productionRuntime.pickReference.bind(this.productionRuntime);
+    this.productionRuntime.pickReference = (x, y) =>
+      this.pickDrawingReference(x, y);
+
+    this.originalResolveReference =
+      this.productionRuntime.resolveReference.bind(this.productionRuntime);
+    this.productionRuntime.resolveReference = (reference) =>
+      this.resolveDrawingReference(reference);
+
     this.originalCreateVisual =
       this.runtime.createVisual.bind(this.runtime);
     this.runtime.createVisual = (
@@ -88,6 +181,17 @@ export class SectionInstanceTreeBridgeController {
       this.originalCreateVisual(section);
       this.productionRuntime.syncSectionLayerVisibility();
     };
+
+    this.workspaceRuntime.svg.addEventListener(
+      "pointermove",
+      this.handlePdfSnapPointerMove,
+      true,
+    );
+    this.workspaceRuntime.svg.addEventListener(
+      "pointerleave",
+      this.clearPdfSnapMarker,
+      true,
+    );
 
     this.productionRuntime.syncSectionLayerVisibility();
     this.decorate();
@@ -100,11 +204,18 @@ export class SectionInstanceTreeBridgeController {
     this.disposed = true;
     window.clearInterval(this.timer);
     window.removeEventListener("pointerdown", this.handleGlobalPointerDown, true);
+    this.workspaceRuntime.svg.removeEventListener(
+      "pointermove",
+      this.handlePdfSnapPointerMove,
+      true,
+    );
+    this.workspaceRuntime.svg.removeEventListener(
+      "pointerleave",
+      this.clearPdfSnapMarker,
+      true,
+    );
+    this.clearPdfSnapMarker();
 
-    /*
-     * Antes de retirar el bridge devolvemos las secciones a la capa normal,
-     * para no dejar objetos con mask=0 en un core reutilizado.
-     */
     for (const id of this.hidden) {
       this.setRenderLayerHidden(id, false);
     }
@@ -112,6 +223,8 @@ export class SectionInstanceTreeBridgeController {
     this.runtime.createVisual = this.originalCreateVisual;
     this.productionRuntime.syncSectionLayerVisibility =
       this.originalSyncSectionLayerVisibility;
+    this.productionRuntime.pickReference = this.originalPickReference;
+    this.productionRuntime.resolveReference = this.originalResolveReference;
     this.hideContextMenu();
     this.options.container
       .querySelector('[data-framelogic-section-tree="true"]')
@@ -126,6 +239,340 @@ export class SectionInstanceTreeBridgeController {
     ) {
       this.hideContextMenu();
     }
+  };
+
+  private pickDrawingReference(
+    paperX: number,
+    paperY: number,
+  ): AssemblyReferenceRuntime | null {
+    const assembly = this.pickAssemblyReference(paperX, paperY);
+    const base = this.originalPickReference(paperX, paperY);
+    if (!assembly) return base;
+    if (!base) return assembly;
+
+    const assemblyPoint = this.resolveAssemblyReference(assembly)?.point;
+    const baseResolved = this.originalResolveReference(base);
+    if (!assemblyPoint || baseResolved.lost) return assembly;
+
+    const assemblyDistance = Math.hypot(
+      assemblyPoint.x - paperX,
+      assemblyPoint.y - paperY,
+    );
+    const baseDistance = Math.hypot(
+      baseResolved.point.x - paperX,
+      baseResolved.point.y - paperY,
+    );
+    return assemblyDistance <= baseDistance ? assembly : base;
+  }
+
+  private resolveDrawingReference(reference: AssemblyReferenceRuntime): {
+    readonly point: THREE.Vector2;
+    readonly lost: boolean;
+  } {
+    const resolved = this.resolveAssemblyReference(reference);
+    return resolved ?? this.originalResolveReference(reference);
+  }
+
+  private pickAssemblyReference(
+    paperX: number,
+    paperY: number,
+  ): AssemblyReferenceRuntime | null {
+    const activeSheetId = this.workspaceRuntime.activeSectionId;
+    if (!activeSheetId) return null;
+    const sheet = this.productionRuntime.sheets.get(activeSheetId);
+    if (!sheet) return null;
+
+    const pending = this.workspaceRuntime.pendingDimensionStart;
+    const pendingViewId = pending?.framelogicPdfViewId;
+    if (pending && !pendingViewId) {
+      return null;
+    }
+
+    let best: AssemblyReferenceRuntime | null = null;
+    let bestDistance = SNAP_DISTANCE;
+
+    sheet.views.forEach((view, index) => {
+      if (view.kind !== "ASSEMBLY") return;
+      if (pendingViewId && pendingViewId !== view.id) return;
+      const transform = this.getAssemblyViewTransform(sheet, view, index);
+      const segments = view.segments ?? [];
+      if (!transform || segments.length < 1) return;
+      const fallbackInstanceId = view.instanceIds?.[0] ?? `assembly:${view.id}`;
+
+      const consider = (
+        x: number,
+        y: number,
+        snapKind: "ENDPOINT" | "MIDPOINT" | "INTERSECTION" | "NEAREST",
+        instanceId = fallbackInstanceId,
+      ): void => {
+        const point = this.assemblyPointToPaper(transform, x, y);
+        const distance = Math.hypot(point.x - paperX, point.y - paperY);
+        if (distance >= bestDistance) return;
+        bestDistance = distance;
+        best = {
+          instanceId,
+          x,
+          y,
+          snapKind,
+          precision: "DERIVED_MESH",
+          framelogicPdfViewId: view.id,
+        };
+      };
+
+      for (const segment of segments) {
+        const instanceId = segment.instanceId ?? fallbackInstanceId;
+        consider(segment.x1, segment.y1, "ENDPOINT", instanceId);
+        consider(segment.x2, segment.y2, "ENDPOINT", instanceId);
+        consider(
+          (segment.x1 + segment.x2) / 2,
+          (segment.y1 + segment.y2) / 2,
+          "MIDPOINT",
+          instanceId,
+        );
+
+        const a = this.assemblyPointToPaper(
+          transform,
+          segment.x1,
+          segment.y1,
+        );
+        const b = this.assemblyPointToPaper(
+          transform,
+          segment.x2,
+          segment.y2,
+        );
+        const nearest = closestPointOnSegment(
+          new THREE.Vector2(paperX, paperY),
+          a,
+          b,
+        );
+        const distance = Math.hypot(
+          nearest.point.x - paperX,
+          nearest.point.y - paperY,
+        );
+        if (distance < Math.min(bestDistance, 9)) {
+          const localX = segment.x1
+            + (segment.x2 - segment.x1) * nearest.t;
+          const localY = segment.y1
+            + (segment.y2 - segment.y1) * nearest.t;
+          consider(localX, localY, "NEAREST", instanceId);
+        }
+      }
+
+      if (segments.length <= 260) {
+        for (let first = 0; first < segments.length; first += 1) {
+          const a = segments[first];
+          if (!a) continue;
+          for (let second = first + 1; second < segments.length; second += 1) {
+            const b = segments[second];
+            if (!b) continue;
+            const point = segmentIntersection(a, b);
+            if (!point) continue;
+            consider(
+              point.x,
+              point.y,
+              "INTERSECTION",
+              a.instanceId ?? fallbackInstanceId,
+            );
+          }
+        }
+      }
+    });
+
+    return best;
+  }
+
+  private resolveAssemblyReference(
+    reference: AssemblyReferenceRuntime,
+  ): {
+    readonly point: THREE.Vector2;
+    readonly lost: boolean;
+  } | null {
+    const viewId = reference.framelogicPdfViewId;
+    if (!viewId) return null;
+    const activeSheetId = this.workspaceRuntime.activeSectionId;
+    if (!activeSheetId) {
+      return { point: new THREE.Vector2(reference.x, reference.y), lost: true };
+    }
+    const sheet = this.productionRuntime.sheets.get(activeSheetId);
+    if (!sheet) {
+      return { point: new THREE.Vector2(reference.x, reference.y), lost: true };
+    }
+    const index = sheet.views.findIndex((view) => view.id === viewId);
+    const view = index >= 0 ? sheet.views[index] : undefined;
+    if (!view || view.kind !== "ASSEMBLY") {
+      return { point: new THREE.Vector2(reference.x, reference.y), lost: true };
+    }
+    const transform = this.getAssemblyViewTransform(sheet, view, index);
+    if (!transform) {
+      return { point: new THREE.Vector2(reference.x, reference.y), lost: true };
+    }
+    return {
+      point: this.assemblyPointToPaper(
+        transform,
+        reference.x,
+        reference.y,
+      ),
+      lost: false,
+    };
+  }
+
+  private getAssemblyViewTransform(
+    sheet: SheetRuntime,
+    view: AssemblyViewRuntime,
+    index: number,
+  ): AssemblyViewTransform | null {
+    const move = this.workspaceRuntime.svg.querySelector<SVGRectElement>(
+      `[data-framelogic-view-id="${cssEscape(view.id)}"][data-framelogic-view-action="MOVE"]`,
+    );
+    const resize = this.workspaceRuntime.svg.querySelector<SVGRectElement>(
+      `[data-framelogic-view-id="${cssEscape(view.id)}"][data-framelogic-view-action="RESIZE"]`,
+    );
+    if (!move || !resize) return null;
+
+    const x = Number(move.getAttribute("x") ?? 0);
+    const y = Number(move.getAttribute("y") ?? 0);
+    const width = Number(move.getAttribute("width") ?? 0);
+    const resizeY = Number(resize.getAttribute("y") ?? y);
+    const height = Math.max(1, resizeY + 9 - y);
+    const modelWidth = Math.max(view.width ?? 0, 1e-9);
+    const modelHeight = Math.max(view.height ?? 0, 1e-9);
+
+    const denominator = this.readViewScaleDenominator(index, x, y, width, height);
+    const innerWidth = Math.max(1, width - 20);
+    const innerHeight = Math.max(1, height - 34);
+    const scale = denominator === null
+      ? Math.min(innerWidth / modelWidth, innerHeight / modelHeight)
+      : this.technicalScale(sheet, denominator);
+    const drawnWidth = modelWidth * scale;
+    const drawnHeight = modelHeight * scale;
+    const originX = x + (width - drawnWidth) / 2;
+    const originY = y + 20 + (innerHeight - drawnHeight) / 2;
+
+    return {
+      x,
+      y,
+      width,
+      height,
+      scale,
+      originX,
+      baseY: originY + drawnHeight,
+    };
+  }
+
+  private readViewScaleDenominator(
+    index: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): number | null {
+    const prefix = `VIEW ${index + 1} ·`;
+    const labels = Array.from(
+      this.workspaceRuntime.svg.querySelectorAll<SVGTextElement>("text"),
+    );
+    for (const label of labels) {
+      if (!(label.textContent ?? "").startsWith(prefix)) continue;
+      const lx = Number(label.getAttribute("x") ?? 0);
+      const ly = Number(label.getAttribute("y") ?? 0);
+      if (lx < x || lx > x + width || ly < y || ly > y + height) continue;
+      const match = label.textContent?.match(/1:(\d+(?:\.\d+)?)/);
+      return match?.[1] ? Number(match[1]) : null;
+    }
+    return null;
+  }
+
+  private technicalScale(sheet: SheetRuntime, denominator: number): number {
+    const [rawWidth, rawHeight] = SHEET_MM[sheet.size] ?? SHEET_MM["A3"]!;
+    const paperWidth = sheet.orientation === "LANDSCAPE"
+      ? rawWidth
+      : rawHeight;
+    const paperHeight = sheet.orientation === "LANDSCAPE"
+      ? rawHeight
+      : rawWidth;
+    const pxPerMm = Math.min(
+      (SHEET_WIDTH - 84) / paperWidth,
+      (SHEET_HEIGHT - 84) / paperHeight,
+    );
+    return (1000 / Math.max(denominator, 1)) * pxPerMm;
+  }
+
+  private assemblyPointToPaper(
+    transform: AssemblyViewTransform,
+    x: number,
+    y: number,
+  ): THREE.Vector2 {
+    return new THREE.Vector2(
+      transform.originX + x * transform.scale,
+      transform.baseY - y * transform.scale,
+    );
+  }
+
+  private readonly handlePdfSnapPointerMove = (
+    event: PointerEvent,
+  ): void => {
+    if (this.workspaceRuntime.overlay.style.display === "none") return;
+    if (
+      this.workspaceRuntime.tool !== "DIMENSION"
+      && this.workspaceRuntime.tool !== "LABEL"
+    ) {
+      this.clearPdfSnapMarker();
+      return;
+    }
+    const point = this.workspaceRuntime.eventToSheetPoint(event);
+    if (!point) return;
+    const reference = this.productionRuntime.pickReference(point.x, point.y);
+    if (!reference?.framelogicPdfViewId) {
+      this.clearPdfSnapMarker();
+      return;
+    }
+    const resolved = this.resolveAssemblyReference(reference);
+    if (!resolved || resolved.lost) {
+      this.clearPdfSnapMarker();
+      return;
+    }
+
+    this.workspaceRuntime.svg
+      .querySelectorAll('[data-framelogic-drawing-snap="true"]')
+      .forEach((element) => element.remove());
+    this.clearPdfSnapMarker();
+
+    const group = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "g",
+    );
+    group.setAttribute("data-framelogic-drawing-snap", "true");
+    group.setAttribute("data-framelogic-assembly-view-snap", "true");
+    group.style.pointerEvents = "none";
+
+    const circle = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle",
+    );
+    circle.setAttribute("cx", String(resolved.point.x));
+    circle.setAttribute("cy", String(resolved.point.y));
+    circle.setAttribute("r", "5");
+    circle.setAttribute("fill", "none");
+    circle.setAttribute("stroke", "#d58a00");
+    circle.setAttribute("stroke-width", "1.5");
+
+    const text = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "text",
+    );
+    text.setAttribute("x", String(resolved.point.x + 8));
+    text.setAttribute("y", String(resolved.point.y - 8));
+    text.setAttribute("font-size", "9");
+    text.setAttribute("fill", "#333");
+    text.textContent = `${reference.snapKind ?? "SNAP"} · VIEW`;
+
+    group.append(circle, text);
+    this.workspaceRuntime.svg.append(group);
+    this.snapMarker = group;
+  };
+
+  private readonly clearPdfSnapMarker = (): void => {
+    this.snapMarker?.remove();
+    this.snapMarker = null;
   };
 
   private decorate(): void {
@@ -300,10 +747,6 @@ export class SectionInstanceTreeBridgeController {
       this.hidden.delete(sectionId);
     }
 
-    /*
-     * Se aplica primero la máscara de render. A partir de este punto ningún
-     * frame puede dibujar una sección oculta aunque otra rutina cambie visible.
-     */
     this.setRenderLayerHidden(sectionId, hide);
     this.productionRuntime.syncSectionLayerVisibility();
     this.lastSignature = "";
@@ -333,11 +776,6 @@ export class SectionInstanceTreeBridgeController {
 
     visual.group.visible = !hidden;
     visual.group.traverse((object) => {
-      /*
-       * mask=0 significa que el objeto no pertenece a ninguna capa y por tanto
-       * ninguna cámara/raycaster puede verlo. Las visuales de sección usan la
-       * capa 0 normalmente, por eso al mostrar se restaura mask=1.
-       */
       object.layers.mask = hidden ? 0 : 1;
     });
   }
@@ -440,4 +878,60 @@ export class SectionInstanceTreeBridgeController {
       ? value.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1")
       : "0";
   }
+}
+
+function closestPointOnSegment(
+  point: THREE.Vector2,
+  a: THREE.Vector2,
+  b: THREE.Vector2,
+): {
+  readonly point: THREE.Vector2;
+  readonly t: number;
+} {
+  const ab = b.clone().sub(a);
+  const lengthSquared = ab.lengthSq();
+  if (lengthSquared <= 1e-12) {
+    return { point: a.clone(), t: 0 };
+  }
+  const t = THREE.MathUtils.clamp(
+    point.clone().sub(a).dot(ab) / lengthSquared,
+    0,
+    1,
+  );
+  return {
+    point: a.clone().addScaledVector(ab, t),
+    t,
+  };
+}
+
+function segmentIntersection(
+  a: AssemblyPlanSegmentRuntime,
+  b: AssemblyPlanSegmentRuntime,
+): THREE.Vector2 | null {
+  const denominator =
+    (a.x1 - a.x2) * (b.y1 - b.y2)
+    - (a.y1 - a.y2) * (b.x1 - b.x2);
+  if (Math.abs(denominator) <= 1e-9) return null;
+  const t =
+    ((a.x1 - b.x1) * (b.y1 - b.y2)
+      - (a.y1 - b.y1) * (b.x1 - b.x2))
+    / denominator;
+  const u =
+    -((a.x1 - a.x2) * (a.y1 - b.y1)
+      - (a.y1 - a.y2) * (a.x1 - b.x1))
+    / denominator;
+  if (t < -1e-6 || t > 1 + 1e-6 || u < -1e-6 || u > 1 + 1e-6) {
+    return null;
+  }
+  return new THREE.Vector2(
+    a.x1 + t * (a.x2 - a.x1),
+    a.y1 + t * (a.y2 - a.y1),
+  );
+}
+
+function cssEscape(value: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return value.replace(/["\\]/g, "\\$&");
 }
