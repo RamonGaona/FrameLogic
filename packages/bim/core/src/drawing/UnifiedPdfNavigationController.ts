@@ -66,17 +66,21 @@ export interface UnifiedPdfNavigationControllerOptions {
 
 const SECTION_PREFIX = "SECTION:";
 const SHEET_PREFIX = "SHEET:";
+const DOCUMENT_TABS_HEIGHT = 32;
+const PDF_TREE_WIDTH = 270;
 
 /**
  * Navegación única de documentos PDF.
  *
- * Para el usuario no existe una categoría separada de "PDF Ensambles": todos
- * los documentos se presentan como PDFs equivalentes. La procedencia interna
- * (sección o hoja con views de piezas/ensambles) solo se utiliza para abrir el
- * motor correcto.
+ * Todos los documentos se presentan como PDFs equivalentes. La procedencia
+ * interna (sección o hoja con views de piezas/ensambles) solo se utiliza para
+ * abrir el motor correcto.
  *
  * La barra inferior sigue el patrón CAD: MODELO siempre está disponible y cada
  * PDF existente tiene su propia pestaña.
+ *
+ * El árbol VIEWS se acopla como columna lateral propia: reduce el viewport del
+ * papel en lugar de flotar sobre él. Así el árbol nunca tapa la hoja.
  */
 export class UnifiedPdfNavigationController {
   private readonly container: HTMLElement;
@@ -119,9 +123,11 @@ export class UnifiedPdfNavigationController {
     this.installLabels();
     this.tabBar = this.createTabBar();
 
-    this.workspace.overlay.style.paddingBottom = "32px";
+    this.workspace.overlay.style.paddingBottom =
+      `${DOCUMENT_TABS_HEIGHT}px`;
     this.workspace.overlay.style.boxSizing = "border-box";
-    this.assemblyPdf.overlay.style.paddingBottom = "32px";
+    this.assemblyPdf.overlay.style.paddingBottom =
+      `${DOCUMENT_TABS_HEIGHT}px`;
     this.assemblyPdf.overlay.style.boxSizing = "border-box";
 
     this.timer = window.setInterval(
@@ -183,6 +189,8 @@ export class UnifiedPdfNavigationController {
       true,
     );
     this.tabBar.remove();
+    this.restorePdfTreeDock(this.workspace.overlay);
+    this.restorePdfTreeDock(this.assemblyPdf.overlay);
     this.workspace.overlay.style.paddingBottom = "";
     this.assemblyPdf.overlay.style.paddingBottom = "";
   }
@@ -200,7 +208,7 @@ export class UnifiedPdfNavigationController {
       right: "0",
       bottom: "0",
       zIndex: "12000",
-      height: "32px",
+      height: `${DOCUMENT_TABS_HEIGHT}px`,
       display: "flex",
       alignItems: "stretch",
       gap: "2px",
@@ -331,6 +339,14 @@ export class UnifiedPdfNavigationController {
   private sync(): void {
     if (this.disposed) return;
     this.normalizeLegacyPdfUi();
+    this.syncPdfTreeDock(
+      this.workspace.overlay,
+      "SECTION",
+    );
+    this.syncPdfTreeDock(
+      this.assemblyPdf.overlay,
+      "ASSEMBLY",
+    );
 
     const entries = this.getEntries();
     this.syncOrder(entries);
@@ -353,13 +369,97 @@ export class UnifiedPdfNavigationController {
   }
 
   private normalizeLegacyPdfUi(): void {
-    const legacyButton = this.container.querySelector<HTMLButtonElement>(
+    for (const legacyButton of this.container.querySelectorAll<HTMLButtonElement>(
       'button[data-framelogic-open-assembly-pdf="true"]',
-    );
-    if (legacyButton) {
-      legacyButton.style.display = "none";
-      legacyButton.setAttribute("aria-hidden", "true");
+    )) {
+      const header = legacyButton.parentElement;
+      legacyButton.remove();
+      if (header instanceof HTMLElement) {
+        header.style.gridTemplateColumns = "1fr auto auto";
+      }
     }
+  }
+
+  private syncPdfTreeDock(
+    overlay: HTMLDivElement,
+    kind: "SECTION" | "ASSEMBLY",
+  ): void {
+    const panel = overlay.querySelector<HTMLDivElement>(
+      `div[data-framelogic-pdf-view-tree="${kind}"]`,
+    );
+    const toolbar = overlay.firstElementChild;
+    const stage = Array.from(overlay.children).find(
+      (child): child is HTMLDivElement =>
+        child instanceof HTMLDivElement
+        && child !== toolbar
+        && child !== panel
+        && child.style.flex === "1 1 auto"
+        && child.style.overflow === "auto",
+    );
+
+    if (!stage) return;
+    if (!panel) {
+      this.restorePdfTreeDock(overlay);
+      return;
+    }
+
+    const toolbarHeight =
+      toolbar instanceof HTMLElement
+        ? toolbar.offsetHeight
+        : 0;
+    const status = kind === "SECTION"
+      ? Array.from(overlay.children).find(
+          (child): child is HTMLDivElement =>
+            child instanceof HTMLDivElement
+            && child !== toolbar
+            && child !== stage
+            && child !== panel
+            && child.style.minHeight === "16px",
+        )
+      : undefined;
+    const bottom =
+      DOCUMENT_TABS_HEIGHT
+      + (status?.offsetHeight ?? 0);
+
+    Object.assign(panel.style, {
+      position: "absolute",
+      left: "0",
+      top: `${toolbarHeight}px`,
+      bottom: `${bottom}px`,
+      width: `${PDF_TREE_WIDTH}px`,
+      zIndex: "80",
+      borderTop: "0",
+      borderBottom: "0",
+      borderLeft: "0",
+      borderRight: "1px solid rgba(255,255,255,0.14)",
+      borderRadius: "0",
+      boxShadow: "none",
+      background: "#11191f",
+    });
+
+    stage.style.marginLeft = `${PDF_TREE_WIDTH}px`;
+    stage.style.width = `calc(100% - ${PDF_TREE_WIDTH}px)`;
+    stage.style.alignSelf = "flex-start";
+    stage.style.boxSizing = "border-box";
+  }
+
+  private restorePdfTreeDock(
+    overlay: HTMLDivElement,
+  ): void {
+    const toolbar = overlay.firstElementChild;
+    const stage = Array.from(overlay.children).find(
+      (child): child is HTMLDivElement =>
+        child instanceof HTMLDivElement
+        && child !== toolbar
+        && child.style.flex === "1 1 auto"
+        && child.style.overflow === "auto",
+    );
+    if (!stage) return;
+
+    stage.style.marginLeft = "";
+    stage.style.width = "";
+    stage.style.alignSelf = "";
+    stage.style.boxSizing = "";
   }
 
   private getEntries(): PdfEntry[] {
