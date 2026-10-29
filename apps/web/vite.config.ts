@@ -1,18 +1,25 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
-const buildSha =
-  process.env.CF_PAGES_COMMIT_SHA
-  ?? process.env.GITHUB_SHA
-  ?? 'local'
+const packageJson = JSON.parse(
+  readFileSync(
+    new URL('../../package.json', import.meta.url),
+    'utf-8',
+  ),
+) as { version?: string }
+
+const appVersion =
+  packageJson.version
+  ?? '0.0.0'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
 
   define: {
-    __FRAMELOGIC_BUILD_SHA__: JSON.stringify(buildSha),
+    __FRAMELOGIC_VERSION__: JSON.stringify(appVersion),
   },
 
   /*
