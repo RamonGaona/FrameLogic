@@ -56,8 +56,17 @@ export class GeneralPdfTreeInteractionController {
       "data-framelogic-view-id",
     );
 
-    if (!viewId) return;
-    this.selectView(viewId);
+    if (viewId) {
+      this.selectView(viewId);
+      return;
+    }
+
+    const workspaceSvg = target?.closest<SVGSVGElement>(
+      '[data-framelogic-drawing-workspace="true"] svg',
+    );
+    if (workspaceSvg) {
+      this.clearViewSelection();
+    }
   };
 
   private readonly handleClick = (event: MouseEvent): void => {
@@ -97,6 +106,12 @@ export class GeneralPdfTreeInteractionController {
     }
 
     this.selectedViewId = viewId;
+    this.decorate();
+  }
+
+  private clearViewSelection(): void {
+    if (!this.selectedViewId) return;
+    this.selectedViewId = null;
     this.decorate();
   }
 
