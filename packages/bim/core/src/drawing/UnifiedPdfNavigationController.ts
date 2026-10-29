@@ -1,19 +1,11 @@
 import type {
-  DrawingProductionController,
-  SheetState,
-} from "./DrawingProductionController";
-
-import type {
   DrawingWorkspaceController,
 } from "./DrawingWorkspaceController";
 
 import type {
-  SectionDrawingController,
-} from "./SectionDrawingController";
-
-import type {
-  AssemblyPdfController,
-} from "./AssemblyPdfController";
+  GeneralPdfController,
+  GeneralPdfEntry,
+} from "./GeneralPdfController";
 
 
 export interface UnifiedPdfNavigationSnapshot {
@@ -21,47 +13,14 @@ export interface UnifiedPdfNavigationSnapshot {
   readonly order: readonly string[];
 }
 
-interface PdfEntry {
-  readonly key: string;
-  readonly kind: "SECTION" | "SHEET";
-  readonly targetId: string;
-  readonly label: string;
-}
-
-interface ProductionRuntime {
-  readonly sheets: Map<string, SheetState>;
-}
-
 interface WorkspaceRuntime {
-  activeSectionId: string | null;
   readonly overlay: HTMLDivElement;
-}
-
-interface SectionRuntime {
-  activeSectionId: string | null;
-  refreshUi(): void;
-}
-
-interface AssemblySheetRuntime {
-  readonly id: string;
-  name: string;
-  readonly views: readonly unknown[];
-}
-
-interface AssemblyPdfRuntime {
-  readonly sheets: AssemblySheetRuntime[];
-  activeSheetId: string | null;
-  readonly overlay: HTMLDivElement;
-  readonly sheetSelect: HTMLSelectElement;
-  render(): void;
 }
 
 export interface UnifiedPdfNavigationControllerOptions {
   readonly container: HTMLElement;
-  readonly sectionDrawing: SectionDrawingController;
   readonly drawingWorkspace: DrawingWorkspaceController;
-  readonly drawingProduction: DrawingProductionController;
-  readonly assemblyPdf: AssemblyPdfController;
+  readonly generalPdf: GeneralPdfController;
 }
 
 const SECTION_PREFIX = "SECTION:";
@@ -72,24 +31,18 @@ const PDF_TREE_WIDTH = 270;
 /**
  * Navegación única de documentos PDF.
  *
- * MODELO permanece fijo. Los PDF existentes siguen disponibles desde los
- * selectores de navegación, pero sólo aparecen como pestañas después de que
- * el usuario los abre. Cerrar una pestaña no elimina el documento: únicamente
- * lo retira de la barra de documentos abiertos.
- *
- * El árbol VIEWS se acopla como columna lateral propia: reduce el viewport del
- * papel en lugar de flotar sobre él. Así el árbol nunca tapa la hoja.
+ * Ya no decide entre un motor de secciones y otro de ensambles. Todos los
+ * documentos son hojas del GeneralPdfController y se abren en el mismo Paper
+ * Space. Los prefijos SECTION:/SHEET: sólo se conservan para migrar el orden de
+ * proyectos anteriores y para no romper bridges antiguos que todavía consultan
+ * el origen de una hoja.
  */
 export class UnifiedPdfNavigationController {
   private readonly container: HTMLElement;
-  private readonly sectionDrawing: SectionDrawingController;
   private readonly drawingWorkspace: DrawingWorkspaceController;
-  private readonly production: ProductionRuntime;
   private readonly workspace: WorkspaceRuntime;
-  private readonly sectionRuntime: SectionRuntime;
-  private readonly assemblyPdf: AssemblyPdfRuntime;
-  private readonly sectionSelect: HTMLSelectElement | null;
-  private readonly assemblySelect: HTMLSelectElement | null;
+  private readonly generalPdf: GeneralPdfController;
+  private readonly pdfSelect: HTMLSelectElement | null;
   private readonly tabBar: HTMLDivElement;
   private readonly timer: number;
   private order: string[] = [];
@@ -100,34 +53,21 @@ export class UnifiedPdfNavigationController {
     options: UnifiedPdfNavigationControllerOptions,
   ) {
     this.container = options.container;
-    this.sectionDrawing = options.sectionDrawing;
     this.drawingWorkspace = options.drawingWorkspace;
-    this.production = options.drawingProduction as unknown as ProductionRuntime;
-    this.workspace = options.drawingWorkspace as unknown as WorkspaceRuntime;
-    this.sectionRuntime = options.sectionDrawing as unknown as SectionRuntime;
-    this.assemblyPdf = options.assemblyPdf as unknown as AssemblyPdfRuntime;
+    this.workspace =
+      options.drawingWorkspace as unknown as WorkspaceRuntime;
+    this.generalPdf = options.generalPdf;
 
-    this.sectionSelect =
-      options.container.querySelector<HTMLSelectElement>(
-        'select[title="Cambiar plano de sección"]',
-      );
-    this.assemblySelect =
-      this.assemblyPdf.sheetSelect
-      ?? options.container.querySelector<HTMLSelectElement>(
-        '[data-framelogic-assembly-pdf="true"] select',
-      );
-
-    this.prepareSelect(this.sectionSelect, "SECTION_WORKSPACE");
-    this.prepareSelect(this.assemblySelect, "SHEET_WORKSPACE");
-    this.installLabels();
+    this.pdfSelect = options.container.querySelector<HTMLSelectElement>(
+      'select[title="Cambiar plano de sección"]',
+    );
+    this.prepareSelect(this.pdfSelect);
+    this.installLabel();
     this.tabBar = this.createTabBar();
 
     this.workspace.overlay.style.paddingBottom =
       `${DOCUMENT_TABS_HEIGHT}px`;
     this.workspace.overlay.style.boxSizing = "border-box";
-    this.assemblyPdf.overlay.style.paddingBottom =
-      `${DOCUMENT_TABS_HEIGHT}px`;
-    this.assemblyPdf.overlay.style.boxSizing = "border-box";
 
     this.timer = window.setInterval(
       () => this.sync(),
@@ -156,11 +96,12 @@ export class UnifiedPdfNavigationController {
     }
     else {
       this.order = snapshot.order
-        .map((key) =>
-          key.startsWith("ASSEMBLY:")
-            ? `${SHEET_PREFIX}${key.slice("ASSEMBLY:".length)}`
-            : key,
-        )
+        .map((key) => {
+          if (key.startsWith("ASSEMBLY:")) {
+            return `${SHEET_PREFIX}${key.slice("ASSEMBLY:".length)}`;
+          }
+          return key;
+        })
         .filter(
           (key): key is string =>
             typeof key === "string"
@@ -171,10 +112,8 @@ export class UnifiedPdfNavigationController {
         );
     }
 
-    // Las pestañas abiertas son estado de sesión, no del documento.
     this.openedKeys = [];
     this.drawingWorkspace.close();
-    this.assemblyPdf.overlay.style.display = "none";
     this.sync();
   }
 
@@ -182,21 +121,50 @@ export class UnifiedPdfNavigationController {
     if (this.disposed) return;
     this.disposed = true;
     window.clearInterval(this.timer);
-    this.sectionSelect?.removeEventListener(
-      "change",
-      this.handleSelectChange,
-      true,
-    );
-    this.assemblySelect?.removeEventListener(
+    this.pdfSelect?.removeEventListener(
       "change",
       this.handleSelectChange,
       true,
     );
     this.tabBar.remove();
-    this.restorePdfTreeDock(this.workspace.overlay);
-    this.restorePdfTreeDock(this.assemblyPdf.overlay);
+    this.restorePdfTreeDock();
     this.workspace.overlay.style.paddingBottom = "";
-    this.assemblyPdf.overlay.style.paddingBottom = "";
+  }
+
+  getEntries(): GeneralPdfEntry[] {
+    return this.generalPdf.getEntries();
+  }
+
+  syncOrder(entries: readonly GeneralPdfEntry[]): void {
+    const current = new Set(
+      entries.map((entry) => entry.key),
+    );
+    this.order = this.order.filter(
+      (key) => current.has(key),
+    );
+    for (const entry of entries) {
+      if (!this.order.includes(entry.key)) {
+        this.order.push(entry.key);
+      }
+    }
+  }
+
+  getOrderedKeys(): readonly string[] {
+    const entries = this.getEntries();
+    this.syncOrder(entries);
+    return [...this.order];
+  }
+
+  openSection(sectionId: string): boolean {
+    return this.openTarget(sectionId);
+  }
+
+  openAssemblySheet(sheetId: string): boolean {
+    return this.openTarget(sheetId);
+  }
+
+  openSheet(sheetId: string): boolean {
+    return this.openTarget(sheetId);
   }
 
   private createTabBar(): HTMLDivElement {
@@ -229,12 +197,9 @@ export class UnifiedPdfNavigationController {
     return bar;
   }
 
-  private prepareSelect(
-    select: HTMLSelectElement | null,
-    source: string,
-  ): void {
+  private prepareSelect(select: HTMLSelectElement | null): void {
     if (!select) return;
-    select.dataset["framelogicUnifiedPdf"] = source;
+    select.dataset["framelogicUnifiedPdf"] = "GENERAL_PDF";
     select.title = "Abrir o cambiar PDF";
     select.style.minWidth = "190px";
     select.addEventListener(
@@ -244,71 +209,46 @@ export class UnifiedPdfNavigationController {
     );
   }
 
-  private installLabels(): void {
-    if (this.sectionSelect) {
-      const previous = this.sectionSelect.previousElementSibling;
-      if (
-        previous instanceof HTMLElement
-        && previous.textContent?.trim() === "Sección"
-      ) {
-        previous.textContent = "PDF";
-        previous.dataset["framelogicUnifiedPdfLabel"] = "true";
-      }
-    }
-
-    if (this.assemblySelect) {
-      const existing = this.assemblySelect.previousElementSibling;
-      if (
-        existing instanceof HTMLElement
-        && existing.dataset["framelogicUnifiedPdfLabel"] === "true"
-      ) {
-        existing.textContent = "PDF";
-        return;
-      }
-      const label = document.createElement("span");
-      label.textContent = "PDF";
-      label.dataset["framelogicUnifiedPdfLabel"] = "true";
-      label.style.opacity = "0.72";
-      label.style.marginLeft = "4px";
-      this.assemblySelect.before(label);
+  private installLabel(): void {
+    if (!this.pdfSelect) return;
+    const previous = this.pdfSelect.previousElementSibling;
+    if (
+      previous instanceof HTMLElement
+      && previous.textContent?.trim() === "Sección"
+    ) {
+      previous.textContent = "PDF";
+      previous.dataset["framelogicUnifiedPdfLabel"] = "true";
     }
   }
 
-  private readonly handleSelectChange = (
-    event: Event,
-  ): void => {
+  private readonly handleSelectChange = (event: Event): void => {
     if (this.disposed) return;
     const select = event.currentTarget;
     if (!(select instanceof HTMLSelectElement)) return;
-
     event.preventDefault();
     event.stopImmediatePropagation();
     this.openKey(select.value);
-
-    window.setTimeout(
-      () => this.sync(),
-      0,
-    );
+    window.setTimeout(() => this.sync(), 0);
   };
 
   private openKey(key: string): boolean {
-    let opened = false;
+    const entry = this.getEntries().find(
+      (candidate) => candidate.key === key,
+    );
+    if (!entry) return false;
+    const opened = this.generalPdf.openSheet(entry.targetId);
+    if (opened) this.markOpened(entry.key);
+    return opened;
+  }
 
-    if (key.startsWith(SECTION_PREFIX)) {
-      opened = this.openSection(
-        key.slice(SECTION_PREFIX.length),
-      );
-    }
-    else if (key.startsWith(SHEET_PREFIX)) {
-      opened = this.openSheet(
-        key.slice(SHEET_PREFIX.length),
-      );
-    }
-
-    if (opened) {
-      this.markOpened(key);
-    }
-
+  private openTarget(targetId: string): boolean {
+    const entry = this.getEntries().find(
+      (candidate) => candidate.targetId === targetId,
+    );
+    if (!entry) return false;
+    const opened = this.generalPdf.openSheet(entry.targetId);
+    if (opened) this.markOpened(entry.key);
+    window.setTimeout(() => this.sync(), 0);
     return opened;
   }
 
@@ -322,67 +262,28 @@ export class UnifiedPdfNavigationController {
     this.openedKeys = this.openedKeys.filter(
       (candidate) => candidate !== key,
     );
-
     if (this.getActiveKey() === key) {
       this.openModel();
       return;
     }
-
     this.sync();
   }
 
   private openModel(): void {
     this.drawingWorkspace.close();
-    this.assemblyPdf.overlay.style.display = "none";
     this.sync();
-  }
-
-  private openSection(
-    sectionId: string,
-  ): boolean {
-    const section = this.sectionDrawing
-      .getSections()
-      .find((candidate) => candidate.id === sectionId);
-    if (!section) return false;
-
-    this.assemblyPdf.overlay.style.display = "none";
-    this.sectionRuntime.activeSectionId = section.id;
-    this.sectionRuntime.refreshUi();
-    return this.drawingWorkspace.openActiveSection();
-  }
-
-  private openSheet(
-    sheetId: string,
-  ): boolean {
-    const sheet = this.assemblyPdf.sheets.find(
-      (candidate) => candidate.id === sheetId,
-    );
-    if (!sheet) return false;
-
-    this.drawingWorkspace.close();
-    this.assemblyPdf.activeSheetId = sheet.id;
-    this.assemblyPdf.overlay.style.display = "flex";
-    this.assemblyPdf.render();
-    return true;
   }
 
   private sync(): void {
     if (this.disposed) return;
     this.normalizeLegacyPdfUi();
-    this.syncPdfTreeDock(
-      this.workspace.overlay,
-      "SECTION",
-    );
-    this.syncPdfTreeDock(
-      this.assemblyPdf.overlay,
-      "ASSEMBLY",
-    );
+    this.syncPdfTreeDock();
 
     const entries = this.getEntries();
     this.syncOrder(entries);
     const ordered = this.order
       .map((key) => entries.find((entry) => entry.key === key))
-      .filter((entry): entry is PdfEntry => Boolean(entry));
+      .filter((entry): entry is GeneralPdfEntry => Boolean(entry));
     const availableKeys = new Set(
       ordered.map((entry) => entry.key),
     );
@@ -398,21 +299,13 @@ export class UnifiedPdfNavigationController {
 
     const opened = this.openedKeys
       .map((key) => ordered.find((entry) => entry.key === key))
-      .filter((entry): entry is PdfEntry => Boolean(entry));
+      .filter((entry): entry is GeneralPdfEntry => Boolean(entry));
 
-    // Los selectores son el catálogo de PDFs disponibles para abrir.
     this.populateSelect(
-      this.sectionSelect,
+      this.pdfSelect,
       ordered,
       activeKey,
     );
-    this.populateSelect(
-      this.assemblySelect,
-      ordered,
-      activeKey,
-    );
-
-    // La barra inferior sólo contiene documentos abiertos por el usuario.
     this.renderTabs(opened, activeKey);
   }
 
@@ -420,22 +313,19 @@ export class UnifiedPdfNavigationController {
     for (const legacyButton of this.container.querySelectorAll<HTMLButtonElement>(
       'button[data-framelogic-open-assembly-pdf="true"]',
     )) {
-      legacyButton.style.display = "none";
-      legacyButton.disabled = true;
-      legacyButton.setAttribute("aria-hidden", "true");
-      const header = legacyButton.parentElement;
-      if (header instanceof HTMLElement) {
-        header.style.gridTemplateColumns = "1fr auto auto";
-      }
+      legacyButton.remove();
+    }
+    for (const legacyOverlay of this.container.querySelectorAll<HTMLElement>(
+      '[data-framelogic-assembly-pdf="true"]',
+    )) {
+      legacyOverlay.remove();
     }
   }
 
-  private syncPdfTreeDock(
-    overlay: HTMLDivElement,
-    kind: "SECTION" | "ASSEMBLY",
-  ): void {
+  private syncPdfTreeDock(): void {
+    const overlay = this.workspace.overlay;
     const panel = overlay.querySelector<HTMLDivElement>(
-      `div[data-framelogic-pdf-view-tree="${kind}"]`,
+      'div[data-framelogic-pdf-view-tree="GENERAL"]',
     );
     const toolbar = overlay.firstElementChild;
     const stage = Array.from(overlay.children).find(
@@ -446,30 +336,24 @@ export class UnifiedPdfNavigationController {
         && child.style.flex === "1 1 auto"
         && child.style.overflow === "auto",
     );
-
     if (!stage) return;
     if (!panel) {
-      this.restorePdfTreeDock(overlay);
+      this.restorePdfTreeDock();
       return;
     }
 
-    const toolbarHeight =
-      toolbar instanceof HTMLElement
-        ? toolbar.offsetHeight
-        : 0;
-    const status = kind === "SECTION"
-      ? Array.from(overlay.children).find(
-          (child): child is HTMLDivElement =>
-            child instanceof HTMLDivElement
-            && child !== toolbar
-            && child !== stage
-            && child !== panel
-            && child.style.minHeight === "16px",
-        )
-      : undefined;
-    const bottom =
-      DOCUMENT_TABS_HEIGHT
-      + (status?.offsetHeight ?? 0);
+    const toolbarHeight = toolbar instanceof HTMLElement
+      ? toolbar.offsetHeight
+      : 0;
+    const status = Array.from(overlay.children).find(
+      (child): child is HTMLDivElement =>
+        child instanceof HTMLDivElement
+        && child !== toolbar
+        && child !== stage
+        && child !== panel
+        && child.style.minHeight === "16px",
+    );
+    const bottom = DOCUMENT_TABS_HEIGHT + (status?.offsetHeight ?? 0);
 
     Object.assign(panel.style, {
       position: "absolute",
@@ -493,9 +377,8 @@ export class UnifiedPdfNavigationController {
     stage.style.boxSizing = "border-box";
   }
 
-  private restorePdfTreeDock(
-    overlay: HTMLDivElement,
-  ): void {
+  private restorePdfTreeDock(): void {
+    const overlay = this.workspace.overlay;
     const toolbar = overlay.firstElementChild;
     const stage = Array.from(overlay.children).find(
       (child): child is HTMLDivElement =>
@@ -505,79 +388,22 @@ export class UnifiedPdfNavigationController {
         && child.style.overflow === "auto",
     );
     if (!stage) return;
-
     stage.style.marginLeft = "";
     stage.style.width = "";
     stage.style.alignSelf = "";
     stage.style.boxSizing = "";
   }
 
-  private getEntries(): PdfEntry[] {
-    const entries: PdfEntry[] = [];
-    const sections = this.sectionDrawing.getSections();
-
-    for (const sectionId of this.production.sheets.keys()) {
-      const section = sections.find(
-        (candidate) => candidate.id === sectionId,
-      );
-      if (!section) continue;
-      entries.push({
-        key: `${SECTION_PREFIX}${section.id}`,
-        kind: "SECTION",
-        targetId: section.id,
-        label: section.name,
-      });
-    }
-
-    for (const sheet of this.assemblyPdf.sheets) {
-      entries.push({
-        key: `${SHEET_PREFIX}${sheet.id}`,
-        kind: "SHEET",
-        targetId: sheet.id,
-        label: sheet.name,
-      });
-    }
-
-    return entries;
-  }
-
-  private syncOrder(
-    entries: readonly PdfEntry[],
-  ): void {
-    const current = new Set(
-      entries.map((entry) => entry.key),
-    );
-    this.order = this.order.filter(
-      (key) => current.has(key),
-    );
-
-    for (const entry of entries) {
-      if (!this.order.includes(entry.key)) {
-        this.order.push(entry.key);
-      }
-    }
-  }
-
   private getActiveKey(): string | null {
-    if (
-      this.assemblyPdf.overlay.style.display !== "none"
-      && this.assemblyPdf.activeSheetId
-    ) {
-      return `${SHEET_PREFIX}${this.assemblyPdf.activeSheetId}`;
-    }
-
-    if (
-      this.workspace.overlay.style.display !== "none"
-      && this.workspace.activeSectionId
-    ) {
-      return `${SECTION_PREFIX}${this.workspace.activeSectionId}`;
-    }
-
-    return null;
+    const activeSheetId = this.generalPdf.getActiveSheetId();
+    if (!activeSheetId) return null;
+    return this.getEntries().find(
+      (entry) => entry.targetId === activeSheetId,
+    )?.key ?? null;
   }
 
   private renderTabs(
-    entries: readonly PdfEntry[],
+    entries: readonly GeneralPdfEntry[],
     activeKey: string | null,
   ): void {
     const signature = [
@@ -607,7 +433,7 @@ export class UnifiedPdfNavigationController {
   }
 
   private createPdfTab(
-    entry: PdfEntry,
+    entry: GeneralPdfEntry,
     active: boolean,
   ): HTMLDivElement {
     const tab = document.createElement("div");
@@ -670,14 +496,6 @@ export class UnifiedPdfNavigationController {
       cursor: "pointer",
       font: "16px/1 system-ui, sans-serif",
     });
-    close.addEventListener("mouseenter", () => {
-      close.style.background = "rgba(255,255,255,0.09)";
-      close.style.color = "#ffffff";
-    });
-    close.addEventListener("mouseleave", () => {
-      close.style.background = "transparent";
-      close.style.color = "#9fb2bb";
-    });
     close.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -728,11 +546,10 @@ export class UnifiedPdfNavigationController {
 
   private populateSelect(
     select: HTMLSelectElement | null,
-    entries: readonly PdfEntry[],
+    entries: readonly GeneralPdfEntry[],
     activeKey: string | null,
   ): void {
     if (!select) return;
-
     const optionRows = entries.map((entry, index) => ({
       value: entry.key,
       label: `${index + 1} · ${entry.label}`,
@@ -749,7 +566,6 @@ export class UnifiedPdfNavigationController {
       || actualSignature !== signature
     ) {
       select.replaceChildren();
-
       if (optionRows.length < 1) {
         const option = document.createElement("option");
         option.value = "";
@@ -764,7 +580,6 @@ export class UnifiedPdfNavigationController {
           select.append(option);
         }
       }
-
       select.dataset["framelogicUnifiedPdfSignature"] = signature;
     }
 
