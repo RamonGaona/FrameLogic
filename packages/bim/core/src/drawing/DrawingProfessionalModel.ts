@@ -212,19 +212,30 @@ export function cloneProfessionalState(
   };
 }
 
-export function modelMetersToDrawingUnit(
-  valueMeters: number,
+/**
+ * FrameLogic usa milímetros como unidad lineal canónica del Model Space.
+ * Esta función convierte desde esa unidad interna a la unidad de presentación.
+ */
+export function modelMillimetersToDrawingUnit(
+  valueMillimeters: number,
   unit: DrawingUnit,
 ): number {
   switch (unit) {
     case "MM":
-      return valueMeters * 1000;
+      return valueMillimeters;
     case "CM":
-      return valueMeters * 100;
+      return valueMillimeters / 10;
     case "M":
-      return valueMeters;
+      return valueMillimeters / 1000;
   }
 }
+
+/**
+ * Alias conservado para compatibilidad binaria/API durante la migración.
+ * El argumento representa ahora unidades canónicas FrameLogic (milímetros).
+ */
+export const modelMetersToDrawingUnit =
+  modelMillimetersToDrawingUnit;
 
 export function drawingUnitLabel(
   unit: DrawingUnit,
@@ -240,12 +251,12 @@ export function drawingUnitLabel(
 }
 
 export function formatDrawingMeasurement(
-  valueMeters: number,
+  valueMillimeters: number,
   style: DimensionStyleState,
 ): string {
   const converted =
-    modelMetersToDrawingUnit(
-      valueMeters,
+    modelMillimetersToDrawingUnit(
+      valueMillimeters,
       style.unit,
     );
   const fixed =
@@ -272,11 +283,11 @@ export function formatDrawingMeasurement(
 }
 
 function formatTolerance(
-  valueMeters: number,
+  valueMillimeters: number,
   style: DimensionStyleState,
 ): string {
-  return modelMetersToDrawingUnit(
-    valueMeters,
+  return modelMillimetersToDrawingUnit(
+    valueMillimeters,
     style.unit,
   ).toFixed(
     Math.max(
