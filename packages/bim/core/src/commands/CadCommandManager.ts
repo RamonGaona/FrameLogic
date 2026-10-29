@@ -3,11 +3,27 @@ import type {
 } from "./CadCommand";
 
 
+const LINE_DOUBLE_CANCEL_WINDOW_MS =
+  400;
+
+
 export class CadCommandManager {
 
   private activeCommand:
     CadCommand | null =
       null;
+
+
+  private lastLineEscapeAt =
+    Number.NEGATIVE_INFINITY;
+
+
+  private lastLineRightClickAt =
+    Number.NEGATIVE_INFINITY;
+
+
+  private suppressContextMenuUntil =
+    Number.NEGATIVE_INFINITY;
 
 
   constructor() {
@@ -17,18 +33,23 @@ export class CadCommandManager {
       !== "undefined"
     ) {
 
-      /*
-       * LINE necesita prioridad contextual de Escape.
-       *
-       * Este listener corre en capture y desactiva inmediatamente
-       * la herramienta, pero conserva activeCommand hasta que el
-       * listener CAD general procese el mismo Escape. De esa forma
-       * el flujo normal todavía oculta la entrada numérica y evita
-       * interpretar ese Escape como "limpiar selección".
-       */
       window.addEventListener(
         "keydown",
         this.handlePriorityKeyDown,
+        true,
+      );
+
+
+      window.addEventListener(
+        "pointerdown",
+        this.handlePriorityPointerDown,
+        true,
+      );
+
+
+      window.addEventListener(
+        "contextmenu",
+        this.handleContextMenu,
         true,
       );
 
@@ -62,6 +83,9 @@ export class CadCommandManager {
       command;
 
 
+    this.resetLineCancelGestures();
+
+
     return true;
 
   }
@@ -84,6 +108,9 @@ export class CadCommandManager {
 
     this.activeCommand =
       null;
+
+
+    this.resetLineCancelGestures();
 
 
     command.cancel();
@@ -110,6 +137,73 @@ export class CadCommandManager {
   }
 
 
+  private handleLineCancelGesture(
+    source:
+      "ESCAPE"
+      | "RIGHT_CLICK",
+  ): void {
+
+    const command =
+      this.activeCommand;
+
+
+    if (
+      command?.id
+      !== "LINE"
+    ) {
+
+      return;
+
+    }
+
+
+    const now =
+      performance.now();
+
+
+    const previous =
+      source === "ESCAPE"
+        ? this.lastLineEscapeAt
+        : this.lastLineRightClickAt;
+
+
+    if (
+      now - previous
+      <= LINE_DOUBLE_CANCEL_WINDOW_MS
+    ) {
+
+      this.cancelActive();
+      return;
+
+    }
+
+
+    if (
+      source === "ESCAPE"
+    ) {
+
+      this.lastLineEscapeAt =
+        now;
+
+    }
+    else {
+
+      this.lastLineRightClickAt =
+        now;
+
+    }
+
+
+    /*
+     * Primer gesto: termina únicamente la cadena/tramo pendiente.
+     * LINE sigue siendo el activeCommand y queda esperando un nuevo
+     * primer punto independiente.
+     */
+    command.softCancel?.();
+
+  }
+
+
   private readonly handlePriorityKeyDown =
     (
       event:
@@ -128,20 +222,95 @@ export class CadCommandManager {
 
 
       event.preventDefault();
+      event.stopImmediatePropagation();
 
 
       /*
-       * Cancelación visual/inmediata del tramo pendiente.
-       * No se elimina ninguna línea ya registrada: LineCommand.cancel()
-       * únicamente desactiva CadLinePlacementController y su preview.
-       *
-       * No limpiamos activeCommand aquí. El manejador CAD general del
-       * mismo Escape ejecutará cancelActive(), ocultará la entrada
-       * numérica y consumirá el Escape antes del flujo de selección.
+       * Mantener Escape presionado no debe interpretarse como doble Escape.
        */
-      this.activeCommand.cancel();
+      if (
+        event.repeat
+      ) {
+
+        return;
+
+      }
+
+
+      this.handleLineCancelGesture(
+        "ESCAPE",
+      );
 
   };
+
+
+  private readonly handlePriorityPointerDown =
+    (
+      event:
+        PointerEvent,
+    ): void => {
+
+      if (
+        event.button !== 2
+        || this.activeCommand
+          ?.id !== "LINE"
+        || !(event.target instanceof HTMLCanvasElement)
+      ) {
+
+        return;
+
+      }
+
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+
+      this.suppressContextMenuUntil =
+        performance.now()
+        + 600;
+
+
+      this.handleLineCancelGesture(
+        "RIGHT_CLICK",
+      );
+
+  };
+
+
+  private readonly handleContextMenu =
+    (
+      event:
+        MouseEvent,
+    ): void => {
+
+      if (
+        performance.now()
+        > this.suppressContextMenuUntil
+      ) {
+
+        return;
+
+      }
+
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+  };
+
+
+  private resetLineCancelGestures():
+    void {
+
+    this.lastLineEscapeAt =
+      Number.NEGATIVE_INFINITY;
+
+
+    this.lastLineRightClickAt =
+      Number.NEGATIVE_INFINITY;
+
+  }
 
 
   dispose(): void {
@@ -154,6 +323,20 @@ export class CadCommandManager {
       window.removeEventListener(
         "keydown",
         this.handlePriorityKeyDown,
+        true,
+      );
+
+
+      window.removeEventListener(
+        "pointerdown",
+        this.handlePriorityPointerDown,
+        true,
+      );
+
+
+      window.removeEventListener(
+        "contextmenu",
+        this.handleContextMenu,
         true,
       );
 
