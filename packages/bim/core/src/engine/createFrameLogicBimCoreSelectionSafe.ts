@@ -8,6 +8,10 @@ import type {
   BimCoreInstance,
 } from "./createBimCore";
 
+import {
+  ModelSpaceDimensionController,
+} from "../interaction/ModelSpaceDimensionController";
+
 
 interface MoveControlsRuntime {
   axis:
@@ -551,6 +555,35 @@ export async function createBimCore(
     core.dispose;
 
 
+  const modelSpaceDimensions =
+    core.world.renderer
+      ? new ModelSpaceDimensionController({
+          container,
+          domElement:
+            core.world.renderer.three.domElement,
+          scene:
+            core.world.scene.three,
+          cameraProvider: () =>
+            core.world.camera.three,
+          snap:
+            core.designSnap,
+          workPlane:
+            core.cadWorkPlane,
+          designSelection:
+            core.designSelection,
+          pointSelection:
+            core.cadPointSelection,
+          lineSelection:
+            core.cadLineSelection,
+          beforeActivate: () => {
+            core.cancelActiveCadCommand();
+            core.cancelCadWorkPlaneEdit();
+            core.cancelPreparedPieceOriginSnapEdit();
+          },
+        })
+      : null;
+
+
   const uninstallSelectionScopedMoveState =
     installSelectionScopedMoveState(
       core,
@@ -614,6 +647,8 @@ export async function createBimCore(
         disposed =
           true;
 
+
+        modelSpaceDimensions?.dispose();
 
         uninstallSelectionScopedMoveState();
 
