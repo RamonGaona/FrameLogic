@@ -29,8 +29,14 @@ interface OriginalMaterialState {
  * No modifica el DesignModel ni el estado documental. Los materiales
  * alternativos viven únicamente en los objetos Three.js del visor y se
  * restauran al volver a SOLID o al destruir el controlador.
+ *
+ * WIREFRAME deliberadamente NO usa Material.wireframe: esa opción expone la
+ * triangulación interna del tessellado STEP/IFC. En su lugar dibujamos solo
+ * aristas geométricas significativas con EdgesGeometry, más parecido a la
+ * visualización alámbrica de un CAD/CAE.
  */
 export class ModelRenderModeController {
+  private readonly container: HTMLElement;
   private readonly designScene: DesignSceneController;
   private readonly panel: HTMLDivElement;
   private readonly select: HTMLSelectElement;
@@ -42,15 +48,16 @@ export class ModelRenderModeController {
   private disposed = false;
 
   constructor(options: Options) {
+    this.container = options.container;
     this.designScene = options.designScene;
 
     const panel = document.createElement("div");
     panel.dataset["framelogicModelRenderMode"] = "true";
     Object.assign(panel.style, {
       position: "absolute",
-      right: "14px",
-      bottom: "42px",
-      zIndex: "130",
+      right: "16px",
+      bottom: "16px",
+      zIndex: "90",
       display: "flex",
       alignItems: "center",
       gap: "6px",
@@ -61,6 +68,7 @@ export class ModelRenderModeController {
       color: "#dce8ed",
       font: "11px system-ui, sans-serif",
       boxShadow: "0 3px 12px rgba(0,0,0,0.28)",
+      whiteSpace: "nowrap",
     });
 
     const label = document.createElement("span");
@@ -97,7 +105,7 @@ export class ModelRenderModeController {
     this.select = select;
 
     this.sync();
-    this.timer = window.setInterval(() => this.sync(), 400);
+    this.timer = window.setInterval(() => this.sync(), 300);
   }
 
   getMode(): ModelRenderMode {
@@ -126,7 +134,38 @@ export class ModelRenderModeController {
 
   private sync(): void {
     if (this.disposed) return;
+    this.updatePanelPosition();
     this.applyToAll(false);
+  }
+
+  /**
+   * SECCIÓN también ocupa la esquina inferior derecha. En vez de fijar un
+   * bottom aproximado, medimos el panel real para que Render siempre quede
+   * encima aunque SECCIÓN cambie de alto al envolver sus controles.
+   */
+  private updatePanelPosition(): void {
+    const sectionPanel = this.container.querySelector<HTMLElement>(
+      '[data-framelogic-section-panel="true"]',
+    );
+
+    if (
+      !sectionPanel
+      || sectionPanel === this.panel
+      || window.getComputedStyle(sectionPanel).display === "none"
+    ) {
+      this.panel.style.bottom = "16px";
+      return;
+    }
+
+    const containerRect = this.container.getBoundingClientRect();
+    const sectionRect = sectionPanel.getBoundingClientRect();
+    const sectionBottom = Math.max(
+      0,
+      containerRect.bottom - sectionRect.bottom,
+    );
+    const bottom = sectionBottom + sectionRect.height + 8;
+
+    this.panel.style.bottom = `${Math.round(bottom)}px`;
   }
 
   private applyToAll(force: boolean): void {
@@ -165,19 +204,27 @@ export class ModelRenderModeController {
       : [original.material];
     const replacements = source.map((material) => {
       const clone = material.clone();
+
       if ("wireframe" in clone) {
-        (clone as THREE.MeshBasicMaterial).wireframe =
-          this.mode === "WIREFRAME";
+        /* Nunca mostrar la triangulación del tessellado. */
+        (clone as THREE.MeshBasicMaterial).wireframe = false;
       }
+
       if (this.mode === "WIREFRAME") {
-        clone.transparent = false;
-        clone.opacity = 1;
-        clone.depthWrite = true;
+        /*
+         * Conservamos el Mesh para selección/raycast, pero no pintamos sus
+         * caras. Las aristas CAD se renderizan mediante EdgesGeometry.
+         */
+        clone.transparent = true;
+        clone.opacity = 0;
+        clone.depthWrite = false;
+        clone.colorWrite = false;
       }
       else {
         clone.transparent = true;
         clone.opacity = 0.24;
         clone.depthWrite = false;
+        clone.colorWrite = true;
         clone.side = THREE.DoubleSide;
       }
       clone.needsUpdate = true;
@@ -189,9 +236,35 @@ export class ModelRenderModeController {
       ? replacements
       : replacements[0] ?? original.material;
 
-    if (this.mode === "TRANSPARENT") {
+    if (this.mode === "WIREFRAME") {
+      this.ensureEdges(
+        mesh,
+        this.getRepresentativeColor(original.material),
+        0.96,
+      );
+    }
+    else if (this.mode === "TRANSPARENT") {
       this.ensureEdges(mesh, 0x6f8792, 0.72);
     }
+  }
+
+  private getRepresentativeColor(
+    material: THREE.Material | THREE.Material[],
+  ): number {
+    const entries = Array.isArray(material)
+      ? material
+      : [material];
+
+    for (const entry of entries) {
+      const candidate = entry as THREE.Material & {
+        color?: THREE.Color;
+      };
+      if (candidate.color instanceof THREE.Color) {
+        return candidate.color.getHex();
+      }
+    }
+
+    return 0xb8cbd4;
   }
 
   private ensureEdges(
@@ -205,13 +278,18 @@ export class ModelRenderModeController {
       return;
     }
 
-    const geometry = new THREE.EdgesGeometry(mesh.geometry, 28);
+    /*
+     * 30° elimina diagonales coplanares y facetas suaves del tessellado,
+     * manteniendo contornos, agujeros, chaflanes y cambios reales de cara.
+     */
+    const geometry = new THREE.EdgesGeometry(mesh.geometry, 30);
     const material = new THREE.LineBasicMaterial({
       color,
       transparent: opacity < 1,
       opacity,
       depthTest: true,
       depthWrite: false,
+      toneMapped: false,
     });
     const lines = new THREE.LineSegments(geometry, material);
     lines.name = "FrameLogicRenderEdges";
