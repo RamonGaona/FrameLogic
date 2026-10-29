@@ -63,6 +63,8 @@ const COMMAND_TIMEOUT_MS = 1800;
  * Zoom commands estilo AutoCAD:
  *   Z -> E = Extents
  *   Z -> O = Object / selección
+ *
+ * Todas las distancias geométricas están expresadas en milímetros.
  */
 export class ModelSpaceZoomExtentsController {
   private readonly options: ModelSpaceZoomExtentsControllerOptions;
@@ -97,9 +99,9 @@ export class ModelSpaceZoomExtentsController {
     const bounds = this.getModelSpaceBounds();
     if (!bounds) {
       await this.options.controls.setLookAt(
-        6,
-        6,
-        6,
+        6000,
+        6000,
+        6000,
         0,
         0,
         0,
@@ -140,13 +142,13 @@ export class ModelSpaceZoomExtentsController {
     );
     const radius = Math.max(
       sphere.radius,
-      0.05,
+      50,
     );
 
     if (typeof controls.fitToBox === "function") {
       const padding = Math.max(
         radius * 0.16,
-        0.01,
+        10,
       );
       await controls.fitToBox(
         bounds.clone(),
@@ -176,7 +178,7 @@ export class ModelSpaceZoomExtentsController {
     let distance = Math.max(
       radius * 2.5,
       controls.minDistance * 4,
-      0.5,
+      500,
     );
 
     if (camera instanceof THREE.PerspectiveCamera) {
@@ -224,15 +226,15 @@ export class ModelSpaceZoomExtentsController {
       const boxDiameter = Math.max(
         size.length(),
         radius * 2,
-        0.1,
+        100,
       );
       const availableWidth = Math.max(
         Math.abs(camera.right - camera.left),
-        1e-6,
+        0.001,
       );
       const availableHeight = Math.max(
         Math.abs(camera.top - camera.bottom),
-        1e-6,
+        0.001,
       );
       const desiredZoom = Math.max(
         0.01,
