@@ -1,32 +1,31 @@
-declare const __FRAMELOGIC_BUILD_SHA__: string;
+declare const __FRAMELOGIC_VERSION__: string;
 
 
 /**
- * Muestra el commit exacto que está ejecutando el navegador.
+ * Muestra una versión legible de FrameLogic en el navegador.
  *
- * El valor se inyecta en build-time desde Vite usando GITHUB_SHA o
- * CF_PAGES_COMMIT_SHA. Esto permite comparar el sitio desplegado con el HEAD
- * de desarrollo sin depender de caché ni de suposiciones sobre Cloudflare.
+ * La versión se toma del package.json raíz en build-time. El objetivo es que
+ * el usuario pueda comprobar rápidamente si el sitio desplegado corresponde
+ * a la versión de desarrollo indicada, sin tener que comparar hashes Git.
  */
 export class BuildVersionBadgeController {
   private readonly element: HTMLDivElement;
   private disposed = false;
 
   constructor(container: HTMLElement) {
-    const raw =
-      typeof __FRAMELOGIC_BUILD_SHA__ !== "undefined"
-        ? __FRAMELOGIC_BUILD_SHA__
+    const version =
+      typeof __FRAMELOGIC_VERSION__ !== "undefined"
+        ? __FRAMELOGIC_VERSION__
         : "local";
-    const short = raw === "local"
-      ? raw
-      : raw.slice(0, 8);
 
     const element = document.createElement("div");
     element.dataset["framelogicBuildVersion"] = "true";
-    element.textContent = `FrameLogic · ${short}`;
-    element.title = raw === "local"
-      ? "Build local"
-      : `Commit desplegado: ${raw}`;
+    element.textContent = version === "local"
+      ? "FrameLogic · local"
+      : `FrameLogic v${version}`;
+    element.title = version === "local"
+      ? "Versión local"
+      : `Versión desplegada: ${version}`;
     Object.assign(element.style, {
       position: "absolute",
       right: "8px",
