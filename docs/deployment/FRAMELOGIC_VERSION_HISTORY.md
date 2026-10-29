@@ -10,6 +10,17 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.16 — Pestañas PDF sólo al abrir y cierre independiente
+
+- La barra inferior mantiene `MODELO` siempre visible.
+- Los PDF ya no aparecen todos automáticamente como pestañas.
+- Un PDF se agrega a la barra únicamente cuando el usuario lo abre, ya sea desde un selector o desde otra acción que abra ese documento.
+- Cada pestaña PDF incorpora una `×` para cerrarla.
+- Cerrar una pestaña no elimina el PDF ni sus views; únicamente lo retira de los documentos abiertos.
+- Un PDF cerrado puede volver a abrirse posteriormente desde los selectores de PDF.
+- Si se cierra el PDF activo, FrameLogic vuelve a `MODELO` y conserva abiertas las demás pestañas.
+- Las pestañas abiertas son estado de sesión y no se fuerzan al restaurar un proyecto.
+
 ### v0.1.15 — Árbol VIEWS acoplado y botón PDF Ensambles oculto
 
 - El botón `PDF Ensambles` del encabezado del panel `INSTANCIAS` queda oculto; la creación de views de ensamble/pieza mediante `clic derecho → Enviar a PDF` se conserva.
