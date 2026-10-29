@@ -72,12 +72,10 @@ const PDF_TREE_WIDTH = 270;
 /**
  * Navegación única de documentos PDF.
  *
- * Todos los documentos se presentan como PDFs equivalentes. La procedencia
- * interna (sección o hoja con views de piezas/ensambles) solo se utiliza para
- * abrir el motor correcto.
- *
- * La barra inferior sigue el patrón CAD: MODELO siempre está disponible y cada
- * PDF existente tiene su propia pestaña.
+ * MODELO permanece fijo. Los PDF existentes siguen disponibles desde los
+ * selectores de navegación, pero sólo aparecen como pestañas después de que
+ * el usuario los abre. Cerrar una pestaña no elimina el documento: únicamente
+ * lo retira de la barra de documentos abiertos.
  *
  * El árbol VIEWS se acopla como columna lateral propia: reduce el viewport del
  * papel en lugar de flotar sobre él. Así el árbol nunca tapa la hoja.
@@ -95,6 +93,7 @@ export class UnifiedPdfNavigationController {
   private readonly tabBar: HTMLDivElement;
   private readonly timer: number;
   private order: string[] = [];
+  private openedKeys: string[] = [];
   private disposed = false;
 
   constructor(
@@ -171,6 +170,11 @@ export class UnifiedPdfNavigationController {
             ),
         );
     }
+
+    // Las pestañas abiertas son estado de sesión, no del documento.
+    this.openedKeys = [];
+    this.drawingWorkspace.close();
+    this.assemblyPdf.overlay.style.display = "none";
     this.sync();
   }
 
@@ -231,7 +235,7 @@ export class UnifiedPdfNavigationController {
   ): void {
     if (!select) return;
     select.dataset["framelogicUnifiedPdf"] = source;
-    select.title = "Cambiar PDF";
+    select.title = "Abrir o cambiar PDF";
     select.style.minWidth = "190px";
     select.addEventListener(
       "change",
@@ -288,17 +292,43 @@ export class UnifiedPdfNavigationController {
   };
 
   private openKey(key: string): boolean {
+    let opened = false;
+
     if (key.startsWith(SECTION_PREFIX)) {
-      return this.openSection(
+      opened = this.openSection(
         key.slice(SECTION_PREFIX.length),
       );
     }
-    if (key.startsWith(SHEET_PREFIX)) {
-      return this.openSheet(
+    else if (key.startsWith(SHEET_PREFIX)) {
+      opened = this.openSheet(
         key.slice(SHEET_PREFIX.length),
       );
     }
-    return false;
+
+    if (opened) {
+      this.markOpened(key);
+    }
+
+    return opened;
+  }
+
+  private markOpened(key: string): void {
+    if (!this.openedKeys.includes(key)) {
+      this.openedKeys.push(key);
+    }
+  }
+
+  private closeKey(key: string): void {
+    this.openedKeys = this.openedKeys.filter(
+      (candidate) => candidate !== key,
+    );
+
+    if (this.getActiveKey() === key) {
+      this.openModel();
+      return;
+    }
+
+    this.sync();
   }
 
   private openModel(): void {
@@ -353,8 +383,24 @@ export class UnifiedPdfNavigationController {
     const ordered = this.order
       .map((key) => entries.find((entry) => entry.key === key))
       .filter((entry): entry is PdfEntry => Boolean(entry));
-    const activeKey = this.getActiveKey();
+    const availableKeys = new Set(
+      ordered.map((entry) => entry.key),
+    );
 
+    this.openedKeys = this.openedKeys.filter(
+      (key) => availableKeys.has(key),
+    );
+
+    const activeKey = this.getActiveKey();
+    if (activeKey && availableKeys.has(activeKey)) {
+      this.markOpened(activeKey);
+    }
+
+    const opened = this.openedKeys
+      .map((key) => ordered.find((entry) => entry.key === key))
+      .filter((entry): entry is PdfEntry => Boolean(entry));
+
+    // Los selectores son el catálogo de PDFs disponibles para abrir.
     this.populateSelect(
       this.sectionSelect,
       ordered,
@@ -365,7 +411,9 @@ export class UnifiedPdfNavigationController {
       ordered,
       activeKey,
     );
-    this.renderTabs(ordered, activeKey);
+
+    // La barra inferior sólo contiene documentos abiertos por el usuario.
+    this.renderTabs(opened, activeKey);
   }
 
   private normalizeLegacyPdfUi(): void {
@@ -548,15 +596,96 @@ export class UnifiedPdfNavigationController {
       ),
     );
 
-    entries.forEach((entry, index) => {
+    for (const entry of entries) {
       this.tabBar.append(
-        this.createTabButton(
-          `${index + 1} · ${entry.label}`,
+        this.createPdfTab(
+          entry,
           activeKey === entry.key,
-          () => this.openKey(entry.key),
         ),
       );
+    }
+  }
+
+  private createPdfTab(
+    entry: PdfEntry,
+    active: boolean,
+  ): HTMLDivElement {
+    const tab = document.createElement("div");
+    tab.dataset["framelogicPdfTab"] = entry.key;
+    Object.assign(tab.style, {
+      flex: "0 0 auto",
+      minWidth: "120px",
+      maxWidth: "240px",
+      display: "flex",
+      alignItems: "stretch",
+      border: "1px solid rgba(255,255,255,0.14)",
+      borderBottom: active
+        ? "2px solid #6fc7ed"
+        : "1px solid rgba(255,255,255,0.14)",
+      borderRadius: "4px 4px 0 0",
+      background: active
+        ? "rgba(77,151,184,0.30)"
+        : "rgba(255,255,255,0.045)",
+      overflow: "hidden",
     });
+
+    const open = document.createElement("button");
+    open.type = "button";
+    open.textContent = entry.label;
+    open.title = entry.label;
+    Object.assign(open.style, {
+      minWidth: "0",
+      flex: "1 1 auto",
+      padding: "0 8px",
+      border: "0",
+      background: "transparent",
+      color: active ? "#effaff" : "#b9c9d0",
+      cursor: "pointer",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      font: "11px system-ui, sans-serif",
+      textAlign: "left",
+    });
+    open.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.openKey(entry.key);
+      window.setTimeout(() => this.sync(), 0);
+    });
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "×";
+    close.title = "Cerrar pestaña (no elimina el PDF)";
+    close.setAttribute("aria-label", `Cerrar ${entry.label}`);
+    Object.assign(close.style, {
+      flex: "0 0 24px",
+      width: "24px",
+      padding: "0",
+      border: "0",
+      borderLeft: "1px solid rgba(255,255,255,0.10)",
+      background: "transparent",
+      color: "#9fb2bb",
+      cursor: "pointer",
+      font: "16px/1 system-ui, sans-serif",
+    });
+    close.addEventListener("mouseenter", () => {
+      close.style.background = "rgba(255,255,255,0.09)";
+      close.style.color = "#ffffff";
+    });
+    close.addEventListener("mouseleave", () => {
+      close.style.background = "transparent";
+      close.style.color = "#9fb2bb";
+    });
+    close.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeKey(entry.key);
+    });
+
+    tab.append(open, close);
+    return tab;
   }
 
   private createTabButton(
