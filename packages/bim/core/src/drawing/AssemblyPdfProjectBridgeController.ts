@@ -8,6 +8,10 @@ import type {
   AssemblyPdfSnapshot,
 } from "./AssemblyPdfController";
 
+import {
+  AssemblyPdfProfessionalController,
+} from "./AssemblyPdfProfessionalController";
+
 interface AssemblyPdfProjectBridgeControllerOptions {
   readonly projectPackage: FrameLogicProjectPackageController;
   readonly assemblyPdf: AssemblyPdfController;
@@ -24,10 +28,11 @@ type ProjectWithAssemblyPdf =
  *
  * `assemblyPdf` es opcional para que proyectos existentes sigan siendo
  * compatibles. El snapshot es liviano: no contiene PDF/SVG/segmentos 2D,
- * únicamente hojas, vistas, IDs y el WorkPlane con que fueron creadas.
+ * únicamente hojas, vistas, IDs, WorkPlane y estado profesional de plano.
  */
 export class AssemblyPdfProjectBridgeController {
   private readonly projectPackage: FrameLogicProjectPackageController;
+  private readonly professional: AssemblyPdfProfessionalController;
   private readonly baseCreateProjectPackage:
     FrameLogicProjectPackageController["createProjectPackage"];
   private readonly baseRestoreProjectPackage:
@@ -38,6 +43,16 @@ export class AssemblyPdfProjectBridgeController {
     options: AssemblyPdfProjectBridgeControllerOptions,
   ) {
     this.projectPackage = options.projectPackage;
+
+    /*
+     * Se instala antes del bridge de persistencia para que el snapshot de PDF
+     * ya incluya formato, cajetín, revisiones y bloqueos profesionales.
+     */
+    this.professional =
+      new AssemblyPdfProfessionalController(
+        options.assemblyPdf,
+      );
+
     this.baseCreateProjectPackage =
       options.projectPackage.createProjectPackage.bind(
         options.projectPackage,
@@ -77,5 +92,6 @@ export class AssemblyPdfProjectBridgeController {
       this.baseCreateProjectPackage;
     this.projectPackage.restoreProjectPackage =
       this.baseRestoreProjectPackage;
+    this.professional.dispose();
   }
 }
