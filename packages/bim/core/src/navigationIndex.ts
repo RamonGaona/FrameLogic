@@ -28,6 +28,7 @@ export type {
 installMillimeterUnitSystem();
 
 const STANDARD_START_DISTANCE_MM = 5000;
+const STANDARD_ORTHO_VISIBLE_HEIGHT_MM = 5000;
 const STANDARD_GRID_SIZE_MM = 20_000;
 const STANDARD_GRID_STEP_MM = 100;
 
@@ -46,17 +47,19 @@ export async function createBimCore(
 
   /*
    * Vista inicial canónica en milímetros.
-   * La cámara queda a 5000 mm reales del origen sobre una diagonal ISO y
-   * zoom 1, evitando heredar el antiguo arranque de 6 unidades (metros).
+   *
+   * La distancia perspectiva queda en 5000 mm. La cámara ortográfica de
+   * That Open, en cambio, nace con un frustum de aproximadamente 50 unidades;
+   * tras adoptar mm eso equivalía a ver solamente ~50 mm de alto. Por eso una
+   * línea de 10-20 mm ocupaba gran parte de la pantalla y la cuadrícula de
+   * 100 mm parecía desaparecer.
+   *
+   * Ajustamos el zoom ortográfico para que el alto visible inicial sea 5000 mm.
    */
   const diagonal =
     STANDARD_START_DISTANCE_MM
     / Math.sqrt(3);
 
-  await core.world.camera.controls.zoomTo(
-    1,
-    false,
-  );
   await core.world.camera.controls.setLookAt(
     diagonal,
     diagonal,
@@ -66,6 +69,35 @@ export async function createBimCore(
     0,
     false,
   );
+
+  const orthoCamera =
+    core.world.camera.threeOrtho;
+  const orthoFrustumHeight =
+    Math.abs(
+      orthoCamera.top
+      - orthoCamera.bottom,
+    );
+  const standardOrthoZoom =
+    orthoFrustumHeight
+    / STANDARD_ORTHO_VISIBLE_HEIGHT_MM;
+
+  orthoCamera.zoom =
+    standardOrthoZoom;
+  orthoCamera.near =
+    1;
+  orthoCamera.far =
+    10_000_000;
+  orthoCamera.updateProjectionMatrix();
+
+  if (
+    core.world.camera.three
+    === orthoCamera
+  ) {
+    await core.world.camera.controls.zoomTo(
+      standardOrthoZoom,
+      false,
+    );
+  }
 
   /*
    * configureMillimeterRuntime conserva la escala física histórica del grid
