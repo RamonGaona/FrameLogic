@@ -1,3 +1,5 @@
+import "./drawing/PdfPaperNavigationAutoBootstrap";
+
 export * from "./index";
 
 export {
