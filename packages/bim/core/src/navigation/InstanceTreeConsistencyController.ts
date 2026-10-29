@@ -48,7 +48,7 @@ interface Options {
  *   dinámicos CAD/PDF a repoblarse aunque sus datos no hayan cambiado.
  * - Añade ojos masivos a ENSAMBLAJES y PIEZAS SUELTAS reutilizando los ojos
  *   individuales que ya controla BimViewport, evitando un segundo estado de
- *   visibilidad.
+ *   visibilidad. El ojo permanece visible aunque el grupo esté vacío.
  */
 export class InstanceTreeConsistencyController {
   private readonly container: HTMLElement;
@@ -204,11 +204,19 @@ export class InstanceTreeConsistencyController {
     }
 
     if (pieceEyes.length < 1) {
-      button.style.display = "none";
+      button.style.display = "";
+      button.disabled = true;
+      button.innerHTML = eyeSvg(false);
+      button.style.opacity = "0.35";
+      button.style.cursor = "default";
+      button.title = `Sin ${label}`;
+      button.setAttribute("aria-label", button.title);
       return;
     }
 
+    button.disabled = false;
     button.style.display = "";
+    button.style.cursor = "pointer";
     const visibleCount = pieceEyes.filter(
       (eye) => this.isPieceEyeVisible(eye),
     ).length;
