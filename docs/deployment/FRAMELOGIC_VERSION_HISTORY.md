@@ -10,6 +10,23 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.24 — Cámara inicial y cuadrícula estándar en milímetros
+
+- Al iniciar un proyecto vacío, la cámara se coloca a una distancia real de aproximadamente `5000 mm` del origen sobre una vista isométrica.
+- El zoom inicial se restablece a `1` para evitar heredar una escala de cámara demasiado cercana.
+- La cuadrícula del WorkPlane conserva un área total de `20 000 × 20 000 mm`.
+- La separación de la retícula se reduce a `100 mm` por división para que sea visible y útil al trabajar en escala milimétrica.
+- Se aumenta ligeramente la opacidad de la cuadrícula para mejorar su lectura sin ocultar la geometría.
+
+### v0.1.23 — Unidad lineal canónica en milímetros
+
+- FrameLogic adopta `1 unidad geométrica = 1 mm` en Model Space.
+- STEP, IFC y DWG/DXF se normalizan a milímetros al entrar al proyecto.
+- Coordenadas, SNAPs, WorkPlane, secciones, movimiento, cotas y geometría de dibujo trabajan en mm.
+- Las escalas técnicas de Paper Space usan directamente `paper_mm = model_mm / N`.
+- Los `.flproject` y `.flpiece` históricos sin unidad declarada se migran automáticamente desde metros a milímetros.
+- Se conservaron las unidades físicas explícitas de ingeniería como kg, kg/m³, m², m³, m⁴ y radianes.
+
 ### v0.1.16 — Pestañas PDF sólo al abrir y cierre independiente
 
 - La barra inferior mantiene `MODELO` siempre visible.
