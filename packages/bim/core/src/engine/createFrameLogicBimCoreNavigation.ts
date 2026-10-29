@@ -19,6 +19,10 @@ import {
 } from "../navigation/ModelSpaceInstanceTreeBridgeController";
 
 import {
+  InstanceTreeConsistencyController,
+} from "../navigation/InstanceTreeConsistencyController";
+
+import {
   AssemblyClipboardController,
 } from "../navigation/AssemblyClipboardController";
 
@@ -268,6 +272,14 @@ export async function createBimCore(
         core.deleteCadSelection(),
     });
 
+  const instanceTreeConsistency =
+    new InstanceTreeConsistencyController({
+      container,
+      sectionDrawing: core.sectionDrawing,
+      unifiedPdfNavigation,
+      modelSpaceTree: modelSpaceInstanceTreeBridge,
+    });
+
   const sectionInstanceTreeBridge =
     new SectionInstanceTreeBridgeController({
       container,
@@ -429,6 +441,7 @@ export async function createBimCore(
     disposed = true;
     unifiedPdfProjectBridge.dispose();
     instanceTreeGroupVisibility.dispose();
+    instanceTreeConsistency.dispose();
     modelSpaceInstanceTreeBridge.dispose();
     linkedAssemblyUnlinkHistory.dispose();
     linkedAssemblyInteraction.dispose();
