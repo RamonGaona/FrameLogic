@@ -372,9 +372,13 @@ export class PieceDefinitionHelperSceneController {
           .normalize();
 
 
+      /*
+       * FrameLogic usa milímetros como unidad lineal canónica.
+       * El fallback histórico era 1 m; se conserva físicamente como 1000 mm.
+       */
       const length =
         axis.length
-        ?? 1;
+        ?? 1000;
 
 
       const localEnd =
@@ -418,10 +422,11 @@ export class PieceDefinitionHelperSceneController {
 
       const material =
         new THREE.LineDashedMaterial({
+          /* 0.15 m / 0.08 m históricos, ahora expresados en mm. */
           dashSize:
-            0.15,
+            150,
           gapSize:
-            0.08,
+            80,
           depthTest:
             false,
         });
