@@ -21,9 +21,9 @@ interface AssemblyPdfTreeBridgeControllerOptions {
  * Integra las hojas PDF con el árbol de INSTANCIAS.
  *
  * Ensambles y piezas individuales comparten las mismas hojas PDF y el
- * WorkPlane activo. Las filas de ensamble se asocian por identidad/orden del
- * modelo, no por nombre visible, porque varias colocaciones enlazadas pueden
- * tener exactamente el mismo nombre.
+ * WorkPlane activo. "Enviar a PDF" vive únicamente en el menú contextual
+ * para mantener limpio el árbol. Los IDs cortos de instancia permanecen como
+ * dato interno y no se muestran al usuario.
  */
 export class AssemblyPdfTreeBridgeController {
   private readonly options: AssemblyPdfTreeBridgeControllerOptions;
@@ -52,6 +52,12 @@ export class AssemblyPdfTreeBridgeController {
     );
     if (!body) return;
 
+    for (const button of body.querySelectorAll<HTMLButtonElement>(
+      'button[data-framelogic-pdf-target]',
+    )) {
+      button.remove();
+    }
+
     const rows = Array.from(
       body.querySelectorAll<HTMLDivElement>("div"),
     );
@@ -73,28 +79,7 @@ export class AssemblyPdfTreeBridgeController {
       if (!assembly || !row) continue;
 
       row.dataset["framelogicAssemblyId"] = assembly.id;
-      this.removeWrongAssemblyPdfButtons(row, assembly.id);
       this.installAssemblyContextMenuBridge(row, assembly.id);
-      this.appendPdfButton(
-        row,
-        `assembly:${assembly.id}`,
-        "Enviar ensamble a PDF",
-        () => this.sendAssembly(assembly.id),
-      );
-    }
-  }
-
-  private removeWrongAssemblyPdfButtons(
-    row: HTMLDivElement,
-    assemblyId: string,
-  ): void {
-    const expected = `assembly:${assemblyId}`;
-    for (const button of row.querySelectorAll<HTMLButtonElement>(
-      'button[data-framelogic-pdf-target^="assembly:"]',
-    )) {
-      if (button.dataset["framelogicPdfTarget"] !== expected) {
-        button.remove();
-      }
     }
   }
 
@@ -107,6 +92,7 @@ export class AssemblyPdfTreeBridgeController {
     for (const piece of this.options.designModel.pieceInstances.getAll()) {
       const shortId = piece.id.slice(0, 8);
       const row = pieceRows.find((candidate) => {
+        if (candidate.dataset["framelogicPieceId"] === piece.id) return true;
         const spans = this.directSpans(candidate);
         return spans[1]?.textContent?.trim().startsWith(shortId) ?? false;
       });
@@ -114,12 +100,12 @@ export class AssemblyPdfTreeBridgeController {
 
       row.dataset["framelogicPieceId"] = piece.id;
       this.installPieceContextMenuBridge(row, piece.id);
-      this.appendPdfButton(
-        row,
-        `piece:${piece.id}`,
-        "Enviar pieza individual a PDF",
-        () => this.sendPiece(piece.id),
-      );
+
+      const meta = this.directSpans(row)[1];
+      if (meta) {
+        meta.style.display = "none";
+        meta.setAttribute("aria-hidden", "true");
+      }
     }
   }
 
@@ -128,55 +114,6 @@ export class AssemblyPdfTreeBridgeController {
       (child): child is HTMLSpanElement =>
         child instanceof HTMLSpanElement,
     );
-  }
-
-  private appendPdfButton(
-    row: HTMLDivElement,
-    key: string,
-    title: string,
-    action: () => void,
-  ): void {
-    const existing = Array.from(
-      row.querySelectorAll<HTMLButtonElement>("button"),
-    ).find((button) => button.dataset["framelogicPdfTarget"] === key);
-    if (existing) return;
-
-    const spans = this.directSpans(row);
-    const meta = spans[1];
-    if (!meta) return;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = "PDF";
-    button.dataset["framelogicPdfTarget"] = key;
-    button.title = title;
-    Object.assign(button.style, {
-      marginLeft: "6px",
-      padding: "1px 4px",
-      height: "18px",
-      border: "1px solid rgba(255,255,255,0.16)",
-      borderRadius: "3px",
-      background: "rgba(255,255,255,0.06)",
-      color: "#bfe8f8",
-      cursor: "pointer",
-      font: "9px system-ui, sans-serif",
-      verticalAlign: "middle",
-    });
-
-    button.addEventListener("pointerdown", (event) => {
-      event.stopPropagation();
-    });
-    button.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-    });
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      action();
-    });
-
-    meta.append(button);
   }
 
   private installOpenPdfButton(): void {
@@ -232,7 +169,7 @@ export class AssemblyPdfTreeBridgeController {
   private openExistingPdf(): void {
     if (!this.options.assemblyPdf.openExisting()) {
       window.alert(
-        "Aún no hay hojas PDF. Usa PDF o clic derecho → Enviar a PDF sobre un ensamble o una pieza.",
+        "Aún no hay hojas PDF. Usa clic derecho → Enviar a PDF sobre un ensamble o una pieza.",
       );
     }
   }
