@@ -4,6 +4,10 @@ import type {
   PieceEngineeringData,
 } from "@framelogic/domain";
 
+import {
+  mergeInstanceColorIntoDefinitionTags,
+} from "../design/PieceAppearanceMetadata";
+
 import type {
   DesignSelectionController,
 } from "./DesignSelectionController";
@@ -417,9 +421,11 @@ export class PieceFrameLogicPackageController {
             definition.name,
           classification:
             definition.classification,
-          tags: [
-            ...definition.tags,
-          ],
+          tags:
+            mergeInstanceColorIntoDefinitionTags(
+              definition.tags,
+              instance.tags,
+            ),
           coordinateSystem:
             definition.coordinateSystem,
           snapPoints:
