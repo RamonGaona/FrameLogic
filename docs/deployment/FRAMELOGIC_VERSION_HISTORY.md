@@ -10,6 +10,16 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.26 — Cancelación por niveles en LINE
+
+- Al terminar un segmento, `LINE` conserva su comportamiento encadenado y propone el siguiente tramo desde el último extremo.
+- Un solo `Esc` cancela únicamente ese tramo pendiente: desaparece el preview, se libera el extremo anterior y `LINE` permanece activo esperando un nuevo primer punto independiente.
+- Un solo clic derecho sobre Model Space realiza la misma cancelación parcial sin mostrar el menú contextual del navegador.
+- Dos `Esc` consecutivos dentro de una ventana corta terminan completamente el comando `LINE`.
+- Dos clics derechos consecutivos dentro de la misma ventana terminan completamente el comando `LINE`.
+- Las líneas ya creadas nunca se eliminan al cancelar el tramo pendiente.
+- Mantener `Esc` presionado no se interpreta como doble `Esc`.
+
 ### v0.1.25 — Escala ortográfica inicial corregida para milímetros
 
 - Se corrige el frustum inicial de la cámara ortográfica de That Open, que tras la migración a mm seguía mostrando aproximadamente sólo `50 mm` de alto.
