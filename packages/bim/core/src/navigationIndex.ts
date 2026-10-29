@@ -29,6 +29,7 @@ installMillimeterUnitSystem();
 
 const STANDARD_START_DISTANCE_MM = 5000;
 const STANDARD_ORTHO_VISIBLE_HEIGHT_MM = 5000;
+const MODEL_SPACE_MIN_ORTHO_ZOOM = 0.0001;
 const STANDARD_GRID_SIZE_MM = 20_000;
 const STANDARD_GRID_STEP_MM = 100;
 
@@ -55,12 +56,25 @@ export async function createBimCore(
    * 100 mm parecía desaparecer.
    *
    * Ajustamos el zoom ortográfico para que el alto visible inicial sea 5000 mm.
+   * Ese zoom inicial ronda 0.01, pero NO debe ser también el límite de zoom-out:
+   * permitimos bajar hasta 0.0001 para poder inspeccionar estructuras mucho
+   * mayores sin bloquear la rueda al encuadrar una geometría de 5 m.
    */
+  const cameraControls =
+    core.world.camera.controls as
+      typeof core.world.camera.controls
+      & {
+        minZoom: number;
+      };
+
+  cameraControls.minZoom =
+    MODEL_SPACE_MIN_ORTHO_ZOOM;
+
   const diagonal =
     STANDARD_START_DISTANCE_MM
     / Math.sqrt(3);
 
-  await core.world.camera.controls.setLookAt(
+  await cameraControls.setLookAt(
     diagonal,
     diagonal,
     diagonal,
@@ -93,7 +107,7 @@ export async function createBimCore(
     core.world.camera.three
     === orthoCamera
   ) {
-    await core.world.camera.controls.zoomTo(
+    await cameraControls.zoomTo(
       standardOrthoZoom,
       false,
     );
