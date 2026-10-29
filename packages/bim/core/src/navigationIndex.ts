@@ -11,6 +11,10 @@ import type {
 } from "./engine/createFrameLogicBimCoreNavigation";
 
 import {
+  CadLineTemporaryDimensionController,
+} from "./interaction/CadLineTemporaryDimensionController";
+
+import {
   configureMillimeterRuntime,
   installMillimeterUnitSystem,
 } from "./units/MillimeterUnitSystemController";
@@ -173,6 +177,26 @@ export async function createBimCore(
     );
   }
 
+  const renderer =
+    core.world.renderer;
+  const temporaryLineDimensions =
+    renderer
+      ? new CadLineTemporaryDimensionController({
+          domElement:
+            renderer.three.domElement,
+          scene:
+            core.world.scene.three,
+          cameraProvider: () =>
+            core.world.camera.three,
+          designModel:
+            core.designModel,
+          lineSelection:
+            core.cadLineSelection,
+          isLinePlacementActive: () =>
+            core.cadLinePlacement.isActive,
+        })
+      : null;
+
   const baseDispose =
     core.dispose;
   let disposed =
@@ -185,6 +209,7 @@ export async function createBimCore(
       }
       disposed =
         true;
+      temporaryLineDimensions?.dispose();
       disposeMillimeterRuntime();
       baseDispose();
     };
