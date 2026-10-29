@@ -10,6 +10,17 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.13 — PDFs unificados, pestañas y edición independiente de Views
+
+- Se elimina de la navegación visible la categoría especial `PDF Ensambles`; todos los documentos se presentan como PDFs equivalentes.
+- Se añade una barra inferior tipo CAD con una pestaña fija `MODELO` y una pestaña por cada PDF disponible.
+- Al pulsar `MODELO` se regresa al Model Space; al pulsar una pestaña PDF se abre directamente ese documento.
+- Las views de hojas PDF pueden seleccionarse y moverse libremente mediante arrastre o con controles de desplazamiento.
+- Cada view puede usar escala `AUTO` o una escala técnica independiente `1:N`.
+- Posición y escala de cada view se incorporan al snapshot del proyecto y se restauran al volver a abrirlo.
+- Las vistas profesionales de sección conservan su sistema existente de movimiento/redimensionado independiente y su estado de escala por view.
+- Commit funcional: `6d9421e048b747be8376c3f6efbc510bdc8676c5`.
+
 ### v0.1.12 — Árbol de instancias por View en PDF
 
 - Los espacios PDF de secciones y ensambles incorporan un panel lateral `VIEWS`.
