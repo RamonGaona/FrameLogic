@@ -10,6 +10,12 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.31 — Cotas temporales sin decimales
+
+- Las cotas temporales de líneas CAD muestran milímetros enteros, sin decimales.
+- El valor se redondea al milímetro más cercano tanto al seleccionar una línea como durante el preview de `LINE`.
+- Ejemplo: `2.234,55 mm` pasa a mostrarse como `2.235 mm`.
+
 ### v0.1.30 — Cotas temporales informativas en líneas CAD
 
 - Al seleccionar una única línea CAD en Model Space se muestra temporalmente su longitud real en milímetros.
