@@ -17,6 +17,10 @@ export interface FrameLogicPiecePackageV1 {
   readonly version:
     1;
 
+  /** Unidad lineal canónica de la metadata FrameLogic. */
+  readonly lengthUnit?:
+    "mm";
+
   /**
    * Solo los paquetes READY se pueden abrir como piezas propias.
    * Archivos externos o piezas incompletas deben entrar por Importar pieza.
@@ -65,6 +69,10 @@ export interface FrameLogicPiecePackageV1 {
 
 export type FrameLogicPiecePackage =
   FrameLogicPiecePackageV1;
+
+
+const MM_PER_METER =
+  1000;
 
 
 function hasObjectData(
@@ -228,7 +236,238 @@ export function parseFrameLogicPiecePackage(
     );
   }
 
-  return ready;
+  return ready.lengthUnit === "mm"
+    ? ready
+    : migrateLegacyMeterPackage(
+        ready,
+      );
+}
+
+
+/**
+ * Los .flpiece creados antes de la migración global no incluían lengthUnit y
+ * almacenaban coordenadas lineales en metros. Se convierten al abrirlos para
+ * conservar exactamente el mismo tamaño físico bajo el modelo canónico mm.
+ */
+function migrateLegacyMeterPackage(
+  source: FrameLogicPiecePackageV1,
+): FrameLogicPiecePackageV1 {
+  const clone =
+    JSON.parse(
+      JSON.stringify(source),
+    ) as FrameLogicPiecePackageV1;
+  const root =
+    clone as unknown as Record<string, unknown>;
+  const definition =
+    asRecord(
+      root["definition"],
+    );
+  const engineering =
+    asRecord(
+      root["engineering"],
+    );
+
+  const coordinateSystem =
+    asRecord(
+      definition?.[
+        "coordinateSystem"
+      ],
+    );
+  scalePoint(
+    coordinateSystem?.["origin"],
+  );
+
+  forEachRecord(
+    definition?.["snapPoints"],
+    (
+      snap,
+    ) =>
+      scalePoint(
+        snap["position"],
+      ),
+  );
+
+  const referenceGeometry =
+    asRecord(
+      definition?.[
+        "referenceGeometry"
+      ],
+    );
+  forEachRecord(
+    referenceGeometry?.[
+      "axisLines"
+    ],
+    (
+      axis,
+    ) => {
+      scalePoint(
+        axis["origin"],
+      );
+      scaleNumber(
+        axis,
+        "length",
+      );
+    },
+  );
+
+  const structuralAxis =
+    asRecord(
+      engineering?.[
+        "structuralAxis"
+      ],
+    );
+  if (structuralAxis) {
+    scalePoint(
+      structuralAxis["start"],
+    );
+    scalePoint(
+      structuralAxis["end"],
+    );
+  }
+
+  forEachRecord(
+    engineering?.["features"],
+    migrateEngineeringFeature,
+  );
+
+  root["lengthUnit"] =
+    "mm";
+  return clone;
+}
+
+
+function migrateEngineeringFeature(
+  feature: Record<string, unknown>,
+): void {
+  const kind =
+    feature["kind"];
+
+  if (kind === "HOLE") {
+    scalePoint(
+      feature["center"],
+    );
+    scaleNumber(
+      feature,
+      "diameter",
+    );
+    scaleNumber(
+      feature,
+      "depth",
+    );
+  }
+  else if (kind === "AXIS") {
+    scalePoint(
+      feature["origin"],
+    );
+    scaleNumber(
+      feature,
+      "length",
+    );
+  }
+  else if (kind === "PLANE") {
+    scalePoint(
+      feature["origin"],
+    );
+  }
+  else if (kind === "POINT") {
+    scalePoint(
+      feature["position"],
+    );
+  }
+  else if (kind === "CIRCLE") {
+    scalePoint(
+      feature["center"],
+    );
+    scaleNumber(
+      feature,
+      "radius",
+    );
+  }
+  else if (kind === "CYLINDER") {
+    scalePoint(
+      feature["axisOrigin"],
+    );
+    scaleNumber(
+      feature,
+      "radius",
+    );
+    scaleNumber(
+      feature,
+      "length",
+    );
+  }
+}
+
+
+function scalePoint(
+  value: unknown,
+): void {
+  const point =
+    asRecord(value);
+  if (!point) {
+    return;
+  }
+
+  scaleNumber(
+    point,
+    "x",
+  );
+  scaleNumber(
+    point,
+    "y",
+  );
+  scaleNumber(
+    point,
+    "z",
+  );
+}
+
+
+function scaleNumber(
+  record: Record<string, unknown>,
+  key: string,
+): void {
+  const value =
+    record[key];
+  if (
+    typeof value === "number"
+    && Number.isFinite(value)
+  ) {
+    record[key] =
+      value
+      * MM_PER_METER;
+  }
+}
+
+
+function forEachRecord(
+  value: unknown,
+  callback: (
+    record: Record<string, unknown>,
+  ) => void,
+): void {
+  if (!Array.isArray(value)) {
+    return;
+  }
+
+  for (const entry of value) {
+    const record =
+      asRecord(entry);
+    if (record) {
+      callback(record);
+    }
+  }
+}
+
+
+function asRecord(
+  value: unknown,
+): Record<string, unknown> | null {
+  return typeof value === "object"
+    && value !== null
+    && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
 }
 
 
