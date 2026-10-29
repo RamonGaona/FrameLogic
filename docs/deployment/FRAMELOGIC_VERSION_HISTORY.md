@@ -10,6 +10,17 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.27 — Cotas lineales en Model Space
+
+- Se agrega el botón `COTA` junto a las herramientas `POINT` y `LINE` del Model Space.
+- Al activar `COTA`, FrameLogic habilita SNAP y solicita dos puntos: `P1` y `P2`.
+- La cota se crea entre dos SNAPs válidos y muestra la distancia real del modelo en milímetros.
+- La representación incluye líneas auxiliares, línea de dimensión, extremos visibles y etiqueta numérica.
+- La separación de la línea de dimensión se calcula automáticamente respecto al WorkPlane activo; si no hay WorkPlane se usa la orientación de cámara.
+- Después de crear una cota, la herramienta permanece activa para colocar otra sin volver a pulsar el botón.
+- `Esc` o clic derecho terminan la herramienta de cota; cambiar a otra herramienta CAD también la desactiva.
+- Las cotas de esta primera versión son anotaciones de sesión en Model Space; todavía no se guardan dentro del `.flproject` ni son asociativas a cambios posteriores de geometría.
+
 ### v0.1.26 — Cancelación por niveles en LINE
 
 - Al terminar un segmento, `LINE` conserva su comportamiento encadenado y propone el siguiente tramo desde el último extremo.
