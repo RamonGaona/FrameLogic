@@ -71,34 +71,6 @@ import {
 } from "../interaction/MoveRulerExperienceController";
 
 import {
-  AssemblyPdfController,
-} from "../drawing/AssemblyPdfController";
-
-import {
-  AssemblyPdfTreeBridgeController,
-} from "../drawing/AssemblyPdfTreeBridgeController";
-
-import {
-  AssemblyPdfProjectBridgeController,
-} from "../drawing/AssemblyPdfProjectBridgeController";
-
-import {
-  AssemblyPdfViewEditingController,
-} from "../drawing/AssemblyPdfViewEditingController";
-
-import {
-  AssemblyPdfAnnotationController,
-} from "../drawing/AssemblyPdfAnnotationController";
-
-import {
-  AssemblyPdfProfessionalController,
-} from "../drawing/AssemblyPdfProfessionalController";
-
-import {
-  AssemblyPdfRenderStyleController,
-} from "../drawing/AssemblyPdfRenderStyleController";
-
-import {
   DrawingViewRenderStyleController,
 } from "../drawing/DrawingViewRenderStyleController";
 
@@ -119,16 +91,20 @@ import {
 } from "../drawing/SectionAxisDragStabilityController";
 
 import {
+  GeneralPdfController,
+} from "../drawing/GeneralPdfController";
+
+import {
+  GeneralPdfTreeBridgeController,
+} from "../drawing/GeneralPdfTreeBridgeController";
+
+import {
   UnifiedPdfNavigationController,
 } from "../drawing/UnifiedPdfNavigationController";
 
 import {
   UnifiedPdfProjectBridgeController,
 } from "../drawing/UnifiedPdfProjectBridgeController";
-
-import {
-  UnifiedPdfMixedViewsController,
-} from "../drawing/UnifiedPdfMixedViewsController";
 
 export type PrecisionBimCoreInstance =
   DrawingPrecisionBimCoreInstance
@@ -225,10 +201,6 @@ export async function createBimCore(
    * durante operaciones que realmente lo necesitan. Así desaparecen
    * etiquetas como ENDPOINT/MIDPOINT/CENTER mientras el usuario sólo
    * navega, selecciona o inspecciona el modelo.
-   *
-   * requestAnimationFrame mantiene sincronizados también los cambios
-   * de herramienta disparados desde botones, teclado, ESC o paneles,
-   * sin acoplar cada controlador a la UI del SNAP.
    */
   let snapFeedbackFrame:
     number | null =
@@ -289,44 +261,12 @@ export async function createBimCore(
       container,
     });
 
-  const assemblyPdf =
-    new AssemblyPdfController({
-      container,
-      designScene: core.designScene,
-    });
-
-  const assemblyPdfViewEditing =
-    new AssemblyPdfViewEditingController({
-      assemblyPdf,
-    });
-
-  const assemblyPdfAnnotations =
-    new AssemblyPdfAnnotationController({
-      assemblyPdf,
-    });
-
-  const assemblyPdfProfessional =
-    new AssemblyPdfProfessionalController(
-      assemblyPdf,
-    );
-
-  const assemblyPdfRenderStyles =
-    new AssemblyPdfRenderStyleController(
-      assemblyPdf,
-    );
-
   const drawingViewRenderStyles =
     new DrawingViewRenderStyleController({
       drawingWorkspace: core.drawingWorkspace,
       drawingProduction: core.drawingProduction,
       drawingProfessional: core.drawingProfessional,
       sectionDrawing: core.sectionDrawing,
-    });
-
-  const assemblyPdfProjectBridge =
-    new AssemblyPdfProjectBridgeController({
-      projectPackage: core.projectPackage,
-      assemblyPdf,
     });
 
   const drawingModelVisibilityBridge =
@@ -336,19 +276,38 @@ export async function createBimCore(
       drawingWorkspace: core.drawingWorkspace,
     });
 
+  /*
+   * Único motor PDF. No se instancia AssemblyPdfController ni ninguno de sus
+   * controladores asociados. Secciones y ensambles comparten el mismo store de
+   * DrawingProduction, el mismo DrawingWorkspace y el mismo árbol VIEWS.
+   */
+  const generalPdf =
+    new GeneralPdfController({
+      container,
+      designModel: core.designModel,
+      designScene: core.designScene,
+      drawingProduction: core.drawingProduction,
+      drawingProfessional: core.drawingProfessional,
+      drawingWorkspace: core.drawingWorkspace,
+      sectionDrawing: core.sectionDrawing,
+    });
+
   const unifiedPdfNavigation =
     new UnifiedPdfNavigationController({
       container,
-      sectionDrawing: core.sectionDrawing,
       drawingWorkspace: core.drawingWorkspace,
-      drawingProduction: core.drawingProduction,
-      assemblyPdf,
+      generalPdf,
     });
+
+  generalPdf.setOrderProvider(
+    () => unifiedPdfNavigation.getOrderedKeys(),
+  );
 
   const unifiedPdfProjectBridge =
     new UnifiedPdfProjectBridgeController({
       projectPackage: core.projectPackage,
       navigation: unifiedPdfNavigation,
+      generalPdf,
     });
 
   const instanceTree = new InstanceTreeController({
@@ -456,22 +415,11 @@ export async function createBimCore(
       sectionDrawing: core.sectionDrawing,
     });
 
-  const assemblyPdfTreeBridge =
-    new AssemblyPdfTreeBridgeController({
+  const generalPdfTreeBridge =
+    new GeneralPdfTreeBridgeController({
       designModel: core.designModel,
       workPlane: core.cadWorkPlane,
-      assemblyPdf,
-    });
-
-  const unifiedPdfMixedViews =
-    new UnifiedPdfMixedViewsController({
-      designModel: core.designModel,
-      assemblyPdf,
-      drawingProduction: core.drawingProduction,
-      drawingProfessional: core.drawingProfessional,
-      drawingWorkspace: core.drawingWorkspace,
-      sectionDrawing: core.sectionDrawing,
-      unifiedPdfNavigation,
+      generalPdf,
     });
 
   const align = new AlignController({
@@ -596,7 +544,6 @@ export async function createBimCore(
       snapFeedbackFrame = null;
     }
     core.designSnap.setEnabled(false);
-    unifiedPdfMixedViews.dispose();
     unifiedPdfProjectBridge.dispose();
     instanceTreeGroupVisibility.dispose();
     instanceTreeConsistency.dispose();
@@ -606,18 +553,13 @@ export async function createBimCore(
     linkedAssemblyInstances.dispose();
     assemblyClipboard.dispose();
     unifiedPdfNavigation.dispose();
-    assemblyPdfTreeBridge.dispose();
+    generalPdfTreeBridge.dispose();
     sectionAxisDragStability.dispose();
     sectionModelInteraction.dispose();
     sectionInstanceTreeBridge.dispose();
+    generalPdf.dispose();
     drawingModelVisibilityBridge.dispose();
-    assemblyPdfProjectBridge.dispose();
     drawingViewRenderStyles.dispose();
-    assemblyPdfRenderStyles.dispose();
-    assemblyPdfProfessional.dispose();
-    assemblyPdfAnnotations.dispose();
-    assemblyPdfViewEditing.dispose();
-    assemblyPdf.dispose();
     moveRuler.dispose();
     smartPieceInsertion.dispose();
     align.dispose();
