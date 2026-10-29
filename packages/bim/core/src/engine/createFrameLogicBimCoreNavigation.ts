@@ -99,6 +99,10 @@ import {
 } from "../drawing/GeneralPdfTreeBridgeController";
 
 import {
+  GeneralPdfTreeInteractionController,
+} from "../drawing/GeneralPdfTreeInteractionController";
+
+import {
   UnifiedPdfNavigationController,
 } from "../drawing/UnifiedPdfNavigationController";
 
@@ -369,6 +373,11 @@ export async function createBimCore(
         core.deleteCadSelection(),
     });
 
+  const generalPdfTreeInteraction =
+    new GeneralPdfTreeInteractionController(
+      container,
+    );
+
   const instanceTreeConsistency =
     new InstanceTreeConsistencyController({
       container,
@@ -547,6 +556,7 @@ export async function createBimCore(
     unifiedPdfProjectBridge.dispose();
     instanceTreeGroupVisibility.dispose();
     instanceTreeConsistency.dispose();
+    generalPdfTreeInteraction.dispose();
     modelSpaceInstanceTreeBridge.dispose();
     linkedAssemblyUnlinkHistory.dispose();
     linkedAssemblyInteraction.dispose();
