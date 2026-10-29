@@ -164,6 +164,7 @@ export async function createBimCore(
       container,
       designModel: core.designModel,
       designScene: core.designScene,
+      designSelection: core.designSelection,
     });
 
   const modelRenderMode =
