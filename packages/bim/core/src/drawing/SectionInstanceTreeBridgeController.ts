@@ -118,6 +118,7 @@ interface DrawingWorkspaceRuntime {
   readonly svg: SVGSVGElement;
   readonly overlay: HTMLElement;
   render(): void;
+  renderDimension(annotation: Record<string, unknown>): void;
   handleDimensionPoint(x: number, y: number): void;
   setTool(tool: "SELECT" | "DIMENSION" | "LABEL" | "TEXT"): void;
   setStatus(message: string): void;
@@ -281,8 +282,34 @@ export class SectionInstanceTreeBridgeController {
       if (snapshot && originalSegments) snapshot.segments = originalSegments;
     }
 
+    this.renderAssemblyDimensionsAfterViews();
     if (sheet) this.applyAssemblyViewVisibility(sheet);
     this.decoratePdfInstanceEyes();
+  }
+
+  private renderAssemblyDimensionsAfterViews(): void {
+    const documentId = this.workspaceRuntime.activeSectionId;
+    if (!documentId) return;
+    const documentState = this.workspaceRuntime.documents.get(documentId);
+    if (!documentState) return;
+
+    for (const annotation of documentState.annotations) {
+      if (annotation["kind"] !== "DIMENSION") continue;
+      const a = annotation["a"] as AssemblyReferenceRuntime | undefined;
+      const b = annotation["b"] as AssemblyReferenceRuntime | undefined;
+      if (!a?.framelogicPdfViewId && !b?.framelogicPdfViewId) continue;
+
+      const id = typeof annotation["id"] === "string"
+        ? annotation["id"]
+        : "";
+      if (id) {
+        this.workspaceRuntime.svg
+          .querySelectorAll(`[data-annotation-id="${cssEscape(id)}"]`)
+          .forEach((element) => element.remove());
+      }
+
+      this.workspaceRuntime.renderDimension(annotation);
+    }
   }
 
   private getActivePdfSheet(): SheetRuntime | null {
