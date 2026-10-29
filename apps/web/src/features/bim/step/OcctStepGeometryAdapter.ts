@@ -54,9 +54,9 @@ function cloneSourceData(
  * 1. @sunbox/occt-import-js -> triangulación para Three.js.
  * 2. OpenCascade.js completo -> TopoDS_Shape vivo + B-Rep exacto.
  *
- * La segunda ruta es la autoridad geométrica. La primera no participa en
- * decisiones de precisión; solo evita cambiar el pipeline visual mientras
- * migramos progresivamente toda la triangulación al kernel completo.
+ * FrameLogic usa 1 unidad de Model Space = 1 milímetro. La frontera STEP
+ * normaliza siempre a milímetros, incluso si una llamada antigua todavía
+ * solicita `targetUnit: "meter"`.
  */
 export class OcctStepGeometryAdapter
   implements StepGeometryAdapter {
@@ -74,8 +74,7 @@ export class OcctStepGeometryAdapter
       getOpenCascadeBrepKernel();
 
     const targetUnit =
-      options.targetUnit
-      ?? "meter";
+      "millimeter" as const;
 
     const [
       result,
@@ -142,8 +141,8 @@ export class OcctStepGeometryAdapter
     /*
      * El binding visual y OpenCascade.js pueden elegir unidades internas
      * diferentes. Derivamos UNA escala uniforme comparando sus bounds; así
-     * el B-Rep exacto coincide con la malla visible sin asumir que OCCT usa
-     * metros o milímetros internamente.
+     * el B-Rep exacto coincide con la malla visible sin asumir la unidad
+     * interna del kernel.
      */
     const modelScale =
       inferBrepToMeshScale(
@@ -222,9 +221,7 @@ export class OcctStepGeometryAdapter
       brepDocumentId:
         brep.id,
       unitScaleToMeters:
-        targetUnit === "millimeter"
-          ? 0.001
-          : 1,
+        0.001,
       meshes,
       features:
         options.includeExactFeatures
