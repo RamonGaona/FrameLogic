@@ -4,6 +4,10 @@ import type {
 } from "../project/FrameLogicProjectPackageController";
 
 import type {
+  GeneralPdfController,
+} from "./GeneralPdfController";
+
+import type {
   UnifiedPdfNavigationController,
   UnifiedPdfNavigationSnapshot,
 } from "./UnifiedPdfNavigationController";
@@ -11,19 +15,21 @@ import type {
 interface UnifiedPdfProjectBridgeControllerOptions {
   readonly projectPackage: FrameLogicProjectPackageController;
   readonly navigation: UnifiedPdfNavigationController;
+  readonly generalPdf: GeneralPdfController;
 }
 
 type ProjectWithUnifiedPdf =
   FrameLogicProjectPackage
   & {
     readonly unifiedPdfNavigation?: UnifiedPdfNavigationSnapshot;
+    readonly assemblyPdf?: unknown;
   };
 
 /**
- * Persiste únicamente el orden global de navegación PDF.
- * El contenido real de secciones y ensambles continúa guardándose en sus
- * snapshots propios; por tanto este índice agrega solo unas pocas cadenas al
- * proyecto y no duplica geometría ni hojas.
+ * Persiste el orden global de navegación. El contenido de todas las hojas y
+ * Views vive en el snapshot de DrawingProduction, que ahora es el único almacén
+ * PDF. Al abrir proyectos antiguos se migra `assemblyPdf` una sola vez al
+ * almacén general para no perder hojas creadas antes de la unificación.
  */
 export class UnifiedPdfProjectBridgeController {
   private readonly projectPackage: FrameLogicProjectPackageController;
@@ -61,8 +67,12 @@ export class UnifiedPdfProjectBridgeController {
       project: FrameLogicProjectPackage,
     ): Promise<void> => {
       await this.baseRestoreProjectPackage(project);
+      const extended = project as ProjectWithUnifiedPdf;
+      options.generalPdf.importLegacyAssemblyPdf(
+        extended.assemblyPdf,
+      );
       options.navigation.restoreSnapshot(
-        (project as ProjectWithUnifiedPdf).unifiedPdfNavigation,
+        extended.unifiedPdfNavigation,
       );
     };
   }
