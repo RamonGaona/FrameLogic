@@ -372,8 +372,10 @@ export class UnifiedPdfNavigationController {
     for (const legacyButton of this.container.querySelectorAll<HTMLButtonElement>(
       'button[data-framelogic-open-assembly-pdf="true"]',
     )) {
+      legacyButton.style.display = "none";
+      legacyButton.disabled = true;
+      legacyButton.setAttribute("aria-hidden", "true");
       const header = legacyButton.parentElement;
-      legacyButton.remove();
       if (header instanceof HTMLElement) {
         header.style.gridTemplateColumns = "1fr auto auto";
       }
