@@ -141,6 +141,14 @@ export async function createBimCore(
   container: HTMLElement,
 ): Promise<PrecisionBimCoreInstance> {
   const core = await createDrawingBimCore(container);
+
+  /*
+   * SNAP no debe anunciarse permanentemente en Model Space.
+   * Se habilita más abajo únicamente mientras una herramienta
+   * que realmente consume SNAP está activa.
+   */
+  core.designSnap.setEnabled(false);
+
   const cadReferenceBlocks =
     getActiveCadReferenceBlockController();
 
@@ -207,6 +215,70 @@ export async function createBimCore(
         core.cancelDesignPiecePlacement();
       },
     });
+
+  /*
+   * El cálculo/feedback del DesignSnapController queda activo sólo
+   * durante operaciones que realmente lo necesitan. Así desaparecen
+   * etiquetas como ENDPOINT/MIDPOINT/CENTER mientras el usuario sólo
+   * navega, selecciona o inspecciona el modelo.
+   *
+   * requestAnimationFrame mantiene sincronizados también los cambios
+   * de herramienta disparados desde botones, teclado, ESC o paneles,
+   * sin acoplar cada controlador a la UI del SNAP.
+   */
+  let snapFeedbackFrame:
+    number | null =
+      null;
+  let snapFeedbackDisposed =
+    false;
+  let snapFeedbackEnabled =
+    false;
+
+  const syncSnapFeedback =
+    (): void => {
+      if (snapFeedbackDisposed) {
+        return;
+      }
+
+      const workPlaneEditActive =
+        core.getCadWorkPlaneEditState()
+          .mode !== "NONE";
+      const pieceOriginEditActive =
+        core.getPieceDefinitionOriginEditState()
+          .active;
+
+      const shouldEnable =
+        smartPieceInsertion.isActive
+        || core.cadPointPlacement.isActive
+        || core.cadLinePlacement.isActive
+        || core.cadLineMove.isActive
+        || core.cadMixedMove.isActive
+        || core.designTransform.isActive
+        || core.designRotate.isActive
+        || workPlaneEditActive
+        || pieceOriginEditActive;
+
+      if (
+        shouldEnable
+        !== snapFeedbackEnabled
+      ) {
+        snapFeedbackEnabled =
+          shouldEnable;
+        core.designSnap.setEnabled(
+          shouldEnable,
+        );
+      }
+
+      snapFeedbackFrame =
+        window.requestAnimationFrame(
+          syncSnapFeedback,
+        );
+    };
+
+  snapFeedbackFrame =
+    window.requestAnimationFrame(
+      syncSnapFeedback,
+    );
 
   const moveRuler =
     new MoveRulerExperienceController({
@@ -501,6 +573,14 @@ export async function createBimCore(
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
+    snapFeedbackDisposed = true;
+    if (snapFeedbackFrame !== null) {
+      window.cancelAnimationFrame(
+        snapFeedbackFrame,
+      );
+      snapFeedbackFrame = null;
+    }
+    core.designSnap.setEnabled(false);
     unifiedPdfProjectBridge.dispose();
     instanceTreeGroupVisibility.dispose();
     instanceTreeConsistency.dispose();
