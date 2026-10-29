@@ -18,6 +18,7 @@ import type {
 
 interface CameraControlsLike {
   readonly minDistance: number;
+  readonly minZoom?: number;
   setLookAt(
     positionX: number,
     positionY: number,
@@ -58,6 +59,7 @@ export interface ModelSpaceZoomExtentsControllerOptions {
 }
 
 const COMMAND_TIMEOUT_MS = 1800;
+const DEFAULT_MIN_ORTHO_ZOOM = 0.0001;
 
 /**
  * Zoom commands estilo AutoCAD:
@@ -236,8 +238,11 @@ export class ModelSpaceZoomExtentsController {
         Math.abs(camera.top - camera.bottom),
         0.001,
       );
+      const minZoom =
+        controls.minZoom
+        ?? DEFAULT_MIN_ORTHO_ZOOM;
       const desiredZoom = Math.max(
-        0.01,
+        minZoom,
         Math.min(
           availableWidth / (boxDiameter * 1.12),
           availableHeight / (boxDiameter * 1.12),
