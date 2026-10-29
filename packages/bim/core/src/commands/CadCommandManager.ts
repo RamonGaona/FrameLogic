@@ -197,9 +197,22 @@ export class CadCommandManager {
     /*
      * Primer gesto: termina únicamente la cadena/tramo pendiente.
      * LINE sigue siendo el activeCommand y queda esperando un nuevo
-     * primer punto independiente.
+     * primer punto independiente. Si por algún motivo no puede rearmarse
+     * (por ejemplo, la capa acaba de bloquearse), cerramos LINE para no
+     * dejar un activeCommand fantasma.
      */
-    command.softCancel?.();
+    const keptActive =
+      command.softCancel?.()
+      ?? false;
+
+
+    if (
+      !keptActive
+    ) {
+
+      this.cancelActive();
+
+    }
 
   }
 
