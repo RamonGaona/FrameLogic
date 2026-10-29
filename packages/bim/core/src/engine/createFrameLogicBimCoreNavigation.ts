@@ -47,6 +47,10 @@ import {
 } from "../navigation/BuildVersionBadgeController";
 
 import {
+  ModelRenderModeController,
+} from "../navigation/ModelRenderModeController";
+
+import {
   AlignController,
 } from "../interaction/AlignController";
 
@@ -77,6 +81,18 @@ import {
 import {
   AssemblyPdfAnnotationController,
 } from "../drawing/AssemblyPdfAnnotationController";
+
+import {
+  AssemblyPdfProfessionalController,
+} from "../drawing/AssemblyPdfProfessionalController";
+
+import {
+  AssemblyPdfRenderStyleController,
+} from "../drawing/AssemblyPdfRenderStyleController";
+
+import {
+  DrawingViewRenderStyleController,
+} from "../drawing/DrawingViewRenderStyleController";
 
 import {
   DrawingModelVisibilityBridgeController,
@@ -139,6 +155,12 @@ export async function createBimCore(
   const buildVersion =
     new BuildVersionBadgeController(container);
 
+  const modelRenderMode =
+    new ModelRenderModeController({
+      container,
+      designScene: core.designScene,
+    });
+
   const smartPieceInsertion =
     new SmartPieceInsertionController({
       container,
@@ -183,6 +205,24 @@ export async function createBimCore(
   const assemblyPdfAnnotations =
     new AssemblyPdfAnnotationController({
       assemblyPdf,
+    });
+
+  const assemblyPdfProfessional =
+    new AssemblyPdfProfessionalController(
+      assemblyPdf,
+    );
+
+  const assemblyPdfRenderStyles =
+    new AssemblyPdfRenderStyleController(
+      assemblyPdf,
+    );
+
+  const drawingViewRenderStyles =
+    new DrawingViewRenderStyleController({
+      drawingWorkspace: core.drawingWorkspace,
+      drawingProduction: core.drawingProduction,
+      drawingProfessional: core.drawingProfessional,
+      sectionDrawing: core.sectionDrawing,
     });
 
   const assemblyPdfProjectBridge =
@@ -454,6 +494,9 @@ export async function createBimCore(
     sectionInstanceTreeBridge.dispose();
     drawingModelVisibilityBridge.dispose();
     assemblyPdfProjectBridge.dispose();
+    drawingViewRenderStyles.dispose();
+    assemblyPdfRenderStyles.dispose();
+    assemblyPdfProfessional.dispose();
     assemblyPdfAnnotations.dispose();
     assemblyPdfViewEditing.dispose();
     assemblyPdf.dispose();
@@ -461,6 +504,7 @@ export async function createBimCore(
     smartPieceInsertion.dispose();
     align.dispose();
     instanceTree.dispose();
+    modelRenderMode.dispose();
     buildVersion.dispose();
     baseDispose();
   };
