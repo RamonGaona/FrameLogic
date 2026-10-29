@@ -10,6 +10,15 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.30 — Cotas temporales informativas en líneas CAD
+
+- Al seleccionar una única línea CAD en Model Space se muestra temporalmente su longitud real en milímetros.
+- La cota temporal se dibuja separada de la línea y desaparece al deseleccionarla o seleccionar otro tipo de elemento.
+- Mientras el comando `LINE` tiene definido el primer punto y espera el segundo, el preview incorpora una cota temporal que se actualiza en tiempo real con el cursor.
+- Después de confirmar un segmento, la medida temporal pasa automáticamente al nuevo tramo encadenado que propone `LINE`.
+- El offset visual de la cota se calcula en función del zoom para conservar aproximadamente la misma separación en pantalla tanto en geometría pequeña como en líneas de decenas de metros.
+- Estas cotas son exclusivamente informativas: no crean anotaciones permanentes, no modifican el historial y no sustituyen la herramienta `COTA`.
+
 ### v0.1.29 — Clipping ortográfico corregido en modelos extensos
 
 - Se corrige el recorte de geometría al orbitar cuando el modelo se extiende decenas de metros desde el `target` de la cámara.
