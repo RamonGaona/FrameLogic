@@ -3,6 +3,12 @@ import * as THREE from "three";
 
 const DEFAULT_MIN_ORTHO_ZOOM =
   0.0001;
+const DEFAULT_ORTHO_CAMERA_DISTANCE_MM =
+  5000;
+const ORTHO_CAMERA_DISTANCE_FACTOR =
+  1.5;
+const ORTHO_FAR_MIN_MM =
+  10_000_000;
 
 
 export interface PrecisionCameraControls {
@@ -50,6 +56,7 @@ export interface PrecisionCameraControls {
 export class PrecisionCameraController {
   private readonly cameraProvider: () => THREE.Camera;
   private readonly controls: PrecisionCameraControls;
+  private adjustingOrthographicDistance = false;
   private disposed = false;
 
 
@@ -303,10 +310,15 @@ export class PrecisionCameraController {
       camera
       instanceof THREE.OrthographicCamera
     ) {
+      const visibleDiagonal =
+        this.getOrthographicVisibleDiagonal(
+          camera,
+        );
       const nextFar = Math.max(
         camera.far,
-        this.controls.distance * 1000,
-        1_000_000,
+        this.controls.distance
+          + visibleDiagonal * 4,
+        ORTHO_FAR_MIN_MM,
       );
 
       if (
@@ -330,16 +342,144 @@ export class PrecisionCameraController {
     if (
       camera
       instanceof THREE.OrthographicCamera
-      && typeof this.controls.truckSpeed
-        === "number"
     ) {
-      /*
-       * En ORTHO evitamos que el pan dependa agresivamente de la distancia
-       * cámara-target. La propia escala ortográfica ya gobierna cuánto se ve.
-       */
-      this.controls.truckSpeed =
-        2;
+      if (
+        typeof this.controls.truckSpeed
+        === "number"
+      ) {
+        /*
+         * En ORTHO evitamos que el pan dependa agresivamente de la distancia
+         * cámara-target. La propia escala ortográfica ya gobierna cuánto se ve.
+         */
+        this.controls.truckSpeed =
+          2;
+      }
+
+      this.ensureOrthographicCameraDistance(
+        camera,
+      );
     }
+  }
+
+
+  private ensureOrthographicCameraDistance(
+    camera: THREE.OrthographicCamera,
+  ): void {
+    if (
+      this.adjustingOrthographicDistance
+      || !this.controls.setLookAt
+    ) {
+      return;
+    }
+
+    const visibleDiagonal =
+      this.getOrthographicVisibleDiagonal(
+        camera,
+      );
+    const requiredDistance =
+      Math.max(
+        DEFAULT_ORTHO_CAMERA_DISTANCE_MM,
+        visibleDiagonal
+          * ORTHO_CAMERA_DISTANCE_FACTOR,
+      );
+
+    if (
+      this.controls.distance
+      >= requiredDistance * 0.98
+    ) {
+      return;
+    }
+
+    const forward =
+      new THREE.Vector3();
+    camera.getWorldDirection(
+      forward,
+    );
+
+    if (
+      forward.lengthSq()
+      <= 1e-20
+    ) {
+      return;
+    }
+
+    forward.normalize();
+
+    /*
+     * En una cámara ortográfica moverla hacia atrás sobre su mismo eje no
+     * cambia el tamaño aparente. Conservamos el target y el zoom, pero damos
+     * suficiente profundidad física para que geometría lejana no atraviese
+     * el plano near al orbitar alrededor del modelo.
+     */
+    const target =
+      camera.position.clone()
+        .addScaledVector(
+          forward,
+          this.controls.distance,
+        );
+    const position =
+      target.clone()
+        .addScaledVector(
+          forward,
+          -requiredDistance,
+        );
+
+    this.adjustingOrthographicDistance =
+      true;
+
+    try {
+      const operation =
+        this.controls.setLookAt(
+          position.x,
+          position.y,
+          position.z,
+          target.x,
+          target.y,
+          target.z,
+          false,
+        );
+
+      void Promise.resolve(
+        operation,
+      ).finally(() => {
+        this.adjustingOrthographicDistance =
+          false;
+      });
+    }
+    catch (error) {
+      this.adjustingOrthographicDistance =
+        false;
+      console.error(
+        "Orthographic camera distance sync failed:",
+        error,
+      );
+    }
+  }
+
+
+  private getOrthographicVisibleDiagonal(
+    camera: THREE.OrthographicCamera,
+  ): number {
+    const zoom =
+      Math.max(
+        Math.abs(camera.zoom),
+        DEFAULT_MIN_ORTHO_ZOOM,
+      );
+    const visibleWidth =
+      Math.abs(
+        camera.right
+        - camera.left,
+      ) / zoom;
+    const visibleHeight =
+      Math.abs(
+        camera.top
+        - camera.bottom,
+      ) / zoom;
+
+    return Math.hypot(
+      visibleWidth,
+      visibleHeight,
+    );
   }
 
 
