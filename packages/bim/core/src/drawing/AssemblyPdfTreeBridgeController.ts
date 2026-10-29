@@ -20,25 +20,20 @@ interface AssemblyPdfTreeBridgeControllerOptions {
 /**
  * Integra las hojas PDF con el árbol de INSTANCIAS.
  *
- * - Ensambles y piezas individuales pueden enviarse a la misma colección de
- *   hojas, usando el WorkPlane activo.
- * - Una pieza usa exactamente el mismo flujo Nueva hoja / Hoja existente.
- * - "PDF Ensambles" conserva la reapertura de las hojas ya creadas.
+ * Ensambles y piezas individuales comparten las mismas hojas PDF y el
+ * WorkPlane activo. Las filas de ensamble se asocian por identidad/orden del
+ * modelo, no por nombre visible, porque varias colocaciones enlazadas pueden
+ * tener exactamente el mismo nombre.
  */
 export class AssemblyPdfTreeBridgeController {
   private readonly options: AssemblyPdfTreeBridgeControllerOptions;
   private readonly timer: number;
   private disposed = false;
 
-  constructor(
-    options: AssemblyPdfTreeBridgeControllerOptions,
-  ) {
+  constructor(options: AssemblyPdfTreeBridgeControllerOptions) {
     this.options = options;
     this.decorate();
-    this.timer = window.setInterval(
-      () => this.decorate(),
-      700,
-    );
+    this.timer = window.setInterval(() => this.decorate(), 700);
   }
 
   dispose(): void {
@@ -70,15 +65,15 @@ export class AssemblyPdfTreeBridgeController {
       const spans = this.directSpans(row);
       return spans[0]?.textContent?.startsWith("▦ ") ?? false;
     });
+    const assemblies = this.options.designModel.assemblies.getAll();
 
-    for (const assembly of this.options.designModel.assemblies.getAll()) {
-      const row = assemblyRows.find((candidate) => {
-        const spans = this.directSpans(candidate);
-        const name = spans[0]?.textContent?.slice(2).trim();
-        return name === assembly.name;
-      });
-      if (!row) continue;
+    for (let index = 0; index < assemblies.length; index += 1) {
+      const assembly = assemblies[index];
+      const row = assemblyRows[index];
+      if (!assembly || !row) continue;
 
+      row.dataset["framelogicAssemblyId"] = assembly.id;
+      this.removeWrongAssemblyPdfButtons(row, assembly.id);
       this.installAssemblyContextMenuBridge(row, assembly.id);
       this.appendPdfButton(
         row,
@@ -86,6 +81,20 @@ export class AssemblyPdfTreeBridgeController {
         "Enviar ensamble a PDF",
         () => this.sendAssembly(assembly.id),
       );
+    }
+  }
+
+  private removeWrongAssemblyPdfButtons(
+    row: HTMLDivElement,
+    assemblyId: string,
+  ): void {
+    const expected = `assembly:${assemblyId}`;
+    for (const button of row.querySelectorAll<HTMLButtonElement>(
+      'button[data-framelogic-pdf-target^="assembly:"]',
+    )) {
+      if (button.dataset["framelogicPdfTarget"] !== expected) {
+        button.remove();
+      }
     }
   }
 
@@ -103,6 +112,7 @@ export class AssemblyPdfTreeBridgeController {
       });
       if (!row) continue;
 
+      row.dataset["framelogicPieceId"] = piece.id;
       this.installPieceContextMenuBridge(row, piece.id);
       this.appendPdfButton(
         row,
@@ -210,17 +220,13 @@ export class AssemblyPdfTreeBridgeController {
       header.style.gridTemplateColumns = "1fr auto auto auto";
     }
 
-    const hasSheets = this.hasAssemblyPdfSheets();
+    const hasSheets = this.options.assemblyPdf.hasSheets();
     button.disabled = !hasSheets;
     button.style.opacity = hasSheets ? "1" : "0.45";
     button.style.cursor = hasSheets ? "pointer" : "default";
     button.title = hasSheets
       ? "Abrir las hojas PDF existentes"
       : "Aún no hay hojas PDF";
-  }
-
-  private hasAssemblyPdfSheets(): boolean {
-    return this.options.assemblyPdf.hasSheets();
   }
 
   private openExistingPdf(): void {
