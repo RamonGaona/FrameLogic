@@ -171,7 +171,7 @@ export class PrecisionCameraController {
     const distance = Math.max(
       sphere.radius * 2.5,
       this.controls.minDistance * 2,
-      0.05,
+      50,
     );
     const position = sphere.center.clone()
       .addScaledVector(
@@ -225,7 +225,7 @@ export class PrecisionCameraController {
           sphere.radius
           * 2
           * safePadding,
-          1e-6,
+          0.001,
         );
       const desiredZoom =
         Math.max(
@@ -266,22 +266,22 @@ export class PrecisionCameraController {
       const distance = Math.max(
         this.controls.distance,
         this.controls.minDistance,
-        0.001,
+        1,
       );
       const nextNear = THREE.MathUtils.clamp(
         distance * 1e-5,
-        1e-6,
-        0.01,
+        0.001,
+        10,
       );
       const nextFar = Math.max(
         camera.far,
         distance * 1000,
-        1000,
+        1_000_000,
       );
 
       if (
-        Math.abs(camera.near - nextNear) > 1e-12
-        || Math.abs(camera.far - nextFar) > 1e-6
+        Math.abs(camera.near - nextNear) > 1e-9
+        || Math.abs(camera.far - nextFar) > 0.001
       ) {
         camera.near = nextNear;
         camera.far = nextFar;
@@ -298,14 +298,14 @@ export class PrecisionCameraController {
       const nextFar = Math.max(
         camera.far,
         this.controls.distance * 1000,
-        1000,
+        1_000_000,
       );
 
       if (
         Math.abs(
           camera.far
           - nextFar,
-        ) > 1e-6
+        ) > 0.001
       ) {
         camera.far =
           nextFar;
