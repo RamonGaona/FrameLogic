@@ -31,6 +31,10 @@ import {
 } from "../navigation/LinkedAssemblyInteractionController";
 
 import {
+  LinkedAssemblyUnlinkHistoryController,
+} from "../navigation/LinkedAssemblyUnlinkHistoryController";
+
+import {
   InstanceTreeGroupVisibilityController,
 } from "../navigation/InstanceTreeGroupVisibilityController";
 
@@ -241,6 +245,14 @@ export async function createBimCore(
       linkedAssemblies: linkedAssemblyInstances,
     });
 
+  const linkedAssemblyUnlinkHistory =
+    new LinkedAssemblyUnlinkHistoryController({
+      designModel: core.designModel,
+      instanceTree,
+      linkedAssemblies: linkedAssemblyInstances,
+      cadHistory: core.cadHistory,
+    });
+
   const modelSpaceInstanceTreeBridge =
     new ModelSpaceInstanceTreeBridgeController({
       container,
@@ -418,6 +430,7 @@ export async function createBimCore(
     unifiedPdfProjectBridge.dispose();
     instanceTreeGroupVisibility.dispose();
     modelSpaceInstanceTreeBridge.dispose();
+    linkedAssemblyUnlinkHistory.dispose();
     linkedAssemblyInteraction.dispose();
     linkedAssemblyInstances.dispose();
     assemblyClipboard.dispose();
