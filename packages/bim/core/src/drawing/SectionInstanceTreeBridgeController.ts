@@ -104,14 +104,23 @@ interface DrawingProductionRuntime {
   };
 }
 
+interface DrawingDocumentRuntime {
+  readonly sectionId: string;
+  readonly annotations: Array<Record<string, unknown>>;
+}
+
 interface DrawingWorkspaceRuntime {
   activeSectionId: string | null;
   pendingDimensionStart: AssemblyReferenceRuntime | null;
   tool: string;
   snapshot: DrawingSnapshotRuntime | null;
+  readonly documents: Map<string, DrawingDocumentRuntime>;
   readonly svg: SVGSVGElement;
   readonly overlay: HTMLElement;
   render(): void;
+  handleDimensionPoint(x: number, y: number): void;
+  setTool(tool: "SELECT" | "DIMENSION" | "LABEL" | "TEXT"): void;
+  setStatus(message: string): void;
   eventToSheetPoint(event: PointerEvent | MouseEvent): THREE.Vector2 | null;
 }
 
@@ -137,6 +146,8 @@ interface EnrichedAssemblyGeometry {
   readonly height: number;
   readonly segments: AssemblyPlanSegmentRuntime[];
 }
+
+type BasicDimensionMode = "ALIGNED" | "HORIZONTAL" | "VERTICAL" | "DIAMETER" | "RADIUS";
 
 const SHEET_WIDTH = 1120;
 const SHEET_HEIGHT = 792;
@@ -164,6 +175,7 @@ export class SectionInstanceTreeBridgeController {
     readonly lost: boolean;
   };
   private readonly originalWorkspaceRender: () => void;
+  private readonly originalWorkspaceHandleDimensionPoint: (x: number, y: number) => void;
   private readonly timer: number;
   private contextMenu: HTMLDivElement | null = null;
   private snapMarker: SVGGElement | null = null;
@@ -191,6 +203,11 @@ export class SectionInstanceTreeBridgeController {
       this.productionRuntime.resolveReference.bind(this.productionRuntime);
     this.productionRuntime.resolveReference = (reference) =>
       this.resolveDrawingReference(reference);
+
+    this.originalWorkspaceHandleDimensionPoint =
+      this.workspaceRuntime.handleDimensionPoint.bind(this.workspaceRuntime);
+    this.workspaceRuntime.handleDimensionPoint = (x, y) =>
+      this.handlePdfDimensionPoint(x, y);
 
     this.originalWorkspaceRender = this.workspaceRuntime.render.bind(this.workspaceRuntime);
     this.workspaceRuntime.render = () => this.renderWorkspaceWithPdfVisibility();
@@ -229,6 +246,7 @@ export class SectionInstanceTreeBridgeController {
     this.productionRuntime.syncSectionLayerVisibility = this.originalSyncSectionLayerVisibility;
     this.productionRuntime.pickReference = this.originalPickReference;
     this.productionRuntime.resolveReference = this.originalResolveReference;
+    this.workspaceRuntime.handleDimensionPoint = this.originalWorkspaceHandleDimensionPoint;
     this.workspaceRuntime.render = this.originalWorkspaceRender;
     this.hideContextMenu();
     this.options.container.querySelector('[data-framelogic-section-tree="true"]')?.remove();
@@ -270,6 +288,93 @@ export class SectionInstanceTreeBridgeController {
   private getActivePdfSheet(): SheetRuntime | null {
     const id = this.workspaceRuntime.activeSectionId;
     return id ? this.productionRuntime.sheets.get(id) ?? null : null;
+  }
+
+  private handlePdfDimensionPoint(paperX: number, paperY: number): void {
+    const reference = this.pickDrawingReference(paperX, paperY);
+    const pending = this.workspaceRuntime.pendingDimensionStart;
+    const assemblyFlow = Boolean(
+      reference?.framelogicPdfViewId
+      || pending?.framelogicPdfViewId,
+    );
+
+    if (!assemblyFlow) {
+      this.originalWorkspaceHandleDimensionPoint(paperX, paperY);
+      return;
+    }
+
+    if (!reference?.framelogicPdfViewId) {
+      this.workspaceRuntime.setStatus(
+        "COTA: selecciona un segundo SNAP dentro de la misma View de ensamble.",
+      );
+      return;
+    }
+
+    if (
+      pending?.framelogicPdfViewId
+      && pending.framelogicPdfViewId !== reference.framelogicPdfViewId
+    ) {
+      this.workspaceRuntime.setStatus(
+        "COTA: ambos puntos deben pertenecer a la misma View de ensamble.",
+      );
+      return;
+    }
+
+    const dimensionMode = this.readBasicDimensionMode();
+    if (dimensionMode === "DIAMETER" || dimensionMode === "RADIUS") {
+      this.workspaceRuntime.setStatus(
+        "Ø/R en Views de ensamble requiere geometría circular exacta; usa cota alineada, horizontal o vertical.",
+      );
+      return;
+    }
+
+    const documentId = this.workspaceRuntime.activeSectionId;
+    if (!documentId) return;
+    let documentState = this.workspaceRuntime.documents.get(documentId);
+    if (!documentState) {
+      documentState = {
+        sectionId: documentId,
+        annotations: [],
+      };
+      this.workspaceRuntime.documents.set(documentId, documentState);
+    }
+
+    if (!pending) {
+      this.workspaceRuntime.pendingDimensionStart = reference;
+      this.workspaceRuntime.setStatus(
+        `COTA ${dimensionMode}: primer punto de View tomado. Selecciona el segundo.`,
+      );
+      return;
+    }
+
+    documentState.annotations.push({
+      id: crypto.randomUUID(),
+      kind: "DIMENSION",
+      a: pending,
+      b: reference,
+      offsetX: dimensionMode === "VERTICAL" ? 28 : 0,
+      offsetY: -28,
+      dimensionMode,
+    });
+    this.workspaceRuntime.pendingDimensionStart = null;
+    this.workspaceRuntime.setTool("SELECT");
+    this.clearPdfSnapMarker();
+    this.workspaceRuntime.render();
+  }
+
+  private readBasicDimensionMode(): BasicDimensionMode {
+    const value = this.workspaceRuntime.overlay
+      .querySelector<HTMLSelectElement>('select[title="Tipo de cota"]')
+      ?.value;
+    if (
+      value === "HORIZONTAL"
+      || value === "VERTICAL"
+      || value === "DIAMETER"
+      || value === "RADIUS"
+    ) {
+      return value;
+    }
+    return "ALIGNED";
   }
 
   private pickDrawingReference(paperX: number, paperY: number): AssemblyReferenceRuntime | null {
