@@ -1,31 +1,22 @@
-declare const __FRAMELOGIC_VERSION__: string;
+const FRAMELOGIC_VERSION = "0.1.2";
 
 
 /**
  * Muestra una versión legible de FrameLogic en el navegador.
  *
- * La versión se toma del package.json raíz en build-time. El objetivo es que
- * el usuario pueda comprobar rápidamente si el sitio desplegado corresponde
- * a la versión de desarrollo indicada, sin tener que comparar hashes Git.
+ * La versión queda embebida directamente en el bundle para que no dependa de
+ * variables de Cloudflare, GitHub Actions ni Vite. Si el navegador muestra una
+ * versión distinta, está ejecutando otro build.
  */
 export class BuildVersionBadgeController {
   private readonly element: HTMLDivElement;
   private disposed = false;
 
   constructor(container: HTMLElement) {
-    const version =
-      typeof __FRAMELOGIC_VERSION__ !== "undefined"
-        ? __FRAMELOGIC_VERSION__
-        : "local";
-
     const element = document.createElement("div");
     element.dataset["framelogicBuildVersion"] = "true";
-    element.textContent = version === "local"
-      ? "FrameLogic · local"
-      : `FrameLogic v${version}`;
-    element.title = version === "local"
-      ? "Versión local"
-      : `Versión desplegada: ${version}`;
+    element.textContent = `FrameLogic v${FRAMELOGIC_VERSION}`;
+    element.title = `Versión desplegada: ${FRAMELOGIC_VERSION}`;
     Object.assign(element.style, {
       position: "absolute",
       right: "8px",
