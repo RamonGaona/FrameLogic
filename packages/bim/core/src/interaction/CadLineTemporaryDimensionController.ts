@@ -351,7 +351,7 @@ export class CadLineTemporaryDimensionController {
   private formatDistance(distance: number): string {
     return `${distance.toLocaleString("es-CO", {
       minimumFractionDigits: 0,
-      maximumFractionDigits: 3,
+      maximumFractionDigits: 0,
     })} mm`;
   }
 
