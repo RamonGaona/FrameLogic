@@ -10,6 +10,14 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.12 — Árbol de instancias por View en PDF
+
+- Los espacios PDF de secciones y ensambles incorporan un panel lateral `VIEWS`.
+- En un plano de sección, la view muestra todas las instancias del modelo general.
+- En hojas de ensamble/pieza, cada view muestra únicamente las instancias que pertenecen a ese ensamble, pieza o instancia enviada al PDF.
+- Las instancias incluidas en views de ensamble/pieza muestran un ojo como indicador de pertenencia visible.
+- La indicación exacta de qué instancias son atravesadas por el corte de una sección queda pendiente de enlazarse al resultado geométrico de corte; no se infiere ni se marca de forma incorrecta en esta versión.
+
 ### v0.1.11 — SNAP contextual
 
 - Los indicadores visuales de SNAP ya no se muestran durante navegación, selección o inspección normal.
