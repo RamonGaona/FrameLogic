@@ -19,7 +19,7 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 - Cada view puede usar escala `AUTO` o una escala técnica independiente `1:N`.
 - Posición y escala de cada view se incorporan al snapshot del proyecto y se restauran al volver a abrirlo.
 - Las vistas profesionales de sección conservan su sistema existente de movimiento/redimensionado independiente y su estado de escala por view.
-- Integración funcional preparada en `ad442c4fbe398744dfc206464050c58259a69bbb`.
+- Integración funcional preparada en `c01b101b4fb23002b8dfb9fc7f7f15fc736e9352`.
 
 ### v0.1.12 — Árbol de instancias por View en PDF
 
