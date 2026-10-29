@@ -10,6 +10,15 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.25 — Escala ortográfica inicial corregida para milímetros
+
+- Se corrige el frustum inicial de la cámara ortográfica de That Open, que tras la migración a mm seguía mostrando aproximadamente sólo `50 mm` de alto.
+- La vista ortográfica inicial pasa a mostrar aproximadamente `5000 mm` de alto.
+- La distancia de cámara de referencia se mantiene en `5000 mm` respecto al origen.
+- Una línea de `10–20 mm` deja de ocupar gran parte de la pantalla al iniciar un proyecto vacío.
+- La cuadrícula de `100 mm` vuelve a ser visible porque el campo inicial ya abarca varios metros.
+- El ajuste se aplica directamente a `threeOrtho`, por lo que también queda preparado cuando se cambia posteriormente desde perspectiva a ortográfica.
+
 ### v0.1.24 — Cámara inicial y cuadrícula estándar en milímetros
 
 - Al iniciar un proyecto vacío, la cámara se coloca a una distancia real de aproximadamente `5000 mm` del origen sobre una vista isométrica.
