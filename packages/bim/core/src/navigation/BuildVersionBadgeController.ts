@@ -1,4 +1,4 @@
-const FRAMELOGIC_VERSION = "0.1.21";
+const FRAMELOGIC_VERSION = "0.1.22";
 
 
 /**
