@@ -10,6 +10,15 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.29 — Clipping ortográfico corregido en modelos extensos
+
+- Se corrige el recorte de geometría al orbitar cuando el modelo se extiende decenas de metros desde el `target` de la cámara.
+- El zoom ortográfico y la distancia física cámara–target quedan desacoplados: alejar la cámara físicamente ya no cambia el tamaño aparente del modelo.
+- La distancia física de la cámara aumenta automáticamente según la diagonal visible del frustum ortográfico, conservando el mismo `target`, orientación y zoom.
+- Una línea de `35 000 mm` y geometría dibujada a partir de su extremo pueden seguir visibles al rotar la vista, siempre que estén dentro del encuadre.
+- El plano `far` ortográfico se dimensiona con la distancia real y el campo visible, evitando multiplicaciones excesivas que degradarían la precisión del depth buffer.
+- Se conserva el rango de zoom ampliado introducido en v0.1.28 y el comportamiento de PAN/zoom cercano.
+
 ### v0.1.28 — Rango de zoom ortográfico ampliado
 
 - El campo ortográfico inicial se mantiene en aproximadamente `5000 mm` de alto para conservar una vista inicial útil.
