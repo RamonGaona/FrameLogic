@@ -82,7 +82,11 @@ function cloneSourceData(
 
 /**
  * Adaptador STEP reutilizable por el visor y por el cargador de proyectos.
- * La triangulación alimenta Three.js; OpenCascade.js conserva el B-Rep vivo.
+ *
+ * Unidad canónica FrameLogic: 1 unidad de modelo = 1 milímetro.
+ * Aunque un llamador antiguo todavía solicite `targetUnit: "meter"`, este
+ * límite de importación normaliza siempre STEP a milímetros para impedir que
+ * convivan dos escalas internas distintas dentro del mismo proyecto.
  */
 export class OcctStepGeometryAdapter
   implements StepGeometryAdapter {
@@ -97,8 +101,7 @@ export class OcctStepGeometryAdapter
     const brepKernel =
       getOpenCascadeBrepKernel();
     const targetUnit =
-      options.targetUnit
-      ?? "meter";
+      "millimeter" as const;
 
     const [result, brep] =
       await Promise.all([
@@ -222,9 +225,7 @@ export class OcctStepGeometryAdapter
       brepDocumentId:
         brep.id,
       unitScaleToMeters:
-        targetUnit === "millimeter"
-          ? 0.001
-          : 1,
+        0.001,
       meshes,
       features:
         options.includeExactFeatures
