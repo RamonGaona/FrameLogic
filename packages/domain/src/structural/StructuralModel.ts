@@ -22,6 +22,7 @@ export interface PlacedStructuralAxis {
 
 export interface StructuralNode {
   readonly id: string;
+  /** Coordenada de proyecto en milímetros. */
   readonly position: PieceVector3Data;
 }
 
@@ -46,13 +47,17 @@ export interface StructuralModel {
 
 /**
  * Convierte ejes estructurales ya resueltos a coordenadas de proyecto
- * en un modelo de nodos + miembros apto para enviar a un solver.
+ * en milímetros y produce un modelo de nodos + miembros apto para enviar
+ * posteriormente a un adaptador de solver.
+ *
+ * El límite externo del solver es responsable de convertir mm a la unidad
+ * requerida por ese solver; el dominio FrameLogic permanece siempre en mm.
  *
  * No recibe sólidos STEP. La geometría de fabricación permanece separada.
  */
 export function buildStructuralModel(
   axes: readonly PlacedStructuralAxis[],
-  nodeMergeTolerance = 1e-6,
+  nodeMergeTolerance = 0.001,
 ): StructuralModel {
   if (
     !Number.isFinite(nodeMergeTolerance)
@@ -107,7 +112,7 @@ export function buildStructuralModel(
         axis.start,
         axis.end,
       )
-      <= 1e-12
+      <= 1e-9
     ) {
       throw new Error(
         `Structural axis "${axis.id}" has zero length.`,
