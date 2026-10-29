@@ -38,6 +38,35 @@ implements CadCommand {
   }
 
 
+  softCancel():
+    boolean {
+
+    if (
+      !this.linePlacement
+        .isActive
+    ) {
+
+      return false;
+
+    }
+
+
+    /*
+     * CadLinePlacementController enlaza automáticamente el extremo del último
+     * segmento como startPoint del siguiente. Reiniciarlo limpia únicamente
+     * ese tramo pendiente/preview, pero conserva todas las líneas ya creadas
+     * y deja LINE armado para recibir un nuevo primer punto.
+     */
+    this.linePlacement
+      .deactivate();
+
+
+    return this.linePlacement
+      .activate();
+
+  }
+
+
   cancel():
     void {
 
