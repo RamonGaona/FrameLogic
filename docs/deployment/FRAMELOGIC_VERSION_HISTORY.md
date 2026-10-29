@@ -10,6 +10,15 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.28 — Rango de zoom ortográfico ampliado
+
+- El campo ortográfico inicial se mantiene en aproximadamente `5000 mm` de alto para conservar una vista inicial útil.
+- Se corrige el bloqueo que hacía coincidir ese zoom inicial (`≈ 0.01`) con el límite mínimo de CameraControls, impidiendo alejarse más al trabajar con geometría de 5 m o superior.
+- El límite de zoom-out ortográfico baja a `0.0001`, permitiendo un campo visible aproximado de hasta `500 000 mm` con el frustum actual.
+- La rueda del mouse puede seguir alejando después de encuadrar una línea de `5000 mm`.
+- `Zoom Extents` y el enfoque de precisión usan el mismo límite ampliado para poder encuadrar modelos mayores.
+- El rango de zoom-in y la escala inicial de 5000 mm no cambian.
+
 ### v0.1.27 — Cotas lineales en Model Space
 
 - Se agrega el botón `COTA` junto a las herramientas `POINT` y `LINE` del Model Space.
