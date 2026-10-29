@@ -402,6 +402,8 @@ export class PieceFrameLogicPackageController {
           "FRAMELOGIC_PIECE" as const,
         version:
           1 as const,
+        lengthUnit:
+          "mm" as const,
         status:
           "READY" as const,
         geometry: {
