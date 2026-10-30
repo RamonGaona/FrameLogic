@@ -110,6 +110,11 @@ interface MillimeterCoreRuntime {
           targetZ: number,
           enableTransition?: boolean,
         ): Promise<void> | void;
+        rotateTo(
+          azimuthAngle: number,
+          polarAngle: number,
+          enableTransition?: boolean,
+        ): Promise<void> | void;
         addEventListener(type: string, listener: () => void): void;
         removeEventListener(type: string, listener: () => void): void;
       };
@@ -310,7 +315,14 @@ function configureCamera(
     camera.updateProjectionMatrix();
   }
 
+  /*
+   * Primero damos a la cámara una distancia física cómoda en milímetros.
+   * Después fijamos TOP + Norte de forma INMEDIATA (sin transición).
+   * Esto cancela cualquier transición de arranque pendiente: el primer
+   * wheel/zoom ya no puede completar tarde un cambio de ISO a TOP.
+   */
   void controls.setLookAt(6000, 6000, 6000, 0, 0, 0, false);
+  void controls.rotateTo(0, 0, false);
 
   const updateTruckSpeed = (): void => {
     const distance = Math.max(controls.distance, controls.minDistance, 20);
