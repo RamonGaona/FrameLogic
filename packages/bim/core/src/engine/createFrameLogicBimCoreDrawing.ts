@@ -63,6 +63,10 @@ import {
 } from "../interaction/ModelSpaceZoomExtentsController";
 
 import {
+  CadTrimController,
+} from "../interaction/CadTrimController";
+
+import {
   OpenCascadeBrepAdvancedProvider,
 } from "../precision/OpenCascadeBrepAdvancedProvider";
 
@@ -106,6 +110,12 @@ export type PrecisionBimCoreInstance =
 
     readonly projectPackage:
       FrameLogicProjectPackageController;
+
+    readonly cadTrim:
+      CadTrimController;
+
+    readonly startTrimCommand: () =>
+      boolean;
 
     readonly createDocumentationSnapshot: () =>
       FrameLogicDocumentationSnapshot;
@@ -152,6 +162,36 @@ export async function createBimCore(
     );
   }
 
+  const cadTrim =
+    new CadTrimController({
+      domElement:
+        renderer.three.domElement,
+      cameraProvider: () =>
+        core.world.camera.three,
+      designModel:
+        core.designModel,
+      lineScene:
+        core.cadLineScene,
+      lineSelection:
+        core.cadLineSelection,
+      pointSelection:
+        core.cadPointSelection,
+      designSelection:
+        core.designSelection,
+      workPlane:
+        core.cadWorkPlane,
+      history:
+        core.cadHistory,
+      beforeStart: () => {
+        core.cancelActiveCadCommand();
+        core.cadWindowSelection.cancel();
+        core.cancelCadWorkPlaneEdit();
+        core.cancelPreparedPieceOriginSnapEdit();
+      },
+      clearGeometryQueryCache: () =>
+        core.geometryQuery.clearCache(),
+    });
+
   const advancedBrepProvider =
     new OpenCascadeBrepAdvancedProvider(
       core.designModel,
@@ -193,6 +233,7 @@ export async function createBimCore(
           .clone()
         ?? null,
       beforeStart: () => {
+        cadTrim.deactivate();
         core.cancelActiveCadCommand();
       },
     });
@@ -353,6 +394,7 @@ export async function createBimCore(
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
       clearOtherSelections: () => {
+        cadTrim.deactivate();
         core.cancelActiveCadCommand();
         core.designSelection.clearSelection();
         core.cadLineSelection.clearSelection();
@@ -493,11 +535,14 @@ export async function createBimCore(
         ),
       clearReferenceModels: () =>
         core.clearModels(),
-      cancelActiveCadCommand: () =>
-        core.cancelActiveCadCommand(),
+      cancelActiveCadCommand: () => {
+        cadTrim.deactivate();
+        core.cancelActiveCadCommand();
+      },
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
       onProjectRestored: async () => {
+        cadTrim.deactivate();
         cadReferenceLayers
           .ensureImportedLayersLocked();
         cadReferenceTransform.refresh();
@@ -525,6 +570,7 @@ export async function createBimCore(
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
       onImported: async () => {
+        cadTrim.deactivate();
         core.cancelActiveCadCommand();
         cadReferenceLayers
           .ensureImportedLayersLocked();
@@ -590,6 +636,7 @@ export async function createBimCore(
         handleOpenDrawing,
         true,
       );
+      cadTrim.dispose();
       autosave.dispose();
       cadReferenceImport.dispose();
       zoomExtents.dispose();
@@ -618,6 +665,9 @@ export async function createBimCore(
     drawingFinishing,
     assemblyConstraintSolver,
     projectPackage,
+    cadTrim,
+    startTrimCommand: () =>
+      cadTrim.activate(),
     createDocumentationSnapshot: () =>
       drawingProduction
         .createDocumentationSnapshot(),
