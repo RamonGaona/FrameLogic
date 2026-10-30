@@ -32,6 +32,15 @@ export interface FrameLogicPieceSourceGeometry {
 const PREPARATION_LAYER_ID =
   "__framelogic-piece-preparation__";
 
+const PREPARATION_PANEL_ACTIONS =
+  "framelogicPiecePreparationActions";
+
+const PREPARATION_PANEL_SCROLL =
+  "framelogicPiecePreparationScroll";
+
+const PREPARATION_EXIT_SOURCE =
+  "framelogicPiecePreparationExitSource";
+
 
 function cloneBytes(
   data: Uint8Array,
@@ -172,6 +181,9 @@ export class PieceFrameLogicPackageController {
   private readonly observer:
     MutationObserver;
 
+  private updateScheduled =
+    false;
+
   private disposed =
     false;
 
@@ -194,14 +206,15 @@ export class PieceFrameLogicPackageController {
     this.observer =
       new MutationObserver(
         () => {
-          this.attachSaveButtons();
+          this.scheduleUiSync();
         },
       );
 
     /*
      * El editor de Preparar pieza vive en document.body, mientras que el
      * workspace de metadata vive dentro del viewport. Observamos body para
-     * poder ofrecer la misma acción de guardado en ambos contextos.
+     * ofrecer el guardado individual en ambos contextos y reorganizar el
+     * panel de preparación sin acoplar React con el controlador CAD.
      */
     this.observer.observe(
       document.body,
@@ -213,7 +226,7 @@ export class PieceFrameLogicPackageController {
       },
     );
 
-    this.attachSaveButtons();
+    this.syncUi();
   }
 
 
@@ -445,7 +458,28 @@ export class PieceFrameLogicPackageController {
   }
 
 
-  private attachSaveButtons(): void {
+  private scheduleUiSync(): void {
+    if (
+      this.disposed
+      || this.updateScheduled
+    ) {
+      return;
+    }
+
+    this.updateScheduled =
+      true;
+
+    window.requestAnimationFrame(
+      () => {
+        this.updateScheduled =
+          false;
+        this.syncUi();
+      },
+    );
+  }
+
+
+  private syncUi(): void {
     if (
       this.disposed
     ) {
@@ -453,7 +487,7 @@ export class PieceFrameLogicPackageController {
     }
 
     this.attachWorkspaceSaveButton();
-    this.attachPreparationSaveButton();
+    this.decoratePreparationPanel();
   }
 
 
@@ -559,7 +593,7 @@ export class PieceFrameLogicPackageController {
   }
 
 
-  private attachPreparationSaveButton(): void {
+  private decoratePreparationPanel(): void {
     const preparationInstance =
       this.designModel
         .pieceInstances
@@ -572,43 +606,142 @@ export class PieceFrameLogicPackageController {
             === PREPARATION_LAYER_ID,
         );
 
-    if (!preparationInstance) {
-      return;
-    }
-
-    const exitButton =
-      Array.from(
-        document.querySelectorAll(
-          "button",
-        ),
-      )
-        .find(
-          (
-            button,
-          ) =>
-            button.textContent
-              ?.trim()
-            === "Salir prep",
-        );
-
-    const toolbar =
-      exitButton?.parentElement;
+    const panel =
+      this.findPreparationPanel();
 
     if (
-      !exitButton
-      || !toolbar
-      || toolbar.querySelector(
-        "[data-framelogic-save-prepared-package]",
-      )
+      !preparationInstance
+      || !panel
     ) {
+      this.restorePreparationToolbarExit();
       return;
     }
+
+    const toolbarExit =
+      this.findPreparationToolbarExit(
+        panel,
+      );
+
+    if (toolbarExit) {
+      toolbarExit.dataset[
+        PREPARATION_EXIT_SOURCE
+      ] =
+        "true";
+      toolbarExit.style.display =
+        "none";
+    }
+
+    Object.assign(
+      panel.style,
+      {
+        top:
+          "126px",
+        bottom:
+          "auto",
+        maxHeight:
+          "calc(100vh - 210px)",
+        overflow:
+          "hidden",
+        display:
+          "flex",
+        flexDirection:
+          "column",
+      },
+    );
+
+    const existingActions =
+      panel.querySelector<HTMLElement>(
+        `[data-${this.toKebabCase(
+          PREPARATION_PANEL_ACTIONS,
+        )}="true"]`,
+      );
+
+    if (existingActions) {
+      return;
+    }
+
+    const children =
+      Array.from(
+        panel.children,
+      );
+    const header =
+      children[0];
+
+    if (!(header instanceof HTMLElement)) {
+      return;
+    }
+
+    const scroll =
+      document.createElement(
+        "div",
+      );
+    scroll.dataset[
+      PREPARATION_PANEL_SCROLL
+    ] =
+      "true";
+
+    Object.assign(
+      scroll.style,
+      {
+        minHeight:
+          "0",
+        flex:
+          "1 1 auto",
+        overflowY:
+          "auto",
+        overflowX:
+          "hidden",
+        overscrollBehavior:
+          "contain",
+        scrollbarGutter:
+          "stable",
+      },
+    );
+
+    for (
+      const child
+      of children.slice(
+        1,
+      )
+    ) {
+      scroll.appendChild(
+        child,
+      );
+    }
+
+    const actions =
+      document.createElement(
+        "div",
+      );
+    actions.dataset[
+      PREPARATION_PANEL_ACTIONS
+    ] =
+      "true";
+
+    Object.assign(
+      actions.style,
+      {
+        flex:
+          "0 0 auto",
+        display:
+          "grid",
+        gridTemplateColumns:
+          "1fr auto",
+        gap:
+          "8px",
+        padding:
+          "10px 12px",
+        borderTop:
+          "1px solid #4b5563",
+        background:
+          "rgba(24, 33, 41, 0.99)",
+      },
+    );
 
     const saveButton =
       document.createElement(
         "button",
       );
-
     saveButton.type =
       "button";
     saveButton.dataset[
@@ -620,6 +753,26 @@ export class PieceFrameLogicPackageController {
     saveButton.title =
       "Descargar esta pieza preparada como archivo individual .flpiece";
 
+    Object.assign(
+      saveButton.style,
+      {
+        padding:
+          "8px 10px",
+        border:
+          "1px solid #718096",
+        borderRadius:
+          "5px",
+        background:
+          "#334155",
+        color:
+          "white",
+        cursor:
+          "pointer",
+        fontWeight:
+          "600",
+      },
+    );
+
     saveButton.addEventListener(
       "click",
       () => {
@@ -629,9 +782,158 @@ export class PieceFrameLogicPackageController {
       },
     );
 
-    toolbar.insertBefore(
+    const exitButton =
+      document.createElement(
+        "button",
+      );
+    exitButton.type =
+      "button";
+    exitButton.dataset[
+      "framelogicPreparationPanelExit"
+    ] =
+      "true";
+    exitButton.textContent =
+      "Salir prep";
+    exitButton.title =
+      "Salir del modo de preparación y volver al Model Space";
+
+    Object.assign(
+      exitButton.style,
+      {
+        padding:
+          "8px 12px",
+        border:
+          "1px solid #596875",
+        borderRadius:
+          "5px",
+        background:
+          "#1f2933",
+        color:
+          "white",
+        cursor:
+          "pointer",
+      },
+    );
+
+    exitButton.addEventListener(
+      "click",
+      () => {
+        const source =
+          this.findPreparationToolbarExit(
+            panel,
+          );
+
+        source?.click();
+      },
+    );
+
+    actions.append(
       saveButton,
       exitButton,
+    );
+
+    panel.replaceChildren(
+      header,
+      scroll,
+      actions,
+    );
+  }
+
+
+  private findPreparationPanel():
+    HTMLDivElement | null {
+    for (
+      const element
+      of document.body
+        .querySelectorAll<HTMLDivElement>(
+          "div",
+        )
+    ) {
+      if (
+        element.style.position
+          !== "fixed"
+        || element.style.display
+          === "none"
+      ) {
+        continue;
+      }
+
+      const header =
+        element.firstElementChild;
+      const title =
+        header?.textContent
+          ?.trim()
+        ?? "";
+
+      if (
+        title.startsWith(
+          "Preparar pieza ·",
+        )
+        && element.textContent
+          ?.includes(
+            "Workspace local aislado",
+          )
+      ) {
+        return element;
+      }
+    }
+
+    return null;
+  }
+
+
+  private findPreparationToolbarExit(
+    panel:
+      HTMLElement,
+  ):
+    HTMLButtonElement | null {
+    return Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        "button",
+      ),
+    )
+      .find(
+        (
+          button,
+        ) =>
+          !panel.contains(
+            button,
+          )
+          && button.textContent
+            ?.trim()
+            === "Salir prep",
+      )
+      ?? null;
+  }
+
+
+  private restorePreparationToolbarExit(): void {
+    for (
+      const button
+      of document.querySelectorAll<HTMLButtonElement>(
+        `[data-${this.toKebabCase(
+          PREPARATION_EXIT_SOURCE,
+        )}="true"]`,
+      )
+    ) {
+      button.style.display =
+        "";
+      delete button.dataset[
+        PREPARATION_EXIT_SOURCE
+      ];
+    }
+  }
+
+
+  private toKebabCase(
+    value: string,
+  ): string {
+    return value.replace(
+      /[A-Z]/g,
+      (
+        match,
+      ) =>
+        `-${match.toLowerCase()}`,
     );
   }
 
@@ -645,6 +947,7 @@ export class PieceFrameLogicPackageController {
 
     this.disposed =
       true;
+    this.restorePreparationToolbarExit();
     this.observer.disconnect();
     this.sources.clear();
   }
