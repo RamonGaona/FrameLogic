@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/polylineNavigationIndex.ts"
+    ".": "./src/advancedCadNavigationIndex.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
