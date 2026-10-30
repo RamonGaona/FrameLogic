@@ -1,6 +1,7 @@
 import type {
   DesignModel,
   FrameLogicEngineeringModel,
+  PieceDefinition,
   PieceEngineeringData,
 } from "@framelogic/domain";
 
@@ -26,6 +27,10 @@ export interface FrameLogicPieceSourceGeometry {
   readonly data:
     Uint8Array<ArrayBuffer>;
 }
+
+
+const PREPARATION_LAYER_ID =
+  "__framelogic-piece-preparation__";
 
 
 function cloneBytes(
@@ -72,6 +77,18 @@ function hasUserDefinedEngineering(
         || feature.source
           === "MANUAL",
     )
+  );
+}
+
+
+function hasPreparedDefinition(
+  definition:
+    PieceDefinition,
+): boolean {
+  return (
+    definition.snapPoints.length > 0
+    || definition.referenceGeometry
+      .axisLines.length > 0
   );
 }
 
@@ -177,12 +194,17 @@ export class PieceFrameLogicPackageController {
     this.observer =
       new MutationObserver(
         () => {
-          this.attachSaveButton();
+          this.attachSaveButtons();
         },
       );
 
+    /*
+     * El editor de Preparar pieza vive en document.body, mientras que el
+     * workspace de metadata vive dentro del viewport. Observamos body para
+     * poder ofrecer la misma acción de guardado en ambos contextos.
+     */
     this.observer.observe(
-      container,
+      document.body,
       {
         childList:
           true,
@@ -190,6 +212,8 @@ export class PieceFrameLogicPackageController {
           true,
       },
     );
+
+    this.attachSaveButtons();
   }
 
 
@@ -214,13 +238,226 @@ export class PieceFrameLogicPackageController {
   }
 
 
-  private attachSaveButton(): void {
+  /**
+   * Guarda una instancia concreta como archivo individual .flpiece.
+   * Puede llamarse directamente desde Preparar pieza aunque la selección CAD
+   * esté actualmente sobre un POINT o LINE de referencia.
+   */
+  savePiece(
+    instanceId: string,
+  ): void {
+    try {
+      const instance =
+        this.designModel
+          .pieceInstances
+          .get(
+            instanceId,
+          );
+
+      if (!instance) {
+        throw new Error(
+          "No se encontró la instancia que se quiere guardar.",
+        );
+      }
+
+      const definition =
+        this.designModel
+          .pieceDefinitions
+          .get(
+            instance.definitionId,
+          );
+
+      if (!definition) {
+        throw new Error(
+          "No se encontró la definición de la pieza.",
+        );
+      }
+
+      const engineering =
+        this.engineeringModel
+          .pieces
+          .get(
+            definition.id,
+          );
+
+      if (
+        !hasPreparedDefinition(
+          definition,
+        )
+        && !hasUserDefinedEngineering(
+          engineering,
+        )
+      ) {
+        throw new Error(
+          "La pieza todavía no tiene preparación FrameLogic. Define al menos un origen/SNAP/eje o guarda metadatos de ingeniería antes de exportarla.",
+        );
+      }
+
+      const source =
+        this.sources.get(
+          definition.id,
+        );
+
+      if (!source) {
+        throw new Error(
+          "FrameLogic no conserva la geometría original de esta pieza. Vuelve a importarla desde STEP/STP/IFC antes de guardarla como .flpiece.",
+        );
+      }
+
+      const effectiveEngineering:
+        PieceEngineeringData =
+          engineering
+          ?? {
+            pieceDefinitionId:
+              definition.id,
+            features: [],
+          };
+
+      const packageValue = {
+        schema:
+          "FRAMELOGIC_PIECE" as const,
+        version:
+          1 as const,
+        lengthUnit:
+          "mm" as const,
+        status:
+          "READY" as const,
+        geometry: {
+          format:
+            source.format,
+          fileName:
+            source.fileName,
+          dataBase64:
+            encodeBase64(
+              source.data,
+            ),
+        },
+        definition: {
+          code:
+            definition.code,
+          name:
+            definition.name,
+          classification:
+            definition.classification,
+          tags:
+            mergeInstanceColorIntoDefinitionTags(
+              definition.tags,
+              instance.tags,
+            ),
+          coordinateSystem:
+            definition.coordinateSystem,
+          snapPoints:
+            definition.snapPoints,
+          referenceGeometry:
+            definition.referenceGeometry,
+        },
+        engineering: {
+          revision:
+            effectiveEngineering.revision,
+          material:
+            effectiveEngineering.material,
+          commercial:
+            effectiveEngineering.commercial,
+          physical:
+            effectiveEngineering.physical,
+          structuralAxis:
+            effectiveEngineering.structuralAxis,
+          features: [
+            ...effectiveEngineering.features,
+          ],
+        },
+      };
+
+      const blob =
+        new Blob(
+          [
+            JSON.stringify(
+              packageValue,
+              null,
+              2,
+            ),
+          ],
+          {
+            type:
+              "application/json",
+          },
+        );
+      const url =
+        URL.createObjectURL(
+          blob,
+        );
+      const anchor =
+        document.createElement(
+          "a",
+        );
+
+      anchor.href =
+        url;
+      anchor.download =
+        `${safeFileName(
+          definition.code
+          || definition.name,
+        )}.flpiece`;
+      anchor.style.display =
+        "none";
+
+      document.body.appendChild(
+        anchor,
+      );
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(
+        url,
+      );
+    }
+    catch (
+      error
+    ) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : String(
+              error,
+            ),
+      );
+    }
+  }
+
+
+  saveSelectedPiece(): void {
+    const selectedIds =
+      this.selection
+        .getSelectedIds();
+
+    if (
+      selectedIds.length
+      !== 1
+    ) {
+      window.alert(
+        "Selecciona una sola pieza antes de guardarla.",
+      );
+      return;
+    }
+
+    this.savePiece(
+      selectedIds[0]!,
+    );
+  }
+
+
+  private attachSaveButtons(): void {
     if (
       this.disposed
     ) {
       return;
     }
 
+    this.attachWorkspaceSaveButton();
+    this.attachPreparationSaveButton();
+  }
+
+
+  private attachWorkspaceSaveButton(): void {
     const workspace =
       Array.from(
         this.container.children,
@@ -322,189 +559,80 @@ export class PieceFrameLogicPackageController {
   }
 
 
-  private saveSelectedPiece(): void {
-    try {
-      const selectedIds =
-        this.selection
-          .getSelectedIds();
-
-      if (
-        selectedIds.length
-        !== 1
-      ) {
-        throw new Error(
-          "Selecciona una sola pieza antes de guardarla.",
-        );
-      }
-
-      const instance =
-        this.designModel
-          .pieceInstances
-          .get(
-            selectedIds[0],
-          );
-
-      if (!instance) {
-        throw new Error(
-          "No se encontró la instancia seleccionada.",
-        );
-      }
-
-      const definition =
-        this.designModel
-          .pieceDefinitions
-          .get(
-            instance.definitionId,
-          );
-
-      if (!definition) {
-        throw new Error(
-          "No se encontró la definición de la pieza.",
-        );
-      }
-
-      const engineering =
-        this.engineeringModel
-          .pieces
-          .get(
-            definition.id,
-          );
-
-      if (
-        !hasUserDefinedEngineering(
-          engineering,
-        )
-      ) {
-        throw new Error(
-          "Primero guarda al menos un metadato FrameLogic real para esta pieza.",
-        );
-      }
-
-      if (!engineering) {
-        throw new Error(
-          "No se encontraron metadatos de ingeniería para la pieza.",
-        );
-      }
-
-      const source =
-        this.sources.get(
-          definition.id,
+  private attachPreparationSaveButton(): void {
+    const preparationInstance =
+      this.designModel
+        .pieceInstances
+        .getAll()
+        .find(
+          (
+            instance,
+          ) =>
+            instance.layerId
+            === PREPARATION_LAYER_ID,
         );
 
-      if (!source) {
-        throw new Error(
-          "FrameLogic no conserva la geometría original de esta pieza. Vuelve a importarla desde STEP/STP/IFC antes de guardarla como .flpiece.",
-        );
-      }
-
-      const packageValue = {
-        schema:
-          "FRAMELOGIC_PIECE" as const,
-        version:
-          1 as const,
-        lengthUnit:
-          "mm" as const,
-        status:
-          "READY" as const,
-        geometry: {
-          format:
-            source.format,
-          fileName:
-            source.fileName,
-          dataBase64:
-            encodeBase64(
-              source.data,
-            ),
-        },
-        definition: {
-          code:
-            definition.code,
-          name:
-            definition.name,
-          classification:
-            definition.classification,
-          tags:
-            mergeInstanceColorIntoDefinitionTags(
-              definition.tags,
-              instance.tags,
-            ),
-          coordinateSystem:
-            definition.coordinateSystem,
-          snapPoints:
-            definition.snapPoints,
-          referenceGeometry:
-            definition.referenceGeometry,
-        },
-        engineering: {
-          revision:
-            engineering.revision,
-          material:
-            engineering.material,
-          commercial:
-            engineering.commercial,
-          physical:
-            engineering.physical,
-          structuralAxis:
-            engineering.structuralAxis,
-          features: [
-            ...engineering.features,
-          ],
-        },
-      };
-
-      const blob =
-        new Blob(
-          [
-            JSON.stringify(
-              packageValue,
-              null,
-              2,
-            ),
-          ],
-          {
-            type:
-              "application/json",
-          },
-        );
-      const url =
-        URL.createObjectURL(
-          blob,
-        );
-      const anchor =
-        document.createElement(
-          "a",
-        );
-
-      anchor.href =
-        url;
-      anchor.download =
-        `${safeFileName(
-          definition.code
-          || definition.name,
-        )}.flpiece`;
-      anchor.style.display =
-        "none";
-
-      document.body.appendChild(
-        anchor,
-      );
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(
-        url,
-      );
+    if (!preparationInstance) {
+      return;
     }
-    catch (
-      error
+
+    const exitButton =
+      Array.from(
+        document.querySelectorAll(
+          "button",
+        ),
+      )
+        .find(
+          (
+            button,
+          ) =>
+            button.textContent
+              ?.trim()
+            === "Salir prep",
+        );
+
+    const toolbar =
+      exitButton?.parentElement;
+
+    if (
+      !exitButton
+      || !toolbar
+      || toolbar.querySelector(
+        "[data-framelogic-save-prepared-package]",
+      )
     ) {
-      window.alert(
-        error instanceof Error
-          ? error.message
-          : String(
-              error,
-            ),
-      );
+      return;
     }
+
+    const saveButton =
+      document.createElement(
+        "button",
+      );
+
+    saveButton.type =
+      "button";
+    saveButton.dataset[
+      "framelogicSavePreparedPackage"
+    ] =
+      "true";
+    saveButton.textContent =
+      "Guardar pieza FrameLogic";
+    saveButton.title =
+      "Descargar esta pieza preparada como archivo individual .flpiece";
+
+    saveButton.addEventListener(
+      "click",
+      () => {
+        this.savePiece(
+          preparationInstance.id,
+        );
+      },
+    );
+
+    toolbar.insertBefore(
+      saveButton,
+      exitButton,
+    );
   }
 
 
