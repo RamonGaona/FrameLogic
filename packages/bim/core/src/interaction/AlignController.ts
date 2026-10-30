@@ -84,6 +84,10 @@ export class AlignController {
     );
   }
 
+  get isActive(): boolean {
+    return this.active;
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
