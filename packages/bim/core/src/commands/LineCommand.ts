@@ -11,6 +11,12 @@ import type {
 } from "../interaction/CadHistoryController";
 
 
+interface CadLinePlacementHistoryRuntime {
+  readonly history:
+    CadHistoryController;
+}
+
+
 export class LineCommand
 implements CadCommand {
 
@@ -29,17 +35,23 @@ implements CadCommand {
   constructor(
     linePlacement:
       CadLinePlacementController,
-
-    history:
-      CadHistoryController,
   ) {
 
     this.linePlacement =
       linePlacement;
 
 
+    /*
+     * CadLinePlacementController y LINE deben compartir exactamente la misma
+     * pila global. El controlador ya la recibe desde createBimCore; reutilizar
+     * esa referencia evita crear un historial paralelo sólo para agrupar la
+     * cadena de segmentos.
+     */
     this.history =
-      history;
+      (
+        linePlacement as unknown as
+          CadLinePlacementHistoryRuntime
+      ).history;
 
   }
 
