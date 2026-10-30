@@ -1,4 +1,10 @@
-const FRAMELOGIC_VERSION = "0.1.55";
+const FRAMELOGIC_VERSION = "0.1.56";
+
+const SECTION_PANEL_SELECTOR =
+  '[data-framelogic-section-panel="true"]';
+
+const RENDER_PANEL_SELECTOR =
+  '[data-framelogic-model-render-mode="true"]';
 
 
 /**
@@ -9,6 +15,7 @@ const FRAMELOGIC_VERSION = "0.1.55";
  */
 export class BuildVersionBadgeController {
   private readonly element: HTMLDivElement;
+  private readonly timer: number;
   private disposed = false;
 
   constructor(container: HTMLElement) {
@@ -26,7 +33,7 @@ export class BuildVersionBadgeController {
     Object.assign(element.style, {
       position: "fixed",
       right: "10px",
-      bottom: "42px",
+      bottom: "10px",
       zIndex: "2147483000",
       padding: "4px 8px",
       border: "1px solid rgba(120,190,220,0.38)",
@@ -42,11 +49,80 @@ export class BuildVersionBadgeController {
 
     document.body.append(element);
     this.element = element;
+
+    this.syncPosition();
+    this.timer = window.setInterval(
+      this.syncPosition,
+      300,
+    );
+    window.addEventListener(
+      "resize",
+      this.syncPosition,
+    );
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    window.clearInterval(this.timer);
+    window.removeEventListener(
+      "resize",
+      this.syncPosition,
+    );
     this.element.remove();
   }
+
+  private readonly syncPosition = (): void => {
+    if (this.disposed) return;
+
+    const panels = [
+      document.querySelector<HTMLElement>(
+        SECTION_PANEL_SELECTOR,
+      ),
+      document.querySelector<HTMLElement>(
+        RENDER_PANEL_SELECTOR,
+      ),
+    ];
+
+    let highestTop =
+      window.innerHeight;
+
+    for (const panel of panels) {
+      if (
+        !panel
+        || window.getComputedStyle(panel).display === "none"
+      ) {
+        continue;
+      }
+
+      const rect =
+        panel.getBoundingClientRect();
+
+      if (
+        rect.width <= 0
+        || rect.height <= 0
+      ) {
+        continue;
+      }
+
+      highestTop =
+        Math.min(
+          highestTop,
+          rect.top,
+        );
+    }
+
+    const bottom =
+      highestTop < window.innerHeight
+        ? Math.max(
+            10,
+            window.innerHeight
+            - highestTop
+            + 8,
+          )
+        : 10;
+
+    this.element.style.bottom =
+      `${Math.round(bottom)}px`;
+  };
 }

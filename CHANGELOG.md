@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.56 — 2026-10-30
+
+### Corregido
+
+- Se elimina el solapamiento entre la barra de Archivo/proyecto y la barra principal de herramientas del Model Space.
+- Las barras superiores ahora se distribuyen lado a lado cuando existe espacio suficiente y se apilan automáticamente en resoluciones más estrechas.
+- El ancho disponible de la barra principal reserva el espacio del ViewCube para evitar que los controles invadan la navegación de vista.
+- El panel de Instancias se desplaza hacia abajo automáticamente si las barras superiores ocupan más altura.
+- El badge de versión deja de superponerse con los paneles inferiores `SECCIÓN` y `Render` y se mantiene por encima de ellos.
+
+### Técnico
+
+- El layout del Model Space observa cambios de tamaño en barras y paneles para reajustarse al añadir o retirar herramientas dinámicas.
+- La versión visible y la versión raíz del proyecto quedan sincronizadas en `0.1.56`.
+
+---
+
 ## v0.1.55 — 2026-10-30
 
 ### Añadido
