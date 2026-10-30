@@ -36,6 +36,19 @@ type ParallelStage =
   | "SIDE";
 
 
+interface OrderedSourceSegment {
+  readonly id: string;
+  readonly start: THREE.Vector3;
+  readonly end: THREE.Vector3;
+}
+
+
+interface OffsetSegment {
+  start: THREE.Vector3;
+  end: THREE.Vector3;
+}
+
+
 export interface CadParallelLineControllerOptions {
   readonly container: HTMLElement;
   readonly domElement: HTMLElement;
@@ -51,6 +64,11 @@ export interface CadParallelLineControllerOptions {
   readonly beforeStart: () => void;
   readonly clearGeometryQueryCache?: () => void;
 }
+
+
+const CONNECT_TOLERANCE = 1e-5;
+const CONNECT_TOLERANCE_SQ =
+  CONNECT_TOLERANCE * CONNECT_TOLERANCE;
 
 
 function parseDistance(
@@ -81,12 +99,43 @@ function cloneLine(
 }
 
 
+function pointFromCadLineStart(
+  line: CadLine,
+): THREE.Vector3 {
+  return new THREE.Vector3(
+    line.start.x,
+    line.start.y,
+    line.start.z,
+  );
+}
+
+
+function pointFromCadLineEnd(
+  line: CadLine,
+): THREE.Vector3 {
+  return new THREE.Vector3(
+    line.end.x,
+    line.end.y,
+    line.end.z,
+  );
+}
+
+
+function pointsConnect(
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+): boolean {
+  return a.distanceToSquared(b)
+    <= CONNECT_TOLERANCE_SQ;
+}
+
+
 export class CadParallelLineController {
   private readonly options:
     CadParallelLineControllerOptions;
 
   private readonly preview:
-    THREE.Line;
+    THREE.LineSegments;
 
   private readonly numericShell:
     HTMLDivElement;
@@ -111,21 +160,29 @@ export class CadParallelLineController {
   private stage: ParallelStage =
     "SELECT_SOURCE";
 
-  private sourceId:
-    string | null = null;
-  private sourceStart:
+  private readonly pendingSourceIds:
+    string[] = [];
+
+  private sourceSegments:
+    OrderedSourceSegment[] = [];
+
+  private sourceClosed = false;
+
+  private referenceStart:
     THREE.Vector3 | null = null;
-  private sourceEnd:
+
+  private referenceOffsetDirection:
     THREE.Vector3 | null = null;
-  private offsetDirection:
-    THREE.Vector3 | null = null;
+
   private planeNormal:
     THREE.Vector3 | null = null;
 
   private fixedDistance:
     number | null = null;
+
   private lastDistance:
     number | null = null;
+
   private manualOnly = false;
 
   private pointerX = 180;
@@ -137,7 +194,7 @@ export class CadParallelLineController {
     this.options = options;
 
     this.preview =
-      new THREE.Line(
+      new THREE.LineSegments(
         new THREE.BufferGeometry(),
         new THREE.LineDashedMaterial({
           dashSize: 80,
@@ -189,11 +246,9 @@ export class CadParallelLineController {
     if (layer.locked) return false;
 
     const selected =
-      this.options.lineSelection.getSelectedIds();
-    const preselectedId =
-      selected.length === 1
-        ? selected[0]
-        : null;
+      Array.from(
+        this.options.lineSelection.getSelectedIds(),
+      );
 
     this.options.beforeStart();
 
@@ -204,32 +259,38 @@ export class CadParallelLineController {
     this.preview.visible = false;
     this.numericShell.style.display = "none";
     this.distanceInput.value = "";
+    this.pendingSourceIds.splice(0);
+    this.resetSourceGeometry();
 
     this.options.designSelection.setEnabled(false);
     this.options.pointSelection.setEnabled(false);
     this.options.lineSelection.setEnabled(false);
 
     if (
-      preselectedId
-      && this.prepareSource(
-        preselectedId,
-      )
+      selected.length > 0
+      && this.prepareSources(selected)
     ) {
-      this.options.lineSelection.selectSingle(
-        preselectedId,
+      this.options.lineSelection.setSelection(
+        selected,
       );
       this.stage = "DISTANCE";
       this.showDistanceInput();
       return true;
     }
 
-    if (selected.length !== 1) {
-      this.options.lineSelection.clearSelection();
+    this.options.lineSelection.clearSelection();
+
+    if (selected.length > 0) {
+      this.showHint(
+        "PARALELA · las líneas deben formar una cadena conectada sin bifurcaciones · seleccione de nuevo",
+      );
+    }
+    else {
+      this.showHint(
+        "PARALELA · seleccione una o varias líneas conectadas · Enter confirmar · Esc terminar",
+      );
     }
 
-    this.showHint(
-      "PARALELA · seleccione una línea CAD · Esc terminar",
-    );
     return true;
   }
 
@@ -240,7 +301,8 @@ export class CadParallelLineController {
     }
 
     this.active = false;
-    this.resetSource();
+    this.pendingSourceIds.splice(0);
+    this.resetSourceGeometry();
     this.stage = "SELECT_SOURCE";
     this.fixedDistance = null;
     this.manualOnly = false;
@@ -313,6 +375,7 @@ export class CadParallelLineController {
         event.clientX,
         event.clientY,
       );
+
     if (signedOffset !== null) {
       this.updatePreview(signedOffset);
     }
@@ -344,23 +407,35 @@ export class CadParallelLineController {
 
       if (!lineId) {
         this.showHint(
-          "PARALELA · seleccione una línea CAD válida",
+          this.pendingSourceIds.length > 0
+            ? `PARALELA · ${this.pendingSourceIds.length} tramo(s) · Enter confirmar`
+            : "PARALELA · seleccione una o varias líneas CAD",
         );
         return;
       }
 
-      if (!this.prepareSource(lineId)) {
-        this.showHint(
-          "PARALELA · no se pudo usar esa línea como referencia",
+      const existingIndex =
+        this.pendingSourceIds.indexOf(lineId);
+
+      if (existingIndex >= 0) {
+        this.pendingSourceIds.splice(
+          existingIndex,
+          1,
         );
-        return;
+      }
+      else {
+        this.pendingSourceIds.push(lineId);
       }
 
-      this.options.lineSelection.selectSingle(
-        lineId,
+      this.options.lineSelection.setSelection(
+        this.pendingSourceIds,
       );
-      this.stage = "DISTANCE";
-      this.showDistanceInput();
+
+      this.showHint(
+        this.pendingSourceIds.length > 0
+          ? `PARALELA · ${this.pendingSourceIds.length} tramo(s) seleccionados · Enter confirmar`
+          : "PARALELA · seleccione una o varias líneas CAD",
+      );
       return;
     }
 
@@ -371,6 +446,7 @@ export class CadParallelLineController {
           event.clientY,
           true,
         );
+
       if (
         signedOffset === null
         || Math.abs(signedOffset) <= 1e-9
@@ -390,12 +466,14 @@ export class CadParallelLineController {
           event.clientX,
           event.clientY,
         );
+
       if (
         signedOffset === null
         || Math.abs(signedOffset) <= 1e-9
       ) {
         return;
       }
+
       this.commitParallel(signedOffset);
     }
   };
@@ -409,6 +487,32 @@ export class CadParallelLineController {
       event.preventDefault();
       event.stopImmediatePropagation();
       this.cancel();
+      return;
+    }
+
+    if (
+      event.key === "Enter"
+      && this.stage === "SELECT_SOURCE"
+    ) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      if (this.pendingSourceIds.length === 0) {
+        this.showHint(
+          "PARALELA · seleccione al menos una línea CAD",
+        );
+        return;
+      }
+
+      if (!this.prepareSources(this.pendingSourceIds)) {
+        this.showHint(
+          "PARALELA · las líneas seleccionadas deben formar una cadena conectada sin bifurcaciones",
+        );
+        return;
+      }
+
+      this.stage = "DISTANCE";
+      this.showDistanceInput();
     }
   };
 
@@ -455,34 +559,45 @@ export class CadParallelLineController {
     );
   };
 
-  private prepareSource(
-    lineId: string,
+  private prepareSources(
+    lineIds: readonly string[],
   ): boolean {
-    const line =
-      this.options.designModel.cadLines.get(
-        lineId,
-      );
-    if (!line) return false;
+    if (lineIds.length === 0) return false;
 
-    const start =
-      new THREE.Vector3(
-        line.start.x,
-        line.start.y,
-        line.start.z,
-      );
-    const end =
-      new THREE.Vector3(
-        line.end.x,
-        line.end.y,
-        line.end.z,
-      );
-    const direction =
-      end.clone().sub(start);
+    const rawSegments:
+      OrderedSourceSegment[] = [];
 
-    if (direction.lengthSq() <= 1e-12) {
-      return false;
+    for (const lineId of lineIds) {
+      const line =
+        this.options.designModel.cadLines.get(
+          lineId,
+        );
+
+      if (!line) return false;
+
+      const start =
+        pointFromCadLineStart(line);
+      const end =
+        pointFromCadLineEnd(line);
+
+      if (
+        start.distanceToSquared(end)
+        <= 1e-12
+      ) {
+        return false;
+      }
+
+      rawSegments.push({
+        id: lineId,
+        start,
+        end,
+      });
     }
-    direction.normalize();
+
+    const ordered =
+      this.orderConnectedChain(rawSegments);
+
+    if (!ordered) return false;
 
     const state =
       this.options.workPlane.getState();
@@ -496,36 +611,180 @@ export class CadParallelLineController {
     }
     normal.normalize();
 
-    let offsetDirection =
+    const firstDirection =
+      ordered[0]
+        .end
+        .clone()
+        .sub(ordered[0].start)
+        .normalize();
+
+    const referenceOffsetDirection =
       new THREE.Vector3()
         .crossVectors(
           normal,
-          direction,
+          firstDirection,
         );
 
-    if (offsetDirection.lengthSq() <= 1e-12) {
-      const viewNormal =
-        this.getViewNormal();
-      offsetDirection =
-        new THREE.Vector3()
-          .crossVectors(
-            viewNormal,
-            direction,
-          );
-    }
-
-    if (offsetDirection.lengthSq() <= 1e-12) {
+    if (
+      referenceOffsetDirection.lengthSq()
+      <= 1e-12
+    ) {
       return false;
     }
 
-    this.sourceId = lineId;
-    this.sourceStart = start;
-    this.sourceEnd = end;
+    for (const segment of ordered) {
+      const direction =
+        segment.end
+          .clone()
+          .sub(segment.start)
+          .normalize();
+      const offsetDirection =
+        new THREE.Vector3()
+          .crossVectors(
+            normal,
+            direction,
+          );
+
+      if (offsetDirection.lengthSq() <= 1e-12) {
+        return false;
+      }
+    }
+
+    this.sourceSegments = ordered;
+    this.sourceClosed =
+      ordered.length > 2
+      && pointsConnect(
+        ordered[ordered.length - 1].end,
+        ordered[0].start,
+      );
+    this.referenceStart =
+      ordered[0].start.clone();
+    this.referenceOffsetDirection =
+      referenceOffsetDirection.normalize();
     this.planeNormal = normal;
-    this.offsetDirection =
-      offsetDirection.normalize();
     this.preview.visible = false;
     return true;
+  }
+
+  private orderConnectedChain(
+    segments: readonly OrderedSourceSegment[],
+  ): OrderedSourceSegment[] | null {
+    if (segments.length === 1) {
+      return [{
+        id: segments[0].id,
+        start: segments[0].start.clone(),
+        end: segments[0].end.clone(),
+      }];
+    }
+
+    const remaining =
+      segments.map(
+        (segment) => ({
+          id: segment.id,
+          start: segment.start.clone(),
+          end: segment.end.clone(),
+        }),
+      );
+
+    const ordered:
+      OrderedSourceSegment[] = [
+        remaining.shift()!,
+      ];
+
+    while (remaining.length > 0) {
+      let attached = false;
+
+      const chainStart =
+        ordered[0].start;
+      const chainEnd =
+        ordered[ordered.length - 1].end;
+
+      for (
+        let index = 0;
+        index < remaining.length;
+        index += 1
+      ) {
+        const candidate =
+          remaining[index];
+
+        if (
+          pointsConnect(
+            chainEnd,
+            candidate.start,
+          )
+        ) {
+          ordered.push(candidate);
+          remaining.splice(index, 1);
+          attached = true;
+          break;
+        }
+
+        if (
+          pointsConnect(
+            chainEnd,
+            candidate.end,
+          )
+        ) {
+          ordered.push({
+            id: candidate.id,
+            start: candidate.end.clone(),
+            end: candidate.start.clone(),
+          });
+          remaining.splice(index, 1);
+          attached = true;
+          break;
+        }
+
+        if (
+          pointsConnect(
+            chainStart,
+            candidate.end,
+          )
+        ) {
+          ordered.unshift(candidate);
+          remaining.splice(index, 1);
+          attached = true;
+          break;
+        }
+
+        if (
+          pointsConnect(
+            chainStart,
+            candidate.start,
+          )
+        ) {
+          ordered.unshift({
+            id: candidate.id,
+            start: candidate.end.clone(),
+            end: candidate.start.clone(),
+          });
+          remaining.splice(index, 1);
+          attached = true;
+          break;
+        }
+      }
+
+      if (!attached) {
+        return null;
+      }
+    }
+
+    for (
+      let index = 0;
+      index < ordered.length - 1;
+      index += 1
+    ) {
+      if (
+        !pointsConnect(
+          ordered[index].end,
+          ordered[index + 1].start,
+        )
+      ) {
+        return null;
+      }
+    }
+
+    return ordered;
   }
 
   private getViewNormal(): THREE.Vector3 {
@@ -542,8 +801,8 @@ export class CadParallelLineController {
     forceManual = false,
   ): number | null {
     if (
-      !this.sourceStart
-      || !this.offsetDirection
+      !this.referenceStart
+      || !this.referenceOffsetDirection
       || !this.planeNormal
     ) {
       return null;
@@ -559,8 +818,8 @@ export class CadParallelLineController {
     const raw =
       point
         .clone()
-        .sub(this.sourceStart)
-        .dot(this.offsetDirection);
+        .sub(this.referenceStart)
+        .dot(this.referenceOffsetDirection);
 
     const sign =
       raw < 0
@@ -582,7 +841,7 @@ export class CadParallelLineController {
     clientX: number,
     clientY: number,
   ): THREE.Vector3 | null {
-    if (!this.sourceStart || !this.planeNormal) {
+    if (!this.referenceStart || !this.planeNormal) {
       return null;
     }
 
@@ -603,7 +862,7 @@ export class CadParallelLineController {
     );
     this.plane.setFromNormalAndCoplanarPoint(
       this.planeNormal,
-      this.sourceStart,
+      this.referenceStart,
     );
 
     return this.raycaster.ray.intersectPlane(
@@ -612,36 +871,181 @@ export class CadParallelLineController {
     );
   }
 
+  private buildOffsetSegments(
+    signedOffset: number,
+  ): OffsetSegment[] | null {
+    if (
+      !this.planeNormal
+      || this.sourceSegments.length === 0
+      || Math.abs(signedOffset) <= 1e-9
+    ) {
+      return null;
+    }
+
+    const normal =
+      this.planeNormal.clone().normalize();
+
+    const result:
+      OffsetSegment[] = [];
+
+    for (const source of this.sourceSegments) {
+      const direction =
+        source.end
+          .clone()
+          .sub(source.start);
+
+      if (direction.lengthSq() <= 1e-12) {
+        return null;
+      }
+      direction.normalize();
+
+      const offsetDirection =
+        new THREE.Vector3()
+          .crossVectors(
+            normal,
+            direction,
+          );
+
+      if (offsetDirection.lengthSq() <= 1e-12) {
+        return null;
+      }
+      offsetDirection.normalize();
+
+      result.push({
+        start:
+          source.start
+            .clone()
+            .addScaledVector(
+              offsetDirection,
+              signedOffset,
+            ),
+        end:
+          source.end
+            .clone()
+            .addScaledVector(
+              offsetDirection,
+              signedOffset,
+            ),
+      });
+    }
+
+    for (
+      let index = 0;
+      index < result.length - 1;
+      index += 1
+    ) {
+      this.joinOffsetSegments(
+        result[index],
+        result[index + 1],
+        normal,
+      );
+    }
+
+    if (
+      this.sourceClosed
+      && result.length > 2
+    ) {
+      this.joinOffsetSegments(
+        result[result.length - 1],
+        result[0],
+        normal,
+      );
+    }
+
+    return result;
+  }
+
+  private joinOffsetSegments(
+    first: OffsetSegment,
+    second: OffsetSegment,
+    normal: THREE.Vector3,
+  ): void {
+    const firstDirection =
+      first.end
+        .clone()
+        .sub(first.start);
+    const secondDirection =
+      second.end
+        .clone()
+        .sub(second.start);
+
+    if (
+      firstDirection.lengthSq() <= 1e-12
+      || secondDirection.lengthSq() <= 1e-12
+    ) {
+      return;
+    }
+
+    const denominator =
+      normal.dot(
+        new THREE.Vector3()
+          .crossVectors(
+            firstDirection,
+            secondDirection,
+          ),
+      );
+
+    if (Math.abs(denominator) <= 1e-10) {
+      return;
+    }
+
+    const between =
+      second.start
+        .clone()
+        .sub(first.start);
+
+    const numerator =
+      normal.dot(
+        new THREE.Vector3()
+          .crossVectors(
+            between,
+            secondDirection,
+          ),
+      );
+
+    const parameter =
+      numerator / denominator;
+
+    if (!Number.isFinite(parameter)) {
+      return;
+    }
+
+    const intersection =
+      first.start
+        .clone()
+        .addScaledVector(
+          firstDirection,
+          parameter,
+        );
+
+    first.end = intersection.clone();
+    second.start = intersection.clone();
+  }
+
   private updatePreview(
     signedOffset: number,
   ): void {
-    if (
-      !this.sourceStart
-      || !this.sourceEnd
-      || !this.offsetDirection
-    ) {
+    const segments =
+      this.buildOffsetSegments(
+        signedOffset,
+      );
+
+    if (!segments) {
       this.preview.visible = false;
       return;
     }
 
-    const start =
-      this.sourceStart
-        .clone()
-        .addScaledVector(
-          this.offsetDirection,
-          signedOffset,
-        );
-    const end =
-      this.sourceEnd
-        .clone()
-        .addScaledVector(
-          this.offsetDirection,
-          signedOffset,
-        );
+    const points:
+      THREE.Vector3[] = [];
 
-    this.preview.geometry.setFromPoints(
-      [start, end],
-    );
+    for (const segment of segments) {
+      points.push(
+        segment.start,
+        segment.end,
+      );
+    }
+
+    this.preview.geometry.setFromPoints(points);
     this.preview.computeLineDistances();
     this.preview.geometry.computeBoundingSphere();
     this.preview.visible = true;
@@ -650,64 +1054,78 @@ export class CadParallelLineController {
   private commitParallel(
     signedOffset: number,
   ): void {
-    if (
-      !this.sourceStart
-      || !this.sourceEnd
-      || !this.offsetDirection
-      || Math.abs(signedOffset) <= 1e-9
-    ) {
+    const segments =
+      this.buildOffsetSegments(
+        signedOffset,
+      );
+
+    if (!segments) return;
+
+    const created:
+      CadLine[] = [];
+
+    for (const segment of segments) {
+      if (
+        segment.start.distanceToSquared(
+          segment.end,
+        ) <= 1e-12
+      ) {
+        continue;
+      }
+
+      const line =
+        this.options.designModel.registerCadLine({
+          layerId:
+            this.options.designModel.layers.activeLayerId,
+          start: {
+            x: segment.start.x,
+            y: segment.start.y,
+            z: segment.start.z,
+          },
+          end: {
+            x: segment.end.x,
+            y: segment.end.y,
+            z: segment.end.z,
+          },
+        });
+
+      created.push(
+        cloneLine(line),
+      );
+    }
+
+    if (created.length === 0) {
       return;
     }
 
-    const start =
-      this.sourceStart
-        .clone()
-        .addScaledVector(
-          this.offsetDirection,
-          signedOffset,
-        );
-    const end =
-      this.sourceEnd
-        .clone()
-        .addScaledVector(
-          this.offsetDirection,
-          signedOffset,
-        );
-
-    const line =
-      this.options.designModel.registerCadLine({
-        layerId:
-          this.options.designModel.layers.activeLayerId,
-        start: {
-          x: start.x,
-          y: start.y,
-          z: start.z,
-        },
-        end: {
-          x: end.x,
-          y: end.y,
-          z: end.z,
-        },
-      });
-
     this.options.lineScene.sync();
-    const snapshot = cloneLine(line);
+
+    const snapshots =
+      created.map(cloneLine);
 
     this.options.history.recordOperation(
-      "PARALLEL LINE",
+      snapshots.length === 1
+        ? "PARALLEL LINE"
+        : "PARALLEL CHAIN",
       () => {
-        this.options.designModel.removeCadLine(
-          snapshot.id,
-        );
+        for (const snapshot of snapshots) {
+          this.options.designModel.removeCadLine(
+            snapshot.id,
+          );
+        }
         this.options.lineScene.sync();
         this.options.clearGeometryQueryCache?.();
       },
       () => {
-        if (
-          !this.options.designModel.cadLines.get(
-            snapshot.id,
-          )
-        ) {
+        for (const snapshot of snapshots) {
+          if (
+            this.options.designModel.cadLines.get(
+              snapshot.id,
+            )
+          ) {
+            continue;
+          }
+
           this.options.designModel.registerCadLine({
             id: snapshot.id,
             layerId: snapshot.layerId,
@@ -727,21 +1145,22 @@ export class CadParallelLineController {
     this.numericShell.style.display = "none";
     this.distanceInput.value = "";
     this.options.lineSelection.clearSelection();
-    this.resetSource();
+    this.pendingSourceIds.splice(0);
+    this.resetSourceGeometry();
     this.stage = "SELECT_SOURCE";
     this.fixedDistance = null;
     this.manualOnly = false;
 
     this.showHint(
-      `PARALELA ${Math.abs(signedOffset).toFixed(2)} creada · seleccione otra línea o Esc`,
+      `${created.length} paralela(s) creadas y ajustadas · seleccione otra cadena o Esc`,
     );
   }
 
-  private resetSource(): void {
-    this.sourceId = null;
-    this.sourceStart = null;
-    this.sourceEnd = null;
-    this.offsetDirection = null;
+  private resetSourceGeometry(): void {
+    this.sourceSegments = [];
+    this.sourceClosed = false;
+    this.referenceStart = null;
+    this.referenceOffsetDirection = null;
     this.planeNormal = null;
   }
 
@@ -806,7 +1225,9 @@ export class CadParallelLineController {
     this.numericShell.style.display = "flex";
     this.positionUi();
     this.showHint(
-      "PARALELA · indique distancia y Enter, o haga clic para distancia manual",
+      this.sourceSegments.length > 1
+        ? `PARALELA · ${this.sourceSegments.length} tramos conectados · indique distancia y Enter`
+        : "PARALELA · indique distancia y Enter, o haga clic para distancia manual",
     );
 
     window.queueMicrotask(
@@ -863,7 +1284,7 @@ export class CadParallelLineController {
     const left =
       Math.min(
         this.pointerX + 18,
-        window.innerWidth - 245,
+        window.innerWidth - 310,
       );
     const top =
       Math.min(
