@@ -20,11 +20,58 @@ let occtPromise:
     null;
 
 
+interface StepPerformanceRecord {
+  readonly fileName: string;
+  readonly fileSizeMb: number;
+  readonly totalMs: number;
+  readonly cloneSourceMs: number;
+  readonly visualKernelInitMs: number;
+  readonly visualTriangulationMs: number;
+  readonly brepLoadMs: number;
+  readonly meshCopyMs: number;
+  readonly scaleInferenceMs: number;
+  readonly productTreeMs: number;
+  readonly exactFeaturesMs: number;
+  readonly meshCount: number;
+  readonly visualVertexCount: number;
+  readonly triangleCount: number;
+  readonly brepVertexCount: number;
+  readonly brepEdgeCount: number;
+  readonly brepCylinderCount: number;
+  readonly brepPlaneCount: number;
+  readonly exactFeatureCount: number;
+  readonly productCount: number;
+}
+
+
+interface StepDiagnosticsWindow extends Window {
+  __frameLogicStepTimings?:
+    StepPerformanceRecord[];
+}
+
+
 function getOcct() {
   occtPromise ??=
     occtImportJs();
 
   return occtPromise;
+}
+
+
+function elapsedMs(
+  start: number,
+): number {
+  return performance.now()
+    - start;
+}
+
+
+function roundMs(
+  value: number,
+): number {
+  return Math.round(
+    value * 10,
+  ) / 10;
 }
 
 
@@ -48,6 +95,93 @@ function cloneSourceData(
 }
 
 
+function publishStepPerformance(
+  record: StepPerformanceRecord,
+): void {
+  const diagnosticsWindow =
+    window as StepDiagnosticsWindow;
+
+  diagnosticsWindow
+    .__frameLogicStepTimings ??= [];
+
+  diagnosticsWindow
+    .__frameLogicStepTimings
+    .push(
+      record,
+    );
+
+  console.groupCollapsed(
+    `[FrameLogic STEP] ${record.fileName} · ${roundMs(record.totalMs)} ms`,
+  );
+  console.table([
+    {
+      etapa: "Copiar STEP original",
+      ms: roundMs(record.cloneSourceMs),
+    },
+    {
+      etapa: "Inicializar kernel visual WASM",
+      ms: roundMs(record.visualKernelInitMs),
+    },
+    {
+      etapa: "Leer + triangular STEP visual",
+      ms: roundMs(record.visualTriangulationMs),
+    },
+    {
+      etapa: "Cargar + indexar B-Rep exacto",
+      ms: roundMs(record.brepLoadMs),
+    },
+    {
+      etapa: "Copiar buffers de malla",
+      ms: roundMs(record.meshCopyMs),
+    },
+    {
+      etapa: "Inferir escala B-Rep ↔ malla",
+      ms: roundMs(record.scaleInferenceMs),
+    },
+    {
+      etapa: "Construir árbol de productos",
+      ms: roundMs(record.productTreeMs),
+    },
+    {
+      etapa: "Crear features exactos",
+      ms: roundMs(record.exactFeaturesMs),
+    },
+    {
+      etapa: "TOTAL",
+      ms: roundMs(record.totalMs),
+    },
+  ]);
+  console.table({
+    "Tamaño STEP (MB)":
+      Math.round(
+        record.fileSizeMb * 100,
+      ) / 100,
+    Mallas:
+      record.meshCount,
+    "Vértices visuales":
+      record.visualVertexCount,
+    Triángulos:
+      record.triangleCount,
+    "Vértices B-Rep":
+      record.brepVertexCount,
+    "Aristas B-Rep":
+      record.brepEdgeCount,
+    Cilindros:
+      record.brepCylinderCount,
+    Planos:
+      record.brepPlaneCount,
+    "Features exactos":
+      record.exactFeatureCount,
+    Productos:
+      record.productCount,
+  });
+  console.info(
+    "Historial temporal: window.__frameLogicStepTimings",
+  );
+  console.groupEnd();
+}
+
+
 /**
  * STEP entra por dos rutas coordinadas:
  *
@@ -57,6 +191,10 @@ function cloneSourceData(
  * FrameLogic usa 1 unidad de Model Space = 1 milímetro. La frontera STEP
  * normaliza siempre a milímetros, incluso si una llamada antigua todavía
  * solicita `targetUnit: "meter"`.
+ *
+ * TEMPORAL: este adaptador publica mediciones en consola y conserva el
+ * historial de la sesión en window.__frameLogicStepTimings. La instrumentación
+ * no modifica la geometría ni las opciones de importación.
  */
 export class OcctStepGeometryAdapter
   implements StepGeometryAdapter {
@@ -64,43 +202,71 @@ export class OcctStepGeometryAdapter
     data: Uint8Array,
     options: Parameters<StepGeometryAdapter["load"]>[1],
   ): Promise<StepGeometryDocument> {
+    const totalStart =
+      performance.now();
+
+    const cloneStart =
+      performance.now();
     const sourceData =
       cloneSourceData(
         data,
       );
+    const cloneSourceMs =
+      elapsedMs(
+        cloneStart,
+      );
+
+    const visualKernelStart =
+      performance.now();
     const occt =
       await getOcct();
+    const visualKernelInitMs =
+      elapsedMs(
+        visualKernelStart,
+      );
+
     const brepKernel =
       getOpenCascadeBrepKernel();
 
     const targetUnit =
       "millimeter" as const;
 
-    const [
-      result,
-      brep,
-    ] =
-      await Promise.all([
-        Promise.resolve(
-          occt.ReadStepFile(
-            data,
-            {
-              linearUnit:
-                targetUnit,
-              linearDeflectionType:
-                "bounding_box_ratio",
-              linearDeflection:
-                0.001,
-              angularDeflection:
-                0.5,
-            },
-          ),
-        ),
-        brepKernel.loadStep(
-          sourceData,
-          options.sourceFileName,
-        ),
-      ]);
+    /*
+     * ReadStepFile es síncrono. Medirlo separado deja visible que envolverlo
+     * en Promise.resolve no lo convertía en trabajo paralelo.
+     */
+    const visualTriangulationStart =
+      performance.now();
+    const result =
+      occt.ReadStepFile(
+        data,
+        {
+          linearUnit:
+            targetUnit,
+          linearDeflectionType:
+            "bounding_box_ratio",
+          linearDeflection:
+            0.001,
+          angularDeflection:
+            0.5,
+        },
+      );
+    const visualTriangulationMs =
+      elapsedMs(
+        visualTriangulationStart,
+      );
+
+    const brepStart =
+      performance.now();
+    const brep =
+      await brepKernel.loadStep(
+        sourceData,
+        options.sourceFileName,
+      );
+    const brepLoadMs =
+      elapsedMs(
+        brepStart,
+      );
 
     if (!result.success) {
       brepKernel.disposeDocument(
@@ -111,6 +277,8 @@ export class OcctStepGeometryAdapter
       );
     }
 
+    const meshCopyStart =
+      performance.now();
     const meshes:
       StepMeshData[] =
       result.meshes.map(
@@ -137,6 +305,10 @@ export class OcctStepGeometryAdapter
               : undefined,
         }),
       );
+    const meshCopyMs =
+      elapsedMs(
+        meshCopyStart,
+      );
 
     /*
      * El binding visual y OpenCascade.js pueden elegir unidades internas
@@ -144,6 +316,8 @@ export class OcctStepGeometryAdapter
      * el B-Rep exacto coincide con la malla visible sin asumir la unidad
      * interna del kernel.
      */
+    const scaleStart =
+      performance.now();
     const modelScale =
       inferBrepToMeshScale(
         brep,
@@ -160,7 +334,13 @@ export class OcctStepGeometryAdapter
         brep.id,
       )
       ?? brep;
+    const scaleInferenceMs =
+      elapsedMs(
+        scaleStart,
+      );
 
+    const productsStart =
+      performance.now();
     const products:
       StepProductNode[] = [];
 
@@ -211,6 +391,82 @@ export class OcctStepGeometryAdapter
       result.root,
       "root",
     );
+    const productTreeMs =
+      elapsedMs(
+        productsStart,
+      );
+
+    const exactFeaturesStart =
+      performance.now();
+    const features =
+      options.includeExactFeatures
+        === false
+        ? []
+        : createExactFeatures(
+            scaledBrep,
+          );
+    const exactFeaturesMs =
+      elapsedMs(
+        exactFeaturesStart,
+      );
+
+    let visualVertexCount =
+      0;
+    let triangleCount =
+      0;
+
+    for (
+      const mesh
+      of meshes
+    ) {
+      visualVertexCount +=
+        Math.floor(
+          mesh.positions.length / 3,
+        );
+      triangleCount +=
+        Math.floor(
+          mesh.indices.length / 3,
+        );
+    }
+
+    publishStepPerformance({
+      fileName:
+        options.sourceFileName,
+      fileSizeMb:
+        data.byteLength
+        / (
+          1024
+          * 1024
+        ),
+      totalMs:
+        elapsedMs(
+          totalStart,
+        ),
+      cloneSourceMs,
+      visualKernelInitMs,
+      visualTriangulationMs,
+      brepLoadMs,
+      meshCopyMs,
+      scaleInferenceMs,
+      productTreeMs,
+      exactFeaturesMs,
+      meshCount:
+        meshes.length,
+      visualVertexCount,
+      triangleCount,
+      brepVertexCount:
+        scaledBrep.vertices.length,
+      brepEdgeCount:
+        scaledBrep.edges.length,
+      brepCylinderCount:
+        scaledBrep.cylinders.length,
+      brepPlaneCount:
+        scaledBrep.planes.length,
+      exactFeatureCount:
+        features.length,
+      productCount:
+        products.length,
+    });
 
     return {
       id:
@@ -223,13 +479,7 @@ export class OcctStepGeometryAdapter
       unitScaleToMeters:
         0.001,
       meshes,
-      features:
-        options.includeExactFeatures
-          === false
-          ? []
-          : createExactFeatures(
-              scaledBrep,
-            ),
+      features,
       products,
     };
   }
