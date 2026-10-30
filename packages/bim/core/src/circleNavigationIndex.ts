@@ -55,6 +55,26 @@ type CircleProjectPackage =
   };
 
 
+interface FrameLogicCommandWindow extends Window {
+  __frameLogicExternalCadCommandActive?:
+    () => boolean;
+}
+
+
+function isEditableKeyboardTarget(
+  target: EventTarget | null,
+): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return target.isContentEditable
+    || target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement;
+}
+
+
 export type PrecisionBimCoreInstance =
   NavigationPrecisionBimCoreInstance
   & {
@@ -146,6 +166,94 @@ export async function createBimCore(
       startCircle: () =>
         cadCirclePlacement.start(),
     });
+
+  /*
+   * CadCommandInputController se construye antes que este wrapper y captura L
+   * en fase capture para mostrar "L / LINE + Enter". Le exponemos únicamente
+   * un predicado de herramienta externa activa para que no robe L mientras
+   * CIRCLE está abierto. Así podemos cerrar CIRCLE y cambiar de herramienta
+   * de forma determinista.
+   */
+  const commandWindow =
+    window as FrameLogicCommandWindow;
+  const previousExternalCommandPredicate =
+    commandWindow
+      .__frameLogicExternalCadCommandActive;
+  const circleExternalCommandPredicate =
+    (): boolean =>
+      cadCirclePlacement.isActive
+      || (
+        previousExternalCommandPredicate
+          ?.()
+        ?? false
+      );
+
+  commandWindow
+    .__frameLogicExternalCadCommandActive =
+      circleExternalCommandPredicate;
+
+  const handleCircleCommandSwitch =
+    (
+      event: KeyboardEvent,
+    ): void => {
+      if (
+        !cadCirclePlacement.isActive
+        || event.ctrlKey
+        || event.metaKey
+        || event.altKey
+        || isEditableKeyboardTarget(
+          event.target,
+        )
+      ) {
+        return;
+      }
+
+      const key =
+        event.key.toLowerCase();
+
+      if (
+        key !== "p"
+        && key !== "l"
+        && key !== "m"
+        && key !== "r"
+      ) {
+        return;
+      }
+
+      /*
+       * En la etapa Radio/Diámetro, R pertenece a CIRCLE. Su listener se
+       * ejecuta antes y usa stopImmediatePropagation(), por lo que esta rama
+       * sólo recibe R cuando realmente significa cambiar a ROTATE.
+       */
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      cadCirclePlacement.cancel();
+
+      window.queueMicrotask(
+        () => {
+          switch (key) {
+            case "p":
+              core.startPointCommand();
+              break;
+            case "l":
+              core.startLineCommand();
+              break;
+            case "m":
+              core.startMoveCommand();
+              break;
+            case "r":
+              core.startRotateCommand();
+              break;
+          }
+        },
+      );
+    };
+
+  window.addEventListener(
+    "keydown",
+    handleCircleCommandSwitch,
+    true,
+  );
 
   const unsubscribeLayers =
     core.subscribeDesignLayers(
@@ -280,6 +388,23 @@ export async function createBimCore(
     (): void => {
       if (disposed) return;
       disposed = true;
+
+      window.removeEventListener(
+        "keydown",
+        handleCircleCommandSwitch,
+        true,
+      );
+
+      if (
+        commandWindow
+          .__frameLogicExternalCadCommandActive
+        === circleExternalCommandPredicate
+      ) {
+        commandWindow
+          .__frameLogicExternalCadCommandActive =
+            previousExternalCommandPredicate;
+      }
+
       unsubscribeLayers();
       toolbarOrganizer.dispose();
       cadCirclePlacement.dispose();
