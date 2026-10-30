@@ -49,6 +49,17 @@ interface CadHistoryEntry {
 }
 
 
+interface CadHistoryGroup {
+
+  label:
+    string;
+
+  entries:
+    CadHistoryEntry[];
+
+}
+
+
 export class CadHistoryController {
 
   private readonly designModel:
@@ -71,6 +82,11 @@ export class CadHistoryController {
   private readonly redoStack:
     CadHistoryEntry[] =
       [];
+
+
+  private activeGroup:
+    CadHistoryGroup | null =
+      null;
 
 
   constructor(
@@ -165,6 +181,105 @@ export class CadHistoryController {
   }
 
 
+  beginGroup(
+    label:
+      string,
+  ): void {
+
+    if (
+      this.activeGroup
+    ) {
+
+      this.endGroup();
+
+    }
+
+
+    this.activeGroup = {
+      label,
+      entries: [],
+    };
+
+  }
+
+
+  endGroup():
+    boolean {
+
+    const group =
+      this.activeGroup;
+
+
+    this.activeGroup =
+      null;
+
+
+    if (
+      !group
+      || group.entries.length
+        < 1
+    ) {
+
+      return false;
+
+    }
+
+
+    const entries = [
+      ...group.entries,
+    ];
+
+
+    this.undoStack.push({
+      label:
+        group.label,
+
+      undo:
+        () => {
+
+          for (
+            let index = entries.length - 1;
+            index >= 0;
+            index -= 1
+          ) {
+
+            entries[index]
+              ?.undo();
+
+          }
+
+        },
+
+      redo:
+        () => {
+
+          for (
+            const entry
+            of entries
+          ) {
+
+            entry.redo();
+
+          }
+
+        },
+    });
+
+
+    return true;
+
+  }
+
+
+  cancelGroup():
+    void {
+
+    this.activeGroup =
+      null;
+
+  }
+
+
   recordTransform(
     label:
       string,
@@ -229,11 +344,45 @@ export class CadHistoryController {
       () => void,
   ): void {
 
-    this.undoStack.push({
+    const entry: CadHistoryEntry = {
       label,
       undo,
       redo,
-    });
+    };
+
+
+    if (
+      this.activeGroup
+    ) {
+
+      this.activeGroup.entries.push(
+        entry,
+      );
+
+
+      /*
+       * La primera acción real dentro del grupo crea una rama nueva.
+       * Un grupo vacío no destruye Redo.
+       */
+      if (
+        this.activeGroup.entries.length
+        === 1
+      ) {
+
+        this.redoStack.length =
+          0;
+
+      }
+
+
+      return;
+
+    }
+
+
+    this.undoStack.push(
+      entry,
+    );
 
 
     /*
@@ -325,6 +474,10 @@ export class CadHistoryController {
 
 
   clear(): void {
+
+    this.activeGroup =
+      null;
+
 
     this.undoStack.length =
       0;
