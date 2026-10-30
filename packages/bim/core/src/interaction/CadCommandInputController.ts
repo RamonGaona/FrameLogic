@@ -375,25 +375,25 @@ export class CadCommandInputController {
     }
 
     if (
-      "LINEAPARALELA".startsWith(
-        normalized,
-      )
-      || "LL".startsWith(
-        normalized,
-      )
-    ) {
-      this.suggestionElement.textContent =
-        "LL / LÍNEA PARALELA · Enter para ejecutar";
-      return;
-    }
-
-    if (
-      "LINE".startsWith(
+      normalized !== "L"
+      && "LINE".startsWith(
         normalized,
       )
     ) {
       this.suggestionElement.textContent =
         "L / LINE · Enter para ejecutar";
+      return;
+    }
+
+    if (
+      normalized === "LL"
+      || normalized.startsWith("LINEA")
+      || "LINEAPARALELA".startsWith(
+        normalized,
+      )
+    ) {
+      this.suggestionElement.textContent =
+        "LL / LÍNEA PARALELA · Enter para ejecutar";
       return;
     }
 
