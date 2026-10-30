@@ -151,6 +151,8 @@ export class PrecisionSnapEngine {
     }
 
     const candidates: PrecisionSnapDetails[] = [];
+    const sourceObjects =
+      new Map<string, THREE.Object3D>();
     const legacy = this.legacyFindSnap(clientX, clientY);
 
     /*
@@ -193,6 +195,18 @@ export class PrecisionSnapEngine {
     );
 
     for (const geometry of geometryCandidates) {
+      if (
+        geometry.object
+        && !sourceObjects.has(
+          geometry.sourceId,
+        )
+      ) {
+        sourceObjects.set(
+          geometry.sourceId,
+          geometry.object,
+        );
+      }
+
       const snapType = this.mapGeometryKind(geometry);
       if (!snapType) {
         continue;
@@ -225,7 +239,34 @@ export class PrecisionSnapEngine {
       return first.screenDistancePx - second.screenDistancePx;
     });
 
-    return candidates[0] ?? null;
+    /*
+     * En Sólido / Sólido + aristas un punto detrás de una cara opaca no es
+     * accesible visualmente y, por tanto, tampoco debe convertirse en SNAP.
+     *
+     * No acoplamos el motor al selector de render: inspeccionamos los
+     * materiales que realmente están en escena. WIREFRAME y TRANSPARENT usan
+     * materiales transparentes/colorWrite=false, de modo que deliberadamente
+     * no actúan como oclusores y permiten trabajar "a través" del modelo.
+     */
+    for (const candidate of candidates) {
+      const sourceObject =
+        candidate.geometry?.object
+        ?? sourceObjects.get(
+          candidate.snap.instanceId,
+        )
+        ?? null;
+
+      if (
+        this.isVisibleFromCamera(
+          candidate.snap.point,
+          sourceObject,
+        )
+      ) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 
   queryGeometry(
@@ -335,6 +376,134 @@ export class PrecisionSnapEngine {
   private hidePointMarker(): void {
     this.pointMarker.style.display =
       "none";
+  }
+
+  private isVisibleFromCamera(
+    point: THREE.Vector3,
+    sourceObject: THREE.Object3D | null,
+  ): boolean {
+    if (!sourceObject) {
+      return true;
+    }
+
+    let root:
+      THREE.Object3D =
+        sourceObject;
+
+    while (root.parent) {
+      root = root.parent;
+    }
+
+    const camera =
+      this.cameraProvider();
+    const projected =
+      point.clone().project(
+        camera,
+      );
+
+    if (
+      projected.z < -1
+      || projected.z > 1
+      || !Number.isFinite(projected.x)
+      || !Number.isFinite(projected.y)
+    ) {
+      return false;
+    }
+
+    const raycaster =
+      new THREE.Raycaster();
+
+    raycaster.setFromCamera(
+      new THREE.Vector2(
+        projected.x,
+        projected.y,
+      ),
+      camera,
+    );
+
+    const toPoint =
+      point.clone().sub(
+        raycaster.ray.origin,
+      );
+    const pointDistance =
+      toPoint.dot(
+        raycaster.ray.direction,
+      );
+
+    if (
+      !Number.isFinite(pointDistance)
+      || pointDistance <= 0
+    ) {
+      return false;
+    }
+
+    const epsilon =
+      Math.max(
+        0.5,
+        pointDistance * 1e-6,
+      );
+
+    raycaster.near =
+      0;
+    raycaster.far =
+      pointDistance + epsilon;
+
+    const intersections =
+      raycaster.intersectObject(
+        root,
+        true,
+      );
+
+    for (const intersection of intersections) {
+      if (
+        !(intersection.object
+          instanceof THREE.Mesh)
+        || !this.isOpaqueOccluder(
+          intersection.object,
+        )
+      ) {
+        continue;
+      }
+
+      if (
+        intersection.distance
+        < pointDistance - epsilon
+      ) {
+        return false;
+      }
+
+      /*
+       * Las intersecciones están ordenadas por distancia. Si la primera cara
+       * opaca ya coincide con el punto (dentro de tolerancia), no existe una
+       * pared opaca anterior que pueda ocultarlo.
+       */
+      return true;
+    }
+
+    return true;
+  }
+
+  private isOpaqueOccluder(
+    mesh: THREE.Mesh,
+  ): boolean {
+    if (!mesh.visible) {
+      return false;
+    }
+
+    const materials =
+      Array.isArray(mesh.material)
+        ? mesh.material
+        : [mesh.material];
+
+    return materials.some(
+      (
+        material,
+      ) =>
+        material.visible
+        && material.colorWrite !== false
+        && !material.transparent
+        && material.opacity >= 0.95,
+    );
   }
 
   private mapGeometryKind(
