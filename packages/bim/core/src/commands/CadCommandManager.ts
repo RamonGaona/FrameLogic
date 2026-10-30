@@ -6,6 +6,12 @@ import type {
 const LINE_DOUBLE_CANCEL_WINDOW_MS =
   400;
 
+const LINE_RIGHT_DRAG_THRESHOLD_PX =
+  4;
+
+const RIGHT_BUTTON_MASK =
+  2;
+
 
 export class CadCommandManager {
 
@@ -26,6 +32,23 @@ export class CadCommandManager {
     Number.NEGATIVE_INFINITY;
 
 
+  private lineRightPointerId:
+    number | null =
+      null;
+
+
+  private lineRightStartX =
+    0;
+
+
+  private lineRightStartY =
+    0;
+
+
+  private lineRightDragged =
+    false;
+
+
   constructor() {
 
     if (
@@ -43,6 +66,27 @@ export class CadCommandManager {
       window.addEventListener(
         "pointerdown",
         this.handlePriorityPointerDown,
+        true,
+      );
+
+
+      window.addEventListener(
+        "pointermove",
+        this.handlePriorityPointerMove,
+        true,
+      );
+
+
+      window.addEventListener(
+        "pointerup",
+        this.handlePriorityPointerUp,
+        true,
+      );
+
+
+      window.addEventListener(
+        "pointercancel",
+        this.handlePriorityPointerCancel,
         true,
       );
 
@@ -198,8 +242,7 @@ export class CadCommandManager {
      * Primer gesto: termina únicamente la cadena/tramo pendiente.
      * LINE sigue siendo el activeCommand y queda esperando un nuevo
      * primer punto independiente. Si por algún motivo no puede rearmarse
-     * (por ejemplo, la capa acaba de bloquearse), cerramos LINE para no
-     * dejar un activeCommand fantasma.
+     * cerramos LINE para no dejar un activeCommand fantasma.
      */
     const keptActive =
       command.softCancel?.()
@@ -275,10 +318,121 @@ export class CadCommandManager {
       }
 
 
-      event.preventDefault();
-      event.stopImmediatePropagation();
+      /*
+       * No consumimos pointerdown. CameraControls debe recibirlo para poder
+       * distinguir un clic derecho corto de un arrastre PAN. La cancelación
+       * de LINE se decide sólo al soltar, si el puntero prácticamente no se
+       * movió.
+       */
+      this.lineRightPointerId =
+        event.pointerId;
+
+      this.lineRightStartX =
+        event.clientX;
+
+      this.lineRightStartY =
+        event.clientY;
+
+      this.lineRightDragged =
+        false;
+
+  };
 
 
+  private readonly handlePriorityPointerMove =
+    (
+      event:
+        PointerEvent,
+    ): void => {
+
+      if (
+        this.lineRightPointerId
+          !== event.pointerId
+        || (
+          event.buttons
+          & RIGHT_BUTTON_MASK
+        ) === 0
+        || this.lineRightDragged
+      ) {
+
+        return;
+
+      }
+
+
+      const movement =
+        Math.hypot(
+          event.clientX
+            - this.lineRightStartX,
+          event.clientY
+            - this.lineRightStartY,
+        );
+
+
+      if (
+        movement
+        >= LINE_RIGHT_DRAG_THRESHOLD_PX
+      ) {
+
+        this.lineRightDragged =
+          true;
+
+      }
+
+  };
+
+
+  private readonly handlePriorityPointerUp =
+    (
+      event:
+        PointerEvent,
+    ): void => {
+
+      if (
+        event.button !== 2
+        || this.lineRightPointerId
+          !== event.pointerId
+      ) {
+
+        return;
+
+      }
+
+
+      const movement =
+        Math.hypot(
+          event.clientX
+            - this.lineRightStartX,
+          event.clientY
+            - this.lineRightStartY,
+        );
+
+
+      const wasPan =
+        this.lineRightDragged
+        || movement
+          >= LINE_RIGHT_DRAG_THRESHOLD_PX;
+
+
+      this.resetLineRightPointer();
+
+
+      if (
+        wasPan
+        || this.activeCommand
+          ?.id !== "LINE"
+      ) {
+
+        return;
+
+      }
+
+
+      /*
+       * Clic derecho corto: conserva la semántica CAD de cancelación simple
+       * / doble, pero sin bloquear el pointerup que CameraControls necesita
+       * para cerrar correctamente su gesto.
+       */
       this.suppressContextMenuUntil =
         performance.now()
         + 600;
@@ -287,6 +441,27 @@ export class CadCommandManager {
       this.handleLineCancelGesture(
         "RIGHT_CLICK",
       );
+
+  };
+
+
+  private readonly handlePriorityPointerCancel =
+    (
+      event:
+        PointerEvent,
+    ): void => {
+
+      if (
+        this.lineRightPointerId
+        !== event.pointerId
+      ) {
+
+        return;
+
+      }
+
+
+      this.resetLineRightPointer();
 
   };
 
@@ -313,6 +488,18 @@ export class CadCommandManager {
   };
 
 
+  private resetLineRightPointer():
+    void {
+
+    this.lineRightPointerId =
+      null;
+
+    this.lineRightDragged =
+      false;
+
+  }
+
+
   private resetLineCancelGestures():
     void {
 
@@ -322,6 +509,9 @@ export class CadCommandManager {
 
     this.lastLineRightClickAt =
       Number.NEGATIVE_INFINITY;
+
+
+    this.resetLineRightPointer();
 
   }
 
@@ -343,6 +533,27 @@ export class CadCommandManager {
       window.removeEventListener(
         "pointerdown",
         this.handlePriorityPointerDown,
+        true,
+      );
+
+
+      window.removeEventListener(
+        "pointermove",
+        this.handlePriorityPointerMove,
+        true,
+      );
+
+
+      window.removeEventListener(
+        "pointerup",
+        this.handlePriorityPointerUp,
+        true,
+      );
+
+
+      window.removeEventListener(
+        "pointercancel",
+        this.handlePriorityPointerCancel,
         true,
       );
 
