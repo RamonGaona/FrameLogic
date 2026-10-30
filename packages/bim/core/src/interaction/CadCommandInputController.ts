@@ -4,6 +4,11 @@ export interface CadCommandInputControllerOptions {
   readonly startLine: () => boolean;
 }
 
+interface FrameLogicCommandWindow extends Window {
+  __frameLogicExternalCadCommandActive?:
+    () => boolean;
+}
+
 function isEditableTarget(
   target: EventTarget | null,
 ): boolean {
@@ -15,6 +20,21 @@ function isEditableTarget(
     || target instanceof HTMLInputElement
     || target instanceof HTMLTextAreaElement
     || target instanceof HTMLSelectElement;
+}
+
+function hasExternalCadCommand(): boolean {
+  const runtime =
+    window as FrameLogicCommandWindow;
+
+  try {
+    return runtime
+      .__frameLogicExternalCadCommandActive
+      ?.()
+      ?? false;
+  }
+  catch {
+    return false;
+  }
 }
 
 /**
@@ -143,6 +163,7 @@ export class CadCommandInputController {
       if (
         event.key.toLowerCase() !== "l"
         || this.hasActiveCommand()
+        || hasExternalCadCommand()
       ) {
         return;
       }
