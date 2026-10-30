@@ -27,6 +27,10 @@ import {
 } from "./interaction/CadLineTemporaryDimensionController";
 
 import {
+  ProjectCameraStateController,
+} from "./project/ProjectCameraStateController";
+
+import {
   configureMillimeterRuntime,
   installMillimeterUnitSystem,
 } from "./units/MillimeterUnitSystemController";
@@ -249,6 +253,22 @@ export async function createBimCore(
         })
       : null;
 
+  const projectCameraState =
+    new ProjectCameraStateController({
+      projectPackage:
+        core.projectPackage,
+      cameraProvider: () =>
+        core.world.camera.three,
+      orthoCameraProvider: () =>
+        core.world.camera.threeOrtho,
+      controls:
+        core.world.camera.controls,
+      getProjectionMode: () =>
+        core.getCameraProjectionMode(),
+      toggleProjection: () =>
+        core.toggleCameraProjection(),
+    });
+
   const baseDispose =
     core.dispose;
   let disposed =
@@ -261,6 +281,7 @@ export async function createBimCore(
       }
       disposed =
         true;
+      projectCameraState.dispose();
       commandInput?.dispose();
       lineNumericPreview?.dispose();
       temporaryLineDimensions?.dispose();
