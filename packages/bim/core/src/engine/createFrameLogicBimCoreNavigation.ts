@@ -229,6 +229,7 @@ export async function createBimCore(
 
       const shouldEnable =
         smartPieceInsertion.isActive
+        || align.isActive
         || core.cadPointPlacement.isActive
         || core.cadLinePlacement.isActive
         || core.cadLineMove.isActive
