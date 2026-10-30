@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.57 — 2026-10-30
+
+### Corregido
+
+- `Capas CAD` deja de ocupar una segunda fila dentro de la barra de proyecto.
+- El control de capas DWG/DXF pasa a la columna lateral izquierda, encima de `INSTANCIAS`.
+- Al desplegar `Capas CAD`, el panel participa del flujo vertical y desplaza `INSTANCIAS` hacia abajo en lugar de superponerse.
+- El panel expandido tiene altura limitada y scroll propio para referencias con muchas capas.
+- La barra superior recupera espacio horizontal al retirar de ella el control `Capas CAD`.
+
+### Técnico
+
+- Se añade un adaptador de layout independiente para integrar la UI existente de `CadReferenceLayerPanelController` con el stack lateral del Model Space sin modificar su lógica funcional.
+- La versión visible y la versión raíz del proyecto quedan sincronizadas en `0.1.57`.
+
+---
+
 ## v0.1.56 — 2026-10-30
 
 ### Corregido

@@ -7,6 +7,10 @@ import {
 } from "./features/bim/BimViewport";
 
 import {
+  installCadLayerPanelLayout,
+} from "./features/bim/installCadLayerPanelLayout";
+
+import {
   installModelSpacePanelLayout,
 } from "./features/bim/installModelSpacePanelLayout";
 
@@ -14,8 +18,18 @@ import {
 function App() {
 
   useEffect(
-    () =>
-      installModelSpacePanelLayout(),
+    () => {
+      const uninstallModelSpacePanelLayout =
+        installModelSpacePanelLayout();
+
+      const uninstallCadLayerPanelLayout =
+        installCadLayerPanelLayout();
+
+      return () => {
+        uninstallCadLayerPanelLayout();
+        uninstallModelSpacePanelLayout();
+      };
+    },
     [],
   );
 
