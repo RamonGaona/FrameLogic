@@ -14,243 +14,6 @@ import {
 } from "../ifc/FrameLogicPieceIfcMetadata";
 
 
-function getSelectionCenter(
-  core:
-    BimCoreInstance,
-): THREE.Vector3 | null {
-
-  const selection =
-    core.getCadSelectionState();
-
-
-  if (
-    selection.items.length < 1
-  ) {
-
-    return null;
-
-  }
-
-
-  const bounds =
-    new THREE.Box3();
-
-  let hasBounds =
-    false;
-
-
-  for (
-    const item
-    of selection.items
-  ) {
-
-    if (
-      item.type === "PIECE"
-    ) {
-
-      const object =
-        core.designScene
-          .getInstanceObject(
-            item.id,
-          );
-
-
-      if (
-        !object
-        || !object.visible
-      ) {
-
-        continue;
-
-      }
-
-
-      object.updateMatrixWorld(
-        true,
-      );
-
-
-      const pieceBounds =
-        new THREE.Box3()
-          .setFromObject(
-            object,
-          );
-
-
-      if (
-        pieceBounds.isEmpty()
-      ) {
-
-        continue;
-
-      }
-
-
-      bounds.union(
-        pieceBounds,
-      );
-
-      hasBounds =
-        true;
-
-      continue;
-
-    }
-
-
-    if (
-      item.type === "POINT"
-    ) {
-
-      const point =
-        core.designModel
-          .cadPoints
-          .get(
-            item.id,
-          );
-
-
-      if (
-        !point
-      ) {
-
-        continue;
-
-      }
-
-
-      bounds.expandByPoint(
-        new THREE.Vector3(
-          point.position.x,
-          point.position.y,
-          point.position.z,
-        ),
-      );
-
-      hasBounds =
-        true;
-
-      continue;
-
-    }
-
-
-    const line =
-      core.designModel
-        .cadLines
-        .get(
-          item.id,
-        );
-
-
-    if (
-      !line
-    ) {
-
-      continue;
-
-    }
-
-
-    bounds.expandByPoint(
-      new THREE.Vector3(
-        line.start.x,
-        line.start.y,
-        line.start.z,
-      ),
-    );
-
-
-    bounds.expandByPoint(
-      new THREE.Vector3(
-        line.end.x,
-        line.end.y,
-        line.end.z,
-      ),
-    );
-
-
-    hasBounds =
-      true;
-
-  }
-
-
-  if (
-    !hasBounds
-    || bounds.isEmpty()
-  ) {
-
-    return null;
-
-  }
-
-
-  return bounds.getCenter(
-    new THREE.Vector3(),
-  );
-
-}
-
-
-function setCameraOrbitPointFromSelection(
-  core:
-    BimCoreInstance,
-): void {
-
-  const center =
-    getSelectionCenter(
-      core,
-    );
-
-
-  if (
-    !center
-  ) {
-
-    return;
-
-  }
-
-
-  const controls =
-    core.world.camera.controls as
-      typeof core.world.camera.controls
-      & {
-        setOrbitPoint?:
-          (
-            x: number,
-            y: number,
-            z: number,
-          ) => void;
-      };
-
-
-  if (
-    controls.setOrbitPoint
-  ) {
-
-    controls.setOrbitPoint(
-      center.x,
-      center.y,
-      center.z,
-    );
-
-    return;
-
-  }
-
-
-  void controls.setTarget(
-    center.x,
-    center.y,
-    center.z,
-    false,
-  );
-
-}
-
-
 function syncPieceDefinitionHelpers(
   core:
     BimCoreInstance,
@@ -271,6 +34,9 @@ function syncPieceDefinitionHelpers(
    * PieceInstance visibles". De esta forma una pieza puede
    * usar como referencia los SNAPs/ejes persistentes de otra
    * aunque la otra pieza no esté seleccionada.
+   *
+   * La selección NO modifica el target ni la orientación de cámara.
+   * Enfocar una pieza debe ser siempre una acción de navegación explícita.
    */
   core.pieceDefinitionHelpers
     .setActiveInstanceId(
@@ -962,47 +728,15 @@ export async function createBimCore(
         }
 
 
+        /*
+         * La selección sólo sincroniza helpers técnicos.
+         * Nunca cambia target, posición, zoom ni orientación de cámara.
+         */
         syncPieceDefinitionHelpers(
           core,
         );
 
-
-        setCameraOrbitPointFromSelection(
-          core,
-        );
-
       },
-    );
-
-
-  const handleCameraControlStart =
-    (): void => {
-
-      if (
-        disposed
-      ) {
-
-        return;
-
-      }
-
-
-      /*
-       * Recalculamos justo antes de navegar para que el centro de órbita
-       * siga a una pieza, punto o línea que se haya movido después de
-       * haber sido seleccionada.
-       */
-      setCameraOrbitPointFromSelection(
-        core,
-      );
-
-    };
-
-
-  core.world.camera.controls
-    .addEventListener(
-      "controlstart",
-      handleCameraControlStart,
     );
 
 
@@ -1141,13 +875,6 @@ export async function createBimCore(
 
 
           unsubscribeSelection();
-
-
-          core.world.camera.controls
-            .removeEventListener(
-              "controlstart",
-              handleCameraControlStart,
-            );
 
 
           baseDispose();
