@@ -39,6 +39,12 @@ export interface ImportedStepVisualPiece {
  *
  * No crea un IFC intermedio. La malla solo se usa para render y el
  * StepGeometryDocument conserva la puerta de entrada a features B-Rep.
+ *
+ * Unidad canónica: los adaptadores STEP entregan `meshes` ya normalizados a
+ * milímetros. `unitScaleToMeters` se conserva únicamente como metadato físico
+ * del documento y NO debe volver a aplicarse al prototipo visual. Aplicarlo
+ * aquí convertía, por ejemplo, 2000 mm -> 2 y FrameLogic interpretaba ese 2
+ * como 2 mm.
  */
 export function importStepVisualPiece(
   document: StepGeometryDocument,
@@ -101,6 +107,8 @@ function createPrototype(
 
   group.name =
     `STEP:${document.sourceFileName}`;
+  group.userData["framelogicLengthUnit"] =
+    "mm";
 
   for (
     const meshData
@@ -151,14 +159,6 @@ function createPrototype(
       meshData.id;
 
     group.add(mesh);
-  }
-
-  if (
-    document.unitScaleToMeters !== 1
-  ) {
-    group.scale.setScalar(
-      document.unitScaleToMeters,
-    );
   }
 
   return group;
