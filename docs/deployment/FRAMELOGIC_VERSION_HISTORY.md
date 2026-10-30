@@ -10,6 +10,15 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.32 — Ángulo dinámico y confirmación `L + Enter`
+
+- Mientras `LINE` espera el segundo punto, el preview muestra también el ángulo respecto al eje X del WorkPlane activo.
+- Si el WorkPlane está desactivado, el ángulo se mide respecto al eje X global en el plano XY.
+- El ángulo se muestra en grados enteros y se actualiza en tiempo real junto con la longitud temporal.
+- Pulsar `L` ya no inicia inmediatamente `LINE`: abre un recuadro de comando cerca del cursor.
+- `L + Enter` o `LINE + Enter` ejecutan el comando `LINE`; `Tab` completa `LINE` y `Esc` cancela el recuadro.
+- En esta versión sólo `LINE` adopta el flujo de confirmación textual; los demás atajos conservan su comportamiento actual.
+
 ### v0.1.31 — Cotas temporales sin decimales
 
 - Las cotas temporales de líneas CAD muestran milímetros enteros, sin decimales.
