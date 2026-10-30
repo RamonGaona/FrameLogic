@@ -36,3 +36,28 @@
   font-size: 12px;
   line-height: 1;
 }
+
+.layer-color-input {
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  padding: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.layer-color-input::-webkit-color-swatch-wrapper {
+  padding: 1px;
+}
+
+.layer-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+.layer-color-input::-moz-color-swatch {
+  border: none;
+  border-radius: 2px;
+}

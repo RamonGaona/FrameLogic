@@ -9,50 +9,49 @@ import type {
 import "./LayerPanel.css";
 
 
+const DEFAULT_LAYER_COLOR =
+  "#e5e7eb";
+const LAYER_COLOR_EVENT =
+  "framelogic:layer-color-change";
+
+
 interface LayerPanelProps {
+  layers: DesignLayer[];
+  activeLayerId: string;
+  onSetActive: (id: string) => void;
+  onVisibilityChange: (
+    id: string,
+    visible: boolean,
+  ) => void;
+  onLockChange: (
+    id: string,
+    locked: boolean,
+  ) => void;
+  onSnapChange: (
+    id: string,
+    snapEnabled: boolean,
+  ) => void;
+  onCreate: () => void;
+  onRemove: (id: string) => void;
+  onAssignSelection: (id: string) => void;
+}
 
-  layers:
-    DesignLayer[];
 
-  activeLayerId:
-    string;
-
-  onSetActive:
-    (
-      id: string,
-    ) => void;
-
-  onVisibilityChange:
-    (
-      id: string,
-      visible: boolean,
-    ) => void;
-
-  onLockChange:
-    (
-      id: string,
-      locked: boolean,
-    ) => void;
-
-  onSnapChange:
-    (
-      id: string,
-      snapEnabled: boolean,
-    ) => void;
-
-  onCreate:
-    () => void;
-
-  onRemove:
-    (
-      id: string,
-    ) => void;
-
-  onAssignSelection:
-    (
-      id: string,
-    ) => void;
-
+function setLayerColor(
+  layerId: string,
+  color: string,
+): void {
+  window.dispatchEvent(
+    new CustomEvent(
+      LAYER_COLOR_EVENT,
+      {
+        detail: {
+          layerId,
+          color,
+        },
+      },
+    ),
+  );
 }
 
 
@@ -69,30 +68,21 @@ export function LayerPanel(
     onAssignSelection,
   }: LayerPanelProps,
 ) {
-
   const [expanded, setExpanded] =
     useState(false);
 
   /*
-   * Las capas internas de DWG/DXF se administran en el panel
-   * independiente "Capas CAD". Aquí dejamos únicamente los layers
-   * normales del proyecto para no mezclar referencias CAD con el modelo.
+   * Las capas internas de DWG/DXF se administran en el panel "Capas CAD".
+   * Aquí se muestran únicamente los layers normales del proyecto.
    */
   const modelLayers =
     layers.filter(
-      (
-        layer,
-      ) =>
+      (layer) =>
         !(
-          layer.name.startsWith(
-            "CAD ",
-          )
-          && layer.name.includes(
-            " · ",
-          )
+          layer.name.startsWith("CAD ")
+          && layer.name.includes(" · ")
         ),
     );
-
 
   return (
     <div
@@ -102,11 +92,7 @@ export function LayerPanel(
           : "layer-panel layer-panel-collapsed"
       }
     >
-
-      <div
-        className="layer-panel-header"
-      >
-
+      <div className="layer-panel-header">
         <button
           type="button"
           className="layer-toggle-button"
@@ -119,8 +105,7 @@ export function LayerPanel(
           onClick={
             () => {
               setExpanded(
-                (current) =>
-                  !current,
+                (current) => !current,
               );
             }
           }
@@ -129,18 +114,10 @@ export function LayerPanel(
             className="layer-toggle-icon"
             aria-hidden="true"
           >
-            {
-              expanded
-                ? "▾"
-                : "▸"
-            }
+            {expanded ? "▾" : "▸"}
           </span>
-
-          <strong>
-            Layers
-          </strong>
+          <strong>Layers</strong>
         </button>
-
 
         <button
           type="button"
@@ -150,28 +127,19 @@ export function LayerPanel(
         >
           +
         </button>
-
       </div>
-
 
       {
         expanded
         && (
           <>
-            <div
-              className="layer-list"
-            >
-
+            <div className="layer-list">
               {
                 modelLayers.map(
-                  (
-                    layer,
-                  ) => {
-
+                  (layer) => {
                     const active =
                       layer.id
                       === activeLayerId;
-
 
                     return (
                       <div
@@ -182,7 +150,6 @@ export function LayerPanel(
                             : "layer-row"
                         }
                       >
-
                         <button
                           type="button"
                           className="layer-active-button"
@@ -193,19 +160,12 @@ export function LayerPanel(
                           }
                           onClick={
                             () => {
-                              onSetActive(
-                                layer.id,
-                              );
+                              onSetActive(layer.id);
                             }
                           }
                         >
-                          {
-                            active
-                              ? "●"
-                              : "○"
-                          }
+                          {active ? "●" : "○"}
                         </button>
-
 
                         <button
                           type="button"
@@ -224,13 +184,8 @@ export function LayerPanel(
                             }
                           }
                         >
-                          {
-                            layer.visible
-                              ? "👁"
-                              : "○"
-                          }
+                          {layer.visible ? "👁" : "○"}
                         </button>
-
 
                         <button
                           type="button"
@@ -249,13 +204,8 @@ export function LayerPanel(
                             }
                           }
                         >
-                          {
-                            layer.locked
-                              ? "🔒"
-                              : "🔓"
-                          }
+                          {layer.locked ? "🔒" : "🔓"}
                         </button>
-
 
                         <button
                           type="button"
@@ -281,6 +231,28 @@ export function LayerPanel(
                           S
                         </button>
 
+                        <input
+                          type="color"
+                          className="layer-color-input"
+                          value={
+                            layer.color
+                            ?? DEFAULT_LAYER_COLOR
+                          }
+                          title={
+                            `Color CAD del layer ${layer.name}`
+                          }
+                          aria-label={
+                            `Color CAD del layer ${layer.name}`
+                          }
+                          onChange={
+                            (event) => {
+                              setLayerColor(
+                                layer.id,
+                                event.target.value,
+                              );
+                            }
+                          }
+                        />
 
                         <button
                           type="button"
@@ -290,15 +262,12 @@ export function LayerPanel(
                           }
                           onClick={
                             () => {
-                              onSetActive(
-                                layer.id,
-                              );
+                              onSetActive(layer.id);
                             }
                           }
                         >
                           {layer.name}
                         </button>
-
 
                         {
                           !layer.system
@@ -309,9 +278,7 @@ export function LayerPanel(
                               title="Eliminar layer"
                               onClick={
                                 () => {
-                                  onRemove(
-                                    layer.id,
-                                  );
+                                  onRemove(layer.id);
                                 }
                               }
                             >
@@ -319,16 +286,12 @@ export function LayerPanel(
                             </button>
                           )
                         }
-
                       </div>
                     );
-
                   },
                 )
               }
-
             </div>
-
 
             <button
               type="button"
@@ -346,8 +309,6 @@ export function LayerPanel(
           </>
         )
       }
-
     </div>
   );
-
 }

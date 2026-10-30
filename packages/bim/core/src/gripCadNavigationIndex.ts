@@ -10,6 +10,10 @@ import {
   CadPolylineGripController,
 } from "./interaction/CadPolylineGripController";
 
+import {
+  CadLayerColorController,
+} from "./interaction/CadLayerColorController";
+
 
 export * from "./advancedCadNavigationIndex";
 
@@ -21,21 +25,29 @@ export type {
   CadPolylineGripControllerOptions,
 } from "./interaction/CadPolylineGripController";
 
+export {
+  CadLayerColorController,
+} from "./interaction/CadLayerColorController";
+
+export type {
+  CadLayerColorControllerOptions,
+} from "./interaction/CadLayerColorController";
+
 
 export type PrecisionBimCoreInstance =
   AdvancedCadPrecisionBimCoreInstance
   & {
     readonly cadPolylineGrips:
       CadPolylineGripController;
+    readonly cadLayerColors:
+      CadLayerColorController;
   };
 
 
 /**
- * Capa de grips directos para POLYLINE.
- *
- * Mantiene la selección CAD histórica a nivel de tramo para no alterar TRIM,
- * pero detecta la entidad POLYLINE padre y expone sus vértices como grips
- * arrastrables con SNAP / ORTO / Undo-Redo.
+ * Capa de edición visual CAD:
+ * - grips directos para POLYLINE;
+ * - color CAD heredado desde DesignLayer.
  */
 export async function createBimCore(
   container: HTMLElement,
@@ -51,9 +63,25 @@ export async function createBimCore(
   if (!renderer) {
     core.dispose();
     throw new Error(
-      "FrameLogic polyline grips require an initialized renderer.",
+      "FrameLogic CAD visual tools require an initialized renderer.",
     );
   }
+
+  const cadLayerColors =
+    new CadLayerColorController({
+      designModel:
+        core.designModel,
+      lineScene:
+        core.cadLineScene,
+      pointScene:
+        core.cadPointScene,
+      circleScene:
+        core.cadCircleScene,
+      lineSelection:
+        core.cadLineSelection,
+      pointSelection:
+        core.cadPointSelection,
+    });
 
   const cadPolylineGrips =
     new CadPolylineGripController({
@@ -95,6 +123,43 @@ export async function createBimCore(
         core.geometryQuery.clearCache(),
     });
 
+  /*
+   * El schema del proyecto se mantiene en v1. DesignLayer se serializa como
+   * objeto completo, así que los proyectos nuevos guardan `color`. Al abrir
+   * proyectos anteriores la ausencia de color conserva el tono CAD neutro.
+   * La restauración base todavía ignora campos nuevos, por eso reaplicamos el
+   * color opcional después de reconstruir los layers.
+   */
+  const baseRestoreProjectPackage =
+    core.projectPackage
+      .restoreProjectPackage
+      .bind(
+        core.projectPackage,
+      );
+
+  core.projectPackage.restoreProjectPackage =
+    async (
+      project,
+    ): Promise<void> => {
+      await baseRestoreProjectPackage(
+        project,
+      );
+
+      for (const layer of project.layers) {
+        if (!layer.color) continue;
+
+        core.designModel.layers.update(
+          layer.id,
+          {
+            color:
+              layer.color,
+          },
+        );
+      }
+
+      cadLayerColors.sync();
+    };
+
   const baseDispose =
     core.dispose;
   let disposed = false;
@@ -103,13 +168,18 @@ export async function createBimCore(
     if (disposed) return;
     disposed = true;
 
+    core.projectPackage.restoreProjectPackage =
+      baseRestoreProjectPackage;
+
     cadPolylineGrips.dispose();
+    cadLayerColors.dispose();
     baseDispose();
   };
 
   return {
     ...core,
     cadPolylineGrips,
+    cadLayerColors,
     dispose,
   };
 }

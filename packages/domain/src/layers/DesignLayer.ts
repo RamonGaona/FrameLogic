@@ -1,44 +1,34 @@
 export interface DesignLayer {
 
-  /**
-   * Identificador estable de la capa.
-   */
+  /** Identificador estable de la capa. */
   readonly id: string;
 
-
-  /**
-   * Nombre mostrado al usuario.
-   */
+  /** Nombre mostrado al usuario. */
   readonly name: string;
 
-
   /**
-   * Si es false, los objetos de esta capa
-   * no deben mostrarse en el viewport.
+   * Color visual CAD del layer en formato hexadecimal #RRGGBB.
+   * Por ahora no modifica piezas 3D ni referencias IFC.
    */
+  readonly color?: string;
+
+  /** Si es false, los objetos de esta capa no deben mostrarse. */
   readonly visible: boolean;
 
-
-  /**
-   * Si es true, los objetos de esta capa
-   * no deben poder editarse.
-   */
+  /** Si es true, los objetos de esta capa no deben poder editarse. */
   readonly locked: boolean;
 
-
-  /**
-   * Si es false, los objetos de esta capa
-   * no deben aportar candidatos de SNAP.
-   */
+  /** Si es false, los objetos de esta capa no aportan candidatos SNAP. */
   readonly snapEnabled: boolean;
 
-
-  /**
-   * Las capas del sistema no pueden eliminarse.
-   */
+  /** Las capas del sistema no pueden eliminarse. */
   readonly system: boolean;
 
 }
+
+
+export const DEFAULT_DESIGN_LAYER_COLOR =
+  "#e5e7eb";
 
 
 export const DEFAULT_DESIGN_LAYER_IDS = {
