@@ -58,6 +58,20 @@ function getOcct() {
 }
 
 
+export async function warmupStepGeometryKernels():
+  Promise<void> {
+  const brepKernel =
+    getOpenCascadeBrepKernel();
+
+  await Promise.all([
+    getOcct().then(
+      () => undefined,
+    ),
+    brepKernel.warmup(),
+  ]);
+}
+
+
 function elapsedMs(
   start: number,
 ): number {
@@ -586,47 +600,12 @@ function inferBrepToMeshScale(
   meshes: readonly StepMeshData[],
 ): number {
   const brepDiagonal =
-    pointCloudDiagonal(
-      brep.vertices.map(
-        (
-          vertex,
-        ) => vertex.point,
-      ),
+    brepVertexDiagonal(
+      brep.vertices,
     );
-  const meshPoints:
-    Array<{
-      x: number;
-      y: number;
-      z: number;
-    }> = [];
-
-  for (
-    const mesh
-    of meshes
-  ) {
-    for (
-      let index = 0;
-      index + 2
-        < mesh.positions.length;
-      index += 3
-    ) {
-      meshPoints.push({
-        x:
-          mesh.positions[index]
-          ?? 0,
-        y:
-          mesh.positions[index + 1]
-          ?? 0,
-        z:
-          mesh.positions[index + 2]
-          ?? 0,
-      });
-    }
-  }
-
   const meshDiagonal =
-    pointCloudDiagonal(
-      meshPoints,
+    meshVertexDiagonal(
+      meshes,
     );
 
   if (
@@ -655,60 +634,86 @@ function inferBrepToMeshScale(
 }
 
 
-function pointCloudDiagonal(
-  points: readonly {
-    x: number;
-    y: number;
-    z: number;
-  }[],
+function brepVertexDiagonal(
+  vertices: OpenCascadeBrepSnapshot["vertices"],
 ): number {
   if (
-    points.length < 1
+    vertices.length < 1
   ) {
     return 0;
   }
 
-  let minX =
-    Number.POSITIVE_INFINITY;
-  let minY =
-    Number.POSITIVE_INFINITY;
-  let minZ =
-    Number.POSITIVE_INFINITY;
-  let maxX =
-    Number.NEGATIVE_INFINITY;
-  let maxY =
-    Number.NEGATIVE_INFINITY;
-  let maxZ =
-    Number.NEGATIVE_INFINITY;
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
 
   for (
-    const point
-    of points
+    const vertex
+    of vertices
   ) {
-    minX = Math.min(
-      minX,
-      point.x,
-    );
-    minY = Math.min(
-      minY,
-      point.y,
-    );
-    minZ = Math.min(
-      minZ,
-      point.z,
-    );
-    maxX = Math.max(
-      maxX,
-      point.x,
-    );
-    maxY = Math.max(
-      maxY,
-      point.y,
-    );
-    maxZ = Math.max(
-      maxZ,
-      point.z,
-    );
+    const point =
+      vertex.point;
+
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    minZ = Math.min(minZ, point.z);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+    maxZ = Math.max(maxZ, point.z);
+  }
+
+  return Math.hypot(
+    maxX - minX,
+    maxY - minY,
+    maxZ - minZ,
+  );
+}
+
+
+function meshVertexDiagonal(
+  meshes: readonly StepMeshData[],
+): number {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+  let pointCount = 0;
+
+  for (
+    const mesh
+    of meshes
+  ) {
+    const positions =
+      mesh.positions;
+
+    for (
+      let index = 0;
+      index + 2 < positions.length;
+      index += 3
+    ) {
+      const x = positions[index] ?? 0;
+      const y = positions[index + 1] ?? 0;
+      const z = positions[index + 2] ?? 0;
+
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      minZ = Math.min(minZ, z);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+      maxZ = Math.max(maxZ, z);
+      pointCount += 1;
+    }
+  }
+
+  if (
+    pointCount < 1
+  ) {
+    return 0;
   }
 
   return Math.hypot(
