@@ -1,6 +1,8 @@
 export interface ModelSpaceToolbarOrganizerOptions {
   readonly viewportContainer: HTMLElement;
   readonly startCircle: () => boolean;
+  readonly startRectangle?: () => boolean;
+  readonly startParallelLine?: () => boolean;
 }
 
 
@@ -52,6 +54,12 @@ export class ModelSpaceToolbarOrganizerController {
   private circleButton:
     HTMLButtonElement | null = null;
 
+  private rectangleButton:
+    HTMLButtonElement | null = null;
+
+  private parallelButton:
+    HTMLButtonElement | null = null;
+
   private disposed = false;
   private applying = false;
 
@@ -84,7 +92,11 @@ export class ModelSpaceToolbarOrganizerController {
     this.disposed = true;
     this.observer.disconnect();
     this.circleButton?.remove();
+    this.rectangleButton?.remove();
+    this.parallelButton?.remove();
     this.circleButton = null;
+    this.rectangleButton = null;
+    this.parallelButton = null;
 
     const toolbar =
       this.findToolbar();
@@ -114,6 +126,8 @@ export class ModelSpaceToolbarOrganizerController {
 
     try {
       this.ensureCircleButton(toolbar);
+      this.ensureRectangleButton(toolbar);
+      this.ensureParallelButton(toolbar);
       this.styleToolbar(toolbar);
       this.ensureCategoryLabels(toolbar);
       this.organizeChildren(toolbar);
@@ -135,24 +149,40 @@ export class ModelSpaceToolbarOrganizerController {
       );
   }
 
+  private findButton(
+    toolbar: HTMLElement,
+    labels: readonly string[],
+  ): HTMLButtonElement | null {
+    const normalized =
+      new Set(
+        labels.map(
+          (label) => label.toUpperCase(),
+        ),
+      );
+
+    return Array.from(
+      toolbar.querySelectorAll<HTMLButtonElement>(
+        "button",
+      ),
+    ).find(
+      (button) =>
+        normalized.has(
+          button.textContent
+            ?.trim()
+            .toUpperCase()
+          ?? "",
+        ),
+    )
+      ?? null;
+  }
+
   private ensureCircleButton(
     toolbar: HTMLElement,
   ): void {
     const existing =
-      Array.from(
-        toolbar.querySelectorAll<HTMLButtonElement>(
-          "button",
-        ),
-      ).find(
-        (button) => {
-          const text =
-            button.textContent
-              ?.trim()
-              .toUpperCase();
-          return text === "CÍRCULO"
-            || text === "CIRCULO"
-            || text === "CIRCLE";
-        },
+      this.findButton(
+        toolbar,
+        ["CÍRCULO", "CIRCULO", "CIRCLE"],
       );
 
     if (existing) {
@@ -181,19 +211,10 @@ export class ModelSpaceToolbarOrganizerController {
       },
     );
 
-    const buttons =
-      Array.from(
-        toolbar.querySelectorAll<HTMLButtonElement>(
-          "button",
-        ),
-      );
     const line =
-      buttons.find(
-        (item) =>
-          item.textContent
-            ?.trim()
-            .toUpperCase()
-          === "LINE",
+      this.findButton(
+        toolbar,
+        ["LINE"],
       );
 
     if (line?.parentElement === toolbar) {
@@ -209,6 +230,119 @@ export class ModelSpaceToolbarOrganizerController {
     this.circleButton = button;
   }
 
+  private ensureRectangleButton(
+    toolbar: HTMLElement,
+  ): void {
+    if (!this.options.startRectangle) return;
+
+    const existing =
+      this.findButton(
+        toolbar,
+        ["RECTÁNGULO", "RECTANGULO", "RECTANGLE"],
+      );
+    if (existing) {
+      this.rectangleButton = existing;
+      return;
+    }
+
+    const button =
+      document.createElement("button");
+    button.type = "button";
+    button.textContent = "RECTÁNGULO";
+    button.title =
+      "RECTÁNGULO · escriba REC o RECTANGULO y Enter · dos esquinas";
+    button.dataset["framelogicRectangleButton"] =
+      "true";
+    button.addEventListener(
+      "click",
+      () => {
+        const started =
+          this.options.startRectangle?.()
+          ?? false;
+        if (!started) {
+          window.alert(
+            "No se pudo iniciar RECTÁNGULO. Revisa que el layer activo no esté bloqueado.",
+          );
+        }
+      },
+    );
+
+    const circle =
+      this.circleButton
+      ?? this.findButton(
+        toolbar,
+        ["CÍRCULO", "CIRCULO", "CIRCLE"],
+      );
+
+    if (circle?.parentElement === toolbar) {
+      circle.insertAdjacentElement(
+        "afterend",
+        button,
+      );
+    }
+    else {
+      toolbar.append(button);
+    }
+
+    this.rectangleButton = button;
+  }
+
+  private ensureParallelButton(
+    toolbar: HTMLElement,
+  ): void {
+    if (!this.options.startParallelLine) return;
+
+    const existing =
+      this.findButton(
+        toolbar,
+        ["PARALELA", "LÍNEA PARALELA", "LINEA PARALELA"],
+      );
+    if (existing) {
+      this.parallelButton = existing;
+      return;
+    }
+
+    const button =
+      document.createElement("button");
+    button.type = "button";
+    button.textContent = "PARALELA";
+    button.title =
+      "LÍNEA PARALELA · escriba LL o LINEA PARALELA y Enter · selección + distancia + lado";
+    button.dataset["framelogicParallelButton"] =
+      "true";
+    button.addEventListener(
+      "click",
+      () => {
+        const started =
+          this.options.startParallelLine?.()
+          ?? false;
+        if (!started) {
+          window.alert(
+            "No se pudo iniciar LÍNEA PARALELA. Revisa que el layer activo no esté bloqueado.",
+          );
+        }
+      },
+    );
+
+    const trim =
+      this.findButton(
+        toolbar,
+        ["TRIM"],
+      );
+
+    if (trim?.parentElement === toolbar) {
+      trim.insertAdjacentElement(
+        "afterend",
+        button,
+      );
+    }
+    else {
+      toolbar.append(button);
+    }
+
+    this.parallelButton = button;
+  }
+
   private styleToolbar(
     toolbar: HTMLElement,
   ): void {
@@ -219,7 +353,7 @@ export class ModelSpaceToolbarOrganizerController {
         flexWrap: "wrap",
         alignItems: "center",
         gap: "5px",
-        maxWidth: "min(1080px, calc(100vw - 390px))",
+        maxWidth: "min(1180px, calc(100vw - 390px))",
         padding: "7px",
         border: "1px solid rgba(255,255,255,0.14)",
         borderRadius: "8px",
@@ -350,10 +484,6 @@ export class ModelSpaceToolbarOrganizerController {
       }
     }
 
-    /*
-     * Ocultamos el rótulo de una categoría si React todavía no ha montado
-     * ningún control de ese grupo. Evita encabezados huérfanos durante carga.
-     */
     for (const category of CATEGORY_SEQUENCE) {
       const label =
         toolbar.querySelector<HTMLElement>(
@@ -404,12 +534,18 @@ export class ModelSpaceToolbarOrganizerController {
       || text === "CÍRCULO"
       || text === "CIRCULO"
       || text === "CIRCLE"
+      || text === "RECTÁNGULO"
+      || text === "RECTANGULO"
+      || text === "RECTANGLE"
     ) {
       return "DRAW";
     }
 
     if (
       text === "TRIM"
+      || text === "PARALELA"
+      || text === "LÍNEA PARALELA"
+      || text === "LINEA PARALELA"
       || combined.includes("RECORT")
       || combined.includes("EXTEND")
     ) {
