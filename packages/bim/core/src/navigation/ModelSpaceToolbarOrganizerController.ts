@@ -7,16 +7,28 @@ export interface ModelSpaceToolbarOrganizerOptions {
 type ToolbarCategory =
   | "FILE"
   | "DRAW"
+  | "EDIT"
   | "WORKPLANE"
   | "PIECE";
+
+
+const CATEGORY_SEQUENCE:
+  readonly ToolbarCategory[] = [
+    "FILE",
+    "DRAW",
+    "EDIT",
+    "WORKPLANE",
+    "PIECE",
+  ];
 
 
 const CATEGORY_ORDER:
   Record<ToolbarCategory, number> = {
     FILE: 10,
-    DRAW: 20,
-    WORKPLANE: 30,
-    PIECE: 40,
+    DRAW: 100,
+    EDIT: 200,
+    WORKPLANE: 300,
+    PIECE: 400,
   };
 
 
@@ -24,6 +36,7 @@ const CATEGORY_LABEL:
   Record<ToolbarCategory, string> = {
     FILE: "Archivo",
     DRAW: "Dibujo CAD",
+    EDIT: "Editar",
     WORKPLANE: "Plano de trabajo",
     PIECE: "Piezas",
   };
@@ -72,6 +85,16 @@ export class ModelSpaceToolbarOrganizerController {
     this.observer.disconnect();
     this.circleButton?.remove();
     this.circleButton = null;
+
+    const toolbar =
+      this.findToolbar();
+    toolbar
+      ?.querySelectorAll(
+        '[data-framelogic-toolbar-category-label="true"]',
+      )
+      .forEach(
+        (element) => element.remove(),
+      );
   }
 
   private apply(): void {
@@ -92,6 +115,7 @@ export class ModelSpaceToolbarOrganizerController {
     try {
       this.ensureCircleButton(toolbar);
       this.styleToolbar(toolbar);
+      this.ensureCategoryLabels(toolbar);
       this.organizeChildren(toolbar);
     }
     finally {
@@ -163,14 +187,6 @@ export class ModelSpaceToolbarOrganizerController {
           "button",
         ),
       );
-    const trim =
-      buttons.find(
-        (item) =>
-          item.textContent
-            ?.trim()
-            .toUpperCase()
-          === "TRIM",
-      );
     const line =
       buttons.find(
         (item) =>
@@ -179,12 +195,9 @@ export class ModelSpaceToolbarOrganizerController {
             .toUpperCase()
           === "LINE",
       );
-    const anchor =
-      trim
-      ?? line;
 
-    if (anchor?.parentElement === toolbar) {
-      anchor.insertAdjacentElement(
+    if (line?.parentElement === toolbar) {
+      line.insertAdjacentElement(
         "afterend",
         button,
       );
@@ -205,8 +218,8 @@ export class ModelSpaceToolbarOrganizerController {
         display: "flex",
         flexWrap: "wrap",
         alignItems: "center",
-        gap: "6px",
-        maxWidth: "min(980px, calc(100vw - 390px))",
+        gap: "5px",
+        maxWidth: "min(1080px, calc(100vw - 390px))",
         padding: "7px",
         border: "1px solid rgba(255,255,255,0.14)",
         borderRadius: "8px",
@@ -217,6 +230,61 @@ export class ModelSpaceToolbarOrganizerController {
     );
   }
 
+  private ensureCategoryLabels(
+    toolbar: HTMLElement,
+  ): void {
+    for (const category of CATEGORY_SEQUENCE) {
+      const selector =
+        `[data-framelogic-toolbar-category-label="true"][data-toolbar-category="${category}"]`;
+      let label =
+        toolbar.querySelector<HTMLSpanElement>(
+          selector,
+        );
+
+      if (!label) {
+        label =
+          document.createElement("span");
+        label.dataset["framelogicToolbarCategoryLabel"] =
+          "true";
+        label.dataset["toolbarCategory"] =
+          category;
+        label.textContent =
+          CATEGORY_LABEL[category];
+        toolbar.append(label);
+      }
+
+      label.style.order =
+        String(
+          CATEGORY_ORDER[category],
+        );
+
+      Object.assign(
+        label.style,
+        {
+          display: "inline-flex",
+          alignItems: "center",
+          minHeight: "24px",
+          marginLeft:
+            category === "FILE"
+              ? "0"
+              : "8px",
+          padding: "2px 5px",
+          borderLeft:
+            category === "FILE"
+              ? "none"
+              : "1px solid rgba(148,163,184,0.42)",
+          color: "#9fb6c4",
+          font: "700 9px system-ui, sans-serif",
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+          userSelect: "none",
+          pointerEvents: "none",
+        },
+      );
+    }
+  }
+
   private organizeChildren(
     toolbar: HTMLElement,
   ): void {
@@ -225,15 +293,17 @@ export class ModelSpaceToolbarOrganizerController {
         toolbar.children,
       ).filter(
         (element): element is HTMLElement =>
-          element instanceof HTMLElement,
+          element instanceof HTMLElement
+          && element.dataset[
+            "framelogicToolbarCategoryLabel"
+          ] !== "true",
       );
 
-    const seenFirst =
-      new Set<ToolbarCategory>();
     const counters:
       Record<ToolbarCategory, number> = {
         FILE: 0,
         DRAW: 0,
+        EDIT: 0,
         WORKPLANE: 0,
         PIECE: 0,
       };
@@ -246,8 +316,11 @@ export class ModelSpaceToolbarOrganizerController {
       child.style.order =
         String(
           CATEGORY_ORDER[category]
+          + 1
           + index,
         );
+
+      child.style.marginLeft = "0";
 
       if (child instanceof HTMLButtonElement) {
         child.dataset["toolbarCategory"] =
@@ -275,18 +348,22 @@ export class ModelSpaceToolbarOrganizerController {
           },
         );
       }
+    }
 
-      if (!seenFirst.has(category)) {
-        seenFirst.add(category);
-        if (category !== "FILE") {
-          child.style.marginLeft =
-            "10px";
-          child.style.boxShadow =
-            "-6px 0 0 -5px rgba(148,163,184,0.45)";
-        }
-      }
-      else {
-        child.style.marginLeft = "0";
+    /*
+     * Ocultamos el rótulo de una categoría si React todavía no ha montado
+     * ningún control de ese grupo. Evita encabezados huérfanos durante carga.
+     */
+    for (const category of CATEGORY_SEQUENCE) {
+      const label =
+        toolbar.querySelector<HTMLElement>(
+          `[data-framelogic-toolbar-category-label="true"][data-toolbar-category="${category}"]`,
+        );
+      if (label) {
+        label.style.display =
+          counters[category] > 0
+            ? "inline-flex"
+            : "none";
       }
     }
   }
@@ -301,14 +378,14 @@ export class ModelSpaceToolbarOrganizerController {
       )
         .trim()
         .toUpperCase();
-    const title =
-      (
-        element.getAttribute("title")
-        ?? ""
-      )
-        .toUpperCase();
+    const originalTitle =
+      element instanceof HTMLButtonElement
+        ? element.dataset["toolbarOriginalTitle"]
+          ?? element.title
+        : element.getAttribute("title")
+          ?? "";
     const combined =
-      `${text} ${title}`;
+      `${text} ${originalTitle.toUpperCase()}`;
 
     if (
       combined.includes("IFC REFERENCIA")
@@ -324,12 +401,19 @@ export class ModelSpaceToolbarOrganizerController {
     if (
       text === "POINT"
       || text === "LINE"
-      || text === "TRIM"
       || text === "CÍRCULO"
       || text === "CIRCULO"
       || text === "CIRCLE"
     ) {
       return "DRAW";
+    }
+
+    if (
+      text === "TRIM"
+      || combined.includes("RECORT")
+      || combined.includes("EXTEND")
+    ) {
+      return "EDIT";
     }
 
     if (
