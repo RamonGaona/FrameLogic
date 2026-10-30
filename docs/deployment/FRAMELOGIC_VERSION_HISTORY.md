@@ -10,6 +10,22 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.34 — Cámara persistente por proyecto
+
+- `Guardar proyecto` incorpora la vista actual del Model Space dentro del `.flproject`.
+- Se conservan posición de cámara, `target`, azimut, inclinación, proyección ortográfica/perspectiva y zoom ortográfico.
+- Al volver a abrir el proyecto, FrameLogic reconstruye primero modelo/dibujos y después restaura la cámara guardada para recuperar el encuadre exacto de trabajo.
+- El autoguardado utiliza el mismo paquete y conserva también la vista.
+- Los `.flproject` antiguos sin estado de cámara siguen siendo compatibles y mantienen el comportamiento anterior de recuperación.
+
+### v0.1.33 — TOP/Norte inicial, SNAP sobre ORTO y longitud digitada visible
+
+- Los proyectos nuevos inician siempre en vista `TOP` con Norte arriba.
+- Durante `LINE`, un SNAP explícito tiene prioridad sobre ORTO para permitir conectar exactamente con `ENDPOINT`, `MIDPOINT` u otra referencia aunque el destino sea diagonal.
+- ORTO permanece activo fuera del SNAP y sigue restringiendo el movimiento libre a los ejes permitidos.
+- Mientras se escribe una longitud numérica para `LINE`, la cota temporal muestra inmediatamente el valor digitado antes de pulsar `Enter`.
+- `Enter` confirma esa longitud en la dirección actual del tramo.
+
 ### v0.1.32 — Ángulo dinámico y confirmación `L + Enter`
 
 - Mientras `LINE` espera el segundo punto, el preview muestra también el ángulo respecto al eje X del WorkPlane activo.
