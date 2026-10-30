@@ -26,6 +26,9 @@ export interface PrecisionCameraControls {
     type: string,
     listener: () => void,
   ): void;
+  getTarget?: (
+    target: THREE.Vector3,
+  ) => THREE.Vector3;
   setTarget(
     x: number,
     y: number,
@@ -66,18 +69,6 @@ export class PrecisionCameraController {
   ) {
     this.cameraProvider = cameraProvider;
     this.controls = controls;
-
-    /*
-     * Navegación CAD: el zoom debe seguir el punto inspeccionado y no quedar
-     * bloqueado al acercarse mucho a una pieza pequeña.
-     */
-    if (
-      "dollyToCursor"
-      in this.controls
-    ) {
-      this.controls.dollyToCursor =
-        true;
-    }
 
     if (
       "infinityDolly"
@@ -314,9 +305,21 @@ export class PrecisionCameraController {
         this.getOrthographicVisibleDiagonal(
           camera,
         );
+      const target =
+        this.getControlsTarget(
+          camera,
+        );
+      const physicalDistance =
+        Math.max(
+          camera.position.distanceTo(
+            target,
+          ),
+          this.controls.minDistance,
+          1,
+        );
       const nextFar = Math.max(
         camera.far,
-        this.controls.distance
+        physicalDistance
           + visibleDiagonal * 4,
         ORTHO_FAR_MIN_MM,
       );
@@ -343,6 +346,21 @@ export class PrecisionCameraController {
       camera
       instanceof THREE.OrthographicCamera
     ) {
+      /*
+       * CameraControls desplaza el target cuando dollyToCursor está activo.
+       * Al combinarlo con un zoom ortográfico muy amplio y el ajuste físico
+       * de distancia, ese target podía derivar cientos de metros y el primer
+       * PAN/orbit parecía "perder" la cámara. En ORTHO conservamos el target
+       * estable: la rueda cambia únicamente la escala del frustum.
+       */
+      if (
+        "dollyToCursor"
+        in this.controls
+      ) {
+        this.controls.dollyToCursor =
+          false;
+      }
+
       if (
         typeof this.controls.truckSpeed
         === "number"
@@ -358,6 +376,15 @@ export class PrecisionCameraController {
       this.ensureOrthographicCameraDistance(
         camera,
       );
+      return;
+    }
+
+    if (
+      "dollyToCursor"
+      in this.controls
+    ) {
+      this.controls.dollyToCursor =
+        true;
     }
   }
 
@@ -382,46 +409,58 @@ export class PrecisionCameraController {
         visibleDiagonal
           * ORTHO_CAMERA_DISTANCE_FACTOR,
       );
+    const target =
+      this.getControlsTarget(
+        camera,
+      );
+    const currentDistance =
+      camera.position.distanceTo(
+        target,
+      );
 
     if (
-      this.controls.distance
+      currentDistance
       >= requiredDistance * 0.98
     ) {
       return;
     }
 
-    const forward =
-      new THREE.Vector3();
-    camera.getWorldDirection(
-      forward,
-    );
+    const backward =
+      camera.position.clone()
+        .sub(
+          target,
+        );
 
     if (
-      forward.lengthSq()
+      backward.lengthSq()
+      <= 1e-20
+    ) {
+      camera.getWorldDirection(
+        backward,
+      );
+      backward.multiplyScalar(-1);
+    }
+
+    if (
+      backward.lengthSq()
       <= 1e-20
     ) {
       return;
     }
 
-    forward.normalize();
+    backward.normalize();
 
     /*
      * En una cámara ortográfica moverla hacia atrás sobre su mismo eje no
-     * cambia el tamaño aparente. Conservamos el target y el zoom, pero damos
-     * suficiente profundidad física para que geometría lejana no atraviese
-     * el plano near al orbitar alrededor del modelo.
+     * cambia el tamaño aparente. El target se obtiene directamente de
+     * CameraControls para que zoom, pan y órbita compartan exactamente el
+     * mismo centro de navegación aunque la distancia física crezca.
      */
-    const target =
-      camera.position.clone()
-        .addScaledVector(
-          forward,
-          this.controls.distance,
-        );
     const position =
       target.clone()
         .addScaledVector(
-          forward,
-          -requiredDistance,
+          backward,
+          requiredDistance,
         );
 
     this.adjustingOrthographicDistance =
@@ -454,6 +493,49 @@ export class PrecisionCameraController {
         error,
       );
     }
+  }
+
+
+  private getControlsTarget(
+    camera: THREE.Camera,
+  ): THREE.Vector3 {
+    const target =
+      new THREE.Vector3();
+
+    if (
+      this.controls.getTarget
+    ) {
+      this.controls.getTarget(
+        target,
+      );
+      return target;
+    }
+
+    const forward =
+      new THREE.Vector3();
+    camera.getWorldDirection(
+      forward,
+    );
+
+    if (
+      forward.lengthSq()
+      <= 1e-20
+    ) {
+      return target.copy(
+        camera.position,
+      );
+    }
+
+    return target.copy(
+      camera.position,
+    ).addScaledVector(
+      forward.normalize(),
+      Math.max(
+        this.controls.distance,
+        this.controls.minDistance,
+        1,
+      ),
+    );
   }
 
 
