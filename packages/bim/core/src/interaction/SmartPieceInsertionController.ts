@@ -45,6 +45,11 @@ type PlacementStage = "ANCHOR" | "DIRECTION";
  * - XYZ exacto: crea la instancia en las coordenadas indicadas.
  * - Dos puntos: primer clic = punto base; segundo clic = dirección local X.
  *
+ * El punto base es siempre el origen FrameLogic definido en
+ * PieceDefinition.coordinateSystem.origin. El origen nativo del STEP puede
+ * estar en cualquier coordenada del asset y no debe sustituir el punto base
+ * elegido durante Preparar pieza.
+ *
  * F8/ORTO también gobierna el segundo punto de dirección:
  * - WorkPlane activo: X/Y locales del plano.
  * - WorkPlane OFF: X/Y/Z globales.
@@ -180,7 +185,7 @@ export class SmartPieceInsertionController {
     this.options.scene.add(this.preview);
     this.panel.style.display = "flex";
     this.status.textContent =
-      "1º clic: punto base · 2º clic: dirección 3D · F8 ORTO";
+      "1º clic: origen FrameLogic · 2º clic: dirección 3D · F8 ORTO";
     this.options.canvas.style.cursor = "crosshair";
 
     return new Promise<PieceInstance | null>((resolve) => {
@@ -275,9 +280,10 @@ export class SmartPieceInsertionController {
     this.currentPoint = point;
 
     if (this.stage === "ANCHOR") {
-      this.preview.position.copy(point);
-      this.preview.visible = true;
-      this.preview.updateMatrixWorld(true);
+      this.placePreviewAtAnchor(
+        point,
+        new THREE.Quaternion(),
+      );
       return;
     }
 
@@ -321,11 +327,13 @@ export class SmartPieceInsertionController {
     if (this.stage === "ANCHOR") {
       this.anchor = point.clone();
       this.currentPoint = point.clone();
-      this.preview.position.copy(point);
-      this.preview.visible = true;
+      this.placePreviewAtAnchor(
+        point,
+        new THREE.Quaternion(),
+      );
       this.stage = "DIRECTION";
       this.status.textContent =
-        "Punto base fijado · 2º clic: dirección · F8 ORTO";
+        "Origen FrameLogic fijado · 2º clic: dirección · F8 ORTO";
       return;
     }
 
@@ -371,6 +379,10 @@ export class SmartPieceInsertionController {
   ): void {
     const definitionId = this.activeDefinitionId;
     if (!definitionId) return;
+    const translation = this.getAssetTranslationForAnchor(
+      point,
+      quaternion,
+    );
     const euler = new THREE.Euler()
       .setFromQuaternion(quaternion, "XYZ");
     const instance = this.options.designModel
@@ -378,9 +390,9 @@ export class SmartPieceInsertionController {
         definitionId,
         transform: {
           position: {
-            x: point.x,
-            y: point.y,
-            z: point.z,
+            x: translation.x,
+            y: translation.y,
+            z: translation.z,
           },
           rotation: {
             x: euler.x,
@@ -415,6 +427,55 @@ export class SmartPieceInsertionController {
     source.normalize();
     const target = direction.clone().normalize();
     return new THREE.Quaternion().setFromUnitVectors(source, target);
+  }
+
+  private getAssetTranslationForAnchor(
+    anchor: THREE.Vector3,
+    quaternion: THREE.Quaternion,
+  ): THREE.Vector3 {
+    const definition = this.activeDefinitionId
+      ? this.options.designModel.pieceDefinitions.get(
+          this.activeDefinitionId,
+        )
+      : undefined;
+
+    if (!definition) {
+      return anchor.clone();
+    }
+
+    const originOffset = new THREE.Vector3(
+      definition.coordinateSystem.origin.x,
+      definition.coordinateSystem.origin.y,
+      definition.coordinateSystem.origin.z,
+    ).applyQuaternion(quaternion);
+
+    /*
+     * PieceInstance.transform continúa representando la transformación del
+     * asset STEP. Para que el origen FrameLogic caiga exactamente sobre el
+     * punto elegido, desplazamos el asset por el offset rotado de su origen.
+     *
+     * world(origin FrameLogic) = translation + Q * assetOrigin = anchor
+     */
+    return anchor
+      .clone()
+      .sub(originOffset);
+  }
+
+  private placePreviewAtAnchor(
+    anchor: THREE.Vector3,
+    quaternion: THREE.Quaternion,
+  ): void {
+    if (!this.preview) return;
+
+    this.preview.quaternion.copy(quaternion);
+    this.preview.position.copy(
+      this.getAssetTranslationForAnchor(
+        anchor,
+        quaternion,
+      ),
+    );
+    this.preview.visible = true;
+    this.preview.updateMatrixWorld(true);
   }
 
   private constrainDirectionPoint(
@@ -465,7 +526,6 @@ export class SmartPieceInsertionController {
       this.currentPoint,
     );
 
-    this.preview.position.copy(this.anchor);
     this.applyDirectionToPreview(point);
     this.updateDirectionHelper(this.anchor, point);
   }
@@ -474,11 +534,11 @@ export class SmartPieceInsertionController {
     if (!this.preview || !this.anchor) return;
     const direction = point.clone().sub(this.anchor);
     if (direction.lengthSq() <= 1e-12) return;
-    this.preview.quaternion.copy(
-      this.directionQuaternion(direction),
+    const quaternion = this.directionQuaternion(direction);
+    this.placePreviewAtAnchor(
+      this.anchor,
+      quaternion,
     );
-    this.preview.visible = true;
-    this.preview.updateMatrixWorld(true);
   }
 
   private updateDirectionHelper(
