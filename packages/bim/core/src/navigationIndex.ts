@@ -135,13 +135,18 @@ export async function createBimCore(
 
   /*
    * Un proyecto nuevo siempre abre con la orientación CAD estándar:
-   * Norte arriba y vista TOP. La escala ortográfica se conserva.
+   * Norte arriba y vista TOP. Esta orientación se aplica SIN transición.
+   *
+   * Antes se llamaba a setCardinalDirection()/setStandardView(), cuyas
+   * rotaciones usan transición animada. Esa transición podía quedar pendiente
+   * hasta el primer evento de CameraControls y entonces un simple zoom parecía
+   * cambiar la vista a TOP. El arranque debe ser atómico: zoom cambia escala,
+   * nunca orientación.
    */
-  await core.setCardinalDirection(
-    "N",
-  );
-  await core.setStandardView(
-    "TOP",
+  await cameraControls.rotateTo(
+    0,
+    0,
+    false,
   );
 
   /*
