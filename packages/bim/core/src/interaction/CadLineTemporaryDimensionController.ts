@@ -8,6 +8,10 @@ import type {
   CadLineSelectionController,
 } from "./CadLineSelectionController";
 
+import type {
+  CadWorkPlaneController,
+} from "./CadWorkPlaneController";
+
 
 export interface CadLineTemporaryDimensionControllerOptions {
   readonly domElement: HTMLElement;
@@ -15,12 +19,14 @@ export interface CadLineTemporaryDimensionControllerOptions {
   readonly cameraProvider: () => THREE.Camera;
   readonly designModel: DesignModel;
   readonly lineSelection: CadLineSelectionController;
+  readonly workPlane: CadWorkPlaneController;
   readonly isLinePlacementActive: () => boolean;
 }
 
 interface Segment {
   readonly start: THREE.Vector3;
   readonly end: THREE.Vector3;
+  readonly source: "PREVIEW" | "SELECTION";
 }
 
 const TEMP_DIMENSION_COLOR = 0x72e6ff;
@@ -32,6 +38,8 @@ const TICK_PIXELS = 5;
  *
  * - Una línea seleccionada muestra su longitud sin crear una anotación.
  * - Mientras LINE espera el segundo punto, mide el preview en tiempo real.
+ * - Durante el preview también muestra el ángulo respecto al eje X del
+ *   WorkPlane activo (o X global si el WorkPlane está desactivado).
  * - La separación respecto a la línea se mantiene aproximadamente constante
  *   en pantalla, independientemente del zoom y de la longitud en milímetros.
  */
@@ -41,6 +49,7 @@ export class CadLineTemporaryDimensionController {
   private readonly cameraProvider: () => THREE.Camera;
   private readonly designModel: DesignModel;
   private readonly lineSelection: CadLineSelectionController;
+  private readonly workPlane: CadWorkPlaneController;
   private readonly isLinePlacementActive: () => boolean;
 
   private readonly material = new THREE.LineBasicMaterial({
@@ -54,6 +63,7 @@ export class CadLineTemporaryDimensionController {
   private readonly geometry = new THREE.BufferGeometry();
   private readonly dimensionLines: THREE.LineSegments;
   private readonly label: HTMLDivElement;
+  private readonly angleLabel: HTMLDivElement;
 
   private animationFrame: number | null = null;
   private disposed = false;
@@ -66,6 +76,7 @@ export class CadLineTemporaryDimensionController {
     this.cameraProvider = options.cameraProvider;
     this.designModel = options.designModel;
     this.lineSelection = options.lineSelection;
+    this.workPlane = options.workPlane;
     this.isLinePlacementActive = options.isLinePlacementActive;
 
     this.dimensionLines = new THREE.LineSegments(
@@ -80,6 +91,16 @@ export class CadLineTemporaryDimensionController {
 
     this.label = this.createLabel();
     this.label.style.display = "none";
+
+    this.angleLabel = this.createLabel();
+    this.angleLabel.dataset[
+      "framelogicTemporaryLineAngle"
+    ] = "true";
+    this.angleLabel.style.padding = "2px 5px";
+    this.angleLabel.style.borderColor =
+      "rgba(220,235,242,0.75)";
+    this.angleLabel.style.color = "#eef8fb";
+    this.angleLabel.style.display = "none";
 
     this.scheduleSync();
   }
@@ -168,6 +189,28 @@ export class CadLineTemporaryDimensionController {
       .lerp(dimensionEnd, 0.5);
     this.label.textContent = this.formatDistance(distance);
     this.syncLabel(labelPoint, rect, camera);
+
+    if (segment.source === "PREVIEW") {
+      const angle = this.getWorkPlaneAngle(
+        segment.start,
+        segment.end,
+      );
+
+      if (angle !== null) {
+        this.angleLabel.textContent = `${angle}°`;
+        this.syncAngleLabel(
+          segment.start,
+          rect,
+          camera,
+        );
+      }
+      else {
+        this.angleLabel.style.display = "none";
+      }
+    }
+    else {
+      this.angleLabel.style.display = "none";
+    }
   }
 
   private getActiveSegment(): Segment | null {
@@ -198,6 +241,7 @@ export class CadLineTemporaryDimensionController {
         line.end.y,
         line.end.z,
       ),
+      source: "SELECTION",
     };
   }
 
@@ -227,7 +271,44 @@ export class CadLineTemporaryDimensionController {
       end: new THREE.Vector3()
         .fromBufferAttribute(position, 1)
         .applyMatrix4(preview.matrixWorld),
+      source: "PREVIEW",
     };
+  }
+
+  private getWorkPlaneAngle(
+    start: THREE.Vector3,
+    end: THREE.Vector3,
+  ): number | null {
+    const state = this.workPlane.getState();
+    const xAxis = state.enabled
+      ? state.xAxis.clone().normalize()
+      : new THREE.Vector3(1, 0, 0);
+    const yAxis = state.enabled
+      ? state.yAxis.clone().normalize()
+      : new THREE.Vector3(0, 1, 0);
+
+    const direction = end.clone().sub(start);
+    const x = direction.dot(xAxis);
+    const y = direction.dot(yAxis);
+
+    if (
+      !Number.isFinite(x)
+      || !Number.isFinite(y)
+      || Math.hypot(x, y) <= 1e-9
+    ) {
+      return null;
+    }
+
+    let degrees = THREE.MathUtils.radToDeg(
+      Math.atan2(y, x),
+    );
+
+    if (degrees < 0) {
+      degrees += 360;
+    }
+
+    const rounded = Math.round(degrees) % 360;
+    return rounded === 360 ? 0 : rounded;
   }
 
   private getScreenUpPerpendicular(
@@ -323,6 +404,37 @@ export class CadLineTemporaryDimensionController {
     this.label.style.display = "block";
   }
 
+  private syncAngleLabel(
+    point: THREE.Vector3,
+    rect: DOMRect,
+    camera: THREE.Camera,
+  ): void {
+    const projected = point.clone().project(camera);
+
+    if (
+      !Number.isFinite(projected.x)
+      || !Number.isFinite(projected.y)
+      || !Number.isFinite(projected.z)
+      || projected.z < -1
+      || projected.z > 1
+    ) {
+      this.angleLabel.style.display = "none";
+      return;
+    }
+
+    this.angleLabel.style.left = `${
+      rect.left
+      + (projected.x + 1) * 0.5 * rect.width
+      + 18
+    }px`;
+    this.angleLabel.style.top = `${
+      rect.top
+      + (1 - projected.y) * 0.5 * rect.height
+      + 22
+    }px`;
+    this.angleLabel.style.display = "block";
+  }
+
   private createLabel(): HTMLDivElement {
     const label = document.createElement("div");
     label.dataset["framelogicTemporaryLineDimension"] = "true";
@@ -358,6 +470,7 @@ export class CadLineTemporaryDimensionController {
   private hide(): void {
     this.dimensionLines.visible = false;
     this.label.style.display = "none";
+    this.angleLabel.style.display = "none";
   }
 
   dispose(): void {
@@ -373,5 +486,6 @@ export class CadLineTemporaryDimensionController {
     this.geometry.dispose();
     this.material.dispose();
     this.label.remove();
+    this.angleLabel.remove();
   }
 }
