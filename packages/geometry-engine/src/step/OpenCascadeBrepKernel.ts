@@ -89,6 +89,12 @@ interface RuntimeDocument {
 }
 
 
+interface ExtractedSurfaces {
+  readonly cylinders: BrepExactCylinder[];
+  readonly planes: BrepExactPlane[];
+}
+
+
 let sharedKernel:
   OpenCascadeBrepKernel
   | null =
@@ -127,6 +133,11 @@ export class OpenCascadeBrepKernel {
       string,
       RuntimeDocument
     >();
+
+
+  async warmup(): Promise<void> {
+    await this.getOpenCascade();
+  }
 
 
   async loadStep(
@@ -193,6 +204,12 @@ export class OpenCascadeBrepKernel {
       }
 
       try {
+        const surfaces =
+          this.extractSurfaces(
+            oc,
+            shape,
+          );
+
         const runtime:
           RuntimeDocument = {
             id,
@@ -211,15 +228,9 @@ export class OpenCascadeBrepKernel {
                 shape,
               ),
             cylinders:
-              this.extractCylinders(
-                oc,
-                shape,
-              ),
+              surfaces.cylinders,
             planes:
-              this.extractPlanes(
-                oc,
-                shape,
-              ),
+              surfaces.planes,
           };
 
         this.documents.set(
@@ -564,98 +575,12 @@ export class OpenCascadeBrepKernel {
   }
 
 
-  private extractCylinders(
+  private extractSurfaces(
     oc: OpenCascadeInstance,
     shape: TopoDS_Shape,
-  ): BrepExactCylinder[] {
+  ): ExtractedSurfaces {
     const cylinders:
       BrepExactCylinder[] = [];
-    const explorer =
-      new oc.TopExp_Explorer_2(
-        shape,
-        asShapeEnum(
-          oc.TopAbs_ShapeEnum
-            .TopAbs_FACE,
-        ),
-        asShapeEnum(
-          oc.TopAbs_ShapeEnum
-            .TopAbs_SHAPE,
-        ),
-      );
-    let index =
-      0;
-
-    try {
-      while (
-        explorer.More()
-      ) {
-        const face =
-          oc.TopoDS.Face_1(
-            explorer.Current(),
-          );
-        const adaptor =
-          new oc.BRepAdaptor_Surface_2(
-            face,
-            true,
-          );
-
-        try {
-          if (
-            adaptor.GetType()
-              === oc.GeomAbs_SurfaceType
-                .GeomAbs_Cylinder
-          ) {
-            const cylinder =
-              adaptor.Cylinder();
-            const axis =
-              cylinder.Axis();
-            const origin =
-              axis.Location();
-            const direction =
-              axis.Direction();
-
-            cylinders.push({
-              id:
-                `cylinder-${index}`,
-              axisOrigin:
-                point3(
-                  origin,
-                ),
-              axisDirection:
-                vector3(
-                  direction,
-                ),
-              radius:
-                cylinder.Radius(),
-            });
-
-            direction.delete();
-            origin.delete();
-            axis.delete();
-            cylinder.delete();
-          }
-        }
-        finally {
-          adaptor.delete();
-          face.delete();
-        }
-
-        explorer.Next();
-        index += 1;
-      }
-    }
-    finally {
-      explorer.delete();
-    }
-
-    return cylinders;
-  }
-
-
-  private extractPlanes(
-    oc: OpenCascadeInstance,
-    shape: TopoDS_Shape,
-  ): BrepExactPlane[] {
     const planes:
       BrepExactPlane[] = [];
     const explorer =
@@ -688,8 +613,45 @@ export class OpenCascadeBrepKernel {
           );
 
         try {
+          const surfaceType =
+            adaptor.GetType();
+
           if (
-            adaptor.GetType()
+            surfaceType
+              === oc.GeomAbs_SurfaceType
+                .GeomAbs_Cylinder
+          ) {
+            const cylinder =
+              adaptor.Cylinder();
+            const axis =
+              cylinder.Axis();
+            const origin =
+              axis.Location();
+            const direction =
+              axis.Direction();
+
+            cylinders.push({
+              id:
+                `cylinder-${index}`,
+              axisOrigin:
+                point3(
+                  origin,
+                ),
+              axisDirection:
+                vector3(
+                  direction,
+                ),
+              radius:
+                cylinder.Radius(),
+            });
+
+            direction.delete();
+            origin.delete();
+            axis.delete();
+            cylinder.delete();
+          }
+          else if (
+            surfaceType
               === oc.GeomAbs_SurfaceType
                 .GeomAbs_Plane
           ) {
@@ -734,7 +696,10 @@ export class OpenCascadeBrepKernel {
       explorer.delete();
     }
 
-    return planes;
+    return {
+      cylinders,
+      planes,
+    };
   }
 
 
