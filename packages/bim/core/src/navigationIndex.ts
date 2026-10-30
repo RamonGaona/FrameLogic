@@ -15,6 +15,14 @@ import {
 } from "./interaction/CadCommandInputController";
 
 import {
+  CadLineNumericPreviewBridgeController,
+} from "./interaction/CadLineNumericPreviewBridgeController";
+
+import {
+  CadLineSnapOrthoPriorityController,
+} from "./interaction/CadLineSnapOrthoPriorityController";
+
+import {
   CadLineTemporaryDimensionController,
 } from "./interaction/CadLineTemporaryDimensionController";
 
@@ -122,6 +130,17 @@ export async function createBimCore(
   }
 
   /*
+   * Un proyecto nuevo siempre abre con la orientación CAD estándar:
+   * Norte arriba y vista TOP. La escala ortográfica se conserva.
+   */
+  await core.setCardinalDirection(
+    "N",
+  );
+  await core.setStandardView(
+    "TOP",
+  );
+
+  /*
    * configureMillimeterRuntime conserva la escala física histórica del grid
    * multiplicándolo por 1000. Sustituimos únicamente su geometría para pasar
    * de 20 divisiones de 1000 mm a una retícula útil de 100 mm, manteniendo
@@ -183,6 +202,12 @@ export async function createBimCore(
 
   const renderer =
     core.world.renderer;
+
+  const lineSnapOrthoPriority =
+    new CadLineSnapOrthoPriorityController(
+      core.cadLinePlacement,
+    );
+
   const temporaryLineDimensions =
     renderer
       ? new CadLineTemporaryDimensionController({
@@ -200,6 +225,15 @@ export async function createBimCore(
             core.cadWorkPlane,
           isLinePlacementActive: () =>
             core.cadLinePlacement.isActive,
+        })
+      : null;
+
+  const lineNumericPreview =
+    renderer
+      ? new CadLineNumericPreviewBridgeController({
+          container,
+          linePlacement:
+            core.cadLinePlacement,
         })
       : null;
 
@@ -228,7 +262,9 @@ export async function createBimCore(
       disposed =
         true;
       commandInput?.dispose();
+      lineNumericPreview?.dispose();
       temporaryLineDimensions?.dispose();
+      lineSnapOrthoPriority.dispose();
       disposeMillimeterRuntime();
       baseDispose();
     };
