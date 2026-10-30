@@ -127,6 +127,60 @@ export async function createBimCore(
   const core = await createDrawingBimCore(container);
 
   /*
+   * Preparar pieza define metadata/local frame; no es una transformación
+   * geométrica de la instancia que el usuario está viendo.
+   *
+   * PieceDefinitionPreparationController conserva todavía una matriz local
+   * histórica para presentar el origen en (0,0,0). En Model Space esa matriz
+   * hacía que el STEP saltara al elegir un nuevo origen. Restauramos de forma
+   * inmediata la transformación real de la PieceInstance y resincronizamos
+   * los helpers. Así el origen cambia, pero la geometría permanece inmóvil.
+   */
+  const restorePreparedPieceVisualPlacement = (): void => {
+    const state = core.piecePreparation.getState();
+    if (state.instanceId) {
+      const object = core.designScene.getInstanceObject(
+        state.instanceId,
+      );
+      if (object) {
+        object.matrixAutoUpdate = true;
+      }
+    }
+
+    core.designScene.sync();
+    core.pieceDefinitionHelpers.sync();
+    core.geometryQuery.clearCache();
+  };
+
+  const baseStartPiecePreparation =
+    core.piecePreparation.start.bind(
+      core.piecePreparation,
+    );
+  core.piecePreparation.start = (
+    instanceId,
+  ) => {
+    const state = baseStartPiecePreparation(
+      instanceId,
+    );
+    restorePreparedPieceVisualPlacement();
+    return state;
+  };
+
+  const baseSetPreparedPieceOrigin =
+    core.piecePreparation.setOriginFromWorldPoint.bind(
+      core.piecePreparation,
+    );
+  core.piecePreparation.setOriginFromWorldPoint = (
+    worldPoint,
+  ) => {
+    const definition = baseSetPreparedPieceOrigin(
+      worldPoint,
+    );
+    restorePreparedPieceVisualPlacement();
+    return definition;
+  };
+
+  /*
    * SNAP no debe anunciarse permanentemente en Model Space.
    * Se habilita más abajo únicamente mientras una herramienta
    * que realmente consume SNAP está activa.
