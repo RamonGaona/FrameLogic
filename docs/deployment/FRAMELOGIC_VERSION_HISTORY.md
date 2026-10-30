@@ -10,6 +10,20 @@ Este archivo registra la versión visible utilizada para comprobar que `framelog
 
 ## Versiones
 
+### v0.1.36 — Proyecto nuevo inicia en TOP + Norte
+
+- Se corrige el bootstrap de precisión que todavía imponía explícitamente una vista `ISO` al terminar de crear el Model Space.
+- Los proyectos nuevos quedan en proyección ortográfica, con dirección cardinal `N` y vista `TOP`.
+- La orientación se aplica en el orden `Norte → TOP`, porque `TOP` conserva el azimut activo y lleva únicamente la inclinación a 0°.
+- Abrir un `.flproject` con cámara guardada sigue pudiendo sustituir esta vista inicial por la vista persistida del proyecto.
+
+### v0.1.35 — STEP conserva escala real en milímetros
+
+- Se elimina el escalado visual heredado `× 0.001` que se aplicaba después de que OpenCascade ya hubiera normalizado el STEP a milímetros.
+- Una geometría STEP de `2 m` debe representarse y medirse como aproximadamente `2000 mm`, no como `2 mm`.
+- La malla visible y las features B-Rep/SNAP quedan en la misma escala de Model Space.
+- Los bytes STEP originales guardados en `.flproject` no se modifican; al reconstruir la pieza se usa la escala correcta en milímetros.
+
 ### v0.1.34 — Cámara persistente por proyecto
 
 - `Guardar proyecto` incorpora la vista actual del Model Space dentro del `.flproject`.
