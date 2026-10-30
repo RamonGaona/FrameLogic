@@ -14,6 +14,10 @@ import {
   installModelSpacePanelLayout,
 } from "./features/bim/installModelSpacePanelLayout";
 
+import {
+  installStepImportWarmup,
+} from "./features/bim/step/installStepImportWarmup";
+
 
 function App() {
 
@@ -25,7 +29,11 @@ function App() {
       const uninstallCadLayerPanelLayout =
         installCadLayerPanelLayout();
 
+      const uninstallStepImportWarmup =
+        installStepImportWarmup();
+
       return () => {
+        uninstallStepImportWarmup();
         uninstallCadLayerPanelLayout();
         uninstallModelSpacePanelLayout();
       };
