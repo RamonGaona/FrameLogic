@@ -18,6 +18,10 @@ import {
   CadCirclePlacementController,
 } from "./interaction/CadCirclePlacementController";
 
+import {
+  ModelSpaceToolbarOrganizerController,
+} from "./navigation/ModelSpaceToolbarOrganizerController";
+
 import type {
   FrameLogicProjectPackage,
 } from "./project/FrameLogicProjectPackageController";
@@ -133,6 +137,14 @@ export async function createBimCore(
       },
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
+    });
+
+  const toolbarOrganizer =
+    new ModelSpaceToolbarOrganizerController({
+      viewportContainer:
+        container,
+      startCircle: () =>
+        cadCirclePlacement.start(),
     });
 
   const unsubscribeLayers =
@@ -269,6 +281,7 @@ export async function createBimCore(
       if (disposed) return;
       disposed = true;
       unsubscribeLayers();
+      toolbarOrganizer.dispose();
       cadCirclePlacement.dispose();
       cadCircleScene.dispose();
       baseDispose();
