@@ -19,6 +19,14 @@ import {
 } from "./interaction/CadCirclePlacementController";
 
 import {
+  CadRectanglePlacementController,
+} from "./interaction/CadRectanglePlacementController";
+
+import {
+  CadParallelLineController,
+} from "./interaction/CadParallelLineController";
+
+import {
   ModelSpaceToolbarOrganizerController,
 } from "./navigation/ModelSpaceToolbarOrganizerController";
 
@@ -46,6 +54,22 @@ export type {
   CadCirclePlacementControllerOptions,
 } from "./interaction/CadCirclePlacementController";
 
+export {
+  CadRectanglePlacementController,
+} from "./interaction/CadRectanglePlacementController";
+
+export type {
+  CadRectanglePlacementControllerOptions,
+} from "./interaction/CadRectanglePlacementController";
+
+export {
+  CadParallelLineController,
+} from "./interaction/CadParallelLineController";
+
+export type {
+  CadParallelLineControllerOptions,
+} from "./interaction/CadParallelLineController";
+
 
 type CircleProjectPackage =
   FrameLogicProjectPackage
@@ -57,6 +81,12 @@ type CircleProjectPackage =
 
 interface FrameLogicCommandWindow extends Window {
   __frameLogicExternalCadCommandActive?:
+    () => boolean;
+  __frameLogicStartParallelLineCommand?:
+    () => boolean;
+  __frameLogicStartRectangleCommand?:
+    () => boolean;
+  __frameLogicCanStartRectangleTextCommand?:
     () => boolean;
 }
 
@@ -84,7 +114,19 @@ export type PrecisionBimCoreInstance =
     readonly cadCirclePlacement:
       CadCirclePlacementController;
 
+    readonly cadRectanglePlacement:
+      CadRectanglePlacementController;
+
+    readonly cadParallelLine:
+      CadParallelLineController;
+
     readonly startCircleCommand:
+      () => boolean;
+
+    readonly startRectangleCommand:
+      () => boolean;
+
+    readonly startParallelLineCommand:
       () => boolean;
   };
 
@@ -103,9 +145,17 @@ export async function createBimCore(
   if (!renderer) {
     core.dispose();
     throw new Error(
-      "FrameLogic CIRCLE requires an initialized renderer.",
+      "FrameLogic CAD tools require an initialized renderer.",
     );
   }
+
+  const cancelBaseCadTools = (): void => {
+    core.cadTrim.deactivate();
+    core.cancelActiveCadCommand();
+    core.cadWindowSelection.cancel();
+    core.cancelCadWorkPlaneEdit();
+    core.cancelPreparedPieceOriginSnapEdit();
+  };
 
   const cadCircleScene =
     new CadCircleSceneController(
@@ -149,11 +199,85 @@ export async function createBimCore(
           .clone()
         ?? null,
       beforeStart: () => {
-        core.cadTrim.deactivate();
-        core.cancelActiveCadCommand();
-        core.cadWindowSelection.cancel();
-        core.cancelCadWorkPlaneEdit();
-        core.cancelPreparedPieceOriginSnapEdit();
+        cadRectanglePlacement.cancel();
+        cadParallelLine.cancel();
+        cancelBaseCadTools();
+      },
+      clearGeometryQueryCache: () =>
+        core.geometryQuery.clearCache(),
+    });
+
+  const cadRectanglePlacement =
+    new CadRectanglePlacementController({
+      container,
+      domElement:
+        renderer.three.domElement,
+      scene:
+        core.world.scene.three,
+      cameraProvider: () =>
+        core.world.camera.three,
+      designModel:
+        core.designModel,
+      lineScene:
+        core.cadLineScene,
+      workPlane:
+        core.cadWorkPlane,
+      history:
+        core.cadHistory,
+      designSelection:
+        core.designSelection,
+      pointSelection:
+        core.cadPointSelection,
+      lineSelection:
+        core.cadLineSelection,
+      findSnapPoint: (
+        clientX,
+        clientY,
+      ) =>
+        core.snapEngine
+          .findSnap(
+            clientX,
+            clientY,
+          )
+          ?.point
+          .clone()
+        ?? null,
+      beforeStart: () => {
+        cadCirclePlacement.cancel();
+        cadParallelLine.cancel();
+        cancelBaseCadTools();
+      },
+      clearGeometryQueryCache: () =>
+        core.geometryQuery.clearCache(),
+    });
+
+  const cadParallelLine =
+    new CadParallelLineController({
+      container,
+      domElement:
+        renderer.three.domElement,
+      scene:
+        core.world.scene.three,
+      cameraProvider: () =>
+        core.world.camera.three,
+      designModel:
+        core.designModel,
+      lineScene:
+        core.cadLineScene,
+      lineSelection:
+        core.cadLineSelection,
+      pointSelection:
+        core.cadPointSelection,
+      designSelection:
+        core.designSelection,
+      workPlane:
+        core.cadWorkPlane,
+      history:
+        core.cadHistory,
+      beforeStart: () => {
+        cadCirclePlacement.cancel();
+        cadRectanglePlacement.cancel();
+        cancelBaseCadTools();
       },
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
@@ -165,39 +289,95 @@ export async function createBimCore(
         container,
       startCircle: () =>
         cadCirclePlacement.start(),
+      startRectangle: () =>
+        cadRectanglePlacement.start(),
+      startParallelLine: () =>
+        cadParallelLine.start(),
     });
 
-  /*
-   * CadCommandInputController se construye antes que este wrapper y captura L
-   * en fase capture para mostrar "L / LINE + Enter". Le exponemos únicamente
-   * un predicado de herramienta externa activa para que no robe L mientras
-   * CIRCLE está abierto. Así podemos cerrar CIRCLE y cambiar de herramienta
-   * de forma determinista.
-   */
   const commandWindow =
     window as FrameLogicCommandWindow;
+
   const previousExternalCommandPredicate =
     commandWindow
       .__frameLogicExternalCadCommandActive;
-  const circleExternalCommandPredicate =
+  const previousStartParallel =
+    commandWindow
+      .__frameLogicStartParallelLineCommand;
+  const previousStartRectangle =
+    commandWindow
+      .__frameLogicStartRectangleCommand;
+  const previousCanStartRectangle =
+    commandWindow
+      .__frameLogicCanStartRectangleTextCommand;
+
+  const externalCommandPredicate =
     (): boolean =>
       cadCirclePlacement.isActive
+      || cadRectanglePlacement.isActive
+      || cadParallelLine.isActive
       || (
         previousExternalCommandPredicate
           ?.()
         ?? false
       );
 
+  const startParallelFromCommand =
+    (): boolean =>
+      cadParallelLine.start();
+
+  const startRectangleFromCommand =
+    (): boolean =>
+      cadRectanglePlacement.start();
+
+  const canStartRectangleFromText =
+    (): boolean => {
+      if (
+        previousCanStartRectangle
+        && !previousCanStartRectangle()
+      ) {
+        return false;
+      }
+
+      return core.designSelection
+        .getSelectedIds()
+        .length === 0
+        && core.cadLineSelection
+          .getSelectedIds()
+          .length === 0
+        && core.cadPointSelection
+          .getSelectedIds()
+          .length === 0;
+    };
+
   commandWindow
     .__frameLogicExternalCadCommandActive =
-      circleExternalCommandPredicate;
+      externalCommandPredicate;
+  commandWindow
+    .__frameLogicStartParallelLineCommand =
+      startParallelFromCommand;
+  commandWindow
+    .__frameLogicStartRectangleCommand =
+      startRectangleFromCommand;
+  commandWindow
+    .__frameLogicCanStartRectangleTextCommand =
+      canStartRectangleFromText;
 
-  const handleCircleCommandSwitch =
+  /*
+   * Los comandos externos son modales. Si el usuario cambia a una herramienta
+   * histórica de FrameLogic, cerramos primero CIRCLE / RECTANGLE / PARALLEL y
+   * arrancamos la nueva herramienta en el siguiente microtask.
+   */
+  const handleExternalCommandSwitch =
     (
       event: KeyboardEvent,
     ): void => {
       if (
-        !cadCirclePlacement.isActive
+        !(
+          cadCirclePlacement.isActive
+          || cadRectanglePlacement.isActive
+          || cadParallelLine.isActive
+        )
         || event.ctrlKey
         || event.metaKey
         || event.altKey
@@ -220,14 +400,11 @@ export async function createBimCore(
         return;
       }
 
-      /*
-       * En la etapa Radio/Diámetro, R pertenece a CIRCLE. Su listener se
-       * ejecuta antes y usa stopImmediatePropagation(), por lo que esta rama
-       * sólo recibe R cuando realmente significa cambiar a ROTATE.
-       */
       event.preventDefault();
       event.stopImmediatePropagation();
       cadCirclePlacement.cancel();
+      cadRectanglePlacement.cancel();
+      cadParallelLine.cancel();
 
       window.queueMicrotask(
         () => {
@@ -251,7 +428,7 @@ export async function createBimCore(
 
   window.addEventListener(
     "keydown",
-    handleCircleCommandSwitch,
+    handleExternalCommandSwitch,
     true,
   );
 
@@ -263,9 +440,8 @@ export async function createBimCore(
     );
 
   /*
-   * Extendemos el .flproject sin romper el schema v1. El parser actual
-   * conserva propiedades adicionales y los proyectos anteriores simplemente
-   * no tienen cadCircles.
+   * CIRCLE es entidad propia y por eso se agrega al .flproject. RECTANGLE y
+   * PARALLEL producen CadLine normales, que ya forman parte del paquete base.
    */
   const baseCreateProjectPackage =
     core.projectPackage
@@ -303,6 +479,8 @@ export async function createBimCore(
         FrameLogicProjectPackage,
     ): Promise<void> => {
       cadCirclePlacement.cancel();
+      cadRectanglePlacement.cancel();
+      cadParallelLine.cancel();
       cadCircleScene.clear();
 
       await baseRestoreProjectPackage(
@@ -325,6 +503,8 @@ export async function createBimCore(
   core.cadTrim.activate =
     (): boolean => {
       cadCirclePlacement.cancel();
+      cadRectanglePlacement.cancel();
+      cadParallelLine.cancel();
       return baseTrimActivate();
     };
 
@@ -332,51 +512,65 @@ export async function createBimCore(
     (): boolean =>
       cadCirclePlacement.start();
 
+  const startRectangleCommand =
+    (): boolean =>
+      cadRectanglePlacement.start();
+
+  const startParallelLineCommand =
+    (): boolean =>
+      cadParallelLine.start();
+
+  const cancelExternalTools = (): void => {
+    cadCirclePlacement.cancel();
+    cadRectanglePlacement.cancel();
+    cadParallelLine.cancel();
+  };
+
   const startPointCommand =
     (): boolean => {
-      cadCirclePlacement.cancel();
+      cancelExternalTools();
       return core.startPointCommand();
     };
 
   const startLineCommand =
     (): boolean => {
-      cadCirclePlacement.cancel();
+      cancelExternalTools();
       return core.startLineCommand();
     };
 
   const startMoveCommand =
     (): boolean => {
-      cadCirclePlacement.cancel();
+      cancelExternalTools();
       return core.startMoveCommand();
     };
 
   const startRotateCommand =
     (): boolean => {
-      cadCirclePlacement.cancel();
+      cancelExternalTools();
       return core.startRotateCommand();
     };
 
   const startTrimCommand =
     (): boolean => {
-      cadCirclePlacement.cancel();
+      cancelExternalTools();
       return core.startTrimCommand();
     };
 
   const cancelActiveCadCommand =
     (): void => {
-      cadCirclePlacement.cancel();
+      cancelExternalTools();
       core.cancelActiveCadCommand();
     };
 
   const undoCadAction =
     (): boolean => {
-      cadCirclePlacement.cancel();
+      cancelExternalTools();
       return core.undoCadAction();
     };
 
   const redoCadAction =
     (): boolean => {
-      cadCirclePlacement.cancel();
+      cancelExternalTools();
       return core.redoCadAction();
     };
 
@@ -391,22 +585,54 @@ export async function createBimCore(
 
       window.removeEventListener(
         "keydown",
-        handleCircleCommandSwitch,
+        handleExternalCommandSwitch,
         true,
       );
 
       if (
         commandWindow
           .__frameLogicExternalCadCommandActive
-        === circleExternalCommandPredicate
+        === externalCommandPredicate
       ) {
         commandWindow
           .__frameLogicExternalCadCommandActive =
             previousExternalCommandPredicate;
       }
 
+      if (
+        commandWindow
+          .__frameLogicStartParallelLineCommand
+        === startParallelFromCommand
+      ) {
+        commandWindow
+          .__frameLogicStartParallelLineCommand =
+            previousStartParallel;
+      }
+
+      if (
+        commandWindow
+          .__frameLogicStartRectangleCommand
+        === startRectangleFromCommand
+      ) {
+        commandWindow
+          .__frameLogicStartRectangleCommand =
+            previousStartRectangle;
+      }
+
+      if (
+        commandWindow
+          .__frameLogicCanStartRectangleTextCommand
+        === canStartRectangleFromText
+      ) {
+        commandWindow
+          .__frameLogicCanStartRectangleTextCommand =
+            previousCanStartRectangle;
+      }
+
       unsubscribeLayers();
       toolbarOrganizer.dispose();
+      cadParallelLine.dispose();
+      cadRectanglePlacement.dispose();
       cadCirclePlacement.dispose();
       cadCircleScene.dispose();
       baseDispose();
@@ -416,7 +642,11 @@ export async function createBimCore(
     ...core,
     cadCircleScene,
     cadCirclePlacement,
+    cadRectanglePlacement,
+    cadParallelLine,
     startCircleCommand,
+    startRectangleCommand,
+    startParallelLineCommand,
     startPointCommand,
     startLineCommand,
     startMoveCommand,
