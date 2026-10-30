@@ -11,6 +11,10 @@ import type {
 } from "./engine/createFrameLogicBimCoreNavigation";
 
 import {
+  CadCommandInputController,
+} from "./interaction/CadCommandInputController";
+
+import {
   CadLineTemporaryDimensionController,
 } from "./interaction/CadLineTemporaryDimensionController";
 
@@ -192,8 +196,22 @@ export async function createBimCore(
             core.designModel,
           lineSelection:
             core.cadLineSelection,
+          workPlane:
+            core.cadWorkPlane,
           isLinePlacementActive: () =>
             core.cadLinePlacement.isActive,
+        })
+      : null;
+
+  const commandInput =
+    renderer
+      ? new CadCommandInputController({
+          domElement:
+            renderer.three.domElement,
+          hasActiveCommand: () =>
+            core.cadCommandManager.hasActiveCommand,
+          startLine: () =>
+            core.startLineCommand(),
         })
       : null;
 
@@ -209,6 +227,7 @@ export async function createBimCore(
       }
       disposed =
         true;
+      commandInput?.dispose();
       temporaryLineDimensions?.dispose();
       disposeMillimeterRuntime();
       baseDispose();
