@@ -55,9 +55,9 @@ export interface FrameLogicPiecePackageV1 {
   };
 
   /**
-   * Metadata de ingeniería obligatoria en una pieza propia FrameLogic.
-   * La geometría puede ser STEP o IFC, pero Abrir nunca acepta un paquete
-   * que no tenga este bloque validado.
+   * El bloque se conserva siempre para mantener un esquema estable. Una pieza
+   * técnicamente preparada (origen/SNAP/ejes) puede tenerlo vacío hasta que el
+   * usuario agregue material, costos u otros datos de ingeniería.
    */
   readonly engineering:
     Omit<
@@ -105,6 +105,18 @@ function hasMeaningfulEngineeringMetadata(
     )
     || engineering.structuralAxis
     || engineering.features.length > 0
+  );
+}
+
+
+function hasPreparedDefinition(
+  definition:
+    FrameLogicPiecePackageV1["definition"],
+): boolean {
+  return (
+    definition.snapPoints.length > 0
+    || definition.referenceGeometry
+      .axisLines.length > 0
   );
 }
 
@@ -157,7 +169,7 @@ export function parseFrameLogicPiecePackage(
     || !value.engineering
   ) {
     throw new Error(
-      "La pieza FrameLogic está incompleta: debe contener geometría, definición y metadatos de ingeniería.",
+      "La pieza FrameLogic está incompleta: debe contener geometría, definición y el bloque de ingeniería.",
     );
   }
 
@@ -219,7 +231,7 @@ export function parseFrameLogicPiecePackage(
     )
   ) {
     throw new Error(
-      "La pieza FrameLogic no contiene metadatos de ingeniería válidos.",
+      "La pieza FrameLogic no contiene un bloque de ingeniería válido.",
     );
   }
 
@@ -230,9 +242,12 @@ export function parseFrameLogicPiecePackage(
     !hasMeaningfulEngineeringMetadata(
       ready.engineering,
     )
+    && !hasPreparedDefinition(
+      ready.definition,
+    )
   ) {
     throw new Error(
-      "La pieza FrameLogic no tiene metadatos de ingeniería definidos. Usa Importar pieza para archivos STEP/IFC externos.",
+      "La pieza FrameLogic todavía no está preparada. Debe tener al menos un origen/SNAP/eje o metadatos de ingeniería definidos.",
     );
   }
 
