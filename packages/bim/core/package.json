@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/circleNavigationIndex.ts"
+    ".": "./src/polylineNavigationIndex.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
