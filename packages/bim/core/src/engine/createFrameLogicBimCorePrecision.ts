@@ -183,6 +183,11 @@ export async function createBimCore(
    * de perspectiva y hace que TOP/FRONT/RIGHT/ISO se comporten como
    * vistas técnicas. PERSPECTIVE sigue disponible mediante el toggle,
    * pero deja de ser el estado inicial del model space.
+   *
+   * Un proyecto nuevo debe abrir siempre con Norte arriba y vista TOP.
+   * Primero fijamos el azimut N y después TOP conserva ese azimut al
+   * llevar el ángulo polar a 0. La restauración de un .flproject puede
+   * sustituir posteriormente esta vista por la cámara guardada del proyecto.
    */
   if (
     core.getCameraProjectionMode()
@@ -191,8 +196,12 @@ export async function createBimCore(
     await core.toggleCameraProjection();
   }
 
+  await core.setCardinalDirection(
+    "N",
+  );
+
   await core.setStandardView(
-    "ISO",
+    "TOP",
   );
 
   const canvas =
