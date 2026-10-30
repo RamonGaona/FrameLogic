@@ -7,6 +7,12 @@ export interface CadCommandInputControllerOptions {
 interface FrameLogicCommandWindow extends Window {
   __frameLogicExternalCadCommandActive?:
     () => boolean;
+  __frameLogicStartParallelLineCommand?:
+    () => boolean;
+  __frameLogicStartRectangleCommand?:
+    () => boolean;
+  __frameLogicCanStartRectangleTextCommand?:
+    () => boolean;
 }
 
 function isEditableTarget(
@@ -22,12 +28,13 @@ function isEditableTarget(
     || target instanceof HTMLSelectElement;
 }
 
-function hasExternalCadCommand(): boolean {
-  const runtime =
-    window as FrameLogicCommandWindow;
+function commandRuntime(): FrameLogicCommandWindow {
+  return window as FrameLogicCommandWindow;
+}
 
+function hasExternalCadCommand(): boolean {
   try {
-    return runtime
+    return commandRuntime()
       .__frameLogicExternalCadCommandActive
       ?.()
       ?? false;
@@ -37,11 +44,44 @@ function hasExternalCadCommand(): boolean {
   }
 }
 
+function canStartRectangleTextCommand(): boolean {
+  try {
+    return commandRuntime()
+      .__frameLogicCanStartRectangleTextCommand
+      ?.()
+      ?? false;
+  }
+  catch {
+    return false;
+  }
+}
+
+function normalizeCommand(
+  value: string,
+): string {
+  return value
+    .normalize("NFD")
+    .replace(
+      /[\u0300-\u036f]/g,
+      "",
+    )
+    .replace(
+      /\s+/g,
+      "",
+    )
+    .toUpperCase();
+}
+
 /**
- * Entrada mínima de comandos tipo CAD para Model Space.
+ * Entrada textual CAD junto al cursor.
  *
- * En esta primera etapa sólo LINE usa confirmación textual:
- * L o LINE + Enter. El resto de atajos existentes no se modifica.
+ * - L / LINE + Enter: línea.
+ * - LL / LINEA PARALELA + Enter: línea paralela.
+ * - REC / RECTANGULO + Enter: rectángulo.
+ *
+ * R sólo abre el buffer de RECTÁNGULO cuando el runtime indica que no existe
+ * una selección susceptible de ROTATE. Con selección se conserva el atajo R
+ * histórico de FrameLogic sin interceptarlo.
  */
 export class CadCommandInputController {
   private readonly domElement: HTMLElement;
@@ -70,8 +110,8 @@ export class CadCommandInputController {
     Object.assign(this.root.style, {
       position: "fixed",
       zIndex: "2147482500",
-      minWidth: "170px",
-      maxWidth: "260px",
+      minWidth: "190px",
+      maxWidth: "330px",
       border: "1px solid rgba(180,205,220,0.55)",
       borderRadius: "2px",
       background: "rgba(24,34,44,0.97)",
@@ -160,8 +200,16 @@ export class CadCommandInputController {
     }
 
     if (!this.visible) {
+      const key =
+        event.key.toLowerCase();
+      const startsLineFamily =
+        key === "l";
+      const startsRectangle =
+        key === "r"
+        && canStartRectangleTextCommand();
+
       if (
-        event.key.toLowerCase() !== "l"
+        (!startsLineFamily && !startsRectangle)
         || this.hasActiveCommand()
         || hasExternalCadCommand()
       ) {
@@ -170,7 +218,10 @@ export class CadCommandInputController {
 
       event.preventDefault();
       event.stopImmediatePropagation();
-      this.command = "L";
+      this.command =
+        startsRectangle
+          ? "R"
+          : "L";
       this.show();
       return;
     }
@@ -205,19 +256,38 @@ export class CadCommandInputController {
     if (event.key === "Tab") {
       event.preventDefault();
       event.stopImmediatePropagation();
-      this.command = "LINE";
+      this.command =
+        normalizeCommand(this.command)
+          .startsWith("R")
+          ? "RECTANGULO"
+          : "LINE";
+      this.render();
+      return;
+    }
+
+    if (
+      event.key === " "
+      && this.command.length > 0
+    ) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (this.command.length < 28) {
+        this.command += " ";
+      }
       this.render();
       return;
     }
 
     if (
       event.key.length === 1
-      && /^[a-zA-Z]$/.test(event.key)
+      && /^[a-zA-ZÁÉÍÓÚÜÑáéíóúüñ]$/.test(
+        event.key,
+      )
     ) {
       event.preventDefault();
       event.stopImmediatePropagation();
 
-      if (this.command.length < 16) {
+      if (this.command.length < 28) {
         this.command += event.key.toUpperCase();
       }
       this.render();
@@ -225,7 +295,10 @@ export class CadCommandInputController {
   };
 
   private execute(): void {
-    const command = this.command.trim().toUpperCase();
+    const command =
+      normalizeCommand(
+        this.command,
+      );
 
     if (
       command === "L"
@@ -236,7 +309,40 @@ export class CadCommandInputController {
       return;
     }
 
-    this.valueElement.textContent = `${command}  ?`;
+    if (
+      command === "LL"
+      || command === "LINEAPARALELA"
+    ) {
+      const startParallel =
+        commandRuntime()
+          .__frameLogicStartParallelLineCommand;
+      this.hide();
+      if (!startParallel?.()) {
+        window.alert(
+          "No se pudo iniciar LÍNEA PARALELA. Revisa el layer activo.",
+        );
+      }
+      return;
+    }
+
+    if (
+      command === "REC"
+      || command === "RECTANGULO"
+      || command === "RECTANGLE"
+    ) {
+      const startRectangle =
+        commandRuntime()
+          .__frameLogicStartRectangleCommand;
+      this.hide();
+      if (!startRectangle?.()) {
+        window.alert(
+          "No se pudo iniciar RECTÁNGULO. Revisa el layer activo.",
+        );
+      }
+      return;
+    }
+
+    this.valueElement.textContent = `${this.command}  ?`;
     this.suggestionElement.textContent =
       "Comando no reconocido · Esc para cancelar";
   }
@@ -257,17 +363,63 @@ export class CadCommandInputController {
   private render(): void {
     this.valueElement.textContent = `${this.command}▌`;
 
-    const normalized = this.command.toUpperCase();
+    const normalized =
+      normalizeCommand(
+        this.command,
+      );
+
+    if (normalized === "L") {
+      this.suggestionElement.textContent =
+        "L (LINE) · LL (LÍNEA PARALELA) · Enter para confirmar";
+      return;
+    }
+
+    if (
+      "LINEAPARALELA".startsWith(
+        normalized,
+      )
+      || "LL".startsWith(
+        normalized,
+      )
+    ) {
+      this.suggestionElement.textContent =
+        "LL / LÍNEA PARALELA · Enter para ejecutar";
+      return;
+    }
+
+    if (
+      "LINE".startsWith(
+        normalized,
+      )
+    ) {
+      this.suggestionElement.textContent =
+        "L / LINE · Enter para ejecutar";
+      return;
+    }
+
+    if (
+      "RECTANGULO".startsWith(
+        normalized,
+      )
+      || "RECTANGLE".startsWith(
+        normalized,
+      )
+      || "REC".startsWith(
+        normalized,
+      )
+    ) {
+      this.suggestionElement.textContent =
+        "REC / RECTÁNGULO · Enter para ejecutar";
+      return;
+    }
+
     this.suggestionElement.textContent =
-      "LINE".startsWith(normalized)
-        || normalized === "L"
-        ? "L (LINE) · Enter para ejecutar"
-        : "Comando no reconocido";
+      "Comando no reconocido";
   }
 
   private position(): void {
     const margin = 12;
-    const width = 190;
+    const width = 300;
     const height = 54;
     const left = Math.min(
       this.pointerX + 16,
