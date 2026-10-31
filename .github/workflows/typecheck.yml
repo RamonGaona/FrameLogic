@@ -6,6 +6,7 @@ on:
       - main
       - feature/precision-model-space
       - feature/precision-model-space-docs2
+      - feature/lightweight-piece-representations
   pull_request:
   workflow_dispatch:
 
@@ -30,6 +31,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Piece visualization tests
+        run: npm run test:piece-visuals
 
       - name: Build web
         run: npm run build

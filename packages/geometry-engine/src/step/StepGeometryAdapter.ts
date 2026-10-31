@@ -139,6 +139,11 @@ export interface LoadStepGeometryOptions {
   readonly sourceFileName: string;
   readonly targetUnit?: "meter" | "millimeter";
   readonly includeExactFeatures?: boolean;
+  /** Trusted visual cache in native millimetres; exact geometry still loads from STEP. */
+  readonly cachedVisuals?: {
+    readonly meshes: readonly StepMeshData[];
+    readonly products: readonly StepProductNode[];
+  };
 }
 
 /**

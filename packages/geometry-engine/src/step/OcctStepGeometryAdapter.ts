@@ -94,6 +94,22 @@ export class OcctStepGeometryAdapter
     data: Uint8Array,
     options: Parameters<StepGeometryAdapter["load"]>[1],
   ): Promise<StepGeometryDocument> {
+    if (options.cachedVisuals) {
+      const kernel = getOpenCascadeBrepKernel();
+      const sourceData = cloneSourceData(data);
+      const brep = await kernel.loadStep(sourceData, options.sourceFileName);
+      try {
+        const { meshes, products } = options.cachedVisuals;
+        kernel.setModelScale(brep.id, inferBrepToMeshScale(brep, meshes));
+        return {
+          id: crypto.randomUUID(), sourceFileName: options.sourceFileName,
+          sourceData, brepDocumentId: brep.id, unitScaleToMeters: 0.001,
+          meshes, products,
+          features: options.includeExactFeatures === false ? [] : createExactFeatures(kernel.getDocument(brep.id) ?? brep),
+        };
+      }
+      catch (error) { kernel.disposeDocument(brep.id); throw error; }
+    }
     const sourceData =
       cloneSourceData(data);
     const occt =
@@ -329,29 +345,16 @@ function inferBrepToMeshScale(
           vertex.point,
       ),
     );
-  const meshPoints:
-    Array<{
-      x: number;
-      y: number;
-      z: number;
-    }> = [];
-
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   for (const mesh of meshes) {
-    for (
-      let index = 0;
-      index + 2 < mesh.positions.length;
-      index += 3
-    ) {
-      meshPoints.push({
-        x: mesh.positions[index] ?? 0,
-        y: mesh.positions[index + 1] ?? 0,
-        z: mesh.positions[index + 2] ?? 0,
-      });
+    for (let i = 0; i + 2 < mesh.positions.length; i += 3) {
+      const x = mesh.positions[i]!, y = mesh.positions[i + 1]!, z = mesh.positions[i + 2]!;
+      minX = Math.min(minX, x); minY = Math.min(minY, y); minZ = Math.min(minZ, z);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); maxZ = Math.max(maxZ, z);
     }
   }
-
-  const meshDiagonal =
-    pointCloudDiagonal(meshPoints);
+  const meshDiagonal = Math.hypot(maxX - minX, maxY - minY, maxZ - minZ);
 
   if (
     !Number.isFinite(brepDiagonal)

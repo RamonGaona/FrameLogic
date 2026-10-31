@@ -1,3 +1,4 @@
+import { getPieceDetailGeometry } from "../design/PieceVisualGeometry";
 import * as THREE from "three";
 
 import type {
@@ -82,7 +83,7 @@ export class MeshAnalyticFeatureProvider implements GeometryQueryProvider {
       }
 
       mesh.updateMatrixWorld(true);
-      const features = this.getFeatures(mesh.geometry);
+      const features = this.getFeatures(getPieceDetailGeometry(mesh));
 
       for (const circle of features.circles) {
         const center = circle.center.clone().applyMatrix4(mesh.matrixWorld);
@@ -217,7 +218,7 @@ export class MeshAnalyticFeatureProvider implements GeometryQueryProvider {
       this.raycaster.setFromCamera(this.pointer, context.camera);
 
       const intersections = this.raycaster.intersectObjects(
-        this.designScene.getInstanceObjects(),
+        this.designScene.getRaycastInstanceObjects(this.raycaster.ray),
         true,
       );
       for (const intersection of intersections.slice(0, 6)) {

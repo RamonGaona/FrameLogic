@@ -1,3 +1,4 @@
+import { getPieceDetailGeometry } from "../design/PieceVisualGeometry";
 import * as THREE from "three";
 
 import type {
@@ -537,7 +538,7 @@ export class GeometryQueryEngine {
 
     if (includeSurface) {
       const directIntersections = this.raycaster.intersectObjects(
-        this.designScene.getInstanceObjects(),
+        this.designScene.getRaycastInstanceObjects(this.raycaster.ray),
         true,
       );
       for (const intersection of directIntersections.slice(0, 3)) {
@@ -582,7 +583,7 @@ export class GeometryQueryEngine {
       }
 
       mesh.updateMatrixWorld(true);
-      const cached = this.getMeshFeatures(mesh.geometry);
+      const cached = this.getMeshFeatures(getPieceDetailGeometry(mesh));
 
       for (const localPoint of cached.vertices) {
         const point = localPoint.clone().applyMatrix4(mesh.matrixWorld);
@@ -697,7 +698,7 @@ export class GeometryQueryEngine {
       this.setPointerFromClient(clientX + offsetX, clientY + offsetY, rect);
       this.raycaster.setFromCamera(this.pointer, camera);
       const intersections = this.raycaster.intersectObjects(
-        this.designScene.getInstanceObjects(),
+        this.designScene.getRaycastInstanceObjects(this.raycaster.ray),
         true,
       );
       for (const intersection of intersections.slice(0, 6)) {

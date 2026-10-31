@@ -1,3 +1,5 @@
+import { createPieceVisualPackage } from "../design/PieceVisualPackage";
+import type { DesignSceneController } from "../design/DesignSceneController";
 import type {
   DesignModel,
   FrameLogicEngineeringModel,
@@ -188,12 +190,17 @@ export class PieceFrameLogicPackageController {
     false;
 
 
+  private readonly designScene: DesignSceneController;
+  private readonly saving = new Set<string>();
+
   constructor(
     container: HTMLElement,
     designModel: DesignModel,
     selection: DesignSelectionController,
     engineeringModel: FrameLogicEngineeringModel,
+    designScene: DesignSceneController,
   ) {
+    this.designScene = designScene;
     this.container =
       container;
     this.designModel =
@@ -256,9 +263,11 @@ export class PieceFrameLogicPackageController {
    * Puede llamarse directamente desde Preparar pieza aunque la selección CAD
    * esté actualmente sobre un POINT o LINE de referencia.
    */
-  savePiece(
+  async savePiece(
     instanceId: string,
-  ): void {
+  ): Promise<void> {
+    if (this.saving.has(instanceId)) return;
+    this.saving.add(instanceId);
     try {
       const instance =
         this.designModel
@@ -326,7 +335,12 @@ export class PieceFrameLogicPackageController {
             features: [],
           };
 
+      const prototype = this.designScene.getAssetPrototype(definition.geometryAssetId);
+      const visualRepresentations = prototype && source.format === "STEP"
+        ? await createPieceVisualPackage(prototype, source.data) : undefined;
+
       const packageValue = {
+        visualRepresentations,
         schema:
           "FRAMELOGIC_PIECE" as const,
         version:
@@ -434,6 +448,7 @@ export class PieceFrameLogicPackageController {
             ),
       );
     }
+    finally { this.saving.delete(instanceId); }
   }
 
 

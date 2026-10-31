@@ -15,6 +15,8 @@ export type ModelRenderMode =
 interface Options {
   readonly container: HTMLElement;
   readonly designScene: DesignSceneController;
+  readonly selectedIds?: () => readonly string[];
+  readonly preparedInstanceId?: () => string | undefined;
 }
 
 
@@ -46,8 +48,13 @@ export class ModelRenderModeController {
   private readonly timer: number;
   private mode: ModelRenderMode = "SOLID";
   private disposed = false;
+  private readonly qualitySelect: HTMLSelectElement;
+  private readonly options: Options;
+  private qualityKey = "";
+  private readonly displayedGeometry = new WeakMap<THREE.Mesh, THREE.BufferGeometry>();
 
   constructor(options: Options) {
+    this.options = options;
     this.container = options.container;
     this.designScene = options.designScene;
 
@@ -99,7 +106,23 @@ export class ModelRenderModeController {
     select.value = this.mode;
     select.addEventListener("change", this.handleChange);
 
-    panel.append(label, select);
+    const quality = document.createElement("select");
+    quality.title = "Calidad visual de piezas. Los puntos y ejes conservan su precisi\u00f3n.";
+    quality.setAttribute("aria-label", "Calidad visual de piezas");
+    quality.style.cssText = select.style.cssText;
+    for (const [value, text] of [
+      ["DESIGN", "Dise\u00f1o"], ["SELECTED", "Detalle seleccionado"],
+      ["DETAIL", "Detalle"], ["LOW", "B\u00e1sico"],
+    ]) {
+      const option = document.createElement("option");
+      option.value = value!;
+      option.textContent = text!;
+      quality.append(option);
+    }
+    quality.value = "DESIGN";
+    quality.addEventListener("change", this.handleQualityChange);
+    this.qualitySelect = quality;
+    panel.append(label, select, quality);
     options.container.append(panel);
     this.panel = panel;
     this.select = select;
@@ -124,6 +147,7 @@ export class ModelRenderModeController {
     this.disposed = true;
     window.clearInterval(this.timer);
     this.select.removeEventListener("change", this.handleChange);
+    this.qualitySelect.removeEventListener("change", this.handleQualityChange);
     this.restoreAll();
     this.panel.remove();
   }
@@ -132,8 +156,24 @@ export class ModelRenderModeController {
     this.setMode(this.select.value as ModelRenderMode);
   };
 
+  private readonly handleQualityChange = (): void => { this.sync(); };
+
   private sync(): void {
     if (this.disposed) return;
+    const details = new Set<string>();
+    if (this.qualitySelect.value === "SELECTED") {
+      for (const id of this.options.selectedIds?.() ?? []) details.add(id);
+    }
+    const prepared = this.options.preparedInstanceId?.();
+    if (prepared) details.add(prepared);
+    const key = `${this.qualitySelect.value}:${[...details].sort().join(",")}`;
+    if (key !== this.qualityKey) {
+      this.qualityKey = key;
+      this.designScene.setVisualLevel(
+        this.qualitySelect.value === "DETAIL" ? "DETAIL" : this.qualitySelect.value === "LOW" ? "LOW" : "WORK",
+        [...details],
+      );
+    }
     this.updatePanelPosition();
     this.applyToAll(false);
   }
@@ -172,6 +212,11 @@ export class ModelRenderModeController {
     for (const [, root] of this.designScene.getInstanceEntries()) {
       root.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
+        const geometryChanged = this.displayedGeometry.get(object) !== object.geometry;
+        if (geometryChanged) {
+          this.displayedGeometry.set(object, object.geometry);
+          this.removeEdges(object);
+        }
         if (!this.originals.has(object)) {
           this.originals.set(object, {
             material: object.material,
@@ -179,7 +224,7 @@ export class ModelRenderModeController {
           this.applyMode(object);
           return;
         }
-        if (force) this.applyMode(object);
+        if (force || geometryChanged) this.applyMode(object);
       });
     }
   }

@@ -271,6 +271,7 @@ export async function createBimCore(
       core.designModel,
       core.designSelection,
       engineeringModel,
+      core.designScene,
     );
 
   const pieceFrameLogicWorkspace =

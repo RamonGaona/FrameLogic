@@ -1,3 +1,4 @@
+import { OcctStepGeometryAdapter as CachedStepGeometryAdapter } from "@framelogic/geometry";
 import occtImportJs from "@sunbox/occt-import-js";
 
 import {
@@ -216,6 +217,9 @@ export class OcctStepGeometryAdapter
     data: Uint8Array,
     options: Parameters<StepGeometryAdapter["load"]>[1],
   ): Promise<StepGeometryDocument> {
+    if (options.cachedVisuals) {
+      return new CachedStepGeometryAdapter().load(data, options);
+    }
     const totalStart =
       performance.now();
 

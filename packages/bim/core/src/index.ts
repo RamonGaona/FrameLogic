@@ -445,3 +445,6 @@ export type {
   ProjectGeometrySource,
   ProjectReferenceSource,
 } from "./project/FrameLogicProjectPackageController";
+
+export { loadPieceVisualPackage } from "./design/PieceVisualPackage";
+export type { PieceVisualPackage, LoadedPieceVisualPackage } from "./design/PieceVisualPackage";

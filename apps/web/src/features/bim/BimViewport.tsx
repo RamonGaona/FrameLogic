@@ -1,3 +1,4 @@
+import { loadPieceVisualPackage, type LoadedPieceVisualPackage } from "@framelogic/bim-core";
 import {
   useEffect,
   useRef,
@@ -1270,30 +1271,39 @@ export function BimViewport() {
     data: Uint8Array,
     sourceFileName: string,
     identity: PieceIdentity,
+    cachedVisuals?: LoadedPieceVisualPackage,
   ): Promise<PieceDefinitionSummary> {
-    const adapter =
-      new OcctStepGeometryAdapter();
-    const document =
-      await adapter.load(
-        data,
-        {
-          sourceFileName,
-          targetUnit:
-            "meter",
-          includeExactFeatures:
-            true,
-        },
-      );
+    try {
+      const adapter =
+        new OcctStepGeometryAdapter();
+      const document =
+        await adapter.load(
+          data,
+          {
+            sourceFileName,
+            cachedVisuals,
+            targetUnit:
+              "meter",
+            includeExactFeatures:
+              true,
+          },
+        );
 
-    const {
-      definition,
-    } =
-      bimCore.importStepPiece(
-        document,
-        identity,
-      );
+      const {
+        definition,
+      } =
+        bimCore.importStepPiece(
+          document,
+          identity,
+        );
 
-    return definition;
+      if (cachedVisuals) {
+        const prototype = bimCore.designScene.getAssetPrototype(definition.geometryAssetId);
+        if (prototype) cachedVisuals.install(prototype);
+      }
+      return definition;
+    }
+    catch (error) { cachedVisuals?.dispose(); throw error; }
   }
 
 
@@ -1596,6 +1606,11 @@ export function BimViewport() {
           ],
         };
 
+      let cachedVisuals: LoadedPieceVisualPackage | undefined;
+      if (piece.geometry.format === "STEP" && piece.visualRepresentations) {
+        try { cachedVisuals = await loadPieceVisualPackage(piece.visualRepresentations, bytes); }
+        catch (error) { console.warn("FrameLogic: cache visual descartada; se usara el STEP maestro.", error); }
+      }
       const definition =
         piece.geometry.format
           === "STEP"
@@ -1604,6 +1619,7 @@ export function BimViewport() {
               bytes,
               piece.geometry.fileName,
               identity,
+              cachedVisuals,
             )
           : await importIfcDefinition(
               bimCore,

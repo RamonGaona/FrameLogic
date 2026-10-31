@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/precision-model-space
+      - feature/lightweight-piece-representations
   workflow_dispatch:
 
 jobs:
@@ -24,6 +25,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Piece visualization tests
+        run: npm run test:piece-visuals
 
       - name: Build FrameLogic web for Cloudflare
         run: npm run build:cloudflare

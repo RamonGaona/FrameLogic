@@ -1,3 +1,4 @@
+import type { PieceVisualPackage } from "@framelogic/bim-core";
 import type {
   LocalCoordinateSystem,
   PieceEngineeringData,
@@ -12,6 +13,7 @@ export type FrameLogicPieceGeometryFormat =
 
 
 export interface FrameLogicPiecePackageV1 {
+  readonly visualRepresentations?: PieceVisualPackage;
   readonly schema:
     "FRAMELOGIC_PIECE";
   readonly version:

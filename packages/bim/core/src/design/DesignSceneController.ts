@@ -1,3 +1,4 @@
+import { setPieceVisualLevel, getPieceVisualGeometries, type PieceVisualLevel } from "./PieceVisualGeometry";
 import * as THREE from "three";
 
 import type {
@@ -14,6 +15,29 @@ export class DesignSceneController {
   // ==========================================================
   // DEPENDENCIES
   // ==========================================================
+
+  private readonly assetBounds = new Map<string, THREE.Box3>();
+
+  /** Broad phase uses detail bounds, never the approximate silhouette. */
+  getRaycastInstanceObjects(ray: THREE.Ray): THREE.Object3D[] {
+    return this.getInstanceObjects().filter((object) => {
+      const assetId = object.userData["frameLogic"]?.assetId as string | undefined;
+      const bounds = assetId ? this.assetBounds.get(assetId) : undefined;
+      if (!bounds) return true;
+      object.updateMatrixWorld(true);
+      return ray.intersectsBox(bounds.clone().applyMatrix4(object.matrixWorld));
+    });
+  }
+
+  private visualLevel: PieceVisualLevel = "WORK";
+  private readonly detailInstances = new Set<string>();
+
+  setVisualLevel(level: PieceVisualLevel, detailInstanceIds: readonly string[] = []): void {
+    this.visualLevel = level;
+    this.detailInstances.clear();
+    for (const id of detailInstanceIds) this.detailInstances.add(id);
+    this.sync();
+  }
 
   private readonly scene:
     THREE.Scene;
@@ -169,6 +193,19 @@ export class DesignSceneController {
       assetId,
       prototype,
     );
+    prototype.updateMatrixWorld(true);
+    const inverseRoot = prototype.matrixWorld.clone().invert();
+    const bounds = new THREE.Box3();
+    prototype.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      child.geometry.computeBoundingBox();
+      if (child.geometry.boundingBox) {
+        bounds.union(child.geometry.boundingBox.clone().applyMatrix4(
+          new THREE.Matrix4().multiplyMatrices(inverseRoot, child.matrixWorld),
+        ));
+      }
+    });
+    this.assetBounds.set(assetId, bounds);
 
   }
 
@@ -646,6 +683,12 @@ export class DesignSceneController {
       // MATRIX
       // ------------------------------------------------------
 
+      object.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          setPieceVisualLevel(child, this.detailInstances.has(instance.id) ? "DETAIL" : this.visualLevel);
+        }
+      });
+
       object.updateMatrix();
 
 
@@ -760,9 +803,9 @@ export class DesignSceneController {
           }
 
 
-          geometries.add(
-            child.geometry,
-          );
+          for (const geometry of getPieceVisualGeometries(child.geometry)) {
+            geometries.add(geometry);
+          }
 
 
           if (
@@ -826,6 +869,7 @@ export class DesignSceneController {
 
 
     this.assetPrototypes.clear();
+    this.assetBounds.clear();
 
   }
 

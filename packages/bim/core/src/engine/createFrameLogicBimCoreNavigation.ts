@@ -227,6 +227,8 @@ export async function createBimCore(
     new ModelRenderModeController({
       container,
       designScene: core.designScene,
+      selectedIds: () => core.designSelection.getSelectedIds(),
+      preparedInstanceId: () => core.piecePreparation.getState().instanceId ?? undefined,
     });
 
   const smartPieceInsertion =

@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.58",
+  "version": "0.1.59",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -13,6 +13,7 @@
     "build:cloudflare": "npm install --include=dev --package-lock=false && npm install --no-save --package-lock=false @rolldown/binding-linux-x64-gnu@1.2.8 lightningcss-linux-x64-gnu@1.33.0 && npm run build",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "test:piece-visuals": "vitest run packages/bim/core/src/design/PieceVisualGeometry.test.ts packages/bim/core/src/design/DesignSceneController.test.ts packages/bim/core/src/design/PieceVisualPackage.test.ts packages/geometry-engine/src/step/OcctStepVisualCache.test.ts"
   }
 }

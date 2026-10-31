@@ -107,6 +107,7 @@ function createPrototype(
 
   group.name =
     `STEP:${document.sourceFileName}`;
+  group.userData["framelogicStepProducts"] = document.products;
   group.userData["framelogicLengthUnit"] =
     "mm";
 

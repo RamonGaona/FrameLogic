@@ -12,6 +12,40 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.59 — 2026-10-30
+
+### Añadido
+
+- Separación entre geometría visual básica, de trabajo y detallada para piezas del Model Space.
+- Selector de calidad en `Render`: `Diseño` (por defecto), `Detalle seleccionado`, `Detalle` y `Básico`.
+- La pieza que se está preparando conserva su representación detallada.
+- Los nuevos `.flpiece` STEP incorporan tres representaciones GLB en milímetros, junto al STEP maestro, las referencias y los datos de ingeniería existentes.
+- Al abrir estas piezas se reutiliza la malla guardada y se omite la triangulación visual STEP. El B-Rep se sigue cargando desde el maestro para conservar las consultas exactas.
+- La caché visual queda vinculada mediante SHA-256 a su archivo maestro. Si es incompatible o está dañada, la apertura recurre al STEP.
+
+### Optimizado
+
+- Simplificación visual por agrupación espacial de vértices; las piezas pequeñas, con texturas, múltiples grupos o animación conservan su malla original.
+- Una caché por geometría comparte las representaciones entre todas sus instancias.
+- Descarte por cajas envolventes de detalle antes del raycast de las consultas geométricas.
+- Liberación de las tres representaciones al retirar sus prototipos.
+
+### Precisión y compatibilidad
+
+- Los puntos, ejes, sistema local y features exactos permanecen independientes del nivel visual.
+- El raycast y las consultas derivadas de malla utilizan la geometría detallada, incluso en modo Diseño o Básico.
+- Cambiar de representación conserva objetos, identificadores, transformaciones, propiedades y materiales.
+- Se mantiene compatibilidad con `.flpiece` anteriores sin caché y con STEP/IFC externos.
+- El formato sigue siendo `.flpiece` JSON v1 con un bloque visual opcional. El ZIP `.flp`, la compresión, el LOD automático por cámara y el agrupamiento GPU mediante `InstancedMesh` quedan pendientes.
+- El guardado de proyectos conserva su formato actual y reconstruye las cachés visuales al abrirlos; el atajo GLB de esta versión corresponde a archivos individuales `.flpiece` STEP.
+
+### Validación
+
+- Se añade `npm run test:piece-visuals` para comprobar simplificación, reutilización, transformaciones, raycast, liberación de recursos, reapertura GLB y conservación del B-Rep maestro.
+- Versión visible, `package.json` y metadatos de versión del lockfile sincronizados en `0.1.59`.
+
+---
+
 ## v0.1.58 — 2026-10-30
 
 ### Optimizado
