@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.62 — 2026-11-02
+
+### Corregido
+
+- Un clic corto sobre un eje o aro del gizmo ya no puede dejar `TransformControls` en estado de arrastre después de soltar el botón del mouse.
+- Si el estado nativo `dragging` queda desincronizado de la propiedad física del botón, el siguiente evento de puntero lo corrige antes de permitir cualquier movimiento de la pieza.
+- Se añade `mouseup` como ruta de respaldo para cerrar el gesto cuando el navegador o una integración interrumpe la secuencia normal de `pointerup`.
+- Un nuevo `pointerdown` limpia primero cualquier arrastre nativo huérfano antes de iniciar un gesto nuevo.
+
+### Validación
+
+- Se añaden pruebas para `dragging` sin propietario de puntero y para ausencia de `pointerup` con `mouseup` disponible.
+- Se mantienen las pruebas existentes de clic/arrastre, liberación fuera del visor, cancelación, foco numérico y aros completos de ROTATE.
+- Versión visible y `package.json` sincronizados en `0.1.62`.
+
+---
+
 ## v0.1.61 — 2026-11-02
 
 ### Corregido
