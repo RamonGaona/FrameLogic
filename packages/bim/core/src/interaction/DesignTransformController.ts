@@ -1,3 +1,4 @@
+import { installTransformPointerLifecycle } from "./TransformGizmoReliability";
 import * as THREE from "three";
 
 import {
@@ -36,6 +37,7 @@ export type DesignTransformMode =
 
 
 export class DesignTransformController {
+  private readonly releasePointerLifecycle: () => void;
 
   private readonly scene:
     THREE.Scene;
@@ -234,6 +236,8 @@ export class DesignTransformController {
         domElement,
       );
 
+    this.releasePointerLifecycle = installTransformPointerLifecycle(domElement, this.controls);
+
 
     this.controls.setMode(
       "translate",
@@ -401,6 +405,11 @@ export class DesignTransformController {
   // ==========================================================
 
   deactivate(): void {
+    if (this.controls.dragging) {
+      this.controls.reset();
+      this.controls.pointerUp(null);
+    }
+
 
     /*
      * Cualquier cancelación devuelve el pivot
@@ -2056,6 +2065,7 @@ export class DesignTransformController {
     );
 
 
+    this.releasePointerLifecycle();
     this.controls.dispose();
 
   }

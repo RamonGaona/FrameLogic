@@ -1,3 +1,4 @@
+import { PointerFocusGate } from "./TransformGizmoReliability";
 export type MoveNumericAxis =
   | "X"
   | "Y"
@@ -45,6 +46,7 @@ export interface CadLineDistanceApplyDetail {
 
 
 export class CadNumericInputController {
+  private readonly focusGate = new PointerFocusGate();
 
   private readonly container:
     HTMLElement;
@@ -730,36 +732,13 @@ export class CadNumericInputController {
   }
 
 
-  private focusFirstInput():
-    void {
-
-    window.setTimeout(
-      () => {
-
-        const input =
-          this.fields.querySelector(
-            "input",
-          );
-
-
-        if (
-          !(input instanceof HTMLInputElement)
-        ) {
-
-          return;
-
-        }
-
-
-        input.focus();
-
-
-        input.select();
-
-      },
-      0,
-    );
-
+  private focusFirstInput(): void {
+    const input = this.fields.querySelector("input");
+    this.focusGate.request(() => {
+      if (!(input instanceof HTMLInputElement) || !input.isConnected || this.root.style.display === "none") return;
+      input.focus();
+      input.select();
+    });
   }
 
 
@@ -994,6 +973,7 @@ export class CadNumericInputController {
 
 
   dispose(): void {
+    this.focusGate.dispose();
 
     this.applyButton.removeEventListener(
       "click",

@@ -1,3 +1,4 @@
+import { installTransformPointerLifecycle, completeRotationRings } from "./TransformGizmoReliability";
 import * as THREE from "three";
 
 import {
@@ -42,6 +43,7 @@ interface RotateStartState {
 
 
 export class DesignRotateController {
+  private readonly releasePointerLifecycle: () => void;
 
   private readonly scene:
     THREE.Scene;
@@ -123,6 +125,8 @@ export class DesignRotateController {
   private readonly centerDragPoint =
     new THREE.Vector3();
 
+
+  private centerPointerId: number | null = null;
 
   private centerDragging =
     false;
@@ -273,6 +277,8 @@ export class DesignRotateController {
         domElement,
       );
 
+    this.releasePointerLifecycle = installTransformPointerLifecycle(domElement, this.controls);
+
 
     this.controls.setMode(
       "rotate",
@@ -285,11 +291,12 @@ export class DesignRotateController {
 
 
     this.controls.size =
-      0.8;
+      0.95;
 
 
     this.helper =
       this.controls.getHelper();
+    completeRotationRings(this.helper);
 
 
     this.scene.add(
@@ -397,8 +404,12 @@ export class DesignRotateController {
     window.addEventListener(
       "pointerup",
       this.handleCenterPointerUp,
+      true,
     );
 
+
+    window.addEventListener("pointercancel", this.handleCenterPointerCancel, true);
+    window.addEventListener("blur", this.cancelCenterInteraction);
 
     this.controls.detach();
 
@@ -465,6 +476,12 @@ export class DesignRotateController {
   // ==========================================================
 
   deactivate(): void {
+    this.cancelCenterInteraction();
+    if (this.controls.dragging) {
+      this.controls.reset();
+      this.controls.pointerUp(null);
+    }
+
 
     /*
      * ESC / doble clic vacío:
@@ -1367,6 +1384,8 @@ export class DesignRotateController {
         && !pickedCenter
       ) {
 
+        this.centerPointerId = event.pointerId;
+
         this.armedCenterPointerDownX =
           event.clientX;
 
@@ -1410,6 +1429,8 @@ export class DesignRotateController {
       this.armedCenterPointerDownActive =
         false;
 
+
+      this.centerPointerId = event.pointerId;
 
       this.centerPointerDownX =
         event.clientX;
@@ -1501,12 +1522,18 @@ export class DesignRotateController {
       if (
         !this.active
         || !this.centerDragging
+        || event.pointerId !== this.centerPointerId
       ) {
 
         return;
 
       }
 
+
+      if ((event.buttons & 1) === 0) {
+        this.handleCenterPointerUp(event);
+        return;
+      }
 
       const hit =
         this.intersectPointerWithCenterPlane(
@@ -1545,6 +1572,9 @@ export class DesignRotateController {
       event:
         PointerEvent,
     ): void => {
+
+      if (event.pointerId !== this.centerPointerId) return;
+      this.centerPointerId = null;
 
       /*
        * SEGUNDO CLIC:
@@ -1734,6 +1764,25 @@ export class DesignRotateController {
 
     };
 
+
+  private readonly handleCenterPointerCancel = (event: PointerEvent): void => {
+    if (event.pointerId === this.centerPointerId) this.cancelCenterInteraction();
+  };
+
+  private readonly cancelCenterInteraction = (): void => {
+    if (!this.centerDragging && !this.centerArmed && !this.armedCenterPointerDownActive) return;
+    if (this.centerDragging) {
+      this.pivot.position.copy(this.centerDragStartPivot);
+      this.pivot.updateMatrixWorld(true);
+    }
+    this.centerPointerId = null;
+    this.centerDragging = false;
+    this.centerArmed = false;
+    this.armedCenterPointerDownActive = false;
+    this.snap.clearExcludedInstanceIds();
+    this.setCameraEnabled(true);
+    this.selection.setEnabled(true);
+  };
 
   private pickCenterHandle(
     clientX: number,
@@ -1954,8 +2003,12 @@ export class DesignRotateController {
     window.removeEventListener(
       "pointerup",
       this.handleCenterPointerUp,
+      true,
     );
 
+
+    window.removeEventListener("pointercancel", this.handleCenterPointerCancel, true);
+    window.removeEventListener("blur", this.cancelCenterInteraction);
 
     this.deactivate();
 
@@ -1996,6 +2049,7 @@ export class DesignRotateController {
     }
 
 
+    this.releasePointerLifecycle();
     this.controls.dispose();
 
   }

@@ -1,3 +1,4 @@
+import { installTransformPointerLifecycle } from "./TransformGizmoReliability";
 import * as THREE from "three";
 
 import {
@@ -51,6 +52,7 @@ type CadPointMoveSnapshot =
 
 
 export class CadPointMoveController {
+  private readonly releasePointerLifecycle: () => void;
 
   private readonly scene:
     THREE.Scene;
@@ -184,6 +186,8 @@ export class CadPointMoveController {
         camera,
         domElement,
       );
+
+    this.releasePointerLifecycle = installTransformPointerLifecycle(domElement, this.controls);
 
 
     this.controls.setMode(
@@ -336,6 +340,11 @@ export class CadPointMoveController {
 
   deactivate():
     void {
+    if (this.controls.dragging) {
+      this.controls.reset();
+      this.controls.pointerUp(null);
+    }
+
 
     this.active =
       false;
@@ -1102,6 +1111,7 @@ export class CadPointMoveController {
     );
 
 
+    this.releasePointerLifecycle();
     this.controls.dispose();
 
   }

@@ -7,6 +7,7 @@ on:
       - feature/precision-model-space
       - feature/precision-model-space-docs2
       - feature/lightweight-piece-representations
+      - feature/reliable-3d-gizmos
   pull_request:
   workflow_dispatch:
 
@@ -31,6 +32,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Gizmo interaction tests
+        run: npm run test:gizmos
 
       - name: Piece visualization tests
         run: npm run test:piece-visuals

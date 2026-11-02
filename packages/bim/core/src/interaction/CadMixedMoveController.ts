@@ -1,3 +1,4 @@
+import { installTransformPointerLifecycle } from "./TransformGizmoReliability";
 import * as THREE from "three";
 
 import {
@@ -100,6 +101,7 @@ interface MixedMoveSnapshot {
 
 
 export class CadMixedMoveController {
+  private readonly releasePointerLifecycle: () => void;
 
   private readonly scene:
     THREE.Scene;
@@ -307,6 +309,8 @@ export class CadMixedMoveController {
         domElement,
       );
 
+    this.releasePointerLifecycle = installTransformPointerLifecycle(domElement, this.controls);
+
 
     this.controls.setMode(
       "translate",
@@ -468,6 +472,11 @@ export class CadMixedMoveController {
 
   deactivate():
     void {
+    if (this.controls.dragging) {
+      this.controls.reset();
+      this.controls.pointerUp(null);
+    }
+
 
     this.active =
       false;
@@ -2263,6 +2272,7 @@ export class CadMixedMoveController {
     );
 
 
+    this.releasePointerLifecycle();
     this.controls.dispose();
 
   }

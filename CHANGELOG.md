@@ -12,6 +12,25 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.60 — 2026-11-02
+
+### Corregido
+
+- Los aros X/Y/Z de ROTATE se muestran completos (360°), coincidiendo con sus zonas de selección. Se aumenta ligeramente su grosor y el tamaño del gizmo para facilitar su lectura.
+- Los gizmos de piezas, puntos, líneas y selección CAD mixta distinguen un clic de un arrastre mediante un umbral de 5 píxeles, evitando movimientos por vibraciones pequeñas del mouse.
+- Se finaliza el gesto si el botón se libera fuera del visor, se pierde la captura o llega un movimiento sin el botón principal pulsado.
+- La cancelación del puntero o la pérdida de foco restaura la transformación inicial y libera el gesto nativo. Desactivar la herramienta durante un arrastre también lo cancela antes de descartar sus snapshots.
+- Los campos numéricos de distancia/ángulo esperan a la liberación del puntero para recibir foco.
+- El centro temporal de ROTATE ignora otros punteros y limpia su estado ante cancelación o pérdida de foco. El clic seguido de SNAP para recolocar el centro se conserva.
+
+### Validación
+
+- Se añade `npm run test:gizmos`, con pruebas de clic/arrastre, liberación, cancelación, foco numérico y círculos completos en cámaras perspectiva y ortográfica.
+- Versión visible, `package.json` y metadatos del lockfile sincronizados en `0.1.60`.
+- Se conserva el trabajo de representaciones ligeras de `v0.1.59` como base de esta rama.
+
+---
+
 ## v0.1.59 — 2026-10-30
 
 ### Añadido

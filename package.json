@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.59",
+  "version": "0.1.60",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -14,6 +14,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "test:gizmos": "vitest run packages/bim/core/src/interaction/TransformGizmoReliability.test.ts",
     "test:piece-visuals": "vitest run packages/bim/core/src/design/PieceVisualGeometry.test.ts packages/bim/core/src/design/DesignSceneController.test.ts packages/bim/core/src/design/PieceVisualPackage.test.ts packages/geometry-engine/src/step/OcctStepVisualCache.test.ts"
   }
 }
