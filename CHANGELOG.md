@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.61 — 2026-11-02
+
+### Corregido
+
+- Al abrir `Convertir a pieza FrameLogic` o `Editar pieza FrameLogic`, las barras y paneles generales del Model Space que fueron reubicados fuera del contenedor 3D dejan de quedar visibles por encima del editor de pieza.
+- Se ocultan temporalmente la barra de proyecto, la barra principal, el stack lateral de Model Space y los paneles inferiores de sección/render mientras el workspace de pieza está activo.
+- Al pulsar `Volver al modelo`, cada control recupera el estado de visualización que tenía antes de entrar al editor.
+- El ViewCube y el badge de versión permanecen disponibles para conservar orientación y trazabilidad durante la edición.
+
+### Técnico
+
+- Se añade un guard de layout independiente que detecta el workspace aislado de pieza y complementa el ocultamiento histórico de `PieceFrameLogicWorkspaceController` para controles movidos a `document.body` por los adaptadores actuales.
+- El guard no modifica geometría, referencias, SNAPs, ejes, transformaciones ni datos de ingeniería.
+- Versión visible y `package.json` sincronizados en `0.1.61`.
+
+---
+
 ## v0.1.60 — 2026-11-02
 
 ### Corregido
