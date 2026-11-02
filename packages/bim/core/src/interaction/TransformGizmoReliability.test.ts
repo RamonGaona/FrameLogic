@@ -9,6 +9,12 @@ function pointer(type: string, overrides: Record<string, unknown> = {}): Pointer
   return event as PointerEvent;
 }
 
+function mouse(type: string, overrides: Record<string, unknown> = {}): MouseEvent {
+  const event = new Event(type, { cancelable: true });
+  Object.assign(event, { button: 0, buttons: 0, ...overrides });
+  return event as MouseEvent;
+}
+
 function gesture() {
   const element = new EventTarget() as HTMLElement;
   const target = new EventTarget() as Window;
@@ -62,6 +68,28 @@ describe("gizmo physical pointer lifecycle", () => {
     g.target.addEventListener("pointermove", nativeMove);
     g.target.dispatchEvent(pointer("pointermove", { buttons: 0, clientX: 300 }));
     expect(nativeMove).toHaveBeenCalledOnce();
+    expect(g.controls.pointerUp).toHaveBeenCalledOnce();
+    g.dispose();
+  });
+
+  it("repairs stale native dragging when pointer ownership was already lost", () => {
+    const g = gesture();
+    g.controls.dragging = true;
+    g.controls.axis = "Y";
+    const nativeMove = vi.fn(() => expect(g.controls.dragging).toBe(false));
+    g.target.addEventListener("pointermove", nativeMove);
+    g.target.dispatchEvent(pointer("pointermove", { buttons: 0, clientX: 80 }));
+    expect(nativeMove).toHaveBeenCalledOnce();
+    expect(g.controls.pointerUp).toHaveBeenCalledOnce();
+    expect(g.controls.axis).toBeNull();
+    g.dispose();
+  });
+
+  it("uses mouseup as a fallback when pointerup is missing", () => {
+    const g = gesture(); g.start();
+    g.target.dispatchEvent(mouse("mouseup"));
+    expect(g.controls.dragging).toBe(false);
+    expect(g.controls.axis).toBeNull();
     expect(g.controls.pointerUp).toHaveBeenCalledOnce();
     g.dispose();
   });
