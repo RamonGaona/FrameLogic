@@ -33,7 +33,7 @@ export function installTransformPointerLifecycle(
     }
   };
   const down = (event: PointerEvent): void => {
-    if (event.button !== 0 || event.isPrimary === false || pointerId !== null) return;
+    if (disposed || event.button !== 0 || event.isPrimary === false || pointerId !== null) return;
 
     // A previous native drag must never survive without a physical pointer owner.
     // Repair that stale state before accepting a new primary gesture.
@@ -44,7 +44,7 @@ export function installTransformPointerLifecycle(
     generation++;
   };
   const move = (event: PointerEvent): void => {
-    if (!controls.dragging) return;
+    if (disposed || !controls.dragging) return;
 
     if (pointerId !== null && event.pointerId !== pointerId) {
       // A second touch/pen must not transform the first pointer's selection.
@@ -74,6 +74,7 @@ export function installTransformPointerLifecycle(
     }
   };
   const release = (event: PointerEvent): void => {
+    if (disposed) return;
     if (pointerId !== event.pointerId) {
       // If native state is stale but no pointer is owned anymore, a real
       // primary release must still terminate the transform immediately.
@@ -90,9 +91,11 @@ export function installTransformPointerLifecycle(
   const mouseUp = (event: MouseEvent): void => {
     // Mouse compatibility fallback: browsers/extensions can occasionally
     // interrupt the PointerEvent release path while still emitting mouseup.
-    if (event.button === 0 && controls.dragging) finish(false);
+    if (!disposed && event.button === 0 && controls.dragging) finish(false);
   };
-  const blur = (): void => { finish(true); };
+  const blur = (): void => {
+    if (!disposed) finish(true);
+  };
 
   element.addEventListener("pointerdown", down, true);
   target.addEventListener("pointermove", move, true);
@@ -102,8 +105,9 @@ export function installTransformPointerLifecycle(
   element.addEventListener("lostpointercapture", release, true);
   target.addEventListener("blur", blur);
   return () => {
-    disposed = true;
+    if (disposed) return;
     finish(true);
+    disposed = true;
     element.removeEventListener("pointerdown", down, true);
     target.removeEventListener("pointermove", move, true);
     target.removeEventListener("pointerup", release, true);
