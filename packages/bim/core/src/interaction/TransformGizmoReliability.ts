@@ -34,21 +34,39 @@ export function installTransformPointerLifecycle(
   };
   const down = (event: PointerEvent): void => {
     if (event.button !== 0 || event.isPrimary === false || pointerId !== null) return;
+
+    // A previous native drag must never survive without a physical pointer owner.
+    // Repair that stale state before accepting a new primary gesture.
+    if (controls.dragging) controls.pointerUp(null);
+
     pointerId = event.pointerId;
     startX = event.clientX; startY = event.clientY; distance = 0;
     generation++;
   };
   const move = (event: PointerEvent): void => {
-    if (pointerId === null || !controls.dragging) return;
-    if (event.pointerId !== pointerId) {
+    if (!controls.dragging) return;
+
+    if (pointerId !== null && event.pointerId !== pointerId) {
       // A second touch/pen must not transform the first pointer's selection.
       event.stopImmediatePropagation();
       return;
     }
+
+    // Physical button state is authoritative. This also repairs the rare case
+    // where native TransformControls remains dragging after pointer ownership
+    // has already been lost.
     if ((event.buttons & 1) === 0) {
       finish(false);
       return;
     }
+
+    // Never let an unowned native drag continue transforming the model.
+    if (pointerId === null) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+
     distance = Math.max(distance, Math.hypot(event.clientX - startX, event.clientY - startY));
     if (distance <= 5) {
       event.preventDefault();
@@ -56,11 +74,23 @@ export function installTransformPointerLifecycle(
     }
   };
   const release = (event: PointerEvent): void => {
-    if (pointerId !== event.pointerId) return;
+    if (pointerId !== event.pointerId) {
+      // If native state is stale but no pointer is owned anymore, a real
+      // primary release must still terminate the transform immediately.
+      if (pointerId === null && controls.dragging && event.isPrimary !== false) {
+        finish(event.type === "pointercancel");
+      }
+      return;
+    }
     const token = generation;
     queueMicrotask(() => {
       if (!disposed && token === generation) finish(event.type === "pointercancel");
     });
+  };
+  const mouseUp = (event: MouseEvent): void => {
+    // Mouse compatibility fallback: browsers/extensions can occasionally
+    // interrupt the PointerEvent release path while still emitting mouseup.
+    if (event.button === 0 && controls.dragging) finish(false);
   };
   const blur = (): void => { finish(true); };
 
@@ -68,6 +98,7 @@ export function installTransformPointerLifecycle(
   target.addEventListener("pointermove", move, true);
   target.addEventListener("pointerup", release, true);
   target.addEventListener("pointercancel", release, true);
+  target.addEventListener("mouseup", mouseUp, true);
   element.addEventListener("lostpointercapture", release, true);
   target.addEventListener("blur", blur);
   return () => {
@@ -77,6 +108,7 @@ export function installTransformPointerLifecycle(
     target.removeEventListener("pointermove", move, true);
     target.removeEventListener("pointerup", release, true);
     target.removeEventListener("pointercancel", release, true);
+    target.removeEventListener("mouseup", mouseUp, true);
     element.removeEventListener("lostpointercapture", release, true);
     target.removeEventListener("blur", blur);
   };
