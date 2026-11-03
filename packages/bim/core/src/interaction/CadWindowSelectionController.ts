@@ -617,6 +617,22 @@ export class CadWindowSelectionController {
 
 
       /*
+       * El gizmo puede reclamar un pointerdown tras registrarse el
+       * candidato de ventana. Al soltar, una seleccion deshabilitada
+       * indica que el gesto pertenece a MOVE/ROTATE, no a la ventana.
+       */
+      if (
+        !this.designSelection.isEnabled
+        || !this.pointSelection.isEnabled
+        || !this.lineSelection.isEnabled
+      ) {
+
+        return;
+
+      }
+
+
+      /*
        * Clic sostenido + arrastre:
        * no inicia selección; la cámara conserva
        * completamente ese gesto.

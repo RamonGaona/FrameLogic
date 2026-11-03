@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.63 — 2026-11-03
+
+### Corregido
+
+- Un clic corto sobre los aros o ejes de ROTATE/MOVE no debe interpretarse tambien como primera esquina de una ventana de seleccion del espacio modelo.
+- El controlador de ventana descarta el candidato al soltar si una herramienta deshabilito la seleccion durante el mismo gesto; no modifica transformaciones, SNAP ni Undo/Redo.
+- Los clics reales en espacio vacio conservan la seleccion CAD por dos esquinas.
+
+### Validacion
+
+- Se incorporan pruebas del conflicto con gizmos, seleccion en espacio vacio y clic sobre pieza dentro de `test:gizmos`.
+- Se sincronizan version visible, package.json y package-lock.json en `0.1.63`.
+
+---
+
 ## v0.1.62 — 2026-11-02
 
 ### Corregido
