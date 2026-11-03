@@ -9,3 +9,21 @@
 .bim-toolbar > button:first-of-type {
   display: none;
 }
+
+/* The isolated piece editor owns the viewport's UI while it is active.
+ * The important rule survives layout adapters and React updates that write
+ * display styles to Model Space controls after the editor opens.
+ * It deliberately does not hide the editor panel, its back button or ViewCube.
+ */
+html[data-framelogic-piece-workspace-active="true"] :is(
+  .bim-toolbar,
+  [data-framelogic-project-toolbar="true"],
+  [data-framelogic-model-space-panel-stack="true"],
+  .layer-panel,
+  .model-panel,
+  [data-framelogic-section-panel="true"],
+  [data-framelogic-model-render-mode="true"]
+) {
+  display: none !important;
+  visibility: hidden !important;
+}

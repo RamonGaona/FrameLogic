@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.64 — 2026-11-03
+
+### Corregido
+
+- Se impide que las barras y los botones generales de edicion del espacio modelo sigan visibles por detras del encabezado al entrar en `Convertir a pieza FrameLogic` o `Editar pieza FrameLogic`.
+- El editor declara explicitamente su estado activo en `document.documentElement`; una regla CSS de prioridad oculta los controles generales incluso si un adaptador de layout vuelve a aplicarles estilos en linea.
+- `Volver al modelo` elimina la marca y restaura la interfaz original. El panel de metadatos del editor y ViewCube permanecen disponibles.
+
+### Tecnico y validacion
+
+- No se modifica geometria, SNAP, ejes, transformaciones ni datos de piezas. Se conserva el guard anterior como respaldo para otros controles reubicados.
+- Version visible, package.json y package-lock.json sincronizados en `0.1.64`. Requiere comprobacion manual del editor aislado sobre piezas reales.
+
+---
+
 ## v0.1.63 — 2026-11-03
 
 ### Corregido

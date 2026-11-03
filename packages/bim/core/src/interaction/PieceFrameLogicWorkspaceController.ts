@@ -352,6 +352,14 @@ export class PieceFrameLogicWorkspaceController {
       definition.classification,
     );
 
+    // Indica a toda la UI que el editor aislado tiene prioridad
+    // sobre las barras del espacio modelo, incluso si otro layout
+    // vuelve a aplicar display a sus controles.
+    document.documentElement.setAttribute(
+      "data-framelogic-piece-workspace-active",
+      "true",
+    );
+
     void this.actions
       .setIsoView();
   }
@@ -1240,6 +1248,10 @@ export class PieceFrameLogicWorkspaceController {
 
 
   private exitWorkspace(): void {
+    document.documentElement.removeAttribute(
+      "data-framelogic-piece-workspace-active",
+    );
+
     this.actions
       .stopPreparation();
     this.selection
