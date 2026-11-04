@@ -1,0 +1,49 @@
+# One-time removal of the remaining fully integrated branches.
+# Cloudflare production branch is main. Never modify main, Andres or Miguel.
+name: Prune remaining integrated branches
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/prune-production-merged-branches.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    if: github.repository == 'RamonGaona/FrameLogic' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full main history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Delete only fully merged approved branches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branches=(
+            'feature/precision-model-space'
+            'feature/lightweight-piece-representations'
+          )
+          for branch in "${branches[@]}"; do
+            if [[ "$branch" == "Andres" || "$branch" == "Miguel" || "$branch" == "main" ]]; then
+              echo "::error::Protected branch included"
+              exit 1
+            fi
+            if ! git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null; then
+              echo "Already removed: $branch"
+              continue
+            fi
+            git fetch --no-tags origin "refs/heads/$branch:refs/remotes/origin/$branch"
+            if ! git merge-base --is-ancestor "refs/remotes/origin/$branch" HEAD; then
+              echo "::error::Unmerged branch $branch — refusing to delete"
+              exit 1
+            fi
+            echo "Removing merged branch: $branch"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch"
+          done
+          echo "All approved branches removed. Andres, Miguel and main preserved."
