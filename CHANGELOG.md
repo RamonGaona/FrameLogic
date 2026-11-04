@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.68 — 2026-11-04
+
+### Corregido
+
+- Al usar `Línea → eje` o `Punto → SNAP` dentro de la preparación geométrica de una pieza, no se reinicia la preparación si ya está activa para esa instancia.
+- Se conservan la selección CAD y las líneas/puntos temporales hasta que el usuario termina la preparación; el eje se agrega como referencia persistente sin borrar su línea CAD original al convertirla.
+- La función central `startPieceDefinitionPreparation` reutiliza el contexto antes de cancelar comandos, y la clase `PieceDefinitionPreparationController.start` protege también a otros llamadores.
+- El cambio de pieza y `Salir de preparación` conservan la limpieza temporal existente. No cambian geometría, sistema de coordenadas, snaps ni modelos importados.
+
+### Validación
+
+- Nuevas pruebas para un segundo inicio idempotente y para la conversión real de una línea CAD seleccionada en eje persistente sin eliminar CAD.
+- Se incorpora `test:piece-preparation` en CI y se sincronizan versión visible, package.json, lockfile y CHANGELOG en `0.1.68`.
+
+---
+
 ## v0.1.67 — 2026-11-04
 
 ### Corregido

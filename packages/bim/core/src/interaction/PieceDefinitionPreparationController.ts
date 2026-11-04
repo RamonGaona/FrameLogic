@@ -244,6 +244,14 @@ export class PieceDefinitionPreparationController {
   ):
     PieceDefinitionPreparationState {
 
+    // Los botones "Punto → SNAP" y "Línea → eje" invocan start() antes
+    // de procesar la selección. Reiniciar la misma pieza borraba el CAD
+    // temporal de preparación y deseleccionaba sus líneas/puntos.
+    // Si ya se prepara esta pieza, reutilizar el contexto sin limpiarlo.
+    if (this.activeInstanceId === instanceId) {
+      return this.getState();
+    }
+
     if (
       this.activeInstanceId
       !== null

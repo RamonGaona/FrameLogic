@@ -627,29 +627,29 @@ async function setCardinalDirection(
   ):
     PieceDefinitionPreparationState {
 
+    const currentPreparation = piecePreparation.getState();
+    const selectedIds = designSelection.getSelectedIds();
+    const targetId =
+      instanceId
+      ?? (selectedIds.length === 1 ? selectedIds[0] : undefined)
+      ?? currentPreparation.instanceId
+      ?? undefined;
+
+    // No cancelar herramientas, perder una selección CAD o reiniciar
+    // el workspace al convertir una línea o punto ya dibujado.
+    if (currentPreparation.active && currentPreparation.instanceId === targetId) {
+      return currentPreparation;
+    }
+
     pieceOriginEdit.cancel();
 
-
     cadWindowSelection.cancel();
-
 
     cadCommandManager.cancelActive();
 
     cadNumericInput.hide();
 
     cadWorkPlaneEdit.cancel();
-
-
-    const targetId =
-      instanceId
-      ?? (
-        designSelection
-          .getSelectedIds()
-          .length === 1
-          ? designSelection
-              .getSelectedIds()[0]
-          : undefined
-      );
 
 
     if (
