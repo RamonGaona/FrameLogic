@@ -39,6 +39,9 @@ jobs:
       - name: Instance tree layout tests
         run: npm run test:instance-tree
 
+      - name: Camera mouse navigation tests
+        run: npm run test:camera
+
       - name: Piece visualization tests
         run: npm run test:piece-visuals
 

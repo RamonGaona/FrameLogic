@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import * as OBF from "@thatopen/components-front";
+import { restoreCadMouseNavigationBindings } from "../navigation/CadMouseNavigationController";
 
 import {
   DesignPlacementController,
@@ -4071,6 +4072,10 @@ async function toggleCameraProjection():
   // --------------------------------------------------------
 
   await world.camera.projection.toggle();
+
+  // ProjectionManager cambia el boton central a ZOOM en ORTHO y DOLLY
+  // en PERSPECTIVA. Recuperar la orbita CAD sin modificar la rueda-zoom.
+  restoreCadMouseNavigationBindings(world.camera.controls);
 
 
   // --------------------------------------------------------

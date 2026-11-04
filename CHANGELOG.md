@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.66 — 2026-11-04
+
+### Corregido
+
+- La rueda del raton presionada vuelve a orbitar despues de alternar entre camara ORTHOGRAPHIC y PERSPECTIVE mediante el ViewCube.
+- That Open ProjectionManager reasigna `mouseButtons.middle` a ZOOM o DOLLY al cambiar la proyeccion; FrameLogic reaplica sus controles CAD despues del cambio.
+- Se preserva el zoom mediante el giro de la rueda, PAN con boton derecho y seleccion/comandos con boton izquierdo. No se modifica geometria, ejes, SNAPs ni transformaciones.
+
+### Validacion
+
+- Pruebas de regresion para restaurar la orbita despues de ambos cambios de proyeccion, conservar el zoom de rueda y restaurar los botones al desmontar el controlador.
+- La validacion de `main` ejecuta la prueba de camara; el build especifico de Cloudflare vuelve a verificarse en la rama principal.
+- Version visible, package.json y package-lock.json sincronizados en `0.1.66`.
+
+---
+
 ## v0.1.65 — 2026-11-04
 
 ### Corregido

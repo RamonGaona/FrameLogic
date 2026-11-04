@@ -3,9 +3,7 @@ name: Web build
 on:
   push:
     branches:
-      - feature/precision-model-space
-      - feature/lightweight-piece-representations
-      - feature/reliable-3d-gizmos
+      - main
   workflow_dispatch:
 
 jobs:
@@ -31,6 +29,12 @@ jobs:
 
       - name: Gizmo interaction tests
         run: npm run test:gizmos
+
+      - name: Camera mouse navigation tests
+        run: npm run test:camera
+
+      - name: Instance tree layout tests
+        run: npm run test:instance-tree
 
       - name: Piece visualization tests
         run: npm run test:piece-visuals

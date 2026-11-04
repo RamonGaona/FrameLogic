@@ -31,6 +31,20 @@ const RIGHT_BUTTON_MASK = 2;
 const RIGHT_DRAG_THRESHOLD_PX = 4;
 
 /**
+ * ProjectionManager de That Open sobrescribe `mouseButtons.middle` cada vez
+ * que cambia ORTHOGRAPHIC/PERSPECTIVE (ZOOM/DOLLY). Restablecer esta politica
+ * conserva la orbita CAD con la rueda presionada en ambas proyecciones.
+ * No tocar `wheel`: la rueda girada debe conservar el zoom propio del modo.
+ */
+export function restoreCadMouseNavigationBindings(
+  controls: CameraControlsLike,
+): void {
+  controls.mouseButtons.left = CAMERA_ACTION_NONE;
+  controls.mouseButtons.middle = CAMERA_ACTION_ROTATE;
+  controls.mouseButtons.right = CAMERA_ACTION_TRUCK;
+}
+
+/**
  * Navegación CAD del Model Space.
  *
  * - izquierdo: reservado para selección / comandos CAD;
@@ -66,9 +80,7 @@ export class CadMouseNavigationController {
       wheel: options.controls.mouseButtons.wheel,
     };
 
-    options.controls.mouseButtons.left = CAMERA_ACTION_NONE;
-    options.controls.mouseButtons.middle = CAMERA_ACTION_ROTATE;
-    options.controls.mouseButtons.right = CAMERA_ACTION_TRUCK;
+    restoreCadMouseNavigationBindings(options.controls);
 
     this.canvas.addEventListener(
       "pointerdown",
