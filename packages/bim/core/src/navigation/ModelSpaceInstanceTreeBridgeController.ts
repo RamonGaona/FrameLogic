@@ -1,3 +1,5 @@
+import { findInstanceTreeBody } from "./findInstanceTreeBody";
+
 import type {
   DesignModel,
 } from "@framelogic/domain";
@@ -106,12 +108,9 @@ export class ModelSpaceInstanceTreeBridgeController {
       true,
     );
     this.hideContextMenu();
-    this.options.container
-      .querySelector('[data-framelogic-cad-entity-tree="true"]')
-      ?.remove();
-    this.options.container
-      .querySelector('[data-framelogic-pdf-tree="true"]')
-      ?.remove();
+    const body = findInstanceTreeBody(this.options.container);
+    body?.querySelector('[data-framelogic-cad-entity-tree="true"]')?.remove();
+    body?.querySelector('[data-framelogic-pdf-tree="true"]')?.remove();
   }
 
   private readonly handleGlobalPointerDown = (
@@ -133,9 +132,7 @@ export class ModelSpaceInstanceTreeBridgeController {
 
   private decorate(): void {
     if (this.disposed) return;
-    const body = this.options.container.querySelector<HTMLElement>(
-      '[data-framelogic-instance-tree-body="true"]',
-    );
+    const body = findInstanceTreeBody(this.options.container);
     if (!body) return;
 
     const lines = this.options.designModel.cadLines.getAll();

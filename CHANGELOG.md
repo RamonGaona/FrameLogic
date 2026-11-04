@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.65 — 2026-11-04
+
+### Corregido
+
+- Se recupera la vista `VISTAS DE SECCIÓN` dentro del arbol `INSTANCIAS` cuando el layout reubica ese panel fuera del contenedor original del visor.
+- El mismo ajuste recupera los grupos `ENTIDADES CAD` y `PLANOS / PDF` y los ojos de visibilidad de grupos que dependen del arbol reubicado.
+- Los controladores siguen el panel real tanto antes como despues de moverlo al stack lateral en `document.body`; la limpieza al desmontar actua sobre ese mismo arbol.
+- No se alteran modelos, referencias CAD, posiciones, geometria ni definiciones de seccion.
+
+### Validación
+
+- Pruebas de regresion para la localizacion del arbol antes y despues del reparenting y ausencia de panel.
+- Se centraliza `main` como rama de integracion; se mantienen las ramas historicas y `Andres`/`Miguel` sin modificacion.
+- Version visible, package.json y package-lock.json sincronizados en `0.1.65`.
+
+---
+
 ## v0.1.64 — 2026-11-03
 
 ### Corregido

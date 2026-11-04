@@ -1,3 +1,5 @@
+import { findInstanceTreeBody } from "./findInstanceTreeBody";
+
 import type {
   DesignModel,
 } from "@framelogic/domain";
@@ -77,18 +79,21 @@ export class InstanceTreeGroupVisibilityController {
     this.disposed = true;
     window.clearInterval(this.timer);
 
-    this.options.container
-      .querySelectorAll('[data-framelogic-group-eye="true"]')
+    findInstanceTreeBody(this.options.container)
+      ?.querySelectorAll('[data-framelogic-group-eye="true"]')
       .forEach((element) => element.remove());
   }
 
   private decorate(): void {
     if (this.disposed) return;
 
-    const cadDetails = this.options.container.querySelector<HTMLDetailsElement>(
+    const body = findInstanceTreeBody(this.options.container);
+    if (!body) return;
+
+    const cadDetails = body.querySelector<HTMLDetailsElement>(
       'details[data-framelogic-cad-entity-tree="true"]',
     );
-    const sectionDetails = this.options.container.querySelector<HTMLDetailsElement>(
+    const sectionDetails = body.querySelector<HTMLDetailsElement>(
       'details[data-framelogic-section-tree="true"]',
     );
     const referenceDetails = this.findGroup("REFERENCIAS CAD");
@@ -260,9 +265,7 @@ export class InstanceTreeGroupVisibilityController {
   }
 
   private findGroup(title: string): HTMLDetailsElement | null {
-    const body = this.options.container.querySelector<HTMLElement>(
-      '[data-framelogic-instance-tree-body="true"]',
-    );
+    const body = findInstanceTreeBody(this.options.container);
     if (!body) return null;
 
     return Array.from(

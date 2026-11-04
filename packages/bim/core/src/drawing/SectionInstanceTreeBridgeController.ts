@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { findInstanceTreeBody } from "../navigation/findInstanceTreeBody";
 
 import type { DrawingProductionController } from "./DrawingProductionController";
 import type { DrawingWorkspaceController } from "./DrawingWorkspaceController";
@@ -250,7 +251,8 @@ export class SectionInstanceTreeBridgeController {
     this.workspaceRuntime.handleDimensionPoint = this.originalWorkspaceHandleDimensionPoint;
     this.workspaceRuntime.render = this.originalWorkspaceRender;
     this.hideContextMenu();
-    this.options.container.querySelector('[data-framelogic-section-tree="true"]')?.remove();
+    findInstanceTreeBody(this.options.container)
+      ?.querySelector('[data-framelogic-section-tree="true"]')?.remove();
   }
 
   private readonly handleGlobalPointerDown = (event: PointerEvent): void => {
@@ -898,9 +900,7 @@ export class SectionInstanceTreeBridgeController {
 
   private decorate(): void {
     if (this.disposed) return;
-    const body = this.options.container.querySelector<HTMLElement>(
-      '[data-framelogic-instance-tree-body="true"]',
-    );
+    const body = findInstanceTreeBody(this.options.container);
     if (!body) return;
 
     this.cleanupHiddenIds();

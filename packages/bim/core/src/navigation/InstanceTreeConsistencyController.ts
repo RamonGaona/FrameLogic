@@ -1,3 +1,5 @@
+import { findInstanceTreeBody } from "./findInstanceTreeBody";
+
 import type {
   SectionDrawingController,
 } from "../drawing/SectionDrawingController";
@@ -137,9 +139,7 @@ export class InstanceTreeConsistencyController {
 
 
   private repairDynamicGroups(): void {
-    const body = this.container.querySelector<HTMLElement>(
-      '[data-framelogic-instance-tree-body="true"]',
-    );
+    const body = findInstanceTreeBody(this.container);
     if (!body) return;
 
     const cadContent = body.querySelector<HTMLElement>(
@@ -277,9 +277,7 @@ export class InstanceTreeConsistencyController {
   private findGroup(
     title: string,
   ): HTMLDetailsElement | null {
-    const body = this.container.querySelector<HTMLElement>(
-      '[data-framelogic-instance-tree-body="true"]',
-    );
+    const body = findInstanceTreeBody(this.container);
     if (!body) return null;
 
     return Array.from(
@@ -298,9 +296,10 @@ export class InstanceTreeConsistencyController {
 
 
   private hideEmptyCadGroupEye(): void {
-    const button = this.container.querySelector<HTMLButtonElement>(
-      'button[data-framelogic-group-eye-key="cad"]',
-    );
+    const button = findInstanceTreeBody(this.container)
+      ?.querySelector<HTMLButtonElement>(
+        'button[data-framelogic-group-eye-key="cad"]',
+      );
     if (!button) return;
     button.style.display = button.disabled ? "none" : "";
   }

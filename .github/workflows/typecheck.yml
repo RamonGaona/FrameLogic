@@ -36,6 +36,9 @@ jobs:
       - name: Gizmo interaction tests
         run: npm run test:gizmos
 
+      - name: Instance tree layout tests
+        run: npm run test:instance-tree
+
       - name: Piece visualization tests
         run: npm run test:piece-visuals
 
