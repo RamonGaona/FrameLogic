@@ -1265,9 +1265,9 @@ export class PieceDefinitionPreparationController {
       preparationLayer
     ) {
 
-      this.cleanupPreparationCad();
-
-
+      // No destruir CAD previamente dibujado si la capa de preparación
+      // ya existe (por ejemplo, tras una interrupción del editor).
+      // La limpieza explícita permanece en stop()/salir de preparación.
       this.designModel
         .layers
         .update(

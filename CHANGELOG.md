@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.69 — 2026-11-04
+
+### Corregido
+
+- El editor aislado de piezas activa automáticamente la preparación geométrica ANTES de dibujar líneas o puntos CAD, evitando que `Línea → eje` oculte después los objetos al cambiar de capa.
+- `Línea → eje` funciona aunque el comando LINE siga abierto: termina el trazado sin deshacer segmentos ya creados, selecciona el último segmento CAD válido y crea el eje persistente; la previsualización pendiente no se convierte en una línea ficticia.
+- La selección CAD no oculta la pieza aislada: el aislamiento conserva la lista original de instancias al entrar, en lugar de depender de la selección que cambia durante el dibujo.
+- Iniciar la preparación no borra automáticamente los puntos o líneas de una capa temporal previamente existente. La limpieza al pulsar `Salir de preparación` se mantiene.
+- Los botones de conversión muestran los errores en el panel, en vez de dejar fallos silenciosos o prometer una conversión que no se realizó.
+
+### Validación
+
+- Pruebas para inicio automático, LINE activo sin Esc, ausencia de línea completa y selección del último segmento; version visible, package.json y lockfile a `0.1.69`.
+
+---
+
 ## v0.1.68 — 2026-11-04
 
 ### Corregido

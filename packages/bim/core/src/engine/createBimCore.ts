@@ -2,6 +2,7 @@ import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import * as OBF from "@thatopen/components-front";
 import { restoreCadMouseNavigationBindings } from "../navigation/CadMouseNavigationController";
+import { finishActiveLineForAxisConversion } from "../interaction/finishActiveLineForAxisConversion";
 
 import {
   DesignPlacementController,
@@ -788,6 +789,15 @@ async function setCardinalDirection(
   function addPreparedPieceAxesFromSelection():
     number {
 
+    // Si se pulsa Línea → eje sin Esc, terminar LINE (sin deshacer
+    // segmentos ya dibujados) y seleccionar el último segmento creado.
+    // El comando LINE deshabilita selección CAD mientras está activo.
+    finishActiveLineForAxisConversion(
+      cadCommandManager,
+      cadLinePlacement,
+      cadLineSelection,
+      (lineId) => Boolean(designModel.cadLines.get(lineId)),
+    );
     pieceOriginEdit.cancel();
 
 

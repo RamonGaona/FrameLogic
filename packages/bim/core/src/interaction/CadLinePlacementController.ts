@@ -86,6 +86,14 @@ export class CadLinePlacementController {
   private active = false;
   private disposed = false;
 
+  // Último segmento CAD realmente registrado durante el comando LINE
+  // actual; la línea de vista previa NO cuenta como segmento terminado.
+  private lastCreatedLineId: string | null = null;
+
+  get lastCompletedLineId(): string | null {
+    return this.lastCreatedLineId;
+  }
+
   private unsubscribeOrtho: (() => void) | null = null;
   private unsubscribeWorkPlane: (() => void) | null = null;
 
@@ -184,6 +192,7 @@ export class CadLinePlacementController {
     }
 
     this.active = true;
+    this.lastCreatedLineId = null;
     this.startPoint = null;
     this.lastDirection = null;
     this.pointerDownActive = false;
@@ -658,6 +667,7 @@ export class CadLinePlacementController {
       },
     });
 
+    this.lastCreatedLineId = line.id;
     this.lineScene.sync();
 
     const snapshot = {

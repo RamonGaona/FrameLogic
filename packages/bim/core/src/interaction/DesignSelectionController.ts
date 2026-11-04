@@ -151,6 +151,8 @@ export class DesignSelectionController {
   // ISOLATION
   // ==========================================================
 
+  private readonly isolatedInstanceIds = new Set<string>();
+
   private isolationSnapshot:
     Map<
       string,
@@ -1470,9 +1472,10 @@ export class DesignSelectionController {
     }
 
 
-    return this.selectedIds.has(
-      instanceId,
-    );
+    // La vista aislada corresponde a las piezas seleccionadas cuando
+    // se entró en aislamiento; no debe desaparecer al seleccionar una
+    // LINE CAD, que limpia la selección de piezas temporalmente.
+    return this.isolatedInstanceIds.has(instanceId);
 
   }
 
@@ -1496,6 +1499,11 @@ export class DesignSelectionController {
 
     }
 
+
+    this.isolatedInstanceIds.clear();
+    for (const selectedId of this.selectedIds) {
+      this.isolatedInstanceIds.add(selectedId);
+    }
 
     const snapshot =
       new Map<
@@ -1592,6 +1600,7 @@ export class DesignSelectionController {
 
     this.isolationSnapshot =
       null;
+    this.isolatedInstanceIds.clear();
 
 
     this.designScene.sync();

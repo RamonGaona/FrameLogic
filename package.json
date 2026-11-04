@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.68",
+  "version": "0.1.69",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -17,7 +17,7 @@
     "test:gizmos": "vitest run packages/bim/core/src/interaction/TransformGizmoReliability.test.ts packages/bim/core/src/interaction/CadWindowSelectionController.test.ts packages/bim/core/src/interaction/MoveSnapDestinationPolicy.test.ts",
     "test:instance-tree": "vitest run packages/bim/core/src/navigation/findInstanceTreeBody.test.ts",
     "test:camera": "vitest run packages/bim/core/src/navigation/CadMouseNavigationController.test.ts",
-    "test:piece-preparation": "vitest run packages/bim/core/src/interaction/PieceDefinitionPreparationController.test.ts",
+    "test:piece-preparation": "vitest run packages/bim/core/src/interaction/PieceDefinitionPreparationController.test.ts packages/bim/core/src/interaction/PieceFrameLogicWorkspaceController.test.ts packages/bim/core/src/interaction/finishActiveLineForAxisConversion.test.ts",
     "test:piece-visuals": "vitest run packages/bim/core/src/design/PieceVisualGeometry.test.ts packages/bim/core/src/design/DesignSceneController.test.ts packages/bim/core/src/design/PieceVisualPackage.test.ts packages/geometry-engine/src/step/OcctStepVisualCache.test.ts"
   }
 }

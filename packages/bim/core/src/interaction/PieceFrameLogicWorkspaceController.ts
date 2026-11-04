@@ -352,6 +352,11 @@ export class PieceFrameLogicWorkspaceController {
       definition.classification,
     );
 
+    // Iniciar ANTES de dibujar LINE/POINT. Si se esperase hasta pulsar
+    // "Línea → eje", la preparación ocultaría la capa donde el usuario
+    // ya dibujó los objetos CAD, dando la impresión de que se borraron.
+    this.startPreparation();
+
     // Indica a toda la UI que el editor aislado tiene prioridad
     // sobre las barras del espacio modelo, incluso si otro layout
     // vuelve a aplicar display a sus controles.
@@ -658,29 +663,33 @@ export class PieceFrameLogicWorkspaceController {
       this.createButton(
         "Punto → SNAP",
         () => {
-          this.startPreparation();
-          const count =
-            this.actions
-              .addSnapsFromSelection();
-          this.setStatus(
-            count > 0
-              ? `${count} SNAP agregado(s).`
-              : "No se agregó ningún SNAP.",
-          );
+          if (!this.startPreparation()) return;
+          try {
+            const count = this.actions.addSnapsFromSelection();
+            this.setStatus(
+              count > 0
+                ? `${count} SNAP agregado(s).`
+                : "No se agregó ningún SNAP. Selecciona un punto CAD.",
+            );
+          } catch (error) {
+            this.setStatus(error instanceof Error ? error.message : String(error));
+          }
         },
       ),
       this.createButton(
         "Línea → eje",
         () => {
-          this.startPreparation();
-          const count =
-            this.actions
-              .addAxesFromSelection();
-          this.setStatus(
-            count > 0
-              ? `${count} eje(s) agregado(s).`
-              : "No se agregó ningún eje.",
-          );
+          if (!this.startPreparation()) return;
+          try {
+            const count = this.actions.addAxesFromSelection();
+            this.setStatus(
+              count > 0
+                ? `${count} eje(s) agregado(s).`
+                : "No se agregó ningún eje. Selecciona una línea CAD terminada.",
+            );
+          } catch (error) {
+            this.setStatus(error instanceof Error ? error.message : String(error));
+          }
         },
       ),
       this.createButton(
@@ -960,33 +969,16 @@ export class PieceFrameLogicWorkspaceController {
   }
 
 
-  private startPreparation(): void {
-    const instanceId =
-      this.activeInstanceId;
-
-    if (!instanceId) {
-      return;
-    }
-
+  private startPreparation(): boolean {
+    const instanceId = this.activeInstanceId;
+    if (!instanceId) return false;
     try {
-      this.actions
-        .startPreparation(
-          instanceId,
-        );
-      this.setStatus(
-        "Preparación geométrica activa.",
-      );
-    }
-    catch (
-      error
-    ) {
-      this.setStatus(
-        error instanceof Error
-          ? error.message
-          : String(
-              error,
-            ),
-      );
+      this.actions.startPreparation(instanceId);
+      this.setStatus("Preparación geométrica activa.");
+      return true;
+    } catch (error) {
+      this.setStatus(error instanceof Error ? error.message : String(error));
+      return false;
     }
   }
 

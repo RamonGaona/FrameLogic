@@ -1,4 +1,4 @@
-const FRAMELOGIC_VERSION = "0.1.68";
+const FRAMELOGIC_VERSION = "0.1.69";
 
 const SECTION_PANEL_SELECTOR =
   '[data-framelogic-section-panel="true"]';
