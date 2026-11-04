@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.67 — 2026-11-04
+
+### Corregido
+
+- MOVE vuelve a reconocer los SNAPs de la pieza seleccionada después de colocar el centro del gizmo sobre una referencia y pulsar un eje para elegir un segundo SNAP.
+- El veto de SNAPs propios se aplica solo durante un arrastre real; desaparece cuando el eje queda armado esperando un clic de destino (`HASTA`), sin perder los SNAPs externos.
+- Se preserva el movimiento restringido por eje/plano, el pivote temporal independiente, historial Undo/Redo y los controles de cámara.
+
+### Validación
+
+- Se agregan pruebas de transición `DRAGGING` a `PICK_DESTINATION`, SNAP sobre la pieza propia y referencias externas; integradas en `test:gizmos`.
+- Version visible, package.json y package-lock.json sincronizados en `0.1.67`.
+
+---
+
 ## v0.1.66 — 2026-11-04
 
 ### Corregido

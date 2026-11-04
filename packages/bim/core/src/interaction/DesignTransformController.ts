@@ -1,6 +1,8 @@
 import { installTransformPointerLifecycle } from "./TransformGizmoReliability";
 import * as THREE from "three";
 
+import { configureMoveDestinationSnaps } from "./MoveSnapDestinationPolicy";
+
 import {
   TransformControls,
 } from "three/addons/controls/TransformControls.js";
@@ -1012,9 +1014,12 @@ export class DesignTransformController {
           === "MOVE_OBJECTS"
         ) {
 
-          this.snap.setExcludedInstanceIds(
-            this.selection
-              .getSelectedIds(),
+          // Mientras la pieza se arrastra, evitar que su geometría
+          // móvil se convierta en un destino SNAP involuntario.
+          configureMoveDestinationSnaps(
+            this.snap,
+            this.selection.getSelectedIds(),
+            "DRAGGING",
           );
 
         }
@@ -1387,9 +1392,13 @@ export class DesignTransformController {
         );
 
 
-        this.snap.setExcludedInstanceIds(
-          this.selection
-            .getSelectedIds(),
+        // Tras un clic corto el eje queda armado: la pieza ya no
+        // se arrastra, así que sus SNAPs y los externos pueden
+        // servir de destino para el segundo clic exacto.
+        configureMoveDestinationSnaps(
+          this.snap,
+          this.selection.getSelectedIds(),
+          "PICK_DESTINATION",
         );
 
       }
