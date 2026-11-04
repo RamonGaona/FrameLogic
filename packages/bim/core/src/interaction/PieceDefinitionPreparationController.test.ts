@@ -1,5 +1,14 @@
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
+// The domain barrel pulls the STEP engine into the Node test runtime;
+// preparation only needs the layer identifiers, so mock that boundary.
+vi.mock("@framelogic/domain", () => ({
+  DEFAULT_DESIGN_LAYER_IDS: {
+    SNAP_MANUAL: "SNAP_MANUAL",
+    REFERENCE_AXES: "REFERENCE_AXES",
+  },
+}));
+
 import { PieceDefinitionPreparationController } from "./PieceDefinitionPreparationController";
 
 describe("FrameLogic piece preparation actions", () => {
