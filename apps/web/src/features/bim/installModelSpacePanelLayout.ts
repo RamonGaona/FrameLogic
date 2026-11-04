@@ -1,3 +1,7 @@
+import { dockPiecePreparationPanel } from "./dockPiecePreparationPanel";
+
+const ISOLATED_PIECE_EDITOR_ATTRIBUTE = "data-framelogic-piece-workspace-active";
+
 const INSTANCE_TREE_SELECTOR =
   '[data-framelogic-instance-tree="true"]';
 
@@ -517,53 +521,29 @@ export function installModelSpacePanelLayout():
   };
 
 
-  const applyPreparationPanelLayout =
-    (
-      preparationPanel:
-        HTMLElement,
-    ): void => {
-
-    Object.assign(
-      preparationPanel.style,
-      {
-        position:
-          "relative",
-        left:
-          "auto",
-        top:
-          "auto",
-        bottom:
-          "auto",
-        width:
-          "100%",
-        maxWidth:
-          "100%",
-        maxHeight:
-          "none",
-        minHeight:
-          "0",
-        flex:
-          "0 1 auto",
-        overflowX:
-          "hidden",
-        overflowY:
-          "auto",
-        zIndex:
-          "119",
-        pointerEvents:
-          "auto",
-      },
-    );
-
-  };
-
-
   const applyLayout =
     (): void => {
 
     animationFrame =
       0;
 
+    // La pila global se oculta con CSS mientras se edita una pieza.
+    // El panel "Preparar pieza" NO forma parte del chrome del modelo:
+    // contiene los selectores editables de tipo de SNAP y eje.
+    // Sacarlo de la pila ANTES de calcular el layout general permite
+    // seguir editando CENTER / CONNECTION / REFERENCE / CUSTOM.
+    const preparationPanel = findPreparationPanel();
+    if (
+      document.documentElement.getAttribute(
+        ISOLATED_PIECE_EDITOR_ATTRIBUTE,
+      ) === "true"
+    ) {
+      if (preparationPanel) {
+        dockPiecePreparationPanel(preparationPanel, document.body, true);
+        observeResize(preparationPanel);
+      }
+      return;
+    }
 
     const topControlsBottom =
       applyTopToolbarLayout();
@@ -637,38 +617,10 @@ export function installModelSpacePanelLayout():
     );
 
 
-    const preparationPanel =
-      findPreparationPanel();
+    if (!preparationPanel) return;
 
-
-    if (
-      !preparationPanel
-    ) {
-
-      return;
-
-    }
-
-
-    if (
-      preparationPanel.parentElement
-      !== stack
-    ) {
-
-      stack.appendChild(
-        preparationPanel,
-      );
-
-    }
-
-
-    applyPreparationPanelLayout(
-      preparationPanel,
-    );
-
-    observeResize(
-      preparationPanel,
-    );
+    dockPiecePreparationPanel(preparationPanel, stack, false);
+    observeResize(preparationPanel);
 
   };
 
@@ -713,6 +665,14 @@ export function installModelSpacePanelLayout():
   );
 
 
+  // La transición de entrar/salir del editor también debe reubicar
+  // el panel aunque no se agreguen o quiten nodos.
+  const pieceWorkspaceObserver = new MutationObserver(scheduleLayout);
+  pieceWorkspaceObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: [ISOLATED_PIECE_EDITOR_ATTRIBUTE],
+  });
+
   window.addEventListener(
     "resize",
     scheduleLayout,
@@ -725,6 +685,7 @@ export function installModelSpacePanelLayout():
   return () => {
 
     mutationObserver.disconnect();
+    pieceWorkspaceObserver.disconnect();
 
     resizeObserver
       ?.disconnect();

@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.70 — 2026-11-04
+
+### Corregido
+
+- El panel **Preparar pieza** con la lista de SNAPs persistentes, el selector de tipo y los ejes se mantiene visible al entrar en el editor aislado FrameLogic.
+- El adaptador de diseño retira temporalmente ese panel del stack general que se oculta durante la edición y lo muestra a la derecha del formulario de metadatos, con desplazamiento vertical.
+- Al volver al espacio modelo, el panel retorna al stack normal; los cambios de modo se detectan aunque no haya nuevas mutaciones de elementos.
+- Se conservan los tipos ORIGIN, CENTER, CONNECTION, REFERENCE y CUSTOM. ORIGIN sigue protegido mediante la herramienta de cambio de origen.
+- No se cambia la geometría, ni los datos de las piezas, ejes, snaps o transformaciones.
+
+### Validación
+
+- Se agregan tres pruebas sobre visibilidad, retorno al layout original y ausencia de reparenting repetido, integradas en `test:piece-preparation`.
+- Versión visible, package.json y lockfile sincronizados en `0.1.70`.
+
+---
+
 ## v0.1.69 — 2026-11-04
 
 ### Corregido
