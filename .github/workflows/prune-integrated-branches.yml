@@ -1,0 +1,51 @@
+# One-time maintenance: remove stale fully merged branches.
+# Production-candidate branches remain until Cloudflare production uses main.
+name: Prune integrated branches (safe set)
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/prune-integrated-branches.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    if: github.repository == 'RamonGaona/FrameLogic'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main and full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check ancestry and remove only approved integrated refs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branches=(
+            'Ramon'
+            'feature/precision-model-space-docs2'
+            'feature/reliable-3d-gizmos'
+            'prueba-union'
+          )
+          echo "Current integration commit: $(git rev-parse HEAD)"
+          for branch in "${branches[@]}"; do
+            if [[ "$branch" == "main" || "$branch" == "Andres" || "$branch" == "Miguel" ]]; then
+              echo "::error::Protected branch '$branch' included in deletion set"; exit 1
+            fi
+            if ! git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null; then
+              echo "Already absent: $branch"; continue
+            fi
+            git fetch --no-tags origin "refs/heads/$branch:refs/remotes/origin/$branch"
+            if ! git merge-base --is-ancestor "refs/remotes/origin/$branch" HEAD; then
+              echo "::error::Branch '$branch' has commits not contained in main. NOT DELETED."
+              exit 1
+            fi
+            echo "Deleting fully integrated branch: $branch"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch"
+          done
+          echo "Completed safe cleanup; production-candidate branches intentionally retained."
