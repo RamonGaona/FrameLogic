@@ -96,6 +96,13 @@ export class PieceMoveCopySession {
       this.scene.sync();
       this.selection.setSelection(ids);
     });
-    this.selection.setSelection(ids);
+    // TransformControls emite mouseUp antes de liberar internamente su
+    // estado dragging. Cambiar selección sincrónicamente aquí volvería
+    // a conectar el gizmo mientras aún pertenece al gesto anterior.
+    queueMicrotask(() => {
+      if (ids.every(id => this.model.pieceInstances.get(id))) {
+        this.selection.setSelection(ids);
+      }
+    });
   }
 }
