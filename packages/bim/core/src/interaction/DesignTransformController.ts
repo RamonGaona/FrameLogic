@@ -2,6 +2,7 @@ import { installTransformPointerLifecycle } from "./TransformGizmoReliability";
 import * as THREE from "three";
 
 import { configureMoveDestinationSnaps } from "./MoveSnapDestinationPolicy";
+import { PieceMoveCopySession } from "./PieceMoveCopySession";
 
 import {
   TransformControls,
@@ -152,6 +153,11 @@ export class DesignTransformController {
   private armedPivot =
     false;
 
+  private ctrlCopyGesture = false;
+  private armedCopyMove = false;
+  private copySession: PieceMoveCopySession | null = null;
+  private cancelingCtrlGesture = false;
+
 
   private readonly dragStartPivotPosition =
     new THREE.Vector3();
@@ -238,7 +244,14 @@ export class DesignTransformController {
         domElement,
       );
 
-    this.releasePointerLifecycle = installTransformPointerLifecycle(domElement, this.controls);
+    this.releasePointerLifecycle = installTransformPointerLifecycle(
+      domElement, this.controls, window,
+      () => {
+        if (this.ctrlCopyGesture || this.copySession) {
+          this.cancelingCtrlGesture = true;
+        }
+      },
+    );
 
 
     this.controls.setMode(
@@ -304,6 +317,10 @@ export class DesignTransformController {
       this.handleTransformEnd,
     );
 
+
+    this.domElement.addEventListener(
+      "pointerdown", this.handleCtrlCopyPointerDown, true,
+    );
 
     this.domElement.addEventListener(
       "pointerdown",
@@ -407,6 +424,9 @@ export class DesignTransformController {
   // ==========================================================
 
   deactivate(): void {
+    if (this.controls.dragging && (this.ctrlCopyGesture || this.copySession)) {
+      this.cancelingCtrlGesture = true;
+    }
     if (this.controls.dragging) {
       this.controls.reset();
       this.controls.pointerUp(null);
@@ -424,6 +444,10 @@ export class DesignTransformController {
       false;
 
 
+    this.cancelCopySession();
+    this.ctrlCopyGesture = false;
+    this.armedCopyMove = false;
+    this.cancelingCtrlGesture = false;
     this.transformedObjects.clear();
 
 
@@ -908,7 +932,9 @@ export class DesignTransformController {
 
     this.dragMode =
       "NONE";
-
+    this.cancelCopySession();
+    this.ctrlCopyGesture = false;
+    this.armedCopyMove = false;
 
     this.activeMoveAxis =
       null;
@@ -930,6 +956,45 @@ export class DesignTransformController {
 
   }
 
+
+  private readonly handleCtrlCopyPointerDown = (event: PointerEvent): void => {
+    if (this.active && event.button === 0 && this.controls.getMode() === "translate") {
+      this.ctrlCopyGesture = event.ctrlKey;
+    }
+  };
+
+  private beginCopySession(): boolean {
+    if (this.copySession) return true;
+    try {
+      const session = new PieceMoveCopySession(
+        this.designModel, this.designScene, this.selection, this.history,
+        this.selection.getSelectedIds(),
+      );
+      this.copySession = session;
+      this.transformedObjects.clear();
+      for (const [id, object] of session.objects) this.transformedObjects.set(id, object);
+      this.dragHistoryStart = null;
+      configureMoveDestinationSnaps(this.snap, session.ids, "DRAGGING");
+      return true;
+    } catch (error) {
+      console.error("No se pudo copiar la pieza con Ctrl + eje", error);
+      return false;
+    }
+  }
+
+  private cancelCopySession(): void {
+    const session = this.copySession;
+    this.copySession = null;
+    if (!session) return;
+    session.cancel();
+    this.syncSelectedObjects(this.selection.getSelectedIds());
+  }
+
+  private finishCopySession(): void {
+    const session = this.copySession;
+    this.copySession = null;
+    session?.finish();
+  }
 
   // ==========================================================
   // TRANSFORM START
@@ -2046,6 +2111,10 @@ export class DesignTransformController {
       this.handleTransformEnd,
     );
 
+
+    this.domElement.removeEventListener(
+      "pointerdown", this.handleCtrlCopyPointerDown, true,
+    );
 
     this.domElement.removeEventListener(
       "pointerdown",
