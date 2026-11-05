@@ -4,7 +4,7 @@ const FRAMELOGIC_WORKSPACE_TITLE_PREFIX =
 const FRAMELOGIC_WORKSPACE_BACK_LABEL =
   "Volver al modelo";
 
-const MODEL_SPACE_CHROME_SELECTORS = [
+export const MODEL_SPACE_CHROME_SELECTORS = [
   '[data-framelogic-project-toolbar="true"]',
   ".bim-toolbar",
   '[data-framelogic-model-space-panel-stack="true"]',
