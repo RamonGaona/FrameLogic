@@ -83,6 +83,7 @@ function fixture() {
     recordOperation: vi.fn(),
   };
   const canvas = new EventTarget() as HTMLElement;
+  Object.assign(canvas, { style: { touchAction: "" } });
   const fakeWindow = new EventTarget() as Window;
   Object.assign(fakeWindow, { setTimeout: (callback: () => void) => {
     queueMicrotask(callback); return 1;
