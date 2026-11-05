@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.72 — 2026-11-05
+
+### Corregido
+
+- La inserción precisa `SmartPieceInsertionController` (barra INSERTAR PIEZA XYZ) tiene prioridad sobre el recuadro de selección CAD durante los dos clics: origen FrameLogic y dirección 3D.
+- El estado de inserción inteligente se registra explícitamente en `CadWindowSelectionController`, que deja de iniciar ventanas de selección durante la colocación.
+- Antes de insertar, se cancela cualquier ventana CAD que estuviese esperando su segunda esquina.
+- Al finalizar o cancelar, la selección por ventana vuelve a funcionar; se preservan el origen de la pieza, SNAPs, dirección 3D y F8 ORTO.
+- Sin cambios en geometría, cálculo de orientación o transformaciones.
+
+### Validación
+
+- Tres pruebas adicionales de prioridad del insertador preciso, candidato pendiente, selección anterior y retorno a selección normal; ejecutadas en `test:gizmos`.
+- Versión visible, package.json y package-lock.json sincronizados en `0.1.72`.
+
+---
+
 ## v0.1.71 — 2026-11-05
 
 ### Corregido

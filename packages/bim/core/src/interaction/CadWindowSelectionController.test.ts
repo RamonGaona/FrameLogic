@@ -37,6 +37,60 @@ function setup(isPlacing: () => boolean = () => false) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("CAD window selection and gizmo ownership", () => {
+  it("does not start a window for either SmartPieceInsertion click, but restores normal selection", () => {
+    let smartActive = false;
+    const s = setup();
+    s.controller.setSmartInsertionActiveChecker(() => smartActive);
+    smartActive = true;
+    for (let step = 0; step < 2; step++) {
+      s.canvas.dispatchEvent(pointer("pointerdown"));
+      s.target.dispatchEvent(pointer("pointerup"));
+      expect(s.controller.isActive).toBe(false);
+    }
+    expect(s.cameraEnabled).not.toHaveBeenCalled();
+    smartActive = false;
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(true);
+    s.controller.dispose();
+  });
+
+  it("does not finish a pending window while SmartPieceInsertion is active", () => {
+    let smartActive = false;
+    const s = setup();
+    s.controller.setSmartInsertionActiveChecker(() => smartActive);
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    smartActive = true;
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(false);
+    // Starting insertion always cancels any existing rectangle.
+    s.controller.cancel();
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(false);
+    smartActive = false;
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(true);
+    s.controller.dispose();
+  });
+
+  it("can cancel a previously active window on handoff to SmartPieceInsertion", () => {
+    const s = setup();
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(true);
+    s.controller.cancel(); // navigation.beforeStart
+    let smartActive = true;
+    s.controller.setSmartInsertionActiveChecker(() => smartActive);
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(false);
+    smartActive = false;
+    s.controller.dispose();
+  });
+
+
   it("ignores both insertion clicks and preserves ordinary empty selection afterwards", () => {
     let placing = true;
     const s = setup(() => placing);

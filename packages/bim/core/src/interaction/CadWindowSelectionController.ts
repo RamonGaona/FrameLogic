@@ -82,6 +82,10 @@ export class CadWindowSelectionController {
 
   private readonly isPlacementActive: () => boolean;
 
+  // La inserción inteligente se crea después de la ventana CAD.
+  // Registrar su estado impide que dos herramientas consuman el mismo clic.
+  private isSmartInsertionActive: () => boolean = () => false;
+
 
   private readonly overlay:
     HTMLDivElement;
@@ -273,6 +277,15 @@ export class CadWindowSelectionController {
 
   }
 
+  setSmartInsertionActiveChecker(checker: () => boolean): void {
+    this.isSmartInsertionActive = checker;
+    if (checker()) this.cancel();
+  }
+
+  private insertionOwnsPointer(): boolean {
+    return this.isPlacementActive() || this.isSmartInsertionActive();
+  }
+
 
   cancel():
     void {
@@ -326,7 +339,7 @@ export class CadWindowSelectionController {
       if (
         this.disposed
         || event.button !== 0
-        || this.isPlacementActive()
+        || this.insertionOwnsPointer()
       ) {
 
         return;
@@ -586,8 +599,8 @@ export class CadWindowSelectionController {
         PointerEvent,
     ): void => {
 
-      // Los dos clics de inserción son exclusivos de Placement.
-      if (this.isPlacementActive()) {
+      // Tanto la inserción básica como la inteligente poseen sus clics.
+      if (this.insertionOwnsPointer()) {
         this.candidatePointerId = null;
         this.candidateDragged = false;
         return;

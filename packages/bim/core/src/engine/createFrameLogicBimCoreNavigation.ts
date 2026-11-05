@@ -251,10 +251,19 @@ export async function createBimCore(
           .clone()
         ?? null,
       beforeStart: () => {
+        // Cerrar cualquier selección por ventana pendiente antes de
+        // elegir origen FrameLogic y dirección de la nueva pieza.
+        core.cadWindowSelection.cancel();
         core.cancelActiveCadCommand();
         core.cancelDesignPiecePlacement();
       },
     });
+
+  // SmartPieceInsertion es el flujo real del panel INSERTAR PIEZA XYZ.
+  // El controlador CAD fue construido previamente en createBimCore.
+  core.cadWindowSelection.setSmartInsertionActiveChecker(
+    () => smartPieceInsertion.isActive,
+  );
 
   /*
    * El cálculo/feedback del DesignSnapController queda activo sólo
