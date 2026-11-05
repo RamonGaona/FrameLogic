@@ -4,6 +4,7 @@ import type {
   DesignSceneController,
 } from "../design/DesignSceneController";
 import { resolvePieceDisplayQuality, type PieceDisplayQuality } from "./resolvePieceDisplayQuality";
+import { mountModelRenderPanel } from "./mountModelRenderPanel";
 
 
 export type ModelRenderMode =
@@ -62,10 +63,10 @@ export class ModelRenderModeController {
     const panel = document.createElement("div");
     panel.dataset["framelogicModelRenderMode"] = "true";
     Object.assign(panel.style, {
-      position: "absolute",
+      position: "fixed",
       right: "16px",
       bottom: "16px",
-      zIndex: "90",
+      zIndex: "2147481500",
       display: "flex",
       alignItems: "center",
       gap: "6px",
@@ -124,7 +125,9 @@ export class ModelRenderModeController {
     quality.addEventListener("change", this.handleQualityChange);
     this.qualitySelect = quality;
     panel.append(label, select, quality);
-    options.container.append(panel);
+    // Montar fuera del viewport: el editor aislado crea una capa
+    // independiente que puede tapar el panel aun con z-index alto.
+    mountModelRenderPanel(panel, document.body);
     this.panel = panel;
     this.select = select;
 
@@ -188,7 +191,7 @@ export class ModelRenderModeController {
    * encima aunque SECCIÓN cambie de alto al envolver sus controles.
    */
   private updatePanelPosition(): void {
-    const sectionPanel = this.container.querySelector<HTMLElement>(
+    const sectionPanel = document.querySelector<HTMLElement>(
       '[data-framelogic-section-panel="true"]',
     );
 
@@ -201,13 +204,9 @@ export class ModelRenderModeController {
       return;
     }
 
-    const containerRect = this.container.getBoundingClientRect();
     const sectionRect = sectionPanel.getBoundingClientRect();
-    const sectionBottom = Math.max(
-      0,
-      containerRect.bottom - sectionRect.bottom,
-    );
-    const bottom = sectionBottom + sectionRect.height + 8;
+    // El panel está ahora anclado a la ventana, no al contenedor 3D.
+    const bottom = Math.max(16, window.innerHeight - sectionRect.top + 8);
 
     this.panel.style.bottom = `${Math.round(bottom)}px`;
   }

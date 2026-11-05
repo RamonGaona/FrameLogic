@@ -1,4 +1,5 @@
 import { setPieceVisualLevel, getPieceVisualGeometries, type PieceVisualLevel } from "./PieceVisualGeometry";
+import { getStablePieceColorIdentity } from "./getStablePieceColorIdentity";
 import * as THREE from "three";
 
 import type {
@@ -339,14 +340,22 @@ export class DesignSceneController {
       2166136261;
 
 
+    // Nunca derivar el color automático de un UUID generado
+    // durante la importación: al reabrir un .flproject se crean
+    // AssetDefinitions nuevas para la misma geometría.
+    const stableIdentity = getStablePieceColorIdentity(
+      this.designModel.assets.get(assetId),
+      assetId,
+    );
+
     for (
       let index = 0;
-      index < assetId.length;
+      index < stableIdentity.length;
       index += 1
     ) {
 
       hash ^=
-        assetId.charCodeAt(
+        stableIdentity.charCodeAt(
           index,
         );
 

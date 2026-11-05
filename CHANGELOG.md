@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.76 — 2026-11-05
+
+### Corregido: color persistente al reabrir proyectos y estilos visibles al editar piezas
+
+- El color automático se deriva de la identidad estable del recurso (hash de contenido si existe; de lo contrario formato y nombre de archivo) y ya no del UUID de AssetDefinition, que cambia cuando la misma pieza STEP/IFC se vuelve a importar al abrir un .flproject.
+- El color explícito elegido para cada instancia continúa guardándose en los tags de .flproject; el cambio solamente estabiliza el color por defecto sin sobreescribir preferencias guardadas.
+- Los controles Render y calidad visual ahora se montan en document.body con posición fija y prioridad visual superior a la capa aislada del editor de pieza. Dejan de desaparecer detrás del workspace y siguen disponibles al volver al modelo.
+- El panel de Render se posiciona respecto a la ventana y por encima del panel de secciones cuando éste es visible; conserva los estilos Sólido, Sólido + aristas, Alámbrico y Transparente y la calidad Diseño, Básico, Detalle seleccionado y Detalle.
+- No se modifican archivos de proyecto, definiciones, geometría, ejes, SNAPs ni coordenadas.
+
+### Validación
+
+- Pruebas para identidad de color con IDs diferentes de la misma geometría y para montar los controles Render fuera del viewport, integradas en `test:piece-visuals`.
+- Version visible, package.json y package-lock.json sincronizados en `0.1.76`.
+
+---
+
 ## v0.1.75 — 2026-11-05
 
 ### Corregido: estilos visuales en el editor de pieza FrameLogic

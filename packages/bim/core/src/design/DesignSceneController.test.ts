@@ -45,4 +45,23 @@ describe("piece representations in the model space", () => {
     scene.dispose();
     expect(dispose).toHaveBeenCalledOnce();
   });
+  it("uses the same automatic pastel color when the same STEP file gets a new asset id", () => {
+    function importAsNewAsset(assetId: string): number {
+      const model = new DesignModel();
+      const controller = new DesignSceneController(new THREE.Scene(), model);
+      model.registerAsset({ id: assetId, name: "Mprop_Configurable.step", format: "STEP" });
+      const source = new THREE.Mesh(
+        new THREE.BoxGeometry(20, 10, 5),
+        new THREE.MeshBasicMaterial({ color: 0xffffff }),
+      );
+      controller.registerAssetPrototype(assetId, source);
+      const material = source.material as THREE.MeshLambertMaterial;
+      const color = material.color.getHex();
+      controller.dispose();
+      return color;
+    }
+    expect(importAsNewAsset("uuid-at-first-save")).toBe(
+      importAsNewAsset("uuid-after-reopening-project"),
+    );
+  });
 });
