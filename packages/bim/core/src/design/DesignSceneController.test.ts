@@ -55,7 +55,7 @@ describe("piece representations in the model space", () => {
         new THREE.MeshBasicMaterial({ color: 0xffffff }),
       );
       controller.registerAssetPrototype(assetId, source);
-      const material = source.material as THREE.MeshLambertMaterial;
+      const material = source.material as unknown as THREE.MeshLambertMaterial;
       const color = material.color.getHex();
       controller.dispose();
       return color;
