@@ -14,6 +14,7 @@ export function installTransformPointerLifecycle(
   element: HTMLElement,
   controls: PointerControls,
   target: Window = window,
+  onCancel?: () => void,
 ): () => void {
   let pointerId: number | null = null;
   let startX = 0, startY = 0, distance = 0;
@@ -25,7 +26,10 @@ export function installTransformPointerLifecycle(
     pointerId = null;
     generation++;
     if (controls.dragging) {
-      if (cancel) controls.reset();
+      if (cancel) {
+        onCancel?.();
+        controls.reset();
+      }
       controls.pointerUp(null);
     }
     if (releasedId !== null && element.hasPointerCapture?.(releasedId)) {
