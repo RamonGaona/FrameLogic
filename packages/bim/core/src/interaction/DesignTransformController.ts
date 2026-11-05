@@ -1222,6 +1222,14 @@ export class DesignTransformController {
     // --------------------------------------------------------
     // EJES / PLANOS = MOVER TODA LA SELECCIÓN
     // --------------------------------------------------------
+    if (this.ctrlCopyGesture && !this.copySession && delta.lengthSq() > 1e-18) {
+      if (!this.beginCopySession()) {
+        this.cancelingCtrlGesture = true;
+        this.pivot.position.copy(this.previousPivotPosition);
+        this.pivot.updateMatrixWorld(true);
+        return;
+      }
+    }
 
     for (
       const object
@@ -1348,6 +1356,22 @@ export class DesignTransformController {
       }
 
 
+      if (this.cancelingCtrlGesture) {
+        this.cancelCopySession();
+        this.ctrlCopyGesture = false;
+        this.armedCopyMove = false;
+        this.cancelingCtrlGesture = false;
+        this.armedMoveAxis = null;
+        this.armedPivot = false;
+        this.dragMode = "NONE";
+        this.dragHistoryStart = null;
+        this.snap.clearExcludedInstanceIds();
+        this.resetPivotToSelectionBase();
+        this.selection.setEnabled(true);
+        this.setCameraEnabled(true);
+        return;
+      }
+
       const movedDistance =
         this.pivot.position
           .distanceTo(
@@ -1398,11 +1422,16 @@ export class DesignTransformController {
           === "ROTATE_OBJECTS"
       ) {
 
-        this.commitTransforms();
-
+        if (clickedAxis && this.copySession) {
+          this.cancelCopySession();
+        } else {
+          this.commitTransforms();
+          if (this.copySession) this.finishCopySession();
+        }
 
         if (
           this.dragHistoryStart
+          && !this.ctrlCopyGesture
         ) {
 
           this.history.recordTransform(
@@ -1441,6 +1470,7 @@ export class DesignTransformController {
 
         this.armedMoveAxis =
           armedAxis;
+        this.armedCopyMove = this.ctrlCopyGesture;
 
 
         this.armedPivot =
@@ -1470,6 +1500,7 @@ export class DesignTransformController {
       else if (
         clickedPivot
       ) {
+        this.armedCopyMove = false;
 
         /*
          * Clic corto en el centro:
@@ -1496,6 +1527,7 @@ export class DesignTransformController {
 
       }
       else {
+        this.armedCopyMove = false;
 
         this.armedMoveAxis =
           null;
@@ -1512,6 +1544,7 @@ export class DesignTransformController {
 
       this.activeMoveAxis =
         null;
+      this.ctrlCopyGesture = false;
 
 
       this.dragMode =
@@ -1713,6 +1746,8 @@ export class DesignTransformController {
           > 1e-18
         ) {
 
+          if (this.armedCopyMove && !this.beginCopySession()) return;
+
           for (
             const object
             of this.transformedObjects.values()
@@ -1749,14 +1784,13 @@ export class DesignTransformController {
 
 
           this.commitTransforms();
-
-
-          this.history.recordTransform(
-            "MOVE",
-            before,
-            this.selection
-              .getSelectedIds(),
-          );
+          if (this.copySession) {
+            this.finishCopySession();
+          } else {
+            this.history.recordTransform(
+              "MOVE", before, this.selection.getSelectedIds(),
+            );
+          }
 
         }
 
@@ -1765,6 +1799,9 @@ export class DesignTransformController {
 
       this.armedMoveAxis =
         null;
+
+
+      this.armedCopyMove = false;
 
 
       this.armedPivot =
