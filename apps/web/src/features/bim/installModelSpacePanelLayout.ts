@@ -539,7 +539,14 @@ export function installModelSpacePanelLayout():
       ) === "true"
     ) {
       if (preparationPanel) {
-        dockPiecePreparationPanel(preparationPanel, document.body, true);
+        const sidebarSlot = document.querySelector<HTMLElement>(
+          '[data-framelogic-piece-editor-preparation-slot="true"]',
+        );
+        dockPiecePreparationPanel(
+          preparationPanel,
+          sidebarSlot ?? document.body,
+          true,
+        );
         observeResize(preparationPanel);
       }
       return;

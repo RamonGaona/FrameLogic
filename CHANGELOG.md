@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.73 — 2026-11-05
+
+### Mejoras de interfaz del editor de piezas
+
+- Se unifican `Metadatos de ingeniería` y `Preparar pieza` en una sola columna lateral, sin ventanas flotantes que bloqueen el espacio modelo.
+- La sección de metadatos es desplegable/contraíble y comienza contraída, priorizando las herramientas de geometría, SNAPs y ejes; sus valores permanecen intactos al alternar.
+- Los comandos de preparación quedan justo debajo de metadatos, seguidos de la lista editable de SNAPs y ejes, con desplazamiento vertical disponible.
+- Al salir del editor, el panel de preparación se desprende antes de destruir el workspace y regresa al stack habitual del modelo; se preservan los selectores y listeners.
+- No cambian geometría, conversiones STEP, ejes, coordenadas, SNAPs ni transformaciones.
+
+### Validación
+
+- Pruebas de regresión para acoplar el panel al sidebar, regresar al layout normal y evitar destruirlo al cerrar el editor.
+- Versión visible, package.json y package-lock.json sincronizados en `0.1.73`.
+
+---
+
 ## v0.1.72 — 2026-11-05
 
 ### Corregido

@@ -20,6 +20,44 @@ function fixture() {
 }
 
 describe("FrameLogic piece preparation editor layout", () => {
+  it("stacks the preparation panel below collapsible metadata in the editor sidebar", () => {
+    const { panel, stack } = fixture();
+    const sidebarSlot = {
+      getAttribute: vi.fn((name: string) =>
+        name === "data-framelogic-piece-editor-preparation-slot" ? "true" : null),
+      appendChild: vi.fn((child: HTMLElement) => {
+        Object.assign(child, { parentElement: sidebarSlot });
+        return child;
+      }),
+    } as unknown as HTMLElement;
+
+    dockPiecePreparationPanel(panel, stack, false);
+    dockPiecePreparationPanel(panel, sidebarSlot, true);
+    expect(panel.parentElement).toBe(sidebarSlot);
+    expect(panel.style.position).toBe("relative");
+    expect(panel.style.left).toBe("auto");
+    expect(panel.style.width).toBe("100%");
+    expect(panel.style.overflowY).toBe("auto");
+    expect(panel.style.maxHeight).toBe("min(48vh, 440px)");
+  });
+
+  it("restores the normal stack after leaving the unified sidebar", () => {
+    const { panel, stack } = fixture();
+    const sidebarSlot = {
+      getAttribute: () => "true",
+      appendChild: (child: HTMLElement) => {
+        Object.assign(child, { parentElement: sidebarSlot });
+      },
+    } as unknown as HTMLElement;
+    dockPiecePreparationPanel(panel, sidebarSlot, true);
+    dockPiecePreparationPanel(panel, stack, false);
+    expect(panel.parentElement).toBe(stack);
+    expect(panel.style.position).toBe("relative");
+    expect(panel.style.maxHeight).toBe("none");
+    expect(panel.style.minHeight).toBe("0");
+  });
+
+
   it("undocks the editable SNAP/axis panel from the hidden Model Space stack", () => {
     const { panel, body, stack } = fixture();
     dockPiecePreparationPanel(panel, stack, false);

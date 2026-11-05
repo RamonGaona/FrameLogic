@@ -12,6 +12,34 @@ export function dockPiecePreparationPanel(
     parent.appendChild(panel);
   }
 
+  const insidePieceSidebar =
+    isolatedPieceEditor
+    && parent.getAttribute?.(
+      "data-framelogic-piece-editor-preparation-slot",
+    ) === "true";
+
+  if (insidePieceSidebar) {
+    Object.assign(panel.style, {
+      position: "relative",
+      left: "auto",
+      top: "auto",
+      bottom: "auto",
+      width: "100%",
+      maxWidth: "100%",
+      maxHeight: "min(48vh, 440px)",
+      minHeight: "140px",
+      flex: "0 0 auto",
+      overflowX: "hidden",
+      overflowY: "auto",
+      zIndex: "auto",
+      pointerEvents: "auto",
+      boxSizing: "border-box",
+    });
+    return;
+  }
+
+  // Fallback para el instante en que el editor ya está activo pero
+  // su sidebar todavía no se ha montado.
   if (isolatedPieceEditor) {
     Object.assign(panel.style, {
       position: "fixed",
@@ -45,5 +73,6 @@ export function dockPiecePreparationPanel(
     overflowY: "auto",
     zIndex: "119",
     pointerEvents: "auto",
+    boxSizing: "border-box",
   });
 }

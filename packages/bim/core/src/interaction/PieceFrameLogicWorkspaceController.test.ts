@@ -4,6 +4,37 @@ import { PieceFrameLogicWorkspaceController } from "./PieceFrameLogicWorkspaceCo
 afterEach(() => vi.unstubAllGlobals());
 
 describe("piece editor preparation lifecycle", () => {
+  it("returns the docked preparation panel to document.body before removing workspace", () => {
+    const controller = Object.create(PieceFrameLogicWorkspaceController.prototype) as PieceFrameLogicWorkspaceController;
+    const events: string[] = [];
+    const preparationPanel = { id: "prep" } as unknown as HTMLElement;
+    const workspace = {
+      querySelector: vi.fn(() => preparationPanel),
+      remove: vi.fn(() => events.push("remove workspace")),
+    };
+    const appendChild = vi.fn(() => events.push("release preparation"));
+    const removeAttribute = vi.fn();
+    vi.stubGlobal("document", {
+      documentElement: { removeAttribute },
+      body: { appendChild },
+    });
+    Reflect.set(controller, "workspace", workspace);
+    Reflect.set(controller, "actions", {
+      stopPreparation: vi.fn(() => events.push("stop preparation")),
+    });
+    Reflect.set(controller, "selection", { exitIsolation: vi.fn() });
+    Reflect.set(controller, "restoreMainUi", vi.fn());
+    Reflect.set(controller, "inputs", {});
+    Reflect.set(controller, "activeInstanceId", "piece-1");
+    Reflect.get(controller, "exitWorkspace").call(controller);
+
+    expect(appendChild).toHaveBeenCalledWith(preparationPanel);
+    expect(events.indexOf("release preparation")).toBeLessThan(events.indexOf("remove workspace"));
+    expect(removeAttribute).toHaveBeenCalledWith("data-framelogic-piece-workspace-active");
+    expect(workspace.remove).toHaveBeenCalledOnce();
+  });
+
+
   it("starts preparation immediately upon entering the isolated editor, before LINE can draw", () => {
     const controller = Object.create(PieceFrameLogicWorkspaceController.prototype) as PieceFrameLogicWorkspaceController;
     const startPreparation = vi.fn();

@@ -479,45 +479,84 @@ export class PieceFrameLogicWorkspaceController {
       back,
     );
 
-    const panel =
-      document.createElement(
-        "div",
-      );
+    // Una sola columna lateral para metadata plegable y preparación.
+    // La geometría permanece visible porque ningún panel invade
+    // el centro del visor; el sidebar puede desplazarse verticalmente.
+    const sidebar = document.createElement("aside");
+    sidebar.dataset["framelogicPieceEditorSidebar"] = "true";
+    Object.assign(sidebar.style, {
+      position: "absolute",
+      top: "68px",
+      left: "12px",
+      bottom: "12px",
+      width: "min(340px, calc(100vw - 24px))",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "stretch",
+      gap: "8px",
+      overflowX: "hidden",
+      overflowY: "auto",
+      pointerEvents: "auto",
+      boxSizing: "border-box",
+    });
 
-    Object.assign(
-      panel.style,
-      {
-        position:
-          "absolute",
-        top:
-          "68px",
-        left:
-          "12px",
-        width:
-          "340px",
-        maxHeight:
-          "calc(100vh - 84px)",
-        overflowY:
-          "auto",
-        padding:
-          "12px",
-        border:
-          "1px solid #4b5563",
-        borderRadius:
-          "7px",
-        background:
-          "rgba(31,41,51,0.96)",
-        color:
-          "white",
-        pointerEvents:
-          "auto",
-      },
-    );
+    const metadataDetails = document.createElement("details");
+    metadataDetails.dataset["framelogicPieceMetadata"] = "true";
+    // Preparación es la tarea principal; los metadatos siguen
+    // disponibles al abrir esta sección sin desaparecer ni perder datos.
+    metadataDetails.open = false;
+    Object.assign(metadataDetails.style, {
+      border: "1px solid #4b5563",
+      borderRadius: "7px",
+      background: "rgba(31,41,51,0.96)",
+      color: "white",
+      flexShrink: "0",
+      overflow: "hidden",
+    });
 
-    this.addHeading(
-      panel,
-      "Metadatos de ingeniería",
-    );
+    const metadataSummary = document.createElement("summary");
+    metadataSummary.textContent = "Metadatos de ingeniería";
+    metadataSummary.title = "Expandir o contraer metadatos";
+    Object.assign(metadataSummary.style, {
+      cursor: "pointer",
+      padding: "12px",
+      fontWeight: "bold",
+      fontSize: "13px",
+      userSelect: "none",
+    });
+
+    const panel = document.createElement("div");
+    Object.assign(panel.style, {
+      padding: "0 12px 12px",
+      maxHeight: "min(46vh, 440px)",
+      overflowY: "auto",
+      boxSizing: "border-box",
+    });
+
+    metadataDetails.append(metadataSummary, panel);
+    sidebar.appendChild(metadataDetails);
+
+    const preparationActions = document.createElement("section");
+    preparationActions.dataset["framelogicPiecePreparationActions"] = "true";
+    Object.assign(preparationActions.style, {
+      padding: "10px 12px",
+      border: "1px solid #4b5563",
+      borderRadius: "7px",
+      background: "rgba(31,41,51,0.96)",
+      color: "white",
+      flexShrink: "0",
+    });
+    sidebar.appendChild(preparationActions);
+
+    const preparationSlot = document.createElement("div");
+    preparationSlot.dataset["framelogicPieceEditorPreparationSlot"] = "true";
+    Object.assign(preparationSlot.style, {
+      width: "100%",
+      minWidth: "0",
+      flexShrink: "0",
+      boxSizing: "border-box",
+    });
+    sidebar.appendChild(preparationSlot);
 
     this.inputs =
       {};
@@ -625,7 +664,7 @@ export class PieceFrameLogicWorkspaceController {
     );
 
     this.addHeading(
-      panel,
+      preparationActions,
       "Preparación geométrica",
     );
 
@@ -641,11 +680,11 @@ export class PieceFrameLogicWorkspaceController {
       "0.72";
     help.style.marginBottom =
       "8px";
-    panel.appendChild(
+    preparationActions.appendChild(
       help,
     );
 
-    panel.append(
+    preparationActions.append(
       this.createButton(
         "Preparar geometría",
         () => {
@@ -730,7 +769,7 @@ export class PieceFrameLogicWorkspaceController {
         ? "Esta pieza ya contiene metadatos FrameLogic definidos por el usuario."
         : "Completa y guarda al menos un metadato para convertir la pieza.";
 
-    panel.appendChild(
+    preparationActions.appendChild(
       status,
     );
     this.statusElement =
@@ -738,7 +777,7 @@ export class PieceFrameLogicWorkspaceController {
 
     workspace.append(
       topBar,
-      panel,
+      sidebar,
     );
     this.container.appendChild(
       workspace,
@@ -1249,6 +1288,16 @@ export class PieceFrameLogicWorkspaceController {
     this.selection
       .exitIsolation();
     this.restoreMainUi();
+
+    // Preparar pieza se monta temporalmente dentro del sidebar.
+    // Sacarlo ANTES de eliminar el workspace evita destruir el panel,
+    // su estado editable y los listeners del controlador de preparación.
+    const preparationPanel = this.workspace?.querySelector<HTMLElement>(
+      '[data-framelogic-piece-preparation-panel="true"]',
+    );
+    if (preparationPanel) {
+      document.body.appendChild(preparationPanel);
+    }
 
     this.workspace?.remove();
     this.workspace =
