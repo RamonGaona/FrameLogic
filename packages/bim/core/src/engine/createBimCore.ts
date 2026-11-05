@@ -1225,6 +1225,9 @@ const piecePreparation =
     cadPointSelection,
     cadLineSelection,
   );
+piecePreparation.setReferenceFocusHandler(
+  reference => pieceDefinitionHelpers.setHighlightedReference(reference),
+);
 
 
 designSelection

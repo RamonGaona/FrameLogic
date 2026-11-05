@@ -15,6 +15,7 @@ import type {
 import type {
   DesignSceneController,
 } from "../design/DesignSceneController";
+import type { PieceReferenceFocus } from "../design/PieceReferenceFocus";
 
 import type {
   CadPointSelectionController,
@@ -132,6 +133,78 @@ export class PieceDefinitionPreparationController {
 
   private readonly editorRoot:
     HTMLDivElement;
+
+  private hoveredReference: PieceReferenceFocus = null;
+  private pinnedReference: PieceReferenceFocus = null;
+  private referenceFocusHandler: ((reference: PieceReferenceFocus) => void) | null = null;
+
+  setReferenceFocusHandler(handler: (reference: PieceReferenceFocus) => void): void {
+    this.referenceFocusHandler = handler;
+    this.refreshReferenceFocus();
+  }
+
+  private referenceKey(reference: PieceReferenceFocus): string {
+    return reference ? `${reference.kind}:${reference.id}` : "";
+  }
+
+  private refreshReferenceFocus(): void {
+    const current = this.hoveredReference ?? this.pinnedReference;
+    this.referenceFocusHandler?.(current);
+    const currentKey = this.referenceKey(current);
+    const pinnedKey = this.referenceKey(this.pinnedReference);
+    for (const row of this.editorRoot.querySelectorAll<HTMLElement>(
+      '[data-framelogic-reference-kind]',
+    )) {
+      const key = `${row.dataset.framelogicReferenceKind}:${row.dataset.framelogicReferenceId}`;
+      row.style.background = key === currentKey
+        ? "rgba(250, 204, 21, 0.20)"
+        : key === pinnedKey ? "rgba(250, 204, 21, 0.10)" : "transparent";
+      row.style.boxShadow = key === currentKey ? "inset 3px 0 #facc15" : "none";
+      const button = row.querySelector<HTMLButtonElement>(
+        '[data-framelogic-reference-focus-button]',
+      );
+      if (button) {
+        button.setAttribute("aria-pressed", String(key === pinnedKey));
+        button.title = key === pinnedKey ? "Quitar resaltado fijo" : "Fijar resaltado en 3D";
+        button.style.background = key === pinnedKey ? "#854d0e" : "transparent";
+        button.style.color = key === pinnedKey ? "#fef08a" : "#facc15";
+      }
+    }
+  }
+
+  private createReferenceFocusButton(
+    row: HTMLDivElement, kind: "SNAP" | "AXIS", id: string, name: string,
+  ): HTMLButtonElement {
+    row.dataset.framelogicReferenceKind = kind;
+    row.dataset.framelogicReferenceId = id;
+    row.title = `Localizar ${name} en el modelo 3D`;
+    row.addEventListener("pointerenter", () => {
+      this.hoveredReference = { kind, id };
+      this.refreshReferenceFocus();
+    });
+    row.addEventListener("pointerleave", () => {
+      this.hoveredReference = null;
+      this.refreshReferenceFocus();
+    });
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.framelogicReferenceFocusButton = "true";
+    button.textContent = "◎";
+    button.title = "Fijar resaltado en 3D";
+    button.setAttribute("aria-label", `Resaltar ${name} en el modelo 3D`);
+    Object.assign(button.style, {
+      width: "27px", height: "28px", border: "1px solid #7c6524",
+      borderRadius: "4px", background: "transparent", color: "#facc15",
+      cursor: "pointer", fontSize: "18px", lineHeight: "1",
+    });
+    button.addEventListener("click", () => {
+      const key = `${kind}:${id}`;
+      this.pinnedReference = this.referenceKey(this.pinnedReference) === key
+        ? null : { kind, id };
+      this.refreshReferenceFocus();
+    });
+    return button;
+  }
 
 
   constructor(
@@ -378,7 +451,9 @@ export class PieceDefinitionPreparationController {
 
     this.activeInstanceId =
       null;
-
+    this.hoveredReference = null;
+    this.pinnedReference = null;
+    this.refreshReferenceFocus();
 
     this.leavePreparationWorkspace(
       instanceId,
@@ -1929,7 +2004,7 @@ export class PieceDefinitionPreparationController {
 
         const row =
           this.createRow();
-
+        const focusButton = this.createReferenceFocusButton(row, "SNAP", snap.id, snap.name);
 
         const nameButton =
           this.createNameButton(
@@ -2052,6 +2127,7 @@ export class PieceDefinitionPreparationController {
         row.appendChild(
           removeButton,
         );
+        row.appendChild(focusButton);
 
 
         this.editorRoot.appendChild(
@@ -2091,7 +2167,7 @@ export class PieceDefinitionPreparationController {
 
         const row =
           this.createRow();
-
+        const focusButton = this.createReferenceFocusButton(row, "AXIS", axis.id, axis.name);
 
         const nameButton =
           this.createNameButton(
@@ -2208,6 +2284,7 @@ export class PieceDefinitionPreparationController {
         row.appendChild(
           removeButton,
         );
+        row.appendChild(focusButton);
 
 
         this.editorRoot.appendChild(
@@ -2235,13 +2312,21 @@ export class PieceDefinitionPreparationController {
       "#9ca3af";
 
     footer.textContent =
-      "Clic en el nombre para renombrar · selector para cambiar tipo · × para eliminar";
+      "Pasa el cursor sobre un SNAP/eje para resaltarlo en 3D · ◎ fija/quita el resaltado · nombre para renombrar · × elimina";
 
 
     this.editorRoot.appendChild(
       footer,
     );
-
+    const availableKeys = [
+      ...context.definition.snapPoints.map(snap => `SNAP:${snap.id}`),
+      ...context.definition.referenceGeometry.axisLines.map(axis => `AXIS:${axis.id}`),
+    ];
+    if (this.pinnedReference && !availableKeys.includes(this.referenceKey(this.pinnedReference))) {
+      this.pinnedReference = null;
+    }
+    this.hoveredReference = null;
+    this.refreshReferenceFocus();
   }
 
 
@@ -2319,7 +2404,7 @@ export class PieceDefinitionPreparationController {
       "grid";
 
     row.style.gridTemplateColumns =
-      "1fr 118px 30px";
+      "minmax(0, 1fr) 104px 28px 27px";
 
     row.style.gap =
       "6px";
@@ -2922,8 +3007,9 @@ export class PieceDefinitionPreparationController {
     }
 
 
+    this.referenceFocusHandler?.(null);
+    this.referenceFocusHandler = null;
     this.listeners.clear();
-
 
     this.editorRoot.remove();
 

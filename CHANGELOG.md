@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.74 — 2026-11-05
+
+### Identificación visual de SNAPs y ejes
+
+- El editor resalta temporalmente cada referencia sobre la geometría 3D al pasar el mouse sobre su fila de SNAP o eje.
+- Nuevo botón `◎` para fijar o quitar el foco en una referencia. La fila queda destacada y el usuario puede comparar otros elementos sin renombrar ni modificar tipos.
+- Los SNAPs se muestran como marcadores grandes de tamaño constante en pantalla; los ejes como una línea amarilla con ambos extremos resaltados.
+- Los marcadores son visuales y no interceptan raycasts, selección ni SNAPs de modelado.
+- El resaltado se actualiza tras modificar referencias y se limpia al salir de la preparación; la geometría persistente no cambia.
+
+### Validación
+
+- Nuevas pruebas para mostrar SNAP/eje, cambiar foco y limpiar marcadores, integradas en `test:piece-preparation`.
+- Versión visible, package.json y package-lock.json a `0.1.74`.
+
+---
+
 ## v0.1.73 — 2026-11-05
 
 ### Mejoras de interfaz del editor de piezas

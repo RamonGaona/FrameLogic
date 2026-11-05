@@ -13,6 +13,7 @@ import type {
 import type {
   DesignSceneController,
 } from "./DesignSceneController";
+import type { PieceReferenceFocus } from "./PieceReferenceFocus";
 
 
 export class PieceDefinitionHelperSceneController {
@@ -48,6 +49,9 @@ export class PieceDefinitionHelperSceneController {
 
   private readonly axisGroup =
     new THREE.Group();
+
+  private readonly focusGroup = new THREE.Group();
+  private focusedReference: PieceReferenceFocus = null;
 
 
   constructor(
@@ -89,7 +93,77 @@ export class PieceDefinitionHelperSceneController {
     this.scene.add(
       this.axisGroup,
     );
+    this.focusGroup.name = "FrameLogicPieceReferenceFocusOverlay";
+    this.scene.add(this.focusGroup);
+  }
 
+  setHighlightedReference(reference: PieceReferenceFocus): void {
+    if (this.focusedReference?.kind === reference?.kind
+      && this.focusedReference?.id === reference?.id) return;
+    this.focusedReference = reference;
+    this.refreshFocusOverlay();
+  }
+
+  private addFocusPoint(position: THREE.Vector3, size: number, renderOrder: number): void {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0], 3));
+    const marker = new THREE.Points(geometry, new THREE.PointsMaterial({
+      color: renderOrder === 1100 ? "#facc15" : "#ffffff",
+      size, sizeAttenuation: false, depthTest: false,
+      depthWrite: false, transparent: true, opacity: 0.95,
+    }));
+    marker.position.copy(position);
+    marker.renderOrder = renderOrder;
+    marker.raycast = () => {};
+    this.focusGroup.add(marker);
+  }
+
+  private refreshFocusOverlay(): void {
+    this.clearGroup(this.focusGroup);
+    const focus = this.focusedReference;
+    const instanceId = this.activeInstanceId;
+    if (!focus || !instanceId) return;
+    const instance = this.designModel.pieceInstances.get(instanceId);
+    const object = this.designScene.getInstanceObject(instanceId);
+    if (!instance || !object || !object.visible) return;
+    const definition = this.designModel.pieceDefinitions.get(instance.definitionId);
+    if (!definition) return;
+    object.updateMatrixWorld(true);
+
+    if (focus.kind === "SNAP") {
+      const snap = definition.snapPoints.find(item => item.id === focus.id);
+      if (!snap) return;
+      const point = this.definitionLocalToWorld(snap.position, definition, object);
+      this.addFocusPoint(point, 34, 1100);
+      this.addFocusPoint(point, 17, 1101);
+      return;
+    }
+
+    const axis = definition.referenceGeometry.axisLines.find(item => item.id === focus.id);
+    if (!axis) return;
+    const start = this.definitionLocalToWorld(axis.origin, definition, object);
+    const endLocal = this.fromData(axis.origin).addScaledVector(
+      this.fromData(axis.direction).normalize(), axis.length ?? 1000,
+    );
+    const end = this.definitionLocalToWorld(this.toData(endLocal), definition, object);
+    const vector = end.clone().sub(start);
+    const length = vector.length();
+    this.addFocusPoint(start, 25, 1100);
+    this.addFocusPoint(end, 25, 1100);
+    if (length < 0.001) return;
+    const radius = Math.max(5, Math.min(18, length * 0.008));
+    const tube = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius, radius, length, 8),
+      new THREE.MeshBasicMaterial({
+        color: "#facc15", transparent: true, opacity: 0.9,
+        depthTest: false, depthWrite: false,
+      }),
+    );
+    tube.position.copy(start).addScaledVector(vector, 0.5);
+    tube.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vector.normalize());
+    tube.renderOrder = 1099;
+    tube.raycast = () => {};
+    this.focusGroup.add(tube);
   }
 
 
@@ -237,7 +311,7 @@ export class PieceDefinitionHelperSceneController {
       }
 
     }
-
+    this.refreshFocusOverlay();
   }
 
 
@@ -583,6 +657,8 @@ export class PieceDefinitionHelperSceneController {
         instanceof THREE.Points
         || child
         instanceof THREE.Line
+        || child
+        instanceof THREE.Mesh
       ) {
 
         child.geometry.dispose();
@@ -628,7 +704,8 @@ export class PieceDefinitionHelperSceneController {
     this.clearGroup(
       this.axisGroup,
     );
-
+    this.clearGroup(this.focusGroup);
+    this.scene.remove(this.focusGroup);
 
     this.scene.remove(
       this.snapGroup,
