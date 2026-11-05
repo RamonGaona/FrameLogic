@@ -29,6 +29,27 @@ function gesture() {
 }
 
 describe("gizmo physical pointer lifecycle", () => {
+  it("signals cancellation before the native gizmo resets on blur", () => {
+    const element = new EventTarget() as HTMLElement;
+    const target = new EventTarget() as Window;
+    const actions: string[] = [];
+    const controls = {
+      dragging: true,
+      axis: "X",
+      reset: () => { actions.push("reset"); },
+      pointerUp: (_pointer: null) => {
+        actions.push("release");
+        controls.dragging = false;
+      },
+    };
+    const remove = installTransformPointerLifecycle(
+      element, controls, target, () => actions.push("cancel"),
+    );
+    target.dispatchEvent(new Event("blur"));
+    expect(actions).toEqual(["cancel", "reset", "release"]);
+    remove();
+  });
+
   it("ignores click jitter and admits a deliberate drag", () => {
     const g = gesture(); g.start();
     const jitter = pointer("pointermove", { clientX: 13, clientY: 12 });
