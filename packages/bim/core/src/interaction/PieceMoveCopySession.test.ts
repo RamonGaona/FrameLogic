@@ -77,13 +77,14 @@ describe("Ctrl + axis: reversible piece copy", () => {
     expect(f.instances.has("original")).toBe(true);
   });
 
-  it("records one COPY operation: undo deletes only copy, redo restores moved copy", () => {
+  it("records one COPY operation: undo deletes only copy, redo restores moved copy", async () => {
     const f = fixture();
     const copy = f.make();
     const id = copy.ids[0]!;
     f.instances.get(id)!.transform.position.x = 150;
     copy.finish();
     expect(f.history.recordOperation).toHaveBeenCalledOnce();
+    await Promise.resolve(); // selection changes after native TransformControls.mouseUp
     expect(f.select).toHaveBeenLastCalledWith([id]);
     expect(f.instances.get("original")?.transform.position.x).toBe(5);
     f.undo();
