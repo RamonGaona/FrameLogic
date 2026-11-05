@@ -1275,6 +1275,7 @@ const cadWindowSelection =
         enabled;
 
     },
+    () => designPlacement.isPlacing,
   );
 
 
@@ -3506,12 +3507,12 @@ async function startDesignPiecePlacement(
   definitionId: string,
 ) {
 
-  // Mientras colocamos una pieza, no queremos
-  // que el mismo clic seleccione objetos existentes.
-
-  designSelection.setEnabled(
-    false,
-  );
+  // Una selección por ventana pendiente no debe consumir el primer clic.
+  cadWindowSelection.cancel();
+  cadCommandManager.cancelActive();
+  designSelection.setEnabled(false);
+  cadPointSelection.setEnabled(false);
+  cadLineSelection.setEnabled(false);
 
 
   try {
@@ -3524,9 +3525,9 @@ async function startDesignPiecePlacement(
   }
   finally {
 
-    designSelection.setEnabled(
-      true,
-    );
+    designSelection.setEnabled(true);
+    cadPointSelection.setEnabled(true);
+    cadLineSelection.setEnabled(true);
 
   }
 

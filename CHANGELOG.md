@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.71 — 2026-11-05
+
+### Corregido
+
+- `Insertar otra pieza` utiliza dos clics: el primero fija posición y el segundo define dirección horizontal, alineando +X local con una rotación alrededor del eje Y.
+- Los clics de inserción no arman ni completan la selección CAD por ventana; se cancela cualquier rectángulo pendiente al empezar.
+- La vista previa permanece en la posición elegida mientras rota hacia el segundo punto; un segundo clic coincidente no completa una orientación ambigua.
+- Los selectores de piezas, puntos y líneas quedan suspendidos durante la inserción y se restablecen al finalizar o cancelar.
+
+### Validación
+
+- Pruebas de regresión para ambos clics y para evitar ventanas CAD durante la inserción.
+- Versión visible, package.json y lockfile sincronizados a `0.1.71`.
+
+---
+
 ## v0.1.70 — 2026-11-04
 
 ### Corregido

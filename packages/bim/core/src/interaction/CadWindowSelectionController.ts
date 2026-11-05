@@ -80,6 +80,8 @@ export class CadWindowSelectionController {
       enabled: boolean,
     ) => void;
 
+  private readonly isPlacementActive: () => boolean;
+
 
   private readonly overlay:
     HTMLDivElement;
@@ -177,6 +179,8 @@ export class CadWindowSelectionController {
       (
         enabled: boolean,
       ) => void,
+
+    isPlacementActive: () => boolean = () => false,
   ) {
 
     this.domElement =
@@ -209,6 +213,7 @@ export class CadWindowSelectionController {
 
     this.setCameraEnabled =
       setCameraEnabled;
+    this.isPlacementActive = isPlacementActive;
 
 
     this.overlay =
@@ -321,6 +326,7 @@ export class CadWindowSelectionController {
       if (
         this.disposed
         || event.button !== 0
+        || this.isPlacementActive()
       ) {
 
         return;
@@ -579,6 +585,13 @@ export class CadWindowSelectionController {
       event:
         PointerEvent,
     ): void => {
+
+      // Los dos clics de inserción son exclusivos de Placement.
+      if (this.isPlacementActive()) {
+        this.candidatePointerId = null;
+        this.candidateDragged = false;
+        return;
+      }
 
       if (
         this.candidatePointerId

@@ -18,7 +18,7 @@ function selector() {
     getLineIdAt: vi.fn((): string | null => null),
   };
 }
-function setup() {
+function setup(isPlacing: () => boolean = () => false) {
   const canvas = new EventTarget() as HTMLElement;
   const target = new EventTarget() as Window;
   const overlay = { style: {}, remove: vi.fn() };
@@ -30,13 +30,39 @@ function setup() {
   const controller = new CadWindowSelectionController(
     canvas, () => new THREE.PerspectiveCamera(), {} as Args[2], {} as Args[3],
     design as unknown as Args[4], point as unknown as Args[5],
-    line as unknown as Args[6], cameraEnabled,
+    line as unknown as Args[6], cameraEnabled, isPlacing,
   );
   return { canvas, target, controller, design, point, line, cameraEnabled };
 }
 afterEach(() => vi.unstubAllGlobals());
 
 describe("CAD window selection and gizmo ownership", () => {
+  it("ignores both insertion clicks and preserves ordinary empty selection afterwards", () => {
+    let placing = true;
+    const s = setup(() => placing);
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    s.target.dispatchEvent(pointer("pointerup"));
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(false);
+    expect(s.cameraEnabled).not.toHaveBeenCalled();
+    placing = false;
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(true);
+    s.controller.dispose();
+  });
+
+  it("drops a candidate if insertion claims the gesture before release", () => {
+    let placing = false;
+    const s = setup(() => placing);
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    placing = true;
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(false);
+    s.controller.dispose();
+  });
+
   it("does not start a window when ROTATE claims an initially empty-looking ring click", () => {
     const s = setup();
     s.canvas.dispatchEvent(pointer("pointerdown"));

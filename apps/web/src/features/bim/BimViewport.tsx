@@ -2038,7 +2038,7 @@ export function BimViewport() {
         >
           {
             placingPiece
-              ? "Haz clic en el visor..."
+              ? "Clic 1: ubicación · Clic 2: dirección..."
               : activePiece
                 ? `Insertar otra ${activePiece.code}`
                 : "Insertar otra instancia"

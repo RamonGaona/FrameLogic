@@ -136,6 +136,9 @@ export class DesignPlacementController {
     | null =
       null;
 
+  // Paso 1 = ubicación; paso 2 = dirección horizontal del eje +X local.
+  private placementOrigin: THREE.Vector3 | null = null;
+
 
   private resolver:
     (
@@ -423,6 +426,7 @@ export class DesignPlacementController {
 
     this.currentPoint =
       null;
+    this.placementOrigin = null;
 
 
     // --------------------------------------------------------
@@ -514,11 +518,18 @@ export class DesignPlacementController {
     }
 
 
-    preview.position.set(
-      point.x,
-      point.y,
-      point.z,
-    );
+    const origin = this.placementOrigin;
+    if (origin) {
+      preview.position.copy(origin);
+      const dx = point.x - origin.x;
+      const dz = point.z - origin.z;
+      if (Math.hypot(dx, dz) > 1e-6) {
+        preview.rotation.y = -Math.atan2(dz, dx);
+      }
+    } else {
+      preview.position.copy(point);
+      preview.rotation.y = 0;
+    }
 
 
     preview.visible =
@@ -1011,6 +1022,18 @@ export class DesignPlacementController {
     }
 
 
+    // El primer clic fija la ubicación sin terminar la inserción.
+    if (!this.placementOrigin) {
+      this.placementOrigin = point.clone();
+      this.setPreviewPoint(point);
+      return;
+    }
+    const origin = this.placementOrigin;
+    const dx = point.x - origin.x;
+    const dz = point.z - origin.z;
+    if (Math.hypot(dx, dz) <= 1e-6) return;
+    const yaw = -Math.atan2(dz, dx);
+
     // --------------------------------------------------------
     // CREATE DOMAIN INSTANCE
     // --------------------------------------------------------
@@ -1026,13 +1049,13 @@ export class DesignPlacementController {
             position: {
 
               x:
-                point.x,
+                origin.x,
 
               y:
-                point.y,
+                origin.y,
 
               z:
-                point.z,
+                origin.z,
 
             },
 
@@ -1042,7 +1065,7 @@ export class DesignPlacementController {
                 0,
 
               y:
-                0,
+                yaw,
 
               z:
                 0,
@@ -1155,6 +1178,7 @@ export class DesignPlacementController {
 
     this.currentPoint =
       null;
+    this.placementOrigin = null;
 
 
     this.resolver =
