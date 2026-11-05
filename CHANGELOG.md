@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.77 — 2026-11-05
+
+### Corregido: Render y calidad visual ocultos en el editor aislado de piezas
+
+- Se elimina `[data-framelogic-model-render-mode="true"]` de la regla CSS del editor de piezas que imponía `display: none !important` y `visibility: hidden !important` a las herramientas generales del espacio modelo.
+- La corrección de v0.1.76 montó el panel Render fuera del viewport, pero esta regla CSS aún lo ocultaba; ahora quedan disponibles los controles de estilo Sólido / Sólido + aristas / Alámbrico / Transparente y calidad Diseño / Detalle seleccionado / Detalle / Básico mientras se prepara una pieza.
+- El resto de las herramientas generales continúan ocultas dentro del editor. Al volver al espacio modelo, los controles visuales permanecen accesibles.
+- No se cambia el color, las piezas, el proyecto guardado, SNAPs, ejes ni las geometrías.
+
+### Validación
+
+- Prueba de regresión integrada en `test:piece-visuals` que inspecciona el CSS real de aislamiento y evita reintroducir un selector oculto, además de conservar el test del guard de JavaScript.
+- Versión visible, package.json y package-lock.json sincronizados en `0.1.77`.
+
+---
+
 ## v0.1.76 — 2026-11-05
 
 ### Corregido: color persistente al reabrir proyectos y estilos visibles al editar piezas
