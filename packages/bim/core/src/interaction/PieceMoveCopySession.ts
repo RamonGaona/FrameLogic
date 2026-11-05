@@ -10,14 +10,22 @@ export class PieceMoveCopySession {
   readonly objects: ReadonlyMap<string, THREE.Object3D>;
   private completed = false;
   private readonly originals: string[];
+  private readonly model: DesignModel;
+  private readonly scene: DesignSceneController;
+  private readonly selection: DesignSelectionController;
+  private readonly history: CadHistoryController;
 
   constructor(
-    private readonly model: DesignModel,
-    private readonly scene: DesignSceneController,
-    private readonly selection: DesignSelectionController,
-    private readonly history: CadHistoryController,
+    model: DesignModel,
+    scene: DesignSceneController,
+    selection: DesignSelectionController,
+    history: CadHistoryController,
     sourceIds: readonly string[],
   ) {
+    this.model = model;
+    this.scene = scene;
+    this.selection = selection;
+    this.history = history;
     this.originals = [...sourceIds];
     const ids: string[] = [];
     const objects = new Map<string, THREE.Object3D>();
