@@ -3,6 +3,7 @@ import * as THREE from "three";
 import type {
   DesignSceneController,
 } from "../design/DesignSceneController";
+import { resolvePieceDisplayQuality, type PieceDisplayQuality } from "./resolvePieceDisplayQuality";
 
 
 export type ModelRenderMode =
@@ -26,7 +27,7 @@ interface OriginalMaterialState {
 
 
 /**
- * Modos de visualización exclusivos del Model Space.
+ * Modos de visualización del espacio modelo y del editor aislado de pieza.
  *
  * No modifica el DesignModel ni el estado documental. Los materiales
  * alternativos viven únicamente en los objetos Three.js del visor y se
@@ -83,7 +84,7 @@ export class ModelRenderModeController {
     label.style.opacity = "0.75";
 
     const select = document.createElement("select");
-    select.title = "Modo de visualización del Model Space";
+    select.title = "Modo de visualización del modelo o pieza en edición";
     Object.assign(select.style, {
       padding: "3px 5px",
       border: "1px solid rgba(255,255,255,0.15)",
@@ -107,7 +108,7 @@ export class ModelRenderModeController {
     select.addEventListener("change", this.handleChange);
 
     const quality = document.createElement("select");
-    quality.title = "Calidad visual de piezas. Los puntos y ejes conservan su precisi\u00f3n.";
+    quality.title = "Calidad visual de la pieza en edición o del modelo. SNAPs y ejes mantienen su precisión.";
     quality.setAttribute("aria-label", "Calidad visual de piezas");
     quality.style.cssText = select.style.cssText;
     for (const [value, text] of [
@@ -160,18 +161,21 @@ export class ModelRenderModeController {
 
   private sync(): void {
     if (this.disposed) return;
-    const details = new Set<string>();
-    if (this.qualitySelect.value === "SELECTED") {
-      for (const id of this.options.selectedIds?.() ?? []) details.add(id);
-    }
-    const prepared = this.options.preparedInstanceId?.();
-    if (prepared) details.add(prepared);
-    const key = `${this.qualitySelect.value}:${[...details].sort().join(",")}`;
+    const quality = this.qualitySelect.value as PieceDisplayQuality;
+    // Una pieza en preparación solo recibe detalle completo en
+    // "Detalle seleccionado". Antes se forzaba DETAIL incluso con
+    // "Básico" o "Diseño", por lo que el selector parecía no funcionar.
+    const resolved = resolvePieceDisplayQuality(
+      quality,
+      this.options.selectedIds?.() ?? [],
+      this.options.preparedInstanceId?.(),
+    );
+    const key = `${quality}:${[...resolved.detailInstanceIds].sort().join(",")}`;
     if (key !== this.qualityKey) {
       this.qualityKey = key;
       this.designScene.setVisualLevel(
-        this.qualitySelect.value === "DETAIL" ? "DETAIL" : this.qualitySelect.value === "LOW" ? "LOW" : "WORK",
-        [...details],
+        resolved.level,
+        resolved.detailInstanceIds,
       );
     }
     this.updatePanelPosition();

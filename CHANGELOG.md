@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.75 — 2026-11-05
+
+### Corregido: estilos visuales en el editor de pieza FrameLogic
+
+- Los controles de Render y calidad visual permanecen accesibles al entrar en el editor de pieza aislada; ya no forman parte del chrome que se oculta.
+- Cambiar entre Básico, Diseño, Detalle seleccionado y Detalle afecta realmente la geometría que muestra la pieza en preparación. Antes se forzaba siempre a Detalle independientemente de la selección.
+- Detalle seleccionado mantiene la pieza en edición con geometría detallada y las demás con geometría de trabajo; Básico y Diseño ya no reciben excepciones invisibles de detalle.
+- Los estilos Sólido, Sólido + aristas, Alámbrico y Transparente siguen disponibles en ambas vistas, sin alterar geometría persistente, SNAPs, ejes ni precisión de selección.
+
+### Validación
+
+- Pruebas de política visual para cada modo y para la exclusión del control de Render de los elementos que el editor oculta.
+- Versión visible, package.json y package-lock.json sincronizados a `0.1.75`.
+
+---
+
 ## v0.1.74 — 2026-11-05
 
 ### Identificación visual de SNAPs y ejes

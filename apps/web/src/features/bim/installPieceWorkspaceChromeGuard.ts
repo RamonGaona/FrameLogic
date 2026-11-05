@@ -11,7 +11,8 @@ const MODEL_SPACE_CHROME_SELECTORS = [
   ".layer-panel",
   ".model-panel",
   '[data-framelogic-section-panel="true"]',
-  '[data-framelogic-model-render-mode="true"]',
+  // Render / calidad visual también son útiles dentro del editor aislado.
+  // No ocultarlos: el editor debe permitir Diseño / Detalle / Básico.
 ] as const;
 
 
