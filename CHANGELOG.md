@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.78 — 2026-11-05
+
+### Nuevo: Ctrl + eje del gizmo para copiar una pieza mientras se desplaza
+
+- En el modo desplazar (M), mantener Ctrl mientras se hace clic sobre un eje o plano del gizmo permite mover una **copia nueva**, sin desplazar la pieza original.
+- Funciona tanto con arrastre del eje como con clic corto en el eje y segundo clic sobre un SNAP de destino. La copia no se crea por un clic corto si todavía no se elige un destino.
+- Se reutiliza la misma definición FrameLogic, la geometría 3D, SNAPs y ejes; se mantienen capa, etiquetas y transformaciones originales de cada instancia. Se selecciona la copia solo después de terminar el movimiento.
+- La duplicación y el desplazamiento forman una sola operación de historial `COPY`, compatible con Deshacer/Rehacer. Un movimiento cancelado o Esc no deja instancias adicionales.
+- Sin pulsar Ctrl, el movimiento previo y el cambio de punto base mediante el centro amarillo siguen intactos.
+
+### Validación
+
+- Pruebas del ciclo de vida físico del mouse y cancelación, copias múltiples, identidad/transformaciones de la pieza, Deshacer/Rehacer y limpieza al cancelar.
+- Versión visible, package.json y package-lock.json sincronizados en `0.1.78`.
+
+---
+
 ## v0.1.77 — 2026-11-05
 
 ### Corregido: Render y calidad visual ocultos en el editor aislado de piezas

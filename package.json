@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.77",
+  "version": "0.1.78",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -14,7 +14,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "test:gizmos": "vitest run packages/bim/core/src/interaction/TransformGizmoReliability.test.ts packages/bim/core/src/interaction/CadWindowSelectionController.test.ts packages/bim/core/src/interaction/MoveSnapDestinationPolicy.test.ts packages/bim/core/src/interaction/DesignPlacementController.test.ts",
+    "test:gizmos": "vitest run packages/bim/core/src/interaction/PieceMoveCopySession.test.ts packages/bim/core/src/interaction/TransformGizmoReliability.test.ts packages/bim/core/src/interaction/CadWindowSelectionController.test.ts packages/bim/core/src/interaction/MoveSnapDestinationPolicy.test.ts packages/bim/core/src/interaction/DesignPlacementController.test.ts",
     "test:instance-tree": "vitest run packages/bim/core/src/navigation/findInstanceTreeBody.test.ts",
     "test:camera": "vitest run packages/bim/core/src/navigation/CadMouseNavigationController.test.ts",
     "test:piece-preparation": "vitest run packages/bim/core/src/design/PieceDefinitionHelperSceneController.test.ts packages/bim/core/src/interaction/PieceDefinitionPreparationController.test.ts packages/bim/core/src/interaction/PieceFrameLogicWorkspaceController.test.ts packages/bim/core/src/interaction/finishActiveLineForAxisConversion.test.ts apps/web/src/features/bim/dockPiecePreparationPanel.test.ts",
