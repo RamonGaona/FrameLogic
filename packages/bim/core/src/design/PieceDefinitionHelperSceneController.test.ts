@@ -36,6 +36,31 @@ function fixture() {
 }
 
 describe("visible persistent-reference focus overlay", () => {
+  it("hides general SNAP/axis helpers independently of precision, previews on hover and restores in editor", () => {
+    const { controller, overlay } = fixture();
+    const scene = overlay.parent as THREE.Scene;
+    const snaps = scene.getObjectByName("FrameLogicPieceDefinitionSnapHelpers")!;
+    const axes = scene.getObjectByName("FrameLogicPieceDefinitionAxisHelpers")!;
+    // Preparation mode always has reference visibility even if general is hidden.
+    controller.setGeneralReferenceVisibility(false, false);
+    expect(snaps.visible).toBe(true);
+    expect(axes.visible).toBe(true);
+    controller.setActiveInstanceId(null);
+    expect(snaps.visible).toBe(false);
+    expect(axes.visible).toBe(false);
+    controller.setTemporaryReferenceHover(true);
+    expect(snaps.visible).toBe(true);
+    expect(axes.visible).toBe(true);
+    controller.setTemporaryReferenceHover(false);
+    expect(snaps.visible).toBe(false);
+    expect(axes.visible).toBe(false);
+    controller.setGeneralReferenceVisibility(true, false);
+    expect(snaps.visible).toBe(true);
+    expect(axes.visible).toBe(false);
+    controller.dispose();
+  });
+
+
   it("places a prominent marker at an exact snap coordinate", () => {
     const { controller, overlay } = fixture();
     controller.setHighlightedReference({ kind: "SNAP", id: "snap-1" });

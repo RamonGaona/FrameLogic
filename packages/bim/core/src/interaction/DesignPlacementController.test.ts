@@ -36,6 +36,28 @@ function fixture() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("two-click instance insertion", () => {
+  it("compensates the saved FrameLogic origin when positioning and rotating a STEP instance", () => {
+    const controller = Object.create(
+      DesignPlacementController.prototype,
+    ) as DesignPlacementController;
+    Reflect.set(controller, "activeDefinitionId", "def");
+    Reflect.set(controller, "designModel", {
+      pieceDefinitions: { get: () => ({
+        coordinateSystem: { origin: { x: 100, y: 50, z: 0 } },
+      }) },
+    });
+    const position = Reflect.get(controller, "assetTranslationForAnchor").call(
+      controller, new THREE.Vector3(1000, 100, 0), Math.PI / 2,
+    ) as THREE.Vector3;
+    expect(position.x).toBeCloseTo(1000);
+    expect(position.y).toBeCloseTo(50);
+    expect(position.z).toBeCloseTo(100);
+    const anchorRecovered = position.clone().add(
+      new THREE.Vector3(100, 50, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI/2),
+    );
+    expect(anchorRecovered.toArray().map(Math.round)).toEqual([1000,100,0]);
+  });
+
   it("uses first click for origin and second for yaw, then creates exactly one instance", async () => {
     const s = fixture();
     const pending = s.ctl.startPlacement("definition");

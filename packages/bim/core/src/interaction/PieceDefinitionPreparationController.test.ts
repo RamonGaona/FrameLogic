@@ -12,6 +12,53 @@ vi.mock("@framelogic/domain", () => ({
 import { PieceDefinitionPreparationController } from "./PieceDefinitionPreparationController";
 
 describe("FrameLogic piece preparation actions", () => {
+  it("uses a chosen existing SNAP as ORIGIN without moving the original geometry", () => {
+    const controller = Object.create(
+      PieceDefinitionPreparationController.prototype,
+    ) as PieceDefinitionPreparationController;
+    const frame = {
+      origin: {x:10,y:0,z:0}, xAxis:{x:1,y:0,z:0},
+      yAxis:{x:0,y:1,z:0}, zAxis:{x:0,y:0,z:1},
+    };
+    const definition = {
+      id:"def", coordinateSystem:frame,
+      snapPoints:[
+        {id:"snap-1",name:"Snap 1",type:"CENTER",position:{x:100,y:0,z:0}},
+        {id:"previous-origin",name:"Origin",type:"ORIGIN",position:{x:0,y:0,z:0}},
+      ],
+      referenceGeometry:{axisLines:[]},
+    };
+    const object = new THREE.Object3D();
+    object.position.set(500,0,0);
+    const context = {definition, object};
+    const setOrigin = vi.fn((world: THREE.Vector3) =>
+      expect(world.toArray()).toEqual([610,0,0]));
+    const rebased = {
+      ...definition,
+      coordinateSystem:{...frame,origin:{x:110,y:0,z:0}},
+      snapPoints:[
+        {...definition.snapPoints[0]!,position:{x:0,y:0,z:0}},
+        {...definition.snapPoints[1]!,position:{x:-100,y:0,z:0}},
+        {id:"generated-origin",name:"Origin",type:"ORIGIN",position:{x:0,y:0,z:0}},
+      ],
+    };
+    const replaceDefinition = vi.fn((value: typeof rebased) => value);
+    const notify = vi.fn();
+    Reflect.set(controller,"requireContext",()=>context);
+    Reflect.set(controller,"setOriginFromWorldPoint",setOrigin);
+    Reflect.set(controller,"requireDefinition",()=>rebased);
+    Reflect.set(controller,"replaceDefinition",replaceDefinition);
+    Reflect.set(controller,"notify",notify);
+    const updated = controller.setOriginFromSnapId("snap-1");
+    expect(setOrigin).toHaveBeenCalledOnce();
+    expect(updated.snapPoints).toHaveLength(1);
+    expect(updated.snapPoints[0]).toMatchObject({
+      id:"snap-1", type:"ORIGIN", position:{x:0,y:0,z:0},
+    });
+    expect(notify).toHaveBeenCalledOnce();
+    expect(controller.getPinnedSnapId()).toBe("snap-1");
+  });
+
   it("reuses active preparation without clearing CAD lines, points or selections", () => {
     const controller = Object.create(
       PieceDefinitionPreparationController.prototype,

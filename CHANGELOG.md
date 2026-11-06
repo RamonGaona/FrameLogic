@@ -12,6 +12,24 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.79 — 2026-11-05
+
+### Mejoras: gizmo CAD, referencias visuales y origen FrameLogic
+
+- Al editar una pieza, se añade "Mover línea CAD (M)" al panel Preparación geométrica, que activa el gizmo existente de líneas CAD. Si LINE aún está activo, finaliza su último segmento completo y lo selecciona antes de iniciar MOVE_LINE; pulsar M usa el mismo criterio. Se conservan Esc y los SNAPs precisos.
+- En Model Space el control Render incluye un pequeño menú "Refs" para ocultar o mostrar los marcadores de SNAPs y ejes independientemente. La visibilidad no cambia layers, SNAP-enabled ni referencias de las piezas; durante una herramienta activa, pasar el mouse por un SNAP válido permite visualizar temporalmente las referencias.
+- El editor aislado sigue mostrando referencias de preparación, aunque en la vista general estén ocultas.
+- Cada fila de SNAP persistente incorpora el botón "O" para convertirlo en el origen real de la definición FrameLogic. También se permite fijar un SNAP con ◎ y usar "Origen ← SNAP". Se preservan las otras coordenadas, se elimina el ORIGIN anterior y se marca el elegido.
+- El punto base del gizmo de las piezas utiliza el origen FrameLogic en lugar del origen nativo STEP.
+- Tanto la inserción precisa como la básica compensan el origen FrameLogic cuando posicionan y orientan una pieza, sin alterar la geometría CAD original ni los datos del proyecto.
+
+### Validación
+
+- Pruebas de rebase/identidad de SNAP, compensación de origen en inserción y visibilidad de referencias en modo general, hover temporal y preparación.
+- Versión visible, package.json y lockfile sincronizados en 0.1.79.
+
+---
+
 ## v0.1.78 — 2026-11-05
 
 ### Nuevo: Ctrl + eje del gizmo para copiar una pieza mientras se desplaza
