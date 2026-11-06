@@ -14,6 +14,7 @@ import type {
   DesignSceneController,
 } from "./DesignSceneController";
 import type { PieceReferenceFocus } from "./PieceReferenceFocus";
+import { pickPieceReferenceAtScreen } from "./pickPieceReferenceAtScreen";
 
 
 export class PieceDefinitionHelperSceneController {
@@ -133,6 +134,24 @@ export class PieceDefinitionHelperSceneController {
     this.focusGroup.name = "FrameLogicPieceReferenceFocusOverlay";
     this.scene.add(this.focusGroup);
     this.applyReferenceVisibility();
+  }
+
+  findReferenceAtPointer(
+    clientX: number,
+    clientY: number,
+    camera: THREE.Camera,
+    rect: DOMRect,
+  ): PieceReferenceFocus {
+    if (!this.activeInstanceId) return null;
+    return pickPieceReferenceAtScreen(
+      this.snapGroup,
+      this.axisGroup,
+      this.activeInstanceId,
+      camera,
+      rect,
+      clientX,
+      clientY,
+    );
   }
 
   setHighlightedReference(reference: PieceReferenceFocus): void {

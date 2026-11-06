@@ -53,6 +53,7 @@ import {
 import {
   ModelRenderModeController,
 } from "../navigation/ModelRenderModeController";
+import { PieceReferenceManipulationController } from "../interaction/PieceReferenceManipulationController";
 
 import {
   CadMouseNavigationController,
@@ -238,6 +239,26 @@ export async function createBimCore(
       referenceDisplay: core.pieceDefinitionHelpers,
     });
 
+  const referenceManipulation = new PieceReferenceManipulationController({
+    canvas,
+    cameraProvider: () => core.world.camera.three,
+    preparation: core.piecePreparation,
+    helpers: core.pieceDefinitionHelpers,
+    snapAt: (x, y) => core.snapEngine.findSnap(x, y)?.point.clone() ?? null,
+    beforeStart: () => {
+      core.cancelActiveCadCommand();
+      core.cadWindowSelection.cancel();
+      core.cancelPreparedPieceOriginSnapEdit();
+    },
+    onChanged: () => {
+      core.pieceDefinitionHelpers.sync();
+      core.geometryQuery.clearCache();
+    },
+  });
+  core.piecePreparation.setReferenceToolHandler(
+    mode => referenceManipulation.activate(mode),
+  );
+
   const smartPieceInsertion =
     new SmartPieceInsertionController({
       container,
@@ -320,6 +341,7 @@ export async function createBimCore(
         || core.cadMixedMove.isActive
         || core.designTransform.isActive
         || core.designRotate.isActive
+        || referenceManipulation.isActive
         || workPlaneEditActive
         || pieceOriginEditActive;
 
@@ -675,6 +697,7 @@ export async function createBimCore(
     drawingViewRenderStyles.dispose();
     moveRuler.dispose();
     smartPieceInsertion.dispose();
+    referenceManipulation.dispose();
     align.dispose();
     instanceTree.dispose();
     modelRenderMode.dispose();

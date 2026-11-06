@@ -12,6 +12,58 @@ vi.mock("@framelogic/domain", () => ({
 import { PieceDefinitionPreparationController } from "./PieceDefinitionPreparationController";
 
 describe("FrameLogic piece preparation actions", () => {
+  it("moves or copies selected SNAP metadata without changing the saved origin", () => {
+    const controller = Object.create(
+      PieceDefinitionPreparationController.prototype,
+    ) as PieceDefinitionPreparationController;
+    const definition = {
+      id: "d",
+      coordinateSystem: {origin: {x:100,y:0,z:0},
+        xAxis:{x:1,y:0,z:0},yAxis:{x:0,y:1,z:0},zAxis:{x:0,y:0,z:1}},
+      snapPoints: [
+        {id:"origin",name:"Origen",type:"ORIGIN",position:{x:0,y:0,z:0}},
+        {id:"snap1",name:"Snap 1",type:"CENTER",position:{x:20,y:0,z:0}},
+      ],
+      referenceGeometry:{axisLines:[]},
+    };
+    const replaceDefinition = vi.fn((value: typeof definition) => value);
+    Reflect.set(controller,"pinnedReference",{kind:"SNAP",id:"snap1"});
+    Reflect.set(controller,"requireContext",()=>({definition,object:new THREE.Object3D()}));
+    Reflect.set(controller,"worldToDefinitionLocal",(p: THREE.Vector3)=>p.clone().sub(new THREE.Vector3(100,0,0)));
+    Reflect.set(controller,"toData",(p: THREE.Vector3)=>({x:p.x,y:p.y,z:p.z}));
+    Reflect.set(controller,"replaceDefinition",replaceDefinition);
+    Reflect.set(controller,"notify",vi.fn());
+    const moved=controller.relocatePinnedReference(new THREE.Vector3(150,0,0),false);
+    expect(moved.snapPoints.find(x=>x.id==="snap1")?.position).toEqual({x:50,y:0,z:0});
+    expect(moved.coordinateSystem.origin).toEqual({x:100,y:0,z:0});
+    const copied=controller.relocatePinnedReference(new THREE.Vector3(180,0,0),true);
+    expect(copied.snapPoints).toHaveLength(3);
+    expect(copied.snapPoints[2]?.id).not.toEqual("snap1");
+    expect(copied.snapPoints[2]?.position).toEqual({x:80,y:0,z:0});
+    expect(copied.snapPoints.find(x=>x.id==="origin")?.type).toBe("ORIGIN");
+  });
+
+  it("moves or duplicates an axis preserving direction and length", () => {
+    const controller = Object.create(PieceDefinitionPreparationController.prototype) as PieceDefinitionPreparationController;
+    const definition = {
+      id:"d",snapPoints:[],referenceGeometry:{axisLines:[
+        {id:"axis1",name:"Eje",type:"REFERENCE",origin:{x:0,y:0,z:0},
+          direction:{x:1,y:0,z:0},length:200},
+      ]},
+    };
+    Reflect.set(controller,"pinnedReference",{kind:"AXIS",id:"axis1"});
+    Reflect.set(controller,"requireContext",()=>({definition,object:new THREE.Object3D()}));
+    Reflect.set(controller,"worldToDefinitionLocal",(p: THREE.Vector3)=>p);
+    Reflect.set(controller,"toData",(p: THREE.Vector3)=>({x:p.x,y:p.y,z:p.z}));
+    Reflect.set(controller,"replaceDefinition",(d: typeof definition)=>d);
+    Reflect.set(controller,"notify",vi.fn());
+    const updated=controller.relocatePinnedReference(new THREE.Vector3(20,50,0),true);
+    expect(updated.referenceGeometry.axisLines).toHaveLength(2);
+    expect(updated.referenceGeometry.axisLines[1]).toMatchObject({
+      origin:{x:20,y:50,z:0},direction:{x:1,y:0,z:0},length:200,
+    });
+  });
+
   it("uses a chosen existing SNAP as ORIGIN without moving the original geometry", () => {
     const controller = Object.create(
       PieceDefinitionPreparationController.prototype,
