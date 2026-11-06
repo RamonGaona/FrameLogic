@@ -504,7 +504,7 @@ export class DesignPlacementController {
     const definition = this.activeDefinitionId
       ? this.designModel.pieceDefinitions.get(this.activeDefinitionId)
       : undefined;
-    if (!definition) return anchor.clone();
+    if (!definition?.coordinateSystem) return anchor.clone();
     const { origin } = definition.coordinateSystem;
     const offset = new THREE.Vector3(origin.x, origin.y, origin.z)
       .applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
