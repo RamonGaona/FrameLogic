@@ -72,6 +72,8 @@ import {
 import {
   PieceFrameLogicPackageController,
 } from "../interaction/PieceFrameLogicPackageController";
+import { MoveCadLineCommand } from "../commands/MoveCadLineCommand";
+import { finishActiveLineForAxisConversion } from "../interaction/finishActiveLineForAxisConversion";
 
 
 interface DesignSnapRuntime {
@@ -301,6 +303,16 @@ export async function createBimCore(
           core.addPreparedPieceSnapsFromSelection(),
         addAxesFromSelection: () =>
           core.addPreparedPieceAxesFromSelection(),
+        startCadLineMove: () => {
+          // Finalize the current LINE command but preserve its last segment.
+          // Selecting a line after activation would reset native gizmo state.
+          finishActiveLineForAxisConversion(
+            core.cadCommandManager, core.cadLinePlacement, core.cadLineSelection,
+            id => Boolean(core.designModel.cadLines.get(id)),
+          );
+          if (!core.cadLineSelection.getSelectedIds().length) return false;
+          return core.cadCommandManager.start(new MoveCadLineCommand(core.cadLineMove));
+        },
         setIsoView: () =>
           core.setStandardView(
             "ISO",

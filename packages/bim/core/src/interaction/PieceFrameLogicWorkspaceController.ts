@@ -20,6 +20,7 @@ export interface PieceFrameLogicWorkspaceActions {
   readonly startOriginSnap: () => void;
   readonly addSnapsFromSelection: () => number;
   readonly addAxesFromSelection: () => number;
+  readonly startCadLineMove?: () => boolean;
   readonly setIsoView: () => Promise<void>;
 }
 
@@ -726,6 +727,19 @@ export class PieceFrameLogicWorkspaceController {
                 ? `${count} eje(s) agregado(s).`
                 : "No se agregó ningún eje. Selecciona una línea CAD terminada.",
             );
+          } catch (error) {
+            this.setStatus(error instanceof Error ? error.message : String(error));
+          }
+        },
+      ),
+      this.createButton(
+        "Mover línea CAD (M)",
+        () => {
+          try {
+            const started = this.actions.startCadLineMove?.() ?? false;
+            this.setStatus(started
+              ? "Gizmo CAD activo: arrastra un eje o elige un SNAP de destino · Esc cancela."
+              : "Selecciona una línea CAD completa o termina LINE para moverla.");
           } catch (error) {
             this.setStatus(error instanceof Error ? error.message : String(error));
           }

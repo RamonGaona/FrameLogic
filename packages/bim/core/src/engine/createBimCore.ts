@@ -2560,6 +2560,14 @@ const handleCadKeyDown =
       cadNumericInput.hide();
 
 
+      // In the piece editor LINE may still be active. M should
+      // finish the last complete CAD segment and activate its own gizmo
+      // without deleting the geometry or requiring two Esc presses.
+      finishActiveLineForAxisConversion(
+        cadCommandManager, cadLinePlacement, cadLineSelection,
+        id => Boolean(designModel.cadLines.get(id)),
+      );
+
       const selectedLineCount =
         cadLineSelection
           .getSelectedIds()
