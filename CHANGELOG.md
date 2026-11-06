@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.80 — 2026-11-05
+
+### Corregido: vista de referencias limpia y persistente después de recargar
+
+- El menú compacto **Refs** guarda en el navegador las preferencias para mostrar u ocultar SNAPs y ejes; estas opciones se conservan después de pulsar F5.
+- En un navegador sin configuración previa, los marcadores generales empiezan ocultos para evitar saturar el espacio modelo. El editor de piezas continúa mostrando sus referencias, independientemente de esa configuración.
+- La detección precisa de SNAPs no se desactiva al ocultar los marcadores: durante una acción CAD activa siguen apareciendo temporalmente al apuntar a un SNAP válido.
+- Se añaden cabeceras de revalidación para el HTML servido en Cloudflare Pages con el objetivo de evitar que una recarga reutilice una interfaz obsoleta almacenada en caché. No se alteran los recursos STEP ni los archivos de proyecto.
+- Las opciones visuales se almacenan exclusivamente en el navegador y no modifican los datos persistentes de las piezas.
+
+### Validación
+
+- Pruebas de preferencias, datos guardados malformados, visibilidad inicial, hover y editor aislado; comprobación mediante los workflows de compilación y validación.
+- Versión visible y package-lock.json sincronizados en 0.1.80.
+
+---
+
 ## v0.1.79 — 2026-11-05
 
 ### Mejoras: gizmo CAD, referencias visuales y origen FrameLogic

@@ -5,7 +5,7 @@ vi.mock("@framelogic/domain", () => ({
 }));
 import { PieceDefinitionHelperSceneController } from "./PieceDefinitionHelperSceneController";
 
-function fixture() {
+function fixture(editing = true) {
   const scene = new THREE.Scene();
   const object = new THREE.Object3D();
   const definition = {
@@ -31,9 +31,37 @@ function fixture() {
     scene, model as unknown as Args[1],
     { getInstanceObject: () => object } as unknown as Args[2],
   );
-  controller.setActiveInstanceId("piece");
-  return { controller, overlay: scene.getObjectByName("FrameLogicPieceReferenceFocusOverlay") as THREE.Group };
+  if (editing) controller.setActiveInstanceId("piece");
+  return { controller, scene, overlay: scene.getObjectByName("FrameLogicPieceReferenceFocusOverlay") as THREE.Group };
 }
+
+describe("general reference visibility", () => {
+  it("starts hidden in Model Space, permits temporary hover and restores hidden state", () => {
+    const { controller, scene } = fixture(false);
+    const snaps = scene.getObjectByName("FrameLogicPieceDefinitionSnapHelpers") as THREE.Group;
+    const axes = scene.getObjectByName("FrameLogicPieceDefinitionAxisHelpers") as THREE.Group;
+    expect(snaps.visible).toBe(false);
+    expect(axes.visible).toBe(false);
+    controller.setTemporaryReferenceHover(true);
+    expect(snaps.visible).toBe(true);
+    expect(axes.visible).toBe(true);
+    controller.setTemporaryReferenceHover(false);
+    expect(snaps.visible).toBe(false);
+    expect(axes.visible).toBe(false);
+    controller.setGeneralReferenceVisibility(true, false);
+    expect(snaps.visible).toBe(true);
+    expect(axes.visible).toBe(false);
+    controller.dispose();
+  });
+
+  it("always shows references while editing a piece", () => {
+    const { controller, scene } = fixture(true);
+    controller.setGeneralReferenceVisibility(false, false);
+    expect((scene.getObjectByName("FrameLogicPieceDefinitionSnapHelpers") as THREE.Group).visible).toBe(true);
+    expect((scene.getObjectByName("FrameLogicPieceDefinitionAxisHelpers") as THREE.Group).visible).toBe(true);
+    controller.dispose();
+  });
+});
 
 describe("visible persistent-reference focus overlay", () => {
   it("hides general SNAP/axis helpers independently of precision, previews on hover and restores in editor", () => {
