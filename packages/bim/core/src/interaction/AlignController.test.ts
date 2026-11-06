@@ -55,7 +55,7 @@ describe("ALIGN four-point undo and redo", () => {
       clearGeometryQueryCache: vi.fn(),
     });
     const apply = Reflect.get(align,"applyAlignment") as () => void;
-    apply();
+    apply.call(align);
 
     expect(instance.transform.position.x).toBeCloseTo(100, 8);
     expect(instance.transform.position.y).toBeCloseTo(10, 8);
