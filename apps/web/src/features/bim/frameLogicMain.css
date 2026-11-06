@@ -1,4 +1,30 @@
 /*
+ * The first React paint contains the old, unpositioned Model Space toolbar.
+ * Project controls and the panel stack arrive asynchronously from BIM Core.
+ * Keep this chrome invisible (but measurable) until the engine AND the
+ * layout adapter are ready, eliminating the startup toolbar flash.
+ *
+ * Never use display:none here: layout calculations depend on dimensions.
+ * During isolated piece preparation the separate display:none rule below
+ * still owns visibility of general Model Space controls.
+ */
+html:not([data-framelogic-bim-core-ready="true"]) :is(
+  .bim-toolbar,
+  .layer-panel,
+  .model-panel,
+  [data-framelogic-project-toolbar="true"]
+),
+html:not([data-framelogic-model-space-layout-ready="true"]) :is(
+  .bim-toolbar,
+  .layer-panel,
+  .model-panel,
+  [data-framelogic-project-toolbar="true"]
+) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/*
  * FrameLogic main model space no longer exposes a separate
  * "Abrir IFC referencia" action. STEP/STP/IFC external geometry
  * enters through the single "Importar pieza" flow.
