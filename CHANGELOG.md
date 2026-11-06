@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.84 — 2026-11-06
+
+### Mejorado: copia múltiple continua con Ctrl + eje del gizmo hacia SNAPs
+
+- Al hacer **Ctrl + clic corto en un eje del gizmo** y elegir un SNAP, FrameLogic crea la copia y **mantiene el eje armado** para colocar nuevas copias haciendo clic en otros SNAPs, sin volver a pulsar Ctrl ni activar el gizmo.
+- La pieza original permanece seleccionada y en su posición inicial; cada copia nueva parte del mismo punto base del gizmo, en lugar de acumular el desplazamiento de la copia anterior.
+- El gizmo sigue visible después de cada copia. **Esc** termina el modo de copia múltiple sin ocultar el gizmo; un Esc adicional mantiene el comportamiento habitual de cancelar MOVE.
+- Cada copia es una operación **COPY** independiente, reversible con Undo/Redo, sin duplicar los datos STEP de la definición. Un destino con desplazamiento cero no crea instancias ni cancela el modo.
+- La copia mediante **Ctrl + arrastrar el gizmo** conserva el comportamiento anterior (seleccionar la copia al finalizar); mover sin Ctrl no cambia.
+
+### Validación
+
+- Pruebas de varias copias consecutivas a SNAPs diferentes, conservación del origen/selección y eje armado, cancelación con Esc, destino sin desplazamiento, Undo/Redo y copia por arrastre.
+- Badge visible, `package.json`, `package-lock.json` y changelog sincronizados en `0.1.84`.
+
+---
+
 ## v0.1.83 — 2026-11-05
 
 ### Corregido: precisión del editor, referencias por instancia y controles de visualización

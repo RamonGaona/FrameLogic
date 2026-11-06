@@ -67,7 +67,13 @@ export class PieceMoveCopySession {
     this.scene.sync();
   }
 
-  finish(): void {
+  /**
+   * Ctrl + axis -> SNAP can place multiple copies from a fixed original.
+   * In that mode, do not select each newly created instance; selection
+   * changes would detach/rearm the transform gizmo after every placement.
+   * Drag-copy keeps the existing select-new-copy behaviour by default.
+   */
+  finish(keepOriginalSelection = false): void {
     if (this.completed) return;
     const records: PieceInstance[] = this.ids.map((id) => {
       const record = this.model.pieceInstances.get(id);
@@ -94,15 +100,17 @@ export class PieceMoveCopySession {
         });
       }
       this.scene.sync();
-      this.selection.setSelection(ids);
+      this.selection.setSelection(keepOriginalSelection ? originals : ids);
     });
-    // TransformControls emite mouseUp antes de liberar internamente su
-    // estado dragging. Cambiar selección sincrónicamente aquí volvería
-    // a conectar el gizmo mientras aún pertenece al gesto anterior.
-    queueMicrotask(() => {
-      if (ids.every(id => this.model.pieceInstances.get(id))) {
-        this.selection.setSelection(ids);
-      }
-    });
+    // Drag copy retains its prior behaviour: select the newly placed copies
+    // after TransformControls releases the pointer. Multi-copy explicitly
+    // retains the original as the source of each subsequent placement.
+    if (!keepOriginalSelection) {
+      queueMicrotask(() => {
+        if (ids.every(id => this.model.pieceInstances.get(id))) {
+          this.selection.setSelection(ids);
+        }
+      });
+    }
   }
 }
