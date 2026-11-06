@@ -258,6 +258,15 @@ export async function createBimCore(
   core.piecePreparation.setReferenceToolHandler(
     mode => referenceManipulation.activate(mode),
   );
+  // Leaving preparation must also cancel a pending 3D source/target click.
+  // Otherwise the tool would keep intercepting canvas input in Model Space.
+  const unsubscribeReferencePreparation = core.subscribePieceDefinitionPreparation(
+    state => {
+      if (!state.active && referenceManipulation.isActive) {
+        referenceManipulation.cancel();
+      }
+    },
+  );
 
   const smartPieceInsertion =
     new SmartPieceInsertionController({
@@ -702,6 +711,7 @@ export async function createBimCore(
     drawingViewRenderStyles.dispose();
     moveRuler.dispose();
     smartPieceInsertion.dispose();
+    unsubscribeReferencePreparation();
     referenceManipulation.dispose();
     align.dispose();
     instanceTree.dispose();
