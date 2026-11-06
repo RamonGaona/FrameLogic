@@ -138,15 +138,12 @@ export async function createBimCore(
    */
   const restorePreparedPieceVisualPlacement = (): void => {
     const state = core.piecePreparation.getState();
-    if (state.instanceId) {
-      const object = core.designScene.getInstanceObject(
-        state.instanceId,
-      );
-      if (object) {
-        object.matrixAutoUpdate = true;
-      }
-    }
-
+    // In Model Space the original instance transform is authoritative.
+    // Only the isolated editor maps the saved FrameLogic origin to world 0.
+    const isolatedId = core.pieceFrameLogicWorkspace.editingInstanceId;
+    core.designScene.setIsolatedPieceWorkspaceInstanceId(
+      state.instanceId === isolatedId ? isolatedId : null,
+    );
     core.designScene.sync();
     core.pieceDefinitionHelpers.sync();
     core.geometryQuery.clearCache();
@@ -178,6 +175,15 @@ export async function createBimCore(
     );
     restorePreparedPieceVisualPlacement();
     return definition;
+  };
+
+  const baseStopPiecePreparation = core.piecePreparation.stop.bind(core.piecePreparation);
+  core.piecePreparation.stop = () => {
+    baseStopPiecePreparation();
+    core.designScene.setIsolatedPieceWorkspaceInstanceId(null);
+    core.designScene.sync();
+    core.pieceDefinitionHelpers.sync();
+    core.geometryQuery.clearCache();
   };
 
   /*
@@ -280,6 +286,18 @@ export async function createBimCore(
   let snapFeedbackEnabled =
     false;
 
+  let hoveredReferenceInstanceId: string | null = null;
+  const trackReferencePointer = (event: PointerEvent): void => {
+    hoveredReferenceInstanceId = core.designSelection.getInstanceIdAt(
+      event.clientX, event.clientY,
+    );
+  };
+  const clearReferencePointer = (): void => {
+    hoveredReferenceInstanceId = null;
+  };
+  canvas.addEventListener("pointermove", trackReferencePointer);
+  canvas.addEventListener("pointerleave", clearReferencePointer);
+
   const syncSnapFeedback =
     (): void => {
       if (snapFeedbackDisposed) {
@@ -317,8 +335,17 @@ export async function createBimCore(
       }
       // The hidden 3D markers reappear only on hover while a tool
       // actually consumes the candidate SNAP, then disappear again.
+      const snapInstanceId = shouldEnable
+        ? core.designSnap.getSnapAtCurrentPointer()?.instanceId ?? null
+        : null;
+      // Model Space shows only the piece beneath the cursor, never
+      // every instance of the same STEP definition or nearby pieces.
+      const candidateId = shouldEnable
+        ? hoveredReferenceInstanceId ?? snapInstanceId
+        : null;
       core.pieceDefinitionHelpers.setTemporaryReferenceHover(
-        shouldEnable && core.designSnap.getSnapAtCurrentPointer() !== null,
+        candidateId && core.designModel.pieceInstances.get(candidateId)
+          ? candidateId : null,
       );
 
       snapFeedbackFrame =
@@ -625,6 +652,10 @@ export async function createBimCore(
       snapFeedbackFrame = null;
     }
     core.designSnap.setEnabled(false);
+    canvas.removeEventListener("pointermove", trackReferencePointer);
+    canvas.removeEventListener("pointerleave", clearReferencePointer);
+    core.pieceDefinitionHelpers.setTemporaryReferenceHover(null);
+    core.designScene.setIsolatedPieceWorkspaceInstanceId(null);
     unifiedPdfProjectBridge.dispose();
     instanceTreeGroupVisibility.dispose();
     instanceTreeConsistency.dispose();

@@ -113,6 +113,10 @@ export class PieceFrameLogicWorkspaceController {
     | null =
       null;
 
+  get editingInstanceId(): string | null {
+    return this.activeInstanceId;
+  }
+
   private disposed =
     false;
 

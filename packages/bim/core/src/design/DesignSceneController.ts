@@ -5,6 +5,7 @@ import * as THREE from "three";
 import type {
   DesignModel,
 } from "@framelogic/domain";
+import { pieceDefinitionLocalViewMatrix } from "./pieceDefinitionLocalViewMatrix";
 
 import {
   preparePiecePrototypeGeometry,
@@ -31,6 +32,17 @@ export class DesignSceneController {
   }
 
   private visualLevel: PieceVisualLevel = "WORK";
+  private isolatedPieceWorkspaceInstanceId: string | null = null;
+
+  /**
+   * Render-only local CAD frame. The saved PieceInstance transform must remain
+   * unchanged while an isolated piece is being prepared.
+   */
+  setIsolatedPieceWorkspaceInstanceId(instanceId: string | null): void {
+    if (this.isolatedPieceWorkspaceInstanceId === instanceId) return;
+    this.isolatedPieceWorkspaceInstanceId = instanceId;
+    this.sync();
+  }
   private readonly detailInstances = new Set<string>();
 
   setVisualLevel(level: PieceVisualLevel, detailInstanceIds: readonly string[] = []): void {
@@ -698,8 +710,13 @@ export class DesignSceneController {
         }
       });
 
-      object.updateMatrix();
-
+      if (this.isolatedPieceWorkspaceInstanceId === instance.id) {
+        object.matrixAutoUpdate = false;
+        object.matrix.copy(pieceDefinitionLocalViewMatrix(definition.coordinateSystem));
+      } else {
+        object.matrixAutoUpdate = true;
+        object.updateMatrix();
+      }
 
       object.updateMatrixWorld(
         true,

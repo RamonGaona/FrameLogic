@@ -56,7 +56,7 @@ export class PieceDefinitionHelperSceneController {
   // Only visual helpers are toggled; SNAP geometry/search stays enabled.
   private showGeneralSnaps = false;
   private showGeneralAxes = false;
-  private temporaryReferenceHover = false;
+  private temporaryReferenceHoverInstanceId: string | null = null;
 
   setGeneralReferenceVisibility(snaps: boolean, axes: boolean): void {
     this.showGeneralSnaps = snaps;
@@ -64,16 +64,30 @@ export class PieceDefinitionHelperSceneController {
     this.applyReferenceVisibility();
   }
 
-  setTemporaryReferenceHover(hover: boolean): void {
-    if (this.temporaryReferenceHover === hover) return;
-    this.temporaryReferenceHover = hover;
+  setTemporaryReferenceHover(instanceId: string | null): void {
+    if (this.temporaryReferenceHoverInstanceId === instanceId) return;
+    this.temporaryReferenceHoverInstanceId = instanceId;
     this.applyReferenceVisibility();
   }
 
   private applyReferenceVisibility(): void {
     const editing = this.activeInstanceId !== null;
-    this.snapGroup.visible = editing || this.showGeneralSnaps || this.temporaryReferenceHover;
-    this.axisGroup.visible = editing || this.showGeneralAxes || this.temporaryReferenceHover;
+    this.snapGroup.visible = editing || this.showGeneralSnaps || this.temporaryReferenceHoverInstanceId !== null;
+    this.axisGroup.visible = editing || this.showGeneralAxes || this.temporaryReferenceHoverInstanceId !== null;
+    // Never reveal references belonging to a neighbouring instance merely
+    // because one candidate under the cursor enabled temporary feedback.
+    for (const [group, showAll] of [
+      [this.snapGroup, this.showGeneralSnaps],
+      [this.axisGroup, this.showGeneralAxes],
+    ] as const) {
+      for (const child of group.children) {
+        const id = child.userData["frameLogic"]?.instanceId as string | undefined;
+        child.visible = editing || showAll || (
+          this.temporaryReferenceHoverInstanceId !== null
+          && id === this.temporaryReferenceHoverInstanceId
+        );
+      }
+    }
   }
 
 

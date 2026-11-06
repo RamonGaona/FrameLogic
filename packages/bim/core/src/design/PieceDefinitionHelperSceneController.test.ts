@@ -42,10 +42,10 @@ describe("general reference visibility", () => {
     const axes = scene.getObjectByName("FrameLogicPieceDefinitionAxisHelpers") as THREE.Group;
     expect(snaps.visible).toBe(false);
     expect(axes.visible).toBe(false);
-    controller.setTemporaryReferenceHover(true);
+    controller.setTemporaryReferenceHover("piece");
     expect(snaps.visible).toBe(true);
     expect(axes.visible).toBe(true);
-    controller.setTemporaryReferenceHover(false);
+    controller.setTemporaryReferenceHover(null);
     expect(snaps.visible).toBe(false);
     expect(axes.visible).toBe(false);
     controller.setGeneralReferenceVisibility(true, false);
@@ -76,10 +76,10 @@ describe("visible persistent-reference focus overlay", () => {
     controller.setActiveInstanceId(null);
     expect(snaps.visible).toBe(false);
     expect(axes.visible).toBe(false);
-    controller.setTemporaryReferenceHover(true);
+    controller.setTemporaryReferenceHover("piece");
     expect(snaps.visible).toBe(true);
     expect(axes.visible).toBe(true);
-    controller.setTemporaryReferenceHover(false);
+    controller.setTemporaryReferenceHover(null);
     expect(snaps.visible).toBe(false);
     expect(axes.visible).toBe(false);
     controller.setGeneralReferenceVisibility(true, false);
