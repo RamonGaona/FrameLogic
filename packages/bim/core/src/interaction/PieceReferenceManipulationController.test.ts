@@ -65,7 +65,7 @@ describe("isolated piece manual reference manipulation", () => {
         isActive:true,getPinnedReference:()=>({kind:"SNAP",id:"s"}),
         setReferenceToolMessage:vi.fn(),
       } as unknown as ConstructorParameters<typeof PieceReferenceManipulationController>[0]["preparation"],
-      helpers: {} as ConstructorParameters<typeof PieceReferenceManipulationController>[0]["helpers"],
+      helpers: {} as unknown as ConstructorParameters<typeof PieceReferenceManipulationController>[0]["helpers"],
       snapAt:vi.fn(()=>null),beforeStart:vi.fn(),onChanged:vi.fn(),
     });
     controller.activate("COPY");
