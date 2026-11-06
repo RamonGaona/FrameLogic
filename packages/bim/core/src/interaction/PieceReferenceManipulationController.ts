@@ -13,7 +13,7 @@ export class PieceReferenceManipulationController {
   private awaitingSource = false;
   private pointerStart: {x:number;y:number}|null = null;
 
-  constructor(private readonly options: {
+  private readonly options: {
     readonly canvas: HTMLElement;
     readonly cameraProvider: () => THREE.Camera;
     readonly preparation: PieceDefinitionPreparationController;
@@ -21,7 +21,10 @@ export class PieceReferenceManipulationController {
     readonly snapAt: (x:number,y:number) => THREE.Vector3 | null;
     readonly beforeStart: () => void;
     readonly onChanged: () => void;
-  }) {
+  };
+
+  constructor(options: PieceReferenceManipulationController["options"]) {
+    this.options = options;
     options.canvas.addEventListener("pointerdown", this.onPointerDown, true);
     options.canvas.addEventListener("pointerup", this.onPointerUp, true);
     window.addEventListener("keydown", this.onKeyDown, true);
