@@ -25,12 +25,12 @@ describe("isolated piece manual reference manipulation", () => {
     };
     const onChanged = vi.fn();
     const snapAt = vi.fn(() => new THREE.Vector3(15, 25, 35));
+    const mockHelpers = { findReferenceAtPointer: () => ({kind:"AXIS" as const, id:"ax-1"}) };
     const controller = new PieceReferenceManipulationController({
       canvas,
       cameraProvider: () => new THREE.OrthographicCamera(),
       preparation: preparation as unknown as ConstructorParameters<typeof PieceReferenceManipulationController>[0]["preparation"],
-      helpers: ({findReferenceAtPointer: () => ({kind:"AXIS",id:"ax-1"})}
-        as unknown as ConstructorParameters<typeof PieceReferenceManipulationController>[0]["helpers"]),
+      helpers: mockHelpers as unknown as ConstructorParameters<typeof PieceReferenceManipulationController>[0]["helpers"],
       snapAt,
       beforeStart: vi.fn(),
       onChanged,
