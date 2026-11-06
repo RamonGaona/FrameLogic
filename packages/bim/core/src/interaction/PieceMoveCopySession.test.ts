@@ -96,6 +96,34 @@ describe("Ctrl + axis: reversible piece copy", () => {
     expect(f.select).toHaveBeenLastCalledWith([id]);
   });
 
+  it("keeps the originals selected for repeated placements and Undo/Redo", async () => {
+    const f = fixture();
+    const first = f.make();
+    const firstId = first.ids[0]!;
+    f.instances.get(firstId)!.transform.position.x = 150;
+    first.finish(true);
+    await Promise.resolve();
+    expect(f.select).not.toHaveBeenCalled();
+    expect(f.instances.get("original")!.transform.position.x).toBe(5);
+
+    const second = f.make();
+    const secondId = second.ids[0]!;
+    f.instances.get(secondId)!.transform.position.x = 250;
+    second.finish(true);
+    await Promise.resolve();
+    expect(f.instances.size).toBe(3);
+    expect(f.history.recordOperation).toHaveBeenCalledTimes(2);
+    expect(f.select).not.toHaveBeenCalled();
+
+    f.undo(); // undo the latest copy
+    expect(f.instances.has(secondId)).toBe(false);
+    expect(f.instances.has(firstId)).toBe(true);
+    expect(f.select).toHaveBeenLastCalledWith(["original"]);
+    f.redo();
+    expect(f.instances.get(secondId)!.transform.position.x).toBe(250);
+    expect(f.select).toHaveBeenLastCalledWith(["original"]);
+  });
+
   it("cancel removes any unconfirmed copies without creating history", () => {
     const f = fixture();
     const copy = f.make();

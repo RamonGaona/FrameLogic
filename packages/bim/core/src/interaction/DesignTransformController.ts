@@ -335,6 +335,7 @@ export class DesignTransformController {
       true,
     );
 
+    window.addEventListener("keydown", this.handleRepeatCopyKeyDown, true);
 
     this.controls.detach();
 
@@ -1000,11 +1001,35 @@ export class DesignTransformController {
     this.syncSelectedObjects(this.selection.getSelectedIds());
   }
 
-  private finishCopySession(): void {
+  private finishCopySession(keepOriginalSelection = false): void {
     const session = this.copySession;
     this.copySession = null;
-    session?.finish();
+    session?.finish(keepOriginalSelection);
   }
+
+  /**
+   * First Esc exits repeated SNAP placement without closing the MOVE gizmo.
+   * A second Esc follows the existing command cancellation behaviour.
+   */
+  private readonly handleRepeatCopyKeyDown = (event: KeyboardEvent): void => {
+    if (
+      !this.active
+      || !this.armedCopyMove
+      || !this.armedMoveAxis
+      || event.key !== "Escape"
+    ) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    this.armedCopyMove = false;
+    this.armedMoveAxis = null;
+    this.armedPointerDownActive = false;
+    this.ctrlCopyGesture = false;
+    this.snap.clearExcludedInstanceIds();
+    this.syncSelectedObjects(this.selection.getSelectedIds());
+    this.selection.setEnabled(true);
+    this.setCameraEnabled(true);
+  };
 
   // ==========================================================
   // TRANSFORM START
@@ -1707,6 +1732,9 @@ export class DesignTransformController {
       event.stopPropagation();
 
 
+      const repeatingCopy = this.armedCopyMove && this.armedMoveAxis !== null;
+      const sourcePivot = repeatingCopy ? this.pivot.position.clone() : null;
+
       const before =
         this.history.capture(
           this.selection
@@ -1795,7 +1823,17 @@ export class DesignTransformController {
 
           this.commitTransforms();
           if (this.copySession) {
-            this.finishCopySession();
+            this.finishCopySession(repeatingCopy);
+            if (repeatingCopy && sourcePivot) {
+              // Every click starts from the same original pieces and the
+              // same gizmo base. Do not accumulate displacements from the
+              // previous copy or switch selection to the new instance.
+              this.syncSelectedObjects(this.selection.getSelectedIds());
+              this.pivot.position.copy(sourcePivot);
+              this.pivot.updateMatrixWorld(true);
+              this.previousPivotPosition.copy(sourcePivot);
+              this.selection.refreshHelpers();
+            }
           } else {
             this.history.recordTransform(
               "MOVE", before, this.selection.getSelectedIds(),
@@ -1806,6 +1844,16 @@ export class DesignTransformController {
 
       }
 
+      if (repeatingCopy) {
+        // Keep the axis armed and leave selection locked so the next
+        // normal click on any eligible SNAP places another independent copy.
+        // Zero-distance/invalid targets must not end the repeated mode.
+        configureMoveDestinationSnaps(
+          this.snap, this.selection.getSelectedIds(), "PICK_DESTINATION",
+        );
+        this.selection.setEnabled(false);
+        return;
+      }
 
       this.armedMoveAxis =
         null;
@@ -2176,6 +2224,7 @@ export class DesignTransformController {
       true,
     );
 
+    window.removeEventListener("keydown", this.handleRepeatCopyKeyDown, true);
 
     this.deactivate();
 

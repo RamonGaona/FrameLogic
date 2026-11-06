@@ -71,11 +71,12 @@ function fixture() {
     refreshHelpers: vi.fn(),
     setEnabled: vi.fn(),
   };
+  const snapDestination = new THREE.Vector3(120, 0, 0);
   const snap = {
     setExcludedInstanceIds: vi.fn(),
     clearExcludedInstanceIds: vi.fn(),
     getSnapAtCurrentPointer: () => null,
-    findSnap: () => ({ point: new THREE.Vector3(120, 0, 0) }),
+    findSnap: () => ({ point: snapDestination.clone() }),
   };
   const history = {
     capture: () => new Map(),
@@ -113,6 +114,14 @@ function fixture() {
       ctrlDown({ button: 0, ctrlKey: ctrl });
     },
     change, end,
+    setSnapDestination: (x: number, y = 0, z = 0) => {
+      snapDestination.set(x, y, z);
+    },
+    cancelRepeatCopy: () => {
+      const keyDown = Reflect.get(controller, "handleRepeatCopyKeyDown") as
+        (event: {key: string; preventDefault: () => void; stopImmediatePropagation: () => void}) => void;
+      keyDown({key: "Escape", preventDefault: () => {}, stopImmediatePropagation: () => {}});
+    },
     chooseSnap: () => {
       const pointerDown = Reflect.get(controller, "handleArmedPointerDown") as
         (e: { button: number; clientX: number; clientY: number }) => void;
@@ -156,7 +165,54 @@ describe("Ctrl + translate gizmo integration", () => {
     expect(f.instances.size).toBe(2);
     expect(f.instances.get("copy-1")!.transform.position.x).toBe(120);
     expect(f.instances.get("original")!.transform.position.x).toBe(5);
-    expect(f.selected).toEqual(["copy-1"]);
+    expect(f.selected).toEqual(["original"]);
+    expect(f.controller.isActive).toBe(true);
+    f.controller.dispose();
+  });
+
+  it("continues copying onto successive SNAPs without reactivating the gizmo", async () => {
+    const f = fixture();
+    f.startAxis(true);
+    f.end(); // arm the axis once
+    f.chooseSnap();
+    await Promise.resolve();
+
+    expect(f.instances.get("copy-1")!.transform.position.x).toBe(120);
+    expect(f.selected).toEqual(["original"]);
+    expect(f.pivot.position.x).toBe(5);
+    expect(Reflect.get(f.controller, "armedMoveAxis")).toBe("X");
+    expect(Reflect.get(f.controller, "armedCopyMove")).toBe(true);
+
+    f.setSnapDestination(235);
+    f.chooseSnap(); // ordinary click; Ctrl and axis click are NOT repeated
+    await Promise.resolve();
+
+    expect(f.instances.size).toBe(3);
+    expect(f.instances.get("copy-1")!.transform.position.x).toBe(120);
+    expect(f.instances.get("copy-2")!.transform.position.x).toBe(235);
+    expect(f.instances.get("original")!.transform.position.x).toBe(5);
+    expect(f.selected).toEqual(["original"]);
+    expect(f.pivot.position.x).toBe(5);
+    expect(f.controller.isActive).toBe(true);
+    expect(f.history.recordOperation).toHaveBeenCalledTimes(2);
+    expect(f.history.recordTransform).not.toHaveBeenCalled();
+
+    f.setSnapDestination(5); // same origin: don't make a zero-distance copy
+    f.chooseSnap();
+    expect(f.instances.size).toBe(3);
+    expect(Reflect.get(f.controller, "armedCopyMove")).toBe(true);
+
+    f.setSnapDestination(330);
+    f.chooseSnap();
+    expect(f.instances.size).toBe(4);
+    expect(f.instances.get("copy-3")!.transform.position.x).toBe(330);
+
+    f.cancelRepeatCopy();
+    expect(Reflect.get(f.controller, "armedCopyMove")).toBe(false);
+    expect(f.controller.isActive).toBe(true); // gizmo stays visible
+    f.setSnapDestination(440);
+    f.chooseSnap();
+    expect(f.instances.size).toBe(4);
     f.controller.dispose();
   });
 
