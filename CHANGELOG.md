@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.85 — 2026-11-06
+
+### Corregido: gizmo local después de ALINEAR y Ctrl+Z para alineaciones
+
+- Cuando se vuelve a seleccionar una pieza previamente rotada o alineada, el gizmo de movimiento muestra por defecto sus ejes propios: combina la rotación real de la instancia con los ejes definidos en la PieceDefinition FrameLogic.
+- La orientación del gizmo no gira ni desplaza la geometría seleccionada. Con varias piezas seleccionadas se mantiene el espacio global para evitar interpretar diferentes orientaciones locales a la vez.
+- El movimiento restringido por eje/plano hacia SNAPs y los desplazamientos numéricos utilizan los mismos ejes locales que muestra el gizmo. La opción de espacio global, si se selecciona, conserva restricciones en coordenadas mundiales.
+- ALINEAR registra la traslación y rotación de las **instancias de pieza** en el historial CAD. **Ctrl+Z** revierte esa transformación; rehacer restaura la alineación.
+- Se conserva la copia continua de piezas v0.1.84, utilizando el punto base y la dirección local de la pieza.
+
+### Validación
+
+- Pruebas de orientación de ejes locales tras rotación/alineación, movimiento numérico y proyección de SNAP, selección múltiple global, y Undo/Redo de ALIGN.
+- Badge, `package.json` y `package-lock.json` sincronizados en `0.1.85`.
+
+---
+
 ## v0.1.84 — 2026-11-06
 
 ### Mejorado: copia múltiple continua con Ctrl + eje del gizmo hacia SNAPs
