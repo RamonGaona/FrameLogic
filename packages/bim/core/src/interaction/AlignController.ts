@@ -11,6 +11,7 @@ import type {
 import type {
   DesignSelectionController,
 } from "./DesignSelectionController";
+import type { CadHistoryController } from "./CadHistoryController";
 
 import type {
   CadReferenceBlockController,
@@ -23,6 +24,7 @@ export interface AlignControllerOptions {
   readonly designScene: DesignSceneController;
   readonly designSelection: DesignSelectionController;
   readonly cadReferenceBlocks: CadReferenceBlockController;
+  readonly history: CadHistoryController;
   readonly cancelActiveCommand: () => void;
   readonly clearGeometryQueryCache: () => void;
   readonly findSnapPoint: (
@@ -272,6 +274,10 @@ export class AlignController {
         targetAxis.normalize(),
       );
 
+    // ALIGN must participate in the same undo history as MOVE/ROTATE.
+    // Capture before the rigid translation and rotation are applied.
+    const before = this.options.history.capture(this.selectedPieceIds);
+
     for (const pieceId of this.selectedPieceIds) {
       this.transformPiece(
         pieceId,
@@ -291,6 +297,7 @@ export class AlignController {
     }
 
     this.options.designScene.sync();
+    this.options.history.recordTransform("ALIGN", before, this.selectedPieceIds);
     this.options.designSelection.refreshHelpers();
     this.options.cadReferenceBlocks.refresh();
     this.options.clearGeometryQueryCache();

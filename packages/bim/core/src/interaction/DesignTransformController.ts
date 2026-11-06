@@ -153,6 +153,9 @@ export class DesignTransformController {
   private armedPivot =
     false;
 
+  // Single pieces default to their authored axes; groups use global axes.
+  private requestedTransformSpace: "world" | "local" = "local";
+
   private ctrlCopyGesture = false;
   private armedCopyMove = false;
   private copySession: PieceMoveCopySession | null = null;
@@ -260,7 +263,7 @@ export class DesignTransformController {
 
 
     this.controls.setSpace(
-      "world",
+      this.requestedTransformSpace,
     );
 
 
@@ -632,6 +635,11 @@ export class DesignTransformController {
     }
 
 
+    // Numeric distances follow the same rotated axes as the gizmo.
+    if (this.controls.space === "local") {
+      delta.applyQuaternion(this.pivot.quaternion);
+    }
+
     for (
       const object
       of this.transformedObjects.values()
@@ -863,13 +871,40 @@ export class DesignTransformController {
       position,
     );
 
-
-    /*
-     * Los ejes del gizmo representan el sistema
-     * cartesiano mundial.
-     */
+    // Compose instance rotation (including ALIGN) and the locally defined
+    // FrameLogic coordinate axes. Selecting a piece never changes its mesh.
     this.pivot.quaternion.identity();
-
+    if (selectedIds.length === 1) {
+      const id = selectedIds[0];
+      const object = id ? this.designScene.getInstanceObject(id) : null;
+      const instance = id ? this.designModel.pieceInstances.get(id) : null;
+      const definition = instance
+        ? this.designModel.pieceDefinitions?.get(instance.definitionId) : undefined;
+      if (object) {
+        object.getWorldQuaternion(this.pivot.quaternion);
+        const frame = definition?.coordinateSystem;
+        if (frame) {
+          const x = new THREE.Vector3(frame.xAxis.x, frame.xAxis.y, frame.xAxis.z).normalize();
+          const y = new THREE.Vector3(frame.yAxis.x, frame.yAxis.y, frame.yAxis.z).normalize();
+          const z = new THREE.Vector3(frame.zAxis.x, frame.zAxis.y, frame.zAxis.z).normalize();
+          if (
+            Math.abs(x.dot(y)) < 1e-5
+            && Math.abs(x.dot(z)) < 1e-5
+            && Math.abs(y.dot(z)) < 1e-5
+            && x.clone().cross(y).dot(z) > 0.999
+          ) {
+            this.pivot.quaternion.multiply(
+              new THREE.Quaternion().setFromRotationMatrix(
+                new THREE.Matrix4().makeBasis(x, y, z),
+              ),
+            ).normalize();
+          }
+        }
+      }
+    }
+    this.controls.setSpace(
+      selectedIds.length === 1 ? this.requestedTransformSpace : "world",
+    );
 
     this.pivot.updateMatrixWorld(
       true,
@@ -1885,77 +1920,20 @@ export class DesignTransformController {
   ):
     THREE.Vector3 {
 
-    const correction =
-      targetPoint
-        .clone()
-        .sub(
-          this.pivot.position,
-        );
+    const correction = targetPoint.clone().sub(this.pivot.position);
+    const local = this.controls.space === "local";
+    if (local) correction.applyQuaternion(this.pivot.quaternion.clone().invert());
 
-
-    switch (
-      axis
-    ) {
-
-      case "X":
-
-        correction.set(
-          correction.x,
-          0,
-          0,
-        );
-
-        break;
-
-
-      case "Y":
-
-        correction.set(
-          0,
-          correction.y,
-          0,
-        );
-
-        break;
-
-
-      case "Z":
-
-        correction.set(
-          0,
-          0,
-          correction.z,
-        );
-
-        break;
-
-
-      case "XY":
-
-        correction.z =
-          0;
-
-        break;
-
-
-      case "XZ":
-
-        correction.y =
-          0;
-
-        break;
-
-
-      case "YZ":
-
-        correction.x =
-          0;
-
-        break;
-
+    // Constrain in gizmo coordinates, not world coordinates, after ALIGN.
+    switch (axis) {
+      case "X": correction.y = 0; correction.z = 0; break;
+      case "Y": correction.x = 0; correction.z = 0; break;
+      case "Z": correction.x = 0; correction.y = 0; break;
+      case "XY": correction.z = 0; break;
+      case "XZ": correction.y = 0; break;
+      case "YZ": correction.x = 0; break;
     }
-
-
+    if (local) correction.applyQuaternion(this.pivot.quaternion);
     return correction;
 
   }
@@ -2155,8 +2133,9 @@ export class DesignTransformController {
       | "local",
   ): void {
 
+    this.requestedTransformSpace = space;
     this.controls.setSpace(
-      space,
+      this.selection.getSelectedIds().length === 1 ? space : "world",
     );
 
   }

@@ -106,7 +106,7 @@ function fixture() {
   const ctrlDown = Reflect.get(controller, "handleCtrlCopyPointerDown") as
     (e: { button: number; ctrlKey: boolean }) => void;
   return {
-    controller, instances, objects, history, selection, snap, pivot,
+    controller, instances, objects, history, selection, snap, pivot, model,
     get selected() { return selected; },
     startAxis: (ctrl: boolean) => {
       controls.axis = "X";
@@ -135,6 +135,70 @@ function fixture() {
   };
 }
 afterEach(() => vi.unstubAllGlobals());
+
+describe("aligned piece-local movement", () => {
+  it("orients the gizmo to the selected rotated piece and constrains SNAP X locally", () => {
+    const f = fixture();
+    const object = f.objects.get("original")!;
+    object.rotation.z = Math.PI / 2;
+    object.updateMatrixWorld(true);
+
+    // Re-selecting the aligned piece updates the gizmo, not the geometry.
+    f.selection.setSelection(["original"]);
+    const controls = Reflect.get(f.controller, "controls") as { space: string };
+    expect(controls.space).toBe("local");
+    const localX = new THREE.Vector3(1, 0, 0).applyQuaternion(f.pivot.quaternion);
+    expect(localX.x).toBeCloseTo(0, 7);
+    expect(localX.y).toBeCloseTo(1, 7);
+
+    const correction = (Reflect.get(f.controller, "getConstrainedSnapCorrection") as
+      (axis: string, target: THREE.Vector3) => THREE.Vector3).bind(f.controller);
+    const snappedX = correction("X", new THREE.Vector3(40, 80, 20));
+    expect(snappedX.x).toBeCloseTo(0, 7);
+    expect(snappedX.y).toBeCloseTo(80, 7);
+    expect(snappedX.z).toBeCloseTo(0, 7);
+
+    expect(f.controller.applyNumericMove("X", 25)).toBe(true);
+    expect(f.instances.get("original")?.transform.position.x).toBeCloseTo(5);
+    expect(f.instances.get("original")?.transform.position.y).toBeCloseTo(25);
+
+    f.controller.setSpace("world");
+    const worldX = correction("X", new THREE.Vector3(40, 80, 20));
+    expect(worldX.x).toBeCloseTo(35, 7);
+    expect(worldX.y).toBeCloseTo(0, 7);
+    expect(worldX.z).toBeCloseTo(0, 7);
+    f.controller.dispose();
+  });
+
+  it("combines authored FrameLogic axes with instance rotation, and uses world axes for a group", () => {
+    const f = fixture();
+    Reflect.set(f.model, "pieceDefinitions", { get: () => ({
+      coordinateSystem: {
+        origin: {x:0,y:0,z:0},
+        xAxis: {x:0,y:1,z:0}, yAxis: {x:-1,y:0,z:0}, zAxis: {x:0,y:0,z:1},
+      },
+    }) });
+    f.selection.setSelection(["original"]);
+    const worldX = new THREE.Vector3(1,0,0).applyQuaternion(f.pivot.quaternion);
+    expect(worldX.x).toBeCloseTo(0, 7);
+    expect(worldX.y).toBeCloseTo(1, 7);
+
+    const second = f.model.registerPieceInstance({
+      id:"second", definitionId:"def", layerId:"geometry", tags:[],
+      transform:{position:{x:200,y:0,z:0},rotation:{x:0,y:0,z:0}},
+    });
+    expect(second.id).toBe("second");
+    // New instance object must be available to the transform controller.
+    const secondObject = new THREE.Object3D();
+    secondObject.position.set(200,0,0);
+    f.objects.set("second",secondObject);
+    f.selection.setSelection(["original", "second"]);
+    const controls = Reflect.get(f.controller, "controls") as {space: string};
+    expect(controls.space).toBe("world");
+    expect(f.pivot.quaternion.equals(new THREE.Quaternion())).toBe(true);
+    f.controller.dispose();
+  });
+});
 
 describe("Ctrl + translate gizmo integration", () => {
   it("moves only a copy when Ctrl is held on the X-axis", async () => {
