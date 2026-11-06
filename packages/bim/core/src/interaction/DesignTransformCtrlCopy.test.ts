@@ -151,8 +151,8 @@ describe("aligned piece-local movement", () => {
     expect(localX.x).toBeCloseTo(0, 7);
     expect(localX.y).toBeCloseTo(1, 7);
 
-    const correction = Reflect.get(f.controller, "getConstrainedSnapCorrection") as
-      (axis: string, target: THREE.Vector3) => THREE.Vector3;
+    const correction = (Reflect.get(f.controller, "getConstrainedSnapCorrection") as
+      (axis: string, target: THREE.Vector3) => THREE.Vector3).bind(f.controller);
     const snappedX = correction("X", new THREE.Vector3(40, 80, 20));
     expect(snappedX.x).toBeCloseTo(0, 7);
     expect(snappedX.y).toBeCloseTo(80, 7);
