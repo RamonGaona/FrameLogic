@@ -573,6 +573,7 @@ export async function createBimCore(
     designScene: core.designScene,
     designSelection: core.designSelection,
     cadReferenceBlocks,
+    history: core.cadHistory,
     cancelActiveCommand: () =>
       core.cancelActiveCadCommand(),
     clearGeometryQueryCache: () =>
