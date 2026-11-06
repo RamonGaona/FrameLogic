@@ -500,6 +500,17 @@ export class DesignPlacementController {
   // SET PREVIEW POINT
   // ==========================================================
 
+  private assetTranslationForAnchor(anchor: THREE.Vector3, yaw: number): THREE.Vector3 {
+    const definition = this.activeDefinitionId
+      ? this.designModel.pieceDefinitions.get(this.activeDefinitionId)
+      : undefined;
+    if (!definition) return anchor.clone();
+    const { origin } = definition.coordinateSystem;
+    const offset = new THREE.Vector3(origin.x, origin.y, origin.z)
+      .applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    return anchor.clone().sub(offset);
+  }
+
   private setPreviewPoint(
     point:
       THREE.Vector3,
@@ -526,9 +537,10 @@ export class DesignPlacementController {
       if (Math.hypot(dx, dz) > 1e-6) {
         preview.rotation.y = -Math.atan2(dz, dx);
       }
+      preview.position.copy(this.assetTranslationForAnchor(origin, preview.rotation.y));
     } else {
-      preview.position.copy(point);
       preview.rotation.y = 0;
+      preview.position.copy(this.assetTranslationForAnchor(point, 0));
     }
 
 
@@ -1033,6 +1045,7 @@ export class DesignPlacementController {
     const dz = point.z - origin.z;
     if (Math.hypot(dx, dz) <= 1e-6) return;
     const yaw = -Math.atan2(dz, dx);
+    const translation = this.assetTranslationForAnchor(origin, yaw);
 
     // --------------------------------------------------------
     // CREATE DOMAIN INSTANCE
@@ -1049,13 +1062,13 @@ export class DesignPlacementController {
             position: {
 
               x:
-                origin.x,
+                translation.x,
 
               y:
-                origin.y,
+                translation.y,
 
               z:
-                origin.z,
+                translation.z,
 
             },
 

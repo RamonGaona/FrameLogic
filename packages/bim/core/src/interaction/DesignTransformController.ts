@@ -817,9 +817,19 @@ export class DesignTransformController {
       }
 
 
-      object.getWorldPosition(
-        worldPosition,
-      );
+      // Use the definition's authored origin instead of STEP's.
+      const instance = this.designModel.pieceInstances.get(instanceId);
+      const definition = instance
+        ? this.designModel.pieceDefinitions?.get(instance.definitionId)
+        : undefined;
+      if (definition) {
+        const origin = definition.coordinateSystem.origin;
+        object.updateMatrixWorld(true);
+        worldPosition.set(origin.x, origin.y, origin.z);
+        object.localToWorld(worldPosition);
+      } else {
+        object.getWorldPosition(worldPosition);
+      }
 
 
       position.add(

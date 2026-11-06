@@ -293,7 +293,9 @@ export async function createBimCore(
           core.stopPieceDefinitionPreparation();
         },
         startOriginSnap: () => {
-          core.startPreparedPieceOriginSnapEdit();
+          const pinned = core.piecePreparation.getPinnedSnapId();
+          if (pinned) core.piecePreparation.setOriginFromSnapId(pinned);
+          else core.startPreparedPieceOriginSnapEdit();
         },
         addSnapsFromSelection: () =>
           core.addPreparedPieceSnapsFromSelection(),
