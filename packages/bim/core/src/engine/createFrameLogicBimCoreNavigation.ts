@@ -309,6 +309,11 @@ export async function createBimCore(
 
   let hoveredReferenceInstanceId: string | null = null;
   const trackReferencePointer = (event: PointerEvent): void => {
+    // Do not raycast every frame during normal camera navigation.
+    if (!snapFeedbackEnabled) {
+      hoveredReferenceInstanceId = null;
+      return;
+    }
     hoveredReferenceInstanceId = core.designSelection.getInstanceIdAt(
       event.clientX, event.clientY,
     );

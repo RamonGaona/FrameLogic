@@ -12,6 +12,24 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.83 — 2026-11-05
+
+### Corregido: precisión del editor, referencias por instancia y controles de visualización
+
+- El badge de versión evita superponerse al menú desplegado **Refs**; cuando las opciones están abiertas, se coloca por encima de su rectángulo.
+- Durante una operación CAD, al pasar sobre una pieza se muestran temporalmente **solo los SNAPs y ejes de esa instancia**. Las copias adyacentes conservan sus referencias ocultas hasta que el cursor esté sobre ellas. Se respeta la opción de visibilidad general guardada.
+- En el editor aislado, la visualización y el sistema de coordenadas de trabajo se basan en el origen FrameLogic guardado: al definir un SNAP como origen, dibujar en **X0 Y0 Z0** coincide con ese origen, no con el STEP original. La transformación persistente de la instancia no se modifica y se recupera al volver al espacio modelo.
+- Nuevo flujo de edición de referencias persistentes: **Elegir en 3D** permite seleccionar directamente un marcador SNAP o eje, y **Mover referencia / Copiar referencia** colocan su origen en un SNAP de destino preciso. Las copias conservan la dirección/longitud del eje; las referencias ORIGIN no se desplazan por esta herramienta.
+- El gizmo de líneas, puntos y selección CAD mixta es más grande y su cámara se sincroniza durante la navegación y los cambios de proyección, evitando una representación pequeña o desalineada.
+- Los cambios se aplican a metadata FrameLogic y no duplican el STEP ni las mallas del modelo.
+
+### Validación
+
+- Pruebas de selección 3D, movimiento/copia de metadata de ejes y SNAPs, render local sin mover la instancia persistida, visibilidad temporal por instancia y regresiones existentes.
+- Badge visible, `package.json` y `package-lock.json` sincronizados en `0.1.83`.
+
+---
+
 ## v0.1.82 — 2026-11-05
 
 ### Corregido: la barra de herramientas antigua ya no parpadea al iniciar
