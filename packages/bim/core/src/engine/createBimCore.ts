@@ -2796,7 +2796,9 @@ canvas.addEventListener(
       designRotate.setCamera(
         activeCamera,
       );
-
+      cadPointMove.setCamera(activeCamera);
+      cadLineMove.setCamera(activeCamera);
+      cadMixedMove.setCamera(activeCamera);
 
       fragments.core.update();
 

@@ -274,7 +274,7 @@ export class CadLineMoveController {
 
 
     this.controls.size =
-      0.8;
+      1.8;
 
 
     this.helper =

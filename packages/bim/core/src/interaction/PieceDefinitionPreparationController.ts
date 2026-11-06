@@ -137,6 +137,87 @@ export class PieceDefinitionPreparationController {
 
   private hoveredReference: PieceReferenceFocus = null;
   private pinnedReference: PieceReferenceFocus = null;
+  private referenceToolHandler:
+    ((mode: "SELECT" | "MOVE" | "COPY") => void) | null = null;
+  private referenceToolMessage: HTMLElement | null = null;
+
+  setReferenceToolHandler(handler: (mode: "SELECT" | "MOVE" | "COPY") => void): void {
+    this.referenceToolHandler = handler;
+  }
+
+  setReferenceToolMessage(message: string): void {
+    if (this.referenceToolMessage) this.referenceToolMessage.textContent = message;
+  }
+
+  getPinnedReference(): PieceReferenceFocus {
+    return this.pinnedReference;
+  }
+
+  selectReference(reference: PieceReferenceFocus): void {
+    this.pinnedReference = reference;
+    this.hoveredReference = null;
+    this.refreshReferenceFocus();
+  }
+
+  /**
+   * Repositions an existing persistent reference, or makes a metadata copy.
+   * SNAPs relocate to the chosen destination, axes translate their start
+   * while preserving direction/length. ORIGIN is immutable here.
+   */
+  relocatePinnedReference(destinationWorld: THREE.Vector3, copy: boolean): PieceDefinition {
+    const context = this.requireContext();
+    const selected = this.pinnedReference;
+    if (!selected) throw new Error("Selecciona primero un SNAP o eje en el editor.");
+    const local = this.worldToDefinitionLocal(
+      destinationWorld, context.object, context.definition,
+    );
+    if (![local.x, local.y, local.z].every(Number.isFinite)) {
+      throw new Error("La referencia de destino no tiene coordenadas válidas.");
+    }
+    const destination = this.toData(local);
+    if (selected.kind === "SNAP") {
+      const source = context.definition.snapPoints.find(item => item.id === selected.id);
+      if (!source) throw new Error("El SNAP seleccionado ya no existe.");
+      if (!copy && source.type === "ORIGIN") {
+        throw new Error("El origen FrameLogic se modifica con 'Origen ← SNAP', no moviendo el marcador.");
+      }
+      const id = copy ? THREE.MathUtils.generateUUID() : source.id;
+      const changed = { ...source, id,
+        name: copy ? `${source.name} copia` : source.name,
+        type: copy && source.type === "ORIGIN" ? "CUSTOM" as const : source.type,
+        position: destination,
+      };
+      const result = this.replaceDefinition({
+        ...context.definition,
+        snapPoints: copy
+          ? [...context.definition.snapPoints, changed]
+          : context.definition.snapPoints.map(item => item.id === source.id ? changed : item),
+      });
+      this.pinnedReference = { kind: "SNAP", id };
+      this.notify();
+      return result;
+    }
+    const source = context.definition.referenceGeometry.axisLines.find(item => item.id === selected.id);
+    if (!source) throw new Error("El eje seleccionado ya no existe.");
+    const id = copy ? THREE.MathUtils.generateUUID() : source.id;
+    const changed = { ...source, id,
+      name: copy ? `${source.name} copia` : source.name,
+      origin: destination,
+    };
+    const result = this.replaceDefinition({
+      ...context.definition,
+      referenceGeometry: {
+        ...context.definition.referenceGeometry,
+        axisLines: copy
+          ? [...context.definition.referenceGeometry.axisLines, changed]
+          : context.definition.referenceGeometry.axisLines.map(item => item.id === source.id ? changed : item),
+      },
+    });
+    this.pinnedReference = { kind: "AXIS", id };
+    this.notify();
+    return result;
+  }
+
   private referenceFocusHandler: ((reference: PieceReferenceFocus) => void) | null = null;
 
   setReferenceFocusHandler(handler: (reference: PieceReferenceFocus) => void): void {
@@ -483,6 +564,7 @@ export class PieceDefinitionPreparationController {
       null;
     this.hoveredReference = null;
     this.pinnedReference = null;
+    this.referenceToolMessage = null;
     this.refreshReferenceFocus();
 
     this.leavePreparationWorkspace(
@@ -2007,6 +2089,39 @@ export class PieceDefinitionPreparationController {
       description,
     );
 
+
+    // Explicit tool mode prevents reference picking from stealing ordinary
+    // LINE/POINT clicks while the piece editor is in preparation mode.
+    const toolBar = document.createElement("div");
+    toolBar.dataset["framelogicReferenceEditTools"] = "true";
+    Object.assign(toolBar.style, {
+      display: "flex", gap: "5px", flexWrap: "wrap",
+      padding: "8px 10px", borderBottom: "1px solid #4b5563",
+    });
+    for (const [label, mode] of [
+      ["Elegir en 3D", "SELECT"],
+      ["Mover referencia", "MOVE"],
+      ["Copiar referencia", "COPY"],
+    ] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.title = mode === "SELECT"
+        ? "Clic sobre un SNAP o eje de la pieza para seleccionarlo"
+        : "Selecciona una referencia y elige un SNAP de destino con el mouse";
+      Object.assign(button.style, {
+        padding: "6px", cursor: "pointer", color: "#eef4f6",
+        background: "#25394c", border: "1px solid #587086",
+        borderRadius: "4px", fontSize: "11px",
+      });
+      button.addEventListener("click", () => this.referenceToolHandler?.(mode));
+      toolBar.appendChild(button);
+    }
+    const toolMessage = document.createElement("div");
+    toolMessage.style.cssText = "font-size:11px;color:#facc15;padding:4px 10px 8px";
+    toolMessage.textContent = "◎ fija una referencia; Elegir en 3D selecciona directamente sobre la pieza.";
+    this.referenceToolMessage = toolMessage;
+    this.editorRoot.append(toolBar, toolMessage);
 
     this.appendSectionTitle(
       `SNAPs (${context.definition.snapPoints.length})`,

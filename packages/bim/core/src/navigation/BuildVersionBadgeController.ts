@@ -1,10 +1,12 @@
-const FRAMELOGIC_VERSION = "0.1.82";
+const FRAMELOGIC_VERSION = "0.1.83";
 
 const SECTION_PANEL_SELECTOR =
   '[data-framelogic-section-panel="true"]';
 
 const RENDER_PANEL_SELECTOR =
   '[data-framelogic-model-render-mode="true"]';
+const REFERENCES_MENU_SELECTOR =
+  '[data-framelogic-refs-menu="true"]';
 
 
 /**
@@ -110,6 +112,17 @@ export class BuildVersionBadgeController {
           highestTop,
           rect.top,
         );
+    }
+
+    // When Refs opens upward, its options can cover the version badge.
+    // Reposition above the actual menu rectangle instead of overlapping
+    // the SNAP/axis checkboxes.
+    const refsMenu = document.querySelector<HTMLElement>(REFERENCES_MENU_SELECTOR);
+    if (refsMenu && refsMenu.closest("details")?.open) {
+      const rect = refsMenu.getBoundingClientRect();
+      if (rect.height > 0 && rect.width > 0) {
+        highestTop = Math.min(highestTop, rect.top);
+      }
     }
 
     const bottom =

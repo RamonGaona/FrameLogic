@@ -42,15 +42,56 @@ describe("general reference visibility", () => {
     const axes = scene.getObjectByName("FrameLogicPieceDefinitionAxisHelpers") as THREE.Group;
     expect(snaps.visible).toBe(false);
     expect(axes.visible).toBe(false);
-    controller.setTemporaryReferenceHover(true);
+    controller.setTemporaryReferenceHover("piece");
     expect(snaps.visible).toBe(true);
     expect(axes.visible).toBe(true);
-    controller.setTemporaryReferenceHover(false);
+    controller.setTemporaryReferenceHover(null);
     expect(snaps.visible).toBe(false);
     expect(axes.visible).toBe(false);
     controller.setGeneralReferenceVisibility(true, false);
     expect(snaps.visible).toBe(true);
     expect(axes.visible).toBe(false);
+    controller.dispose();
+  });
+
+  it("only temporarily reveals helpers belonging to the hovered instance", () => {
+    const scene = new THREE.Scene();
+    const objects = new Map([
+      ["first",new THREE.Object3D()],
+      ["second",new THREE.Object3D()],
+    ]);
+    const definition = {
+      id:"def",
+      coordinateSystem:{
+        origin:{x:0,y:0,z:0},
+        xAxis:{x:1,y:0,z:0},yAxis:{x:0,y:1,z:0},zAxis:{x:0,y:0,z:1},
+      },
+      snapPoints:[{id:"snap",name:"Snap",type:"CENTER",position:{x:0,y:0,z:0}}],
+      referenceGeometry:{axisLines:[{id:"axis",type:"MAIN",origin:{x:0,y:0,z:0},direction:{x:1,y:0,z:0},length:20}]},
+    };
+    const model = {
+      layers:{get:()=>({visible:true})},
+      pieceInstances:{
+        getAll:()=>[...objects.keys()].map(id=>({id})),
+        get:(id:string)=>objects.has(id)?{id,definitionId:"def"}:undefined,
+      },
+      pieceDefinitions:{get:()=>definition},
+    };
+    type Params=ConstructorParameters<typeof PieceDefinitionHelperSceneController>;
+    const controller=new PieceDefinitionHelperSceneController(
+      scene,model as unknown as Params[1],
+      {getInstanceObject:(id:string)=>objects.get(id)} as unknown as Params[2],
+    );
+    controller.sync();
+    const snaps=scene.getObjectByName("FrameLogicPieceDefinitionSnapHelpers") as THREE.Group;
+    const axes=scene.getObjectByName("FrameLogicPieceDefinitionAxisHelpers") as THREE.Group;
+    controller.setTemporaryReferenceHover("first");
+    expect(snaps.children.filter(x=>x.visible).map(x=>x.userData.frameLogic.instanceId)).toEqual(["first"]);
+    expect(axes.children.filter(x=>x.visible).map(x=>x.userData.frameLogic.instanceId)).toEqual(["first"]);
+    controller.setTemporaryReferenceHover("second");
+    expect(snaps.children.filter(x=>x.visible).map(x=>x.userData.frameLogic.instanceId)).toEqual(["second"]);
+    controller.setTemporaryReferenceHover(null);
+    expect(snaps.children.every(x=>!x.visible)).toBe(true);
     controller.dispose();
   });
 
@@ -76,10 +117,10 @@ describe("visible persistent-reference focus overlay", () => {
     controller.setActiveInstanceId(null);
     expect(snaps.visible).toBe(false);
     expect(axes.visible).toBe(false);
-    controller.setTemporaryReferenceHover(true);
+    controller.setTemporaryReferenceHover("piece");
     expect(snaps.visible).toBe(true);
     expect(axes.visible).toBe(true);
-    controller.setTemporaryReferenceHover(false);
+    controller.setTemporaryReferenceHover(null);
     expect(snaps.visible).toBe(false);
     expect(axes.visible).toBe(false);
     controller.setGeneralReferenceVisibility(true, false);

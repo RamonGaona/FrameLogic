@@ -147,6 +147,7 @@ export class ModelRenderModeController {
         border: "1px solid rgba(255,255,255,0.18)", borderRadius: "4px",
       });
       const menu = document.createElement("div");
+      menu.dataset.framelogicRefsMenu = "true";
       Object.assign(menu.style, {
         position: "absolute", bottom: "calc(100% + 8px)", right: "0",
         minWidth: "150px", padding: "8px 10px", background: "#17212b",
