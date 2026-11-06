@@ -5,6 +5,11 @@ import type {
 } from "../design/DesignSceneController";
 import { resolvePieceDisplayQuality, type PieceDisplayQuality } from "./resolvePieceDisplayQuality";
 import { mountModelRenderPanel } from "./mountModelRenderPanel";
+import {
+  GENERAL_REFERENCE_VISIBILITY_STORAGE_KEY,
+  parseReferenceVisibilityPreferences,
+  serializeReferenceVisibilityPreferences,
+} from "./referenceVisibilitySettings";
 
 export interface ReferenceDisplayOptions {
   setGeneralReferenceVisibility(snaps: boolean, axes: boolean): void;
@@ -148,9 +153,28 @@ export class ModelRenderModeController {
         border: "1px solid #596875", borderRadius: "5px",
         display: "flex", flexDirection: "column", gap: "8px",
       });
-      let showSnaps = true;
-      let showAxes = true;
-      const update = () => options.referenceDisplay?.setGeneralReferenceVisibility(showSnaps, showAxes);
+      let savedPreferences: string | null = null;
+      try {
+        savedPreferences = window.localStorage.getItem(
+          GENERAL_REFERENCE_VISIBILITY_STORAGE_KEY,
+        );
+      } catch {
+        // La navegación privada puede impedir el acceso a localStorage.
+      }
+      const initial = parseReferenceVisibilityPreferences(savedPreferences);
+      let showSnaps = initial.showSnaps;
+      let showAxes = initial.showAxes;
+      const update = () => {
+        options.referenceDisplay?.setGeneralReferenceVisibility(showSnaps, showAxes);
+        try {
+          window.localStorage.setItem(
+            GENERAL_REFERENCE_VISIBILITY_STORAGE_KEY,
+            serializeReferenceVisibilityPreferences({ showSnaps, showAxes }),
+          );
+        } catch {
+          // Los controles siguen funcionando aunque el navegador no permita persistirlos.
+        }
+      };
       const addToggle = (title: string, checked: boolean, change: (value: boolean) => void) => {
         const label = document.createElement("label");
         Object.assign(label.style, { display: "flex", gap: "7px", cursor: "pointer", alignItems: "center" });

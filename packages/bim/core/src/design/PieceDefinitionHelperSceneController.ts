@@ -54,8 +54,8 @@ export class PieceDefinitionHelperSceneController {
   private focusedReference: PieceReferenceFocus = null;
 
   // Only visual helpers are toggled; SNAP geometry/search stays enabled.
-  private showGeneralSnaps = true;
-  private showGeneralAxes = true;
+  private showGeneralSnaps = false;
+  private showGeneralAxes = false;
   private temporaryReferenceHover = false;
 
   setGeneralReferenceVisibility(snaps: boolean, axes: boolean): void {

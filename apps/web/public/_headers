@@ -1,0 +1,7 @@
+# HTML must be revalidated after a new deployment so a browser reload
+# does not keep serving a stale FrameLogic toolbar/app shell.
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
