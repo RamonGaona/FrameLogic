@@ -16,6 +16,7 @@ import type {
   DesignSceneController,
 } from "../design/DesignSceneController";
 import type { PieceReferenceFocus } from "../design/PieceReferenceFocus";
+import { assetPositionForPieceSnap } from "./assetPositionForPieceSnap";
 
 import type {
   CadPointSelectionController,
@@ -170,6 +171,35 @@ export class PieceDefinitionPreparationController {
         button.style.color = key === pinnedKey ? "#fef08a" : "#facc15";
       }
     }
+  }
+
+  getPinnedSnapId(): string | null {
+    return this.pinnedReference?.kind === "SNAP" ? this.pinnedReference.id : null;
+  }
+
+  /** Make a persistent SNAP the actual FrameLogic origin, without moving the STEP asset. */
+  setOriginFromSnapId(snapId: string): PieceDefinition {
+    const context = this.requireContext();
+    const snap = context.definition.snapPoints.find(item => item.id === snapId);
+    if (!snap) throw new Error("No se encontró el SNAP que será origen.");
+    if (snap.type === "ORIGIN") return context.definition;
+    const assetPoint = assetPositionForPieceSnap(
+      context.definition.coordinateSystem, snap.position,
+    );
+    context.object.updateMatrixWorld(true);
+    this.setOriginFromWorldPoint(assetPoint.applyMatrix4(context.object.matrixWorld));
+    const rebased = this.requireDefinition(context.definition.id);
+    // Keep the chosen id/name, and remove the temporary ORIGIN created
+    // by the 3D point workflow. Other reference positions are rebased.
+    const updated = this.replaceDefinition({
+      ...rebased,
+      snapPoints: rebased.snapPoints
+        .filter(item => item.type !== "ORIGIN" || item.id === snapId)
+        .map(item => item.id === snapId ? { ...item, type: "ORIGIN" as const } : item),
+    });
+    this.pinnedReference = { kind: "SNAP", id: snapId };
+    this.notify();
+    return updated;
   }
 
   private createReferenceFocusButton(
@@ -2004,6 +2034,7 @@ export class PieceDefinitionPreparationController {
 
         const row =
           this.createRow();
+        row.style.gridTemplateColumns = "minmax(0,1fr) 87px 23px 25px 23px";
         const focusButton = this.createReferenceFocusButton(row, "SNAP", snap.id, snap.name);
 
         const nameButton =
@@ -2128,7 +2159,23 @@ export class PieceDefinitionPreparationController {
           removeButton,
         );
         row.appendChild(focusButton);
-
+        const originButton = document.createElement("button");
+        originButton.type = "button";
+        originButton.textContent = "O";
+        originButton.disabled = snap.type === "ORIGIN";
+        originButton.title = snap.type === "ORIGIN"
+          ? "Este es el origen FrameLogic"
+          : "Usar este SNAP como origen FrameLogic";
+        originButton.setAttribute("aria-label", `Definir ${snap.name} como origen FrameLogic`);
+        Object.assign(originButton.style, {
+          border: "1px solid #d0a42a", borderRadius: "4px", color: "#facc15",
+          background: "#1f2933", padding: "4px 2px",
+          cursor: snap.type === "ORIGIN" ? "default" : "pointer",
+        });
+        originButton.addEventListener("click", () => {
+          this.runEditorAction(() => this.setOriginFromSnapId(snap.id));
+        });
+        row.appendChild(originButton);
 
         this.editorRoot.appendChild(
           row,
@@ -2312,7 +2359,7 @@ export class PieceDefinitionPreparationController {
       "#9ca3af";
 
     footer.textContent =
-      "Pasa el cursor sobre un SNAP/eje para resaltarlo en 3D · ◎ fija/quita el resaltado · nombre para renombrar · × elimina";
+      "◎ resalta/fija · O convierte un SNAP en origen FrameLogic · clic en nombre renombra · × elimina";
 
 
     this.editorRoot.appendChild(
