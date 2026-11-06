@@ -1163,6 +1163,14 @@ export function BimViewport() {
                   }
                 },
               );
+
+            // React paints the initial legacy toolbar before the async 3D
+            // engine finishes. Reveal the chrome only after the core exists.
+            // The layout adapter supplies the second readiness condition.
+            document.documentElement.setAttribute(
+              "data-framelogic-bim-core-ready",
+              "true",
+            );
           },
         )
         .catch(
@@ -1179,6 +1187,9 @@ export function BimViewport() {
       return () => {
         disposed =
           true;
+        document.documentElement.removeAttribute(
+          "data-framelogic-bim-core-ready",
+        );
 
         unsubscribeCamera?.();
         unsubscribeLayers?.();

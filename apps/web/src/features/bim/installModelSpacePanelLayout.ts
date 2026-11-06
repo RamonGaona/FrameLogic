@@ -1,4 +1,5 @@
 import { dockPiecePreparationPanel } from "./dockPiecePreparationPanel";
+import { isModelSpaceChromeLayoutComplete } from "./modelSpaceChromeReadiness";
 
 const ISOLATED_PIECE_EDITOR_ATTRIBUTE = "data-framelogic-piece-workspace-active";
 
@@ -623,6 +624,21 @@ export function installModelSpacePanelLayout():
       instanceTree,
     );
 
+    // The React toolbar is mounted before the controller-built project bar
+    // and instance tree. Prevent the first unpositioned toolbar from flashing.
+    // Use visibility (not display) so the layout still measures its width.
+    if (
+      isModelSpaceChromeLayoutComplete({
+        modelToolbar: Boolean(document.querySelector(MODEL_TOOLBAR_SELECTOR)),
+        projectToolbar: Boolean(document.querySelector(PROJECT_TOOLBAR_SELECTOR)),
+        instanceTree: true,
+      })
+    ) {
+      document.documentElement.setAttribute(
+        "data-framelogic-model-space-layout-ready",
+        "true",
+      );
+    }
 
     if (!preparationPanel) return;
 
@@ -690,6 +706,9 @@ export function installModelSpacePanelLayout():
 
 
   return () => {
+    document.documentElement.removeAttribute(
+      "data-framelogic-model-space-layout-ready",
+    );
 
     mutationObserver.disconnect();
     pieceWorkspaceObserver.disconnect();

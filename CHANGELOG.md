@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.82 — 2026-11-05
+
+### Corregido: la barra de herramientas antigua ya no parpadea al iniciar
+
+- La barra de Model Space que React dibujaba antes de que iniciara el motor 3D permanece invisible hasta que **BIM Core** haya terminado de inicializarse y el adaptador haya distribuido correctamente las barras y el árbol de instancias.
+- Los controles de proyecto, capas y modelos también esperan a esta disposición inicial para evitar saltos visuales durante una recarga.
+- Se utiliza `visibility: hidden` en lugar de `display: none` para que los elementos sigan teniendo dimensiones medibles y no se rompa el cálculo de posiciones.
+- Al cerrar o reiniciar el visor se limpian las señales de inicialización, para que una segunda carga no reutilice un estado visual obsoleto.
+- Se conserva la barra funcional una vez finalizado el arranque; no se eliminan ni duplican acciones de importar piezas, CAD o WorkPlane.
+
+### Validación
+
+- Prueba de regresión del estado inicial oculto y de la condición de disposición completa, integrada en `test:piece-visuals`.
+- Versión del badge, `package.json` y `package-lock.json` sincronizados en `0.1.82`.
+
+---
+
 ## v0.1.81 — 2026-11-05
 
 ### Corregido: ocultar la marca de That Open Engine del visor
