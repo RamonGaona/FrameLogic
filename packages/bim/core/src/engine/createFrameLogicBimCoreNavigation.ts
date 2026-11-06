@@ -229,6 +229,7 @@ export async function createBimCore(
       designScene: core.designScene,
       selectedIds: () => core.designSelection.getSelectedIds(),
       preparedInstanceId: () => core.piecePreparation.getState().instanceId ?? undefined,
+      referenceDisplay: core.pieceDefinitionHelpers,
     });
 
   const smartPieceInsertion =
@@ -314,6 +315,11 @@ export async function createBimCore(
           shouldEnable,
         );
       }
+      // The hidden 3D markers reappear only on hover while a tool
+      // actually consumes the candidate SNAP, then disappear again.
+      core.pieceDefinitionHelpers.setTemporaryReferenceHover(
+        shouldEnable && core.designSnap.getSnapAtCurrentPointer() !== null,
+      );
 
       snapFeedbackFrame =
         window.requestAnimationFrame(

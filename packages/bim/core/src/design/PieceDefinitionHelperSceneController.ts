@@ -53,6 +53,29 @@ export class PieceDefinitionHelperSceneController {
   private readonly focusGroup = new THREE.Group();
   private focusedReference: PieceReferenceFocus = null;
 
+  // Only visual helpers are toggled; SNAP geometry/search stays enabled.
+  private showGeneralSnaps = true;
+  private showGeneralAxes = true;
+  private temporaryReferenceHover = false;
+
+  setGeneralReferenceVisibility(snaps: boolean, axes: boolean): void {
+    this.showGeneralSnaps = snaps;
+    this.showGeneralAxes = axes;
+    this.applyReferenceVisibility();
+  }
+
+  setTemporaryReferenceHover(hover: boolean): void {
+    if (this.temporaryReferenceHover === hover) return;
+    this.temporaryReferenceHover = hover;
+    this.applyReferenceVisibility();
+  }
+
+  private applyReferenceVisibility(): void {
+    const editing = this.activeInstanceId !== null;
+    this.snapGroup.visible = editing || this.showGeneralSnaps || this.temporaryReferenceHover;
+    this.axisGroup.visible = editing || this.showGeneralAxes || this.temporaryReferenceHover;
+  }
+
 
   constructor(
     scene:
@@ -95,6 +118,7 @@ export class PieceDefinitionHelperSceneController {
     );
     this.focusGroup.name = "FrameLogicPieceReferenceFocusOverlay";
     this.scene.add(this.focusGroup);
+    this.applyReferenceVisibility();
   }
 
   setHighlightedReference(reference: PieceReferenceFocus): void {
@@ -312,6 +336,7 @@ export class PieceDefinitionHelperSceneController {
 
     }
     this.refreshFocusOverlay();
+    this.applyReferenceVisibility();
   }
 
 

@@ -6,6 +6,10 @@ import type {
 import { resolvePieceDisplayQuality, type PieceDisplayQuality } from "./resolvePieceDisplayQuality";
 import { mountModelRenderPanel } from "./mountModelRenderPanel";
 
+export interface ReferenceDisplayOptions {
+  setGeneralReferenceVisibility(snaps: boolean, axes: boolean): void;
+}
+
 
 export type ModelRenderMode =
   | "SOLID"
@@ -19,6 +23,7 @@ interface Options {
   readonly designScene: DesignSceneController;
   readonly selectedIds?: () => readonly string[];
   readonly preparedInstanceId?: () => string | undefined;
+  readonly referenceDisplay?: ReferenceDisplayOptions;
 }
 
 
@@ -125,6 +130,43 @@ export class ModelRenderModeController {
     quality.addEventListener("change", this.handleQualityChange);
     this.qualitySelect = quality;
     panel.append(label, select, quality);
+    if (options.referenceDisplay) {
+      const refs = document.createElement("details");
+      refs.dataset.framelogicReferenceVisibility = "true";
+      refs.style.position = "relative";
+      const summary = document.createElement("summary");
+      summary.textContent = "Refs";
+      summary.title = "Visualización de SNAPs y ejes";
+      Object.assign(summary.style, {
+        cursor: "pointer", color: "#e8edf0", padding: "3px 5px",
+        border: "1px solid rgba(255,255,255,0.18)", borderRadius: "4px",
+      });
+      const menu = document.createElement("div");
+      Object.assign(menu.style, {
+        position: "absolute", bottom: "calc(100% + 8px)", right: "0",
+        minWidth: "150px", padding: "8px 10px", background: "#17212b",
+        border: "1px solid #596875", borderRadius: "5px",
+        display: "flex", flexDirection: "column", gap: "8px",
+      });
+      let showSnaps = true;
+      let showAxes = true;
+      const update = () => options.referenceDisplay?.setGeneralReferenceVisibility(showSnaps, showAxes);
+      const addToggle = (title: string, checked: boolean, change: (value: boolean) => void) => {
+        const label = document.createElement("label");
+        Object.assign(label.style, { display: "flex", gap: "7px", cursor: "pointer", alignItems: "center" });
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = checked;
+        input.addEventListener("change", () => change(input.checked));
+        label.append(input, document.createTextNode(title));
+        menu.append(label);
+      };
+      addToggle("Mostrar SNAPs", showSnaps, value => { showSnaps = value; update(); });
+      addToggle("Mostrar ejes", showAxes, value => { showAxes = value; update(); });
+      refs.append(summary, menu);
+      panel.append(refs);
+      update();
+    }
     // Montar fuera del viewport: el editor aislado crea una capa
     // independiente que puede tapar el panel aun con z-index alto.
     mountModelRenderPanel(panel, document.body);
