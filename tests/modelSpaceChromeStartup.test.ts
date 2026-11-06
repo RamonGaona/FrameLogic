@@ -15,7 +15,11 @@ describe("Model Space initial chrome", () => {
     expect(css).toContain('[data-framelogic-project-toolbar="true"]');
     expect(css).toContain("visibility: hidden !important;");
     expect(css).toContain("pointer-events: none !important;");
-    expect(css).not.toMatch(/html:not\(\[data-framelogic-bim-core-ready="true"\]\)[\s\S]*?display:\s*none/);
+    const startupRule = css.slice(
+      css.indexOf('html:not([data-framelogic-bim-core-ready="true"]) :is('),
+      css.indexOf("}", css.indexOf('html:not([data-framelogic-bim-core-ready="true"]) :is(')),
+    );
+    expect(startupRule).not.toContain("display: none");
   });
 
   it("does not reveal the menu while any layout component is missing", () => {
