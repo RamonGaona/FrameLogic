@@ -29,8 +29,8 @@ describe("isolated piece manual reference manipulation", () => {
       canvas,
       cameraProvider: () => new THREE.OrthographicCamera(),
       preparation: preparation as unknown as ConstructorParameters<typeof PieceReferenceManipulationController>[0]["preparation"],
-      helpers: {findReferenceAtPointer: () => ({kind:"AXIS",id:"ax-1"})}
-        as unknown as ConstructorParameters<typeof PieceReferenceManipulationController>[0]["helpers"],
+      helpers: ({findReferenceAtPointer: () => ({kind:"AXIS",id:"ax-1"})}
+        as unknown as ConstructorParameters<typeof PieceReferenceManipulationController>[0]["helpers"]),
       snapAt,
       beforeStart: vi.fn(),
       onChanged,
