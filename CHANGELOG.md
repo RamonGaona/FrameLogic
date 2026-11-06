@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.81 — 2026-11-05
+
+### Corregido: ocultar la marca de That Open Engine del visor
+
+- Se desactiva el logo de That Open Engine que aparecía en la esquina inferior izquierda mediante la API oficial `SimpleRenderer.showLogo = false`.
+- El visor 3D sigue utilizando That Open Engine; no se cambia la cámara, la geometría STEP/IFC, la selección ni los controles de modelado.
+- Se conservan los avisos de licencia de las dependencias. El cambio es exclusivamente visual.
+- Número visible de FrameLogic, `package.json` y `package-lock.json` sincronizados a v0.1.81.
+
+### Validación
+
+- Typecheck, pruebas CAD/visualización y build web mediante los workflows del repositorio.
+
+---
+
 ## v0.1.80 — 2026-11-05
 
 ### Corregido: vista de referencias limpia y persistente después de recargar

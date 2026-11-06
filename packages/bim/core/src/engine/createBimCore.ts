@@ -437,6 +437,10 @@ async function setCardinalDirection(
       container,
     );
 
+  // That Open Engine permits hiding the optional corner logo.
+  // Keep third-party MIT license notices intact in distributed code.
+  world.renderer.showLogo = false;
+
 
   const canvas =
     world.renderer.three.domElement;
