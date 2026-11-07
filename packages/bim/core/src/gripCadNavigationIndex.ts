@@ -1,3 +1,7 @@
+import { ModelOperations } from "./automation/ModelOperations";
+export { ModelOperations } from "./automation/ModelOperations";
+export type { ChangeRequest, Proposal, OperationPorts } from "./automation/ModelOperations";
+export { connectAutomationBridge } from "./automation/BrowserBridge";
 import {
   createBimCore as createAdvancedCadBimCore,
 } from "./advancedCadNavigationIndex";
@@ -37,6 +41,7 @@ export type {
 export type PrecisionBimCoreInstance =
   AdvancedCadPrecisionBimCoreInstance
   & {
+    readonly automation: ModelOperations;
     readonly cadPolylineGrips:
       CadPolylineGripController;
     readonly cadLayerColors:
@@ -137,10 +142,13 @@ export async function createBimCore(
         core.projectPackage,
       );
 
+  let projectLoading = false;
   core.projectPackage.restoreProjectPackage =
     async (
       project,
     ): Promise<void> => {
+      projectLoading = true;
+      try {
       await baseRestoreProjectPackage(
         project,
       );
@@ -158,7 +166,22 @@ export async function createBimCore(
       }
 
       cadLayerColors.sync();
+      } finally { projectLoading = false; }
     };
+
+  const automation = new ModelOperations(core.designModel, core.cadHistory, {
+    sync: () => { core.designScene.sync(); core.designSelection.refreshHelpers(); },
+    getSelection: () => [...core.designSelection.getSelectedIds()],
+    setSelection: ids => core.designSelection.setSelection(ids),
+    assertReady: () => {
+      if (disposed || projectLoading || core.cadCommandManager.hasActiveCommand || core.designTransform.isActive
+        || core.align.isActive || core.smartPieceInsertion.isActive || core.designRotate.isActive
+        || core.cadLineMove.isActive || core.cadMixedMove.isActive
+        || core.cadPointPlacement.isActive || core.cadLinePlacement.isActive
+        || core.piecePreparation.isActive || core.pieceFrameLogicWorkspace.editingInstanceId)
+        throw new Error("Close the active command or piece editor before automation");
+    },
+  });
 
   const baseDispose =
     core.dispose;
@@ -180,6 +203,8 @@ export async function createBimCore(
     ...core,
     cadPolylineGrips,
     cadLayerColors,
+    automation,
     dispose,
   };
 }
+

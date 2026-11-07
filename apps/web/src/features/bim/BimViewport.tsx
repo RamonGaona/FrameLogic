@@ -1,3 +1,4 @@
+import { connectAutomationBridge } from "@framelogic/bim-core";
 import { loadPieceVisualPackage, type LoadedPieceVisualPackage } from "@framelogic/bim-core";
 import {
   useEffect,
@@ -1040,6 +1041,19 @@ export function BimViewport() {
 
             bimCoreRef.current =
               instance;
+            if (import.meta.env.DEV) {
+              let disconnect: (() => void) | undefined;
+              const devWindow = window as typeof window & { frameLogicConnectAutomation?: (token: string) => void };
+              devWindow.frameLogicConnectAutomation = token => {
+                disconnect?.();
+                disconnect = connectAutomationBridge(instance.automation, token,
+                  summary => window.confirm("FrameLogic: aprobar modificación del modelo?\n" + JSON.stringify(summary, null, 2)));
+              };
+              const baseDispose = instance.dispose;
+              instance.dispose = () => {
+                disconnect?.(); delete devWindow.frameLogicConnectAutomation; baseDispose();
+              };
+            }
 
             instance.designScene
               .setVisibilityFilter(
@@ -2215,3 +2229,4 @@ export function BimViewport() {
     </div>
   );
 }
+

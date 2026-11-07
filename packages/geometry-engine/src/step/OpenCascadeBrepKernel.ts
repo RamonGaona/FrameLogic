@@ -1,4 +1,4 @@
-import initOpenCascade from "opencascade.js";
+import type initOpenCascade from "opencascade.js";
 
 import type {
   TopAbs_ShapeEnum,
@@ -346,7 +346,7 @@ export class OpenCascadeBrepKernel {
   private getOpenCascade():
     Promise<OpenCascadeInstance> {
     this.ocPromise ??=
-      initOpenCascade();
+      import("opencascade.js").then(module => module.default());
 
     return this.ocPromise;
   }
@@ -769,3 +769,4 @@ function vector3(
       vector.Z(),
   };
 }
+

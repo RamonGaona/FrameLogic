@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.86 — 2026-11-06
+
+### Automatización y MCP experimental local
+
+- API numérica `core.automation` independiente del mouse: información, piezas, SNAPs persistentes, ejes mundiales, selección, movimiento y copias simples/múltiples.
+- Coordenadas locales combinan el sistema FrameLogic y la rotación real; posición absoluta coloca el origen FrameLogic. Copias comparten definición/geometría y conservan metadatos de instancia.
+- Propuestas estructuradas con transformaciones, caducidad, comprobación de cambios y confirmación; una entrada reversible por operación múltiple, rollback y registro de resultados en memoria.
+- Servidor MCP oficial TypeScript por stdio y puente HTTP loopback con token, Origin/Host restringidos y una sesión local. Lecturas, preparación, confirmación humana en navegador, selección y Undo/Redo. No se conecta automáticamente ni se habilita en Cloudflare.
+- Historial conserva entradas si falla Undo/Redo. OpenCascade se carga al solicitar el kernel, permitiendo importar el dominio sin cargar WASM para operaciones numéricas.
+- Pruebas reproducibles REC1500 rotado, cuatro copias a 1500 mm, metadatos, rollback, errores, Undo/Redo, integración MCP→HTTP→puente→modelo y arranque stdio; incorporadas al CI.
+- Documentación y ejemplo ejecutable en `docs/AUTOMATION_MCP.md` y `npm run automation:demo`.
+- Pendiente: ALIGN programático, ensamblajes, SNAPs temporales, previsualización gráfica, chat, múltiples sesiones y auditoría persistente. La integración automatizada usa el puente real con fetch de Node; no sustituye validación manual completa en un navegador con STEP/IFC.
+- Sin cambios de formato `.flpiece`/proyecto; controles manuales conservados. Versión raíz, lockfile, badge y servidor en 0.1.86.
+
+---
+
 ## v0.1.85 — 2026-11-06
 
 ### Corregido: gizmo local después de ALINEAR y Ctrl+Z para alineaciones
@@ -667,3 +683,4 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 ## Historial anterior
 
 Las versiones anteriores a `v0.1.51` aún no se han reconstruido aquí de forma completa. Pueden documentarse progresivamente a partir del historial de commits cuando sea necesario.
+

@@ -398,7 +398,7 @@ export class CadHistoryController {
   undo(): boolean {
 
     const entry =
-      this.undoStack.pop();
+      this.undoStack.at(-1);
 
 
     if (
@@ -411,6 +411,7 @@ export class CadHistoryController {
 
 
     entry.undo();
+    this.undoStack.pop();
 
 
     this.redoStack.push(
@@ -426,7 +427,7 @@ export class CadHistoryController {
   redo(): boolean {
 
     const entry =
-      this.redoStack.pop();
+      this.redoStack.at(-1);
 
 
     if (
@@ -439,6 +440,7 @@ export class CadHistoryController {
 
 
     entry.redo();
+    this.redoStack.pop();
 
 
     this.undoStack.push(
@@ -647,3 +649,4 @@ export class CadHistoryController {
   }
 
 }
+
