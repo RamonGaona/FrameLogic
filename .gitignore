@@ -35,3 +35,8 @@ temp/
 *.pem
 *.key
 *.pfx
+
+# Cloudflare local state and secrets
+.wrangler/
+.dev.vars
+.dev.vars.*

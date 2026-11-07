@@ -1,3 +1,4 @@
+import { mountAutomationPanel } from "./mountAutomationPanel";
 import { connectAutomationBridge } from "@framelogic/bim-core";
 import { loadPieceVisualPackage, type LoadedPieceVisualPackage } from "@framelogic/bim-core";
 import {
@@ -1041,6 +1042,9 @@ export function BimViewport() {
 
             bimCoreRef.current =
               instance;
+            const disposeAutomationPanel = mountAutomationPanel(instance);
+            const disposeWithPanel = instance.dispose;
+            instance.dispose = () => { disposeAutomationPanel(); disposeWithPanel(); };
             if (import.meta.env.DEV) {
               let disconnect: (() => void) | undefined;
               const devWindow = window as typeof window & { frameLogicConnectAutomation?: (token: string) => void };

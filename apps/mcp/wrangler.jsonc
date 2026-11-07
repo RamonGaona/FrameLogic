@@ -1,0 +1,8 @@
+{
+  "name": "framelogic-mcp",
+  "main": "src/remote.ts",
+  "compatibility_date": "2026-11-01",
+  "vars": { "ALLOWED_ORIGIN": "https://framelogic-dev.pages.dev" },
+  "durable_objects": { "bindings": [{ "name": "SESSIONS", "class_name": "ModelSession" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ModelSession"] }]
+}

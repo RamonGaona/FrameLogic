@@ -1,0 +1,53 @@
+name: Remote MCP server
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mcp/**'
+      - 'packages/contracts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/mcp-deploy.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: framelogic-mcp-production
+  cancel-in-progress: false
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:automation
+      - name: Validate Worker bundle
+        run: npx wrangler@4.158.0 deploy --dry-run --config apps/mcp/wrangler.jsonc
+      - name: Check deployment configuration
+        id: config
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SESSION_KEY: ${{ secrets.FRAMELOGIC_MCP_SESSION_KEY }}
+        run: |
+          if [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ] && [ "${#SESSION_KEY}" -ge 32 ]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo 'MCP validated but NOT deployed: configure CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and FRAMELOGIC_MCP_SESSION_KEY (32+ characters).' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Deploy HTTPS server
+        if: steps.config.outputs.ready == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SESSION_KEY: ${{ secrets.FRAMELOGIC_MCP_SESSION_KEY }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          npm run mcp:deploy
+          printf '%s' "$SESSION_KEY" | npx wrangler@4.158.0 secret put SESSION_KEY --config apps/mcp/wrangler.jsonc

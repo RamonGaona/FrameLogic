@@ -1,4 +1,6 @@
-# Automatización y MCP experimental — v0.1.86
+# Automatización y MCP experimental local — v0.1.86
+
+> Desde v0.1.87 existe también un modo HTTPS remoto con panel en la web. Ver [MCP remoto](AUTOMATION_MCP_REMOTE.md). Las restricciones Cloudflare/DEV descritas aquí se refieren al gancho local de consola, no al nuevo panel remoto.
 
 ## Revisión del código existente
 

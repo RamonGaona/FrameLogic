@@ -12,6 +12,25 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.87 — 2026-11-07
+
+### MCP remoto para la web
+
+- Panel MCP disponible en producción: creación explícita de sesión HTTPS, estado de conexión, configuración para cliente compatible y desconexión/revocación.
+- Worker Cloudflare con Streamable HTTP oficial y Durable Object por sesión; credenciales distintas para agente y navegador, hashes persistidos, caducidad de una hora, origen exacto y una pestaña por sesión.
+- Reutiliza la API del modelo y la aprobación humana; entrega única de solicitudes, bloqueo de concurrencia y rechazo de aprobaciones vencidas. No almacena geometría ni reintenta modificaciones.
+- Workflow independiente de validación/despliegue MCP. Requiere secretos de Cloudflare; la publicación de Pages por sí sola no activa el servidor.
+- Se mantiene MCP local. Corregido reenvío de argumentos de `npm run dev` al workspace web.
+- Documentación de activación y límites en `docs/AUTOMATION_MCP_REMOTE.md`. No incluye chat, OAuth ni administración multiusuario.
+
+### Validación y estado
+
+- Pruebas del cliente HTTP oficial, puente, copias y Undo, rechazo humano, aislamiento, revocación y entrega única, además de las pruebas locales existentes.
+- Typecheck, build web y empaquetado Worker con Wrangler dry-run. Panel revisado en navegador de forma aislada; el visor completo no se pudo probar por falta de WebGL en el entorno.
+- Despliegue del Worker y aceptación con la web pública pendientes de acceso a Cloudflare. El simulador local de Wrangler no arrancó por una limitación `uv_interface_addresses` del entorno.
+
+---
+
 ## v0.1.86 — 2026-11-06
 
 ### Automatización y MCP experimental local

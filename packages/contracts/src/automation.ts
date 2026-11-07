@@ -22,4 +22,4 @@ export const toolSchemas = {
 export type ToolName = keyof typeof toolSchemas;
 export const resultSchema = z.object({ ok: z.boolean(), data: z.record(z.string(), z.unknown()).optional(), error: z.string().optional() }).strict();
 export type OperationResult = z.infer<typeof resultSchema>;
-export const messageSchema = z.object({ id, tool: z.enum(Object.keys(toolSchemas) as [ToolName, ...ToolName[]]), args: z.unknown() }).strict();
+export const messageSchema = z.object({ id, tool: z.enum(Object.keys(toolSchemas) as [ToolName, ...ToolName[]]), args: z.unknown(), expiresAt: z.number().finite().optional() }).strict();
