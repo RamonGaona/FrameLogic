@@ -24,6 +24,8 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
+      - name: Install Linux native bundler binding
+        run: npm install --no-save --package-lock=false @rolldown/binding-linux-x64-gnu@1.2.8
       - run: npm run typecheck
       - run: npm run test:automation
       - name: Validate Worker bundle
