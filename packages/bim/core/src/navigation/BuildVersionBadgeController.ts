@@ -1,4 +1,4 @@
-const FRAMELOGIC_VERSION = "0.1.85";
+const FRAMELOGIC_VERSION = "0.1.86";
 
 const SECTION_PANEL_SELECTOR =
   '[data-framelogic-section-panel="true"]';
@@ -139,3 +139,4 @@ export class BuildVersionBadgeController {
       `${Math.round(bottom)}px`;
   };
 }
+

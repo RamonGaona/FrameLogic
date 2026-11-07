@@ -27,6 +27,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Automation and MCP integration tests
+        run: npm run test:automation
+
+      - name: Domain and geometry tests
+        run: npm test
+
       - name: Gizmo interaction tests
         run: npm run test:gizmos
 
@@ -69,3 +75,4 @@ jobs:
       - name: Verify remaining WASM assets
         run: |
           find apps/web/dist -type f -name '*.wasm' | grep -q .
+
