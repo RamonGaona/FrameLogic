@@ -108,9 +108,12 @@ export function mountLocalChatPanel(core: Core): () => void {
       option.textContent = piece.name + " · " + piece.id.slice(0, 8);
       pieceSelect.append(option);
     }
+    // A removed instance must not leave a hidden, stale manual override.
+    if (manuallyChosenPieceId && !pieces.some(piece => piece.id === manuallyChosenPieceId)) {
+      manuallyChosenPieceId = null;
+    }
     // Never convert an automatic viewport selection into a sticky picker override.
-    pieceSelect.value = manuallyChosenPieceId && pieces.some(piece => piece.id === manuallyChosenPieceId)
-      ? manuallyChosenPieceId : "";
+    pieceSelect.value = manuallyChosenPieceId || "";
     updateSelectionStatus();
   }
 
