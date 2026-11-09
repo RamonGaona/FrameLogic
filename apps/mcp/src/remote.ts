@@ -50,7 +50,7 @@ export default {
     try {
       const path = new URL(request.url).pathname;
       if (request.method === "OPTIONS") response = new Response(null, { status: 204 });
-      else if (path === "/health" && request.method === "GET") response = json({ service: "framelogic-mcp", version: "0.1.87" });
+      else if (path === "/health" && request.method === "GET") response = json({ service: "framelogic-mcp", version: "0.1.93" });
       else if (path === "/sessions" && request.method === "POST") {
         if (!env.SESSION_KEY || env.SESSION_KEY.length < 32 || !bearer(request) || await hash(bearer(request)) !== await hash(env.SESSION_KEY)) {
           response = json({ error: "Invalid session creation key" }, 401);
