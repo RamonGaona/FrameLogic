@@ -39,6 +39,9 @@ jobs:
       - name: Domain and geometry tests
         run: npm test
 
+      - name: Precision and adaptive visualization tests
+        run: npm run test:precision-stage2
+
       - name: Automatic drawing planner tests
         run: npm run test:drawings
 
