@@ -12,6 +12,24 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.91 — 2026-11-09
+
+### Etapa 1 · Vistas técnicas y acotación automática (adaptación Cota)
+
+- Nuevo botón **Vistas auto** en el espacio de documentación: construye cuatro secciones espaciales del modelo visible —alzado, planta, lateral e isométrica— usando sus límites 3D y bases ortonormales, y las incorpora a una hoja con vistas secundarias.
+- Nuevo botón **Cotas auto**: genera cotas horizontales/verticales desde vértices STEP B-Rep reales y cotas de diámetro y posición desde círculos cuyos planos son paralelos al plano de la vista. No se calculan cotas automáticas desde geometría visual simplificada.
+- Las cotas quedan como anotaciones editables del documento; regenerarlas sustituye solo las cotas automáticas, sin borrar las cotas manuales.
+- Planificador geométrico aislado, pruebas unitarias de cuatro proyecciones, ortogonalidad, contención del volumen, referencias, límites, duplicados y cotas de agujeros.
+- Lógica adaptada de las ideas de Cota (Christian Orengia, Apache-2.0) con atribución y avisos en `docs/third-party/COTA_ATTRIBUTION.md`; se mantienen el STEP maestro, el B-Rep OpenCascade y el editor existente.
+
+### Límites y verificación
+
+- La autoacotación exterior usa vértices exactos; los extremos de superficies curvas sin vértices extremos pueden quedar fuera de esa cota. Los planos requieren revisión técnica antes de fabricación.
+- Las secciones automáticas no sustituyen las vistas previas ni se regeneran silenciosamente. Si cambia la geometría, comprueba las vistas o crea otras secciones.
+- Los resultados deben validarse con proyectos STEP reales y pruebas visuales del navegador, además de las pruebas automáticas.
+
+---
+
 ## v0.1.90 — 2026-11-08
 
 ### Chat web: selección de instancias CAD en tiempo real
