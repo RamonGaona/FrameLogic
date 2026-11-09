@@ -29,7 +29,7 @@ function containsName(haystack: string, needle: string): boolean {
   return false;
 }
 
-function resolvePiece(input: string, pieces: ChatPiece[], selected: string[]): string | undefined {
+function resolvePiece(input: string, pieces: ChatPiece[], selected: readonly string[]): string | undefined {
   const matched = pieces.filter(piece => containsName(input, piece.id)
     || containsName(input, piece.name) || containsName(input, piece.code));
   if (matched.length === 1) return matched[0]!.id;
@@ -39,7 +39,7 @@ function resolvePiece(input: string, pieces: ChatPiece[], selected: string[]): s
   return undefined;
 }
 
-export function parseLocalChatCommand(input: string, pieces: ChatPiece[], selected: string[]): ChatCommand {
+export function parseLocalChatCommand(input: string, pieces: ChatPiece[], selected: readonly string[]): ChatCommand {
   const raw = input.trim();
   if (!raw || /^(?:ayuda|help|comandos|que puedes hacer|qué puedes hacer)\??$/i.test(raw))
     return { kind: "help" };
