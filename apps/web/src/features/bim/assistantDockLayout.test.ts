@@ -48,6 +48,31 @@ describe("chat/MCP responsive dock", () => {
     expect(layout.dockTop + 105).toBeLessThanOrEqual(280 - 12);
   });
 
+  it("moves Chat and MCP to the left of a visible right-side piece panel", () => {
+    const layout = calculateAssistantDockLayout({
+      viewportWidth: 1280,
+      viewportHeight: 740,
+      viewCubeBottom: 180,
+      reservedTop: [596],
+      sidePanel: { left: 984, top: 200, bottom: 540 },
+    });
+    expect(layout.dockRight).toBeGreaterThan(300);
+    expect(layout.panelRight).toBeGreaterThan(layout.dockRight);
+    expect(layout.compact).toBe(false);
+  });
+
+  it("opens a sheet when the piece panel leaves too little horizontal space", () => {
+    const layout = calculateAssistantDockLayout({
+      viewportWidth: 755,
+      viewportHeight: 740,
+      viewCubeBottom: 180,
+      reservedTop: [600],
+      sidePanel: { left: 459, top: 200, bottom: 530 },
+    });
+    expect(layout.compact).toBe(true);
+    expect(layout.dockRight).toBeGreaterThan(300);
+  });
+
   it("ignores top-bar controls instead of confusing them with the footer", () => {
     const layout = calculateAssistantDockLayout({
       viewportWidth: 1320,
