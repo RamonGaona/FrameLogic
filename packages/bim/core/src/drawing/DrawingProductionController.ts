@@ -412,6 +412,11 @@ export class DrawingProductionController {
     const overlay = container.querySelector<HTMLElement>('[data-framelogic-drawing-workspace="true"]');
     const toolbar = overlay?.firstElementChild as HTMLElement | null;
     if (!toolbar) return;
+    // Avoid a horizontal toolbar overflow when documentation features grow.
+    toolbar.style.flexWrap = "wrap";
+    toolbar.style.rowGap = "5px";
+    toolbar.style.maxHeight = "128px";
+    toolbar.style.overflowY = "auto";
 
     const dimensionSelect = this.makeSelect([
       ["ALIGNED", "Cota alineada"],
