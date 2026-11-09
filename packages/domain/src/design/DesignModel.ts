@@ -358,108 +358,165 @@ import {
     // ASSEMBLIES
     // ==========================================================
   
+    /**
+     * New assemblies have a single owner for each piece instance. Older
+     * snapshots can still be restored through the legacy registry without
+     * changing their stored representation.
+     */
+    private validateAssemblyMemberIds(
+      pieceInstanceIds: readonly string[],
+      options: {
+        readonly excludeAssemblyId?: string;
+        readonly allowAssigned?: boolean;
+      } = {},
+    ): void {
+      const seen = new Set<string>();
+      for (const pieceInstanceId of pieceInstanceIds) {
+        if (seen.has(pieceInstanceId)) {
+          throw new Error(
+            `Cannot group piece instance "${pieceInstanceId}" twice in one assembly.`,
+          );
+        }
+        seen.add(pieceInstanceId);
+
+        if (!this.pieceInstances.get(pieceInstanceId)) {
+          throw new Error(
+            `Cannot create or update assembly. Piece instance "${pieceInstanceId}" does not exist.`,
+          );
+        }
+
+        if (!options.allowAssigned) {
+          const otherOwner = this.assemblies
+            .findByPieceInstanceId(pieceInstanceId)
+            .find((assembly) => assembly.id !== options.excludeAssemblyId);
+          if (otherOwner) {
+            throw new Error(
+              `Piece instance "${pieceInstanceId}" already belongs to assembly "${otherOwner.id}".`,
+            );
+          }
+        }
+      }
+    }
+
+    private detachPiecesFromOtherAssemblies(
+      targetAssemblyId: string,
+      pieceInstanceIds: readonly string[],
+    ): void {
+      const moving = new Set(pieceInstanceIds);
+      for (const assembly of this.assemblies.getAll()) {
+        if (assembly.id === targetAssemblyId) continue;
+        const remaining = assembly.pieceInstanceIds.filter(
+          (id) => !moving.has(id),
+        );
+        if (remaining.length !== assembly.pieceInstanceIds.length) {
+          this.assemblies.updatePieceInstanceIds(assembly.id, remaining);
+        }
+      }
+    }
+
+    // ==========================================================
+    // ASSEMBLIES
+    // ==========================================================
+
     registerAssembly(
       input: RegisterAssemblyInput,
     ): Assembly {
-  
-      const pieceInstanceIds =
-        input.pieceInstanceIds
-        ?? [];
-  
-  
-      for (
-        const pieceInstanceId
-        of pieceInstanceIds
-      ) {
-  
-        const instance =
-          this.pieceInstances.get(
-            pieceInstanceId,
-          );
-  
-  
-        if (!instance) {
-  
-          throw new Error(
-            `Cannot create assembly. Piece instance "${pieceInstanceId}" does not exist.`,
-          );
-  
-        }
-  
-      }
-  
-  
+      const pieceInstanceIds = input.pieceInstanceIds ?? [];
+      this.validateAssemblyMemberIds(pieceInstanceIds);
+
       const layerId =
-        input.layerId
-        ?? DEFAULT_DESIGN_LAYER_IDS
-          .GEOMETRY;
-
-
-      if (
-        !this.layers.get(
-          layerId,
-        )
-      ) {
-
+        input.layerId ?? DEFAULT_DESIGN_LAYER_IDS.GEOMETRY;
+      if (!this.layers.get(layerId)) {
         throw new Error(
           `Cannot create assembly. Layer "${layerId}" does not exist.`,
         );
-
       }
 
-
-      return this
-        .assemblies
-        .register({
-          ...input,
-          layerId,
-        });
-  
+      return this.assemblies.register({
+        ...input,
+        layerId,
+      });
     }
-  
-  
+
+    /**
+     * Group or regroup existing pieces atomically with respect to validation:
+     * create the target first, then detach its members from prior assemblies.
+     * A duplicate assembly ID or invalid input cannot lose memberships.
+     */
+    groupPieceInstances(
+      input: RegisterAssemblyInput,
+    ): Assembly {
+      const pieceInstanceIds = input.pieceInstanceIds ?? [];
+      this.validateAssemblyMemberIds(pieceInstanceIds, {
+        allowAssigned: true,
+      });
+
+      const layerId =
+        input.layerId ?? DEFAULT_DESIGN_LAYER_IDS.GEOMETRY;
+      if (!this.layers.get(layerId)) {
+        throw new Error(
+          `Cannot create assembly. Layer "${layerId}" does not exist.`,
+        );
+      }
+
+      const assembly = this.assemblies.register({
+        ...input,
+        layerId,
+      });
+      this.detachPiecesFromOtherAssemblies(
+        assembly.id,
+        pieceInstanceIds,
+      );
+      return assembly;
+    }
+
     // ==========================================================
     // UPDATE ASSEMBLY PIECES
     // ==========================================================
-  
+
     updateAssemblyPieceInstances(
       assemblyId: string,
-      pieceInstanceIds:
-        readonly string[],
-    ):
-      Assembly
-      | undefined {
-  
-      for (
-        const pieceInstanceId
-        of pieceInstanceIds
-      ) {
-  
-        if (
-          !this.pieceInstances.get(
-            pieceInstanceId,
-          )
-        ) {
-  
-          throw new Error(
-            `Cannot update assembly. Piece instance "${pieceInstanceId}" does not exist.`,
-          );
-  
-        }
-  
-      }
-  
-  
-      return this
-        .assemblies
-        .updatePieceInstanceIds(
-          assemblyId,
-          pieceInstanceIds,
-        );
-  
+      pieceInstanceIds: readonly string[],
+    ): Assembly | undefined {
+      this.validateAssemblyMemberIds(pieceInstanceIds, {
+        excludeAssemblyId: assemblyId,
+      });
+      return this.assemblies.updatePieceInstanceIds(
+        assemblyId,
+        pieceInstanceIds,
+      );
     }
-  
-  
+
+    /**
+     * Move selected pieces between existing groups without creating geometry.
+     * Existing ordering is preserved and duplicate IDs are collapsed.
+     */
+    movePieceInstancesToAssembly(
+      assemblyId: string,
+      pieceInstanceIds: readonly string[],
+    ): Assembly | undefined {
+      const assembly = this.assemblies.get(assemblyId);
+      if (!assembly) return undefined;
+
+      const members = [
+        ...new Set([...assembly.pieceInstanceIds, ...pieceInstanceIds]),
+      ];
+      this.validateAssemblyMemberIds(members, {
+        allowAssigned: true,
+      });
+
+      const updated = this.assemblies.updatePieceInstanceIds(
+        assemblyId,
+        members,
+      );
+      this.detachPiecesFromOtherAssemblies(
+        assemblyId,
+        pieceInstanceIds,
+      );
+      return updated;
+    }
+
+
     // ==========================================================
     // UPDATE PIECE INSTANCE LAYER
     // ==========================================================

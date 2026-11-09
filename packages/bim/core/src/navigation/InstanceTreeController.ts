@@ -461,8 +461,8 @@ export class InstanceTreeController {
     )?.trim();
     if (!name) return;
 
-    this.removePiecesFromAllAssemblies(selected);
-    const assembly = this.options.designModel.assemblies.register({
+    // Grouping validates the whole operation before changing old groups.
+    const assembly = this.options.designModel.groupPieceInstances({
       name,
       pieceInstanceIds: selected,
     });
@@ -481,16 +481,13 @@ export class InstanceTreeController {
       this.options.designModel.pieceInstances.get(id) !== undefined,
     );
     if (selected.length < 1) return;
-    const target = this.options.designModel.assemblies.get(assemblyId);
-    if (!target) return;
 
-    this.removePiecesFromAllAssemblies(selected);
-    const members = new Set(target.pieceInstanceIds);
-    for (const id of selected) members.add(id);
-    this.options.designModel.assemblies.updatePieceInstanceIds(
+    const moved = this.options.designModel.movePieceInstancesToAssembly(
       assemblyId,
-      [...members],
+      selected,
     );
+    if (!moved) return;
+
     this.hideContextMenu();
     this.refresh();
   }
@@ -544,23 +541,6 @@ export class InstanceTreeController {
     this.options.designSelection.setSelection(createdIds);
     this.hideContextMenu();
     this.refresh();
-  }
-
-  private removePiecesFromAllAssemblies(
-    pieceIds: readonly string[],
-  ): void {
-    const removing = new Set(pieceIds);
-    for (const assembly of this.options.designModel.assemblies.getAll()) {
-      const next = assembly.pieceInstanceIds.filter(
-        (id) => !removing.has(id),
-      );
-      if (next.length !== assembly.pieceInstanceIds.length) {
-        this.options.designModel.assemblies.updatePieceInstanceIds(
-          assembly.id,
-          next,
-        );
-      }
-    }
   }
 
   private renameFocusedItem(): void {
@@ -677,7 +657,7 @@ export class InstanceTreeController {
     }
 
     entries.push({
-      label: "Eliminar ensamble (conservar piezas)",
+      label: "Desagrupar ensamble (conservar piezas)",
       action: () => {
         this.options.designModel.assemblies.remove(assemblyId);
         this.focusedItem = null;

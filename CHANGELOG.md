@@ -12,6 +12,25 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.94 — 2026-11-09
+
+### Ensambles · Etapa A: estabilidad de composición
+
+- **Agrupación segura:** crear un ensamble con piezas previamente agrupadas valida primero todas las instancias y la capa, registra el nuevo grupo y después retira las piezas de sus grupos anteriores; un error en la creación ya no puede desagrupar las piezas originales.
+- **Traslado entre ensambles:** el árbol usa una operación del modelo de diseño que conserva el orden de miembros, evita insertar IDs duplicados y no duplica la geometría ni las definiciones STEP/IFC compartidas.
+- **Validaciones del modelo:** los nuevos ensambles y actualizaciones normales rechazan IDs de piezas repetidos, inexistentes o que ya pertenezcan a otro ensamble. Se conservan las rutas de importación heredadas para no cambiar automáticamente los proyectos antiguos.
+- **Interfaz:** la opción de liberar las piezas aparece explícitamente como «Desagrupar ensamble (conservar piezas)».
+- **Regresión:** nuevas pruebas del dominio para reagrupar, trasladar, impedir duplicados, conservar miembros ante errores y desagrupar sin borrar piezas. El formato persistido sigue siendo FRAMELOGIC_PROJECT v1, sin migraciones destructivas.
+
+### Limitaciones y siguientes etapas
+
+- Los ensambles siguen siendo grupos planos: los subensambles jerárquicos, el origen local del conjunto, los cambios de transformaciones con historial CAD y los arreglos se abordarán por separado, después de pruebas específicas.
+- La importación de archivos anteriores conserva su representación y no repara automáticamente vínculos antiguos inconsistentes.
+- Las operaciones de agrupar, mover miembros entre grupos y desagrupar todavía necesitan integrarse con Undo/Redo del historial CAD; no se declara terminada la Etapa B.
+- El despliegue en Cloudflare Pages y las pruebas manuales del navegador deben confirmarse por separado de CI.
+
+---
+
 ## v0.1.93 — 2026-11-09
 
 ### Etapa 3 · Automatización segura desde chat web y MCP
