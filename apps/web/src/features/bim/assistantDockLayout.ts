@@ -7,10 +7,12 @@ export interface DockLayoutInput {
   viewportHeight: number;
   viewCubeBottom: number | null;
   reservedTop: number[];
+  sidePanel?: { left: number; top: number; bottom: number } | null;
 }
 
 export interface DockLayout {
   dockTop: number;
+  dockRight: number;
   panelTop: number;
   panelHeight: number;
   panelRight: number;
@@ -30,14 +32,24 @@ export function calculateAssistantDockLayout(input: DockLayoutInput): DockLayout
   const preferredDockTop = Math.max(70, cubeBottom + 12);
   const dockTop = Math.max(12, Math.min(preferredDockTop, safeBottom - 105));
   const panelHeight = Math.max(0, Math.min(570, safeBottom - dockTop - 9));
-  // At narrow sizes or low heights, intentionally open a dismissible full-window sheet,
-  // instead of accidentally covering the CAD controls with a narrow floating panel.
-  const compact = width < 620 || panelHeight < 235;
+  // If ModelPanel occupies the middle-right of the viewport, move the entry points
+  // to its left instead of placing new buttons over existing piece controls.
+  const sidePanel = input.sidePanel;
+  const sidePanelBlocksDock = sidePanel
+    && sidePanel.left > width * 0.35
+    && sidePanel.top < dockTop + 96
+    && sidePanel.bottom > dockTop;
+  const dockRight = sidePanelBlocksDock
+    ? Math.max(16, width - sidePanel.left + 12) : 16;
+  const panelRight = dockRight + 76;
+  // If there isn't room for a flyout left of the dock, use a dismissible modal sheet.
+  const compact = width < 620 || width < panelRight + 430 || panelHeight < 235;
   return {
     dockTop: Math.round(dockTop),
+    dockRight: Math.round(dockRight),
     panelTop: Math.round(dockTop),
     panelHeight: Math.round(panelHeight),
-    panelRight: 92,
+    panelRight: Math.round(panelRight),
     compact,
   };
 }
@@ -75,13 +87,21 @@ export function syncAssistantDockLayout(dock: HTMLElement): DockLayout {
     const rect = element.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) reservedTop.push(rect.top);
   }
+  const modelPanel = document.querySelector<HTMLElement>(".model-panel");
+  const modelPanelStyle = modelPanel ? getComputedStyle(modelPanel) : null;
+  const modelPanelRect = modelPanelStyle?.display !== "none"
+    && modelPanelStyle?.visibility !== "hidden" ? modelPanel?.getBoundingClientRect() : null;
   const layout = calculateAssistantDockLayout({
     viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
     viewCubeBottom: cubeRect && cubeRect.height > 0 ? cubeRect.bottom : null,
     reservedTop,
+    sidePanel: modelPanelRect && modelPanelRect.width > 0 && modelPanelRect.height > 0
+      ? { left: modelPanelRect.left, top: modelPanelRect.top, bottom: modelPanelRect.bottom }
+      : null,
   });
   dock.style.top = layout.dockTop + "px";
+  dock.style.right = layout.dockRight + "px";
   dock.style.setProperty("--assistant-panel-top", layout.panelTop + "px");
   dock.style.setProperty("--assistant-panel-height", layout.panelHeight + "px");
   dock.style.setProperty("--assistant-panel-right", layout.panelRight + "px");
