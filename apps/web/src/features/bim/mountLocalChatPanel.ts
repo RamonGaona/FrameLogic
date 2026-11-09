@@ -1,5 +1,5 @@
 import { createOperationDispatcher, type PrecisionBimCoreInstance } from "@framelogic/bim-core";
-import { parseLocalChatCommand, type ChatPiece } from "./localChatCommand";
+import { parseLocalChatCommand, parseLocalChatScript, type ChatPiece } from "./localChatCommand";
 import { resolveChatPieceTarget } from "./localChatPieceTarget";
 import "./localChatPanel.css";
 import { getOrCreateAssistantDock, releaseAssistantDock, syncAssistantDockLayout } from "./assistantDockLayout";
@@ -145,6 +145,10 @@ export function mountLocalChatPanel(core: Core): () => void {
     "• «Muestra los ejes de esta pieza» (selecciona una pieza).",
     "• «Copia esta pieza 4 veces cada 1500 mm en X».",
     "• «Mueve esta pieza 200 mm en -Y».",
+    "• «Buscar piezas REC» o «Consultar piezas seleccionadas».",
+    "• «Describe esta pieza» (código, ejes, SNAPs y límites si existen).",
+    "• Script: «Mueve esta pieza 200 mm en X; copia esta pieza 2 veces cada 1500 mm en Y».",
+    "• Un script es una sola propuesta, una aprobación y un Undo.",
     "• «Deshacer» y «Rehacer» (con autorización).",
     "Las direcciones son ejes LOCALES; nunca suponemos cuál es el longitudinal.",
     "Siempre se prepara una propuesta antes de modificar el modelo.",
@@ -153,15 +157,32 @@ export function mountLocalChatPanel(core: Core): () => void {
 
   function showPreview(value: unknown): void {
     const preview = value as { id?: string; operation?: string; sourceId?: string;
-      targets?: Array<{ position: { x: number; y: number; z: number } }> };
-    if (!preview.id || !Array.isArray(preview.targets)) throw new Error("El motor no devolvió una propuesta válida.");
+      targets?: Array<{ position: { x: number; y: number; z: number } }>;
+      steps?: Array<{ operation: string; sourceId: string;
+        targets: Array<{ position: { x: number; y: number; z: number } }> }>;
+      copyCount?: number };
+    const isBatch = preview.operation === "commands" && Array.isArray(preview.steps);
+    if (!preview.id || (!isBatch && !Array.isArray(preview.targets)))
+      throw new Error("El motor no devolvió una propuesta válida.");
     invalidatePreview();
-    appendMessage("assistant", "Propuesta preparada (sin cambios):\n"
-      + "Operación: " + preview.operation + "\nOrigen: " + preview.sourceId + "\n"
-      + preview.targets.map((t, i) => String(i + 1) + ". ("
-        + t.position.x.toFixed(2) + ", " + t.position.y.toFixed(2) + ", "
-        + t.position.z.toFixed(2) + ") mm").join("\n")
-      + "\nCaduca en 2 minutos. Revisa las posiciones.");
+    if (isBatch) {
+      const summary = preview.steps!.map((step, index) =>
+        String(index + 1) + ". " + step.operation + " | " + step.sourceId
+        + " → " + step.targets.map(target => "("
+          + target.position.x.toFixed(2) + ", "
+          + target.position.y.toFixed(2) + ", "
+          + target.position.z.toFixed(2) + ")").join(", ") + " mm");
+      appendMessage("assistant", "Script preparado (sin cambios):\n"
+        + summary.join("\n") + "\nCopias: " + (preview.copyCount ?? 0)
+        + ". Se aplicará como un solo Undo. Caduca en 2 minutos.");
+    } else {
+      appendMessage("assistant", "Propuesta preparada (sin cambios):\n"
+        + "Operación: " + preview.operation + "\nOrigen: " + preview.sourceId + "\n"
+        + preview.targets!.map((t, i) => String(i + 1) + ". ("
+          + t.position.x.toFixed(2) + ", " + t.position.y.toFixed(2) + ", "
+          + t.position.z.toFixed(2) + ") mm").join("\n")
+        + "\nCaduca en 2 minutos. Revisa las posiciones.");
+    }
     const actions = document.createElement("div");
     actions.className = "framelogic-chat-preview-actions";
     const apply = document.createElement("button");
@@ -184,7 +205,7 @@ export function mountLocalChatPanel(core: Core): () => void {
       apply.disabled = true;
       cancel.disabled = true;
       try {
-        const answer = await dispatch("confirm_operation", { proposalId: preview.id! });
+        const answer = await dispatch(isBatch ? "confirm_commands" : "confirm_operation", { proposalId: preview.id! });
         if (!answer.ok) throw new Error(answer.error || "No se pudo aplicar");
         appendMessage("assistant", "Cambio aplicado con aprobación. Instancias afectadas:\n"
           + JSON.stringify(answer.data?.affectedIds ?? [], null, 2)
@@ -221,6 +242,17 @@ export function mountLocalChatPanel(core: Core): () => void {
     const { refs, lines } = getPieces(core);
     refreshPiecePicker();
     const target = currentTarget();
+    const script = parseLocalChatScript(input, refs, target.ids);
+    if (script) {
+      if (script.kind === "unknown") {
+        appendMessage("assistant", script.message);
+        return;
+      }
+      const result = await dispatch("prepare_commands", { commands: script.requests });
+      if (!result.ok) throw new Error(result.error || "Error al preparar script.");
+      showPreview(result.data);
+      return;
+    }
     const command = parseLocalChatCommand(input, refs, target.ids);
     switch (command.kind) {
       case "help": appendMessage("assistant", help); return;
@@ -232,6 +264,33 @@ export function mountLocalChatPanel(core: Core): () => void {
         appendMessage("assistant", "Modelo: " + info.instances + " instancias, " + info.definitions
           + " definiciones. Unidades: " + info.units + ". Undo: " + (info.canUndo ? "sí" : "no")
           + "; Redo: " + (info.canRedo ? "sí" : "no") + ".");
+        return;
+      }
+      case "query": {
+        const results = core.automation.queryObjects({
+          search: command.search,
+          selectedOnly: command.selectedOnly,
+          limit: 30,
+        });
+        appendMessage("assistant", results.returned
+          ? "Objetos: " + results.total + (results.truncated ? " (primeros 30)" : "") + "\n"
+            + results.objects.map(obj =>
+              obj.name + " [" + obj.code + "] · " + obj.id
+              + " · pos " + JSON.stringify(obj.transform.position)
+              + " mm · " + (obj.boundsMm ? "límites 3D disponibles" : "límites no disponibles"),
+            ).join("\n")
+          : "Ninguna pieza coincide con la búsqueda.");
+        return;
+      }
+      case "describe": {
+        const obj = core.automation.describeObject(command.id);
+        appendMessage("assistant", "Objeto: " + obj.name
+          + "\nID: " + obj.id + " · código: " + obj.code
+          + "\nPosición: " + JSON.stringify(obj.transform.position)
+          + " mm\nRotación: " + JSON.stringify(obj.transform.rotation)
+          + "\nLímites: " + (obj.boundsMm ? JSON.stringify(obj.boundsMm) : "sin geometría de detalle cargada")
+          + "\nEjes locales X/Y/Z: " + JSON.stringify({ x: obj.axes.x, y: obj.axes.y, z: obj.axes.z })
+          + "\nSNAPs persistentes: " + obj.snaps.length);
         return;
       }
       case "axes": {
