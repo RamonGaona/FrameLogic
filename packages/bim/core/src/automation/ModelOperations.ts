@@ -209,8 +209,7 @@ export class ModelOperations {
           .add(vector(before.position).sub(vector(persisted)));
         delta = vector(request.position).sub(currentOrigin);
       } else delta = this.worldDisplacement(request.id, request.displacement!, request.space);
-      const target = structuredClone(before);
-      target.position = data(vector(before.position).add(delta));
+      const target: Transform = { ...structuredClone(before), position: data(vector(before.position).add(delta)) };
       finite(target.position);
       return [target];
     }
@@ -225,8 +224,7 @@ export class ModelOperations {
         throw new Error("Direction must be nonzero");
       direction.normalize();
       return Array.from({ length: request.count }, (_, i) => {
-        const target = structuredClone(before);
-        target.position = data(vector(before.position).addScaledVector(direction, request.distance * (i + 1)));
+        const target: Transform = { ...structuredClone(before), position: data(vector(before.position).addScaledVector(direction, request.distance * (i + 1))) };
         finite(target.position);
         return target;
       });
