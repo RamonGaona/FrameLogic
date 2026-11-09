@@ -1,3 +1,4 @@
+import { toolSchemas } from "../../../packages/contracts/src/automation";
 import { it, expect } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -10,7 +11,9 @@ it("starts the real stdio entrypoint and reports absence of a browser", async ()
     await client.connect(transport);
     const listed=await client.listTools();
     expect(listed.tools.map(t=>t.name)).toContain("prepare_operation");
-    expect(listed.tools).toHaveLength(10);
+    expect(listed.tools.map(t=>t.name)).toContain("prepare_commands");
+    expect(listed.tools.map(t=>t.name)).toContain("query_objects");
+    expect(listed.tools).toHaveLength(Object.keys(toolSchemas).length);
     expect((await client.callTool({name:"get_model_info",arguments:{}})).isError).toBe(true);
   } finally { await client.close(); await transport.close(); }
 },10000);

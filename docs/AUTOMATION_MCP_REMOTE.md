@@ -1,5 +1,11 @@
 # MCP remoto para FrameLogic web — v0.1.87
 
+> **Actualización v0.1.93:** el MCP añade `query_objects`,
+> `describe_object`, `prepare_commands` y `confirm_commands` para
+> consultas y scripts de movimientos/copias con una aprobación humana por
+> lote. Consulta [Etapa 3](AUTOMATION_STAGE3.md) para ejemplos y límites.
+> Esta ampliación no cambia los permisos ni el flujo de conexión remota.
+
 ## Qué cambia
 
 La web publicada incluye un botón **MCP**. Crea una sesión explícita con un servidor HTTPS separado, copia su configuración para un cliente MCP compatible y permite desconectarla. No requiere ejecutar el modelador ni un puente HTTP en el computador. La pestaña debe permanecer abierta y activa. No es un chat integrado ni incluye un proveedor de IA.

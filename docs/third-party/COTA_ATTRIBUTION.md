@@ -37,6 +37,16 @@ FrameLogic implementa sus propios algoritmos en `SnapTrackingMath.ts`,
 con WorkPlane y niveles LOW/WORK/DETAIL existentes. No se importaron las
 entidades ni el motor de Cota.
 
+## Extensión v0.1.93 — Herramientas de automatización
+
+La etapa de consultas del modelo y ejecución agrupada de comandos se inspiró en
+`services/web/src/agent/tools.ts` de Cota, en particular en la separación
+entre consultas de objetos, selección y secuencias de órdenes.
+
+FrameLogic usa un contrato MCP propio, con planificación sin efectos,
+caducidad, aprobación humana y una sola acción de Undo/Redo. No incorpora
+el motor de comandos ni la lógica de IA de Cota.
+
 ## Aviso de atribución
 
 Cota

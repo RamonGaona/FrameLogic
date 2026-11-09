@@ -2,6 +2,10 @@
 
 > Desde v0.1.87 existe también un modo HTTPS remoto con panel en la web. Ver [MCP remoto](AUTOMATION_MCP_REMOTE.md). Las restricciones Cloudflare/DEV descritas aquí se refieren al gancho local de consola, no al nuevo panel remoto.
 
+> **Actualización v0.1.93:** nuevas herramientas de consultas de objetos,
+> propuestas de comandos secuenciales y confirmación agrupada con un solo
+> Undo. Véase [Etapa 3](AUTOMATION_STAGE3.md).
+
 ## Revisión del código existente
 
 Base revisada: main `6743e24246900789a5f4ebcd969f79030ca1e073` (v0.1.85).

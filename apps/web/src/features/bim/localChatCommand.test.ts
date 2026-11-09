@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseLocalChatCommand, type ChatPiece } from "./localChatCommand";
+import { parseLocalChatCommand, parseLocalChatScript, type ChatPiece } from "./localChatCommand";
 
 const pieces: ChatPiece[] = [
   { id: "first-uuid", name: "PS_1500P4L", code: "PS_1500P4L" },
@@ -50,5 +50,36 @@ describe("browser-local chat deterministic commands", () => {
     expect(parseLocalChatCommand("Confirma todas las operaciones", pieces, []).kind).toBe("unknown");
     expect(parseLocalChatCommand("Deshacer", pieces, [])).toEqual({ kind: "undo" });
     expect(parseLocalChatCommand("Rehacer", pieces, [])).toEqual({ kind: "redo" });
+  });
+});
+
+describe("Stage 3 local scripts and queries", () => {
+  it("parses named and selected-object read-only queries", () => {
+    expect(parseLocalChatCommand("Buscar piezas PS_1500P4L", pieces, []))
+      .toEqual({ kind: "query", search: "PS_1500P4L" });
+    expect(parseLocalChatCommand("Consultar piezas seleccionadas", pieces, []))
+      .toEqual({ kind: "query", selectedOnly: true });
+    expect(parseLocalChatCommand("Describe esta pieza", pieces, ["first-uuid"]))
+      .toEqual({ kind: "describe", id: "first-uuid" });
+  });
+  it("prepares a deterministic two-command script without executing it", () => {
+    const result = parseLocalChatScript(
+      "Mueve esta pieza 200 mm en -Y; copia esta pieza 2 veces cada 1500 mm en X",
+      pieces,
+      ["first-uuid"],
+    );
+    expect(result).toMatchObject({
+      kind: "commands",
+      requests: [
+        { operation: "move_piece", id: "first-uuid", displacement: { x: 0, y: -200, z: 0 } },
+        { operation: "copy_piece_array", id: "first-uuid", count: 2, distance: 1500 },
+      ],
+    });
+  });
+  it("refuses partially recognized scripts, confirmations and ambiguous parts", () => {
+    expect(parseLocalChatScript("Mueve esta pieza 200 mm en X; confirmar", pieces, ["first-uuid"])?.kind).toBe("unknown");
+    expect(parseLocalChatScript("Mueve esta pieza 200 mm en X; copia REC3000 2 veces cada 500 mm en Y", pieces, ["first-uuid"])?.kind).toBe("unknown");
+    expect(parseLocalChatScript("Mueve esta pieza 200 mm en X", pieces, ["first-uuid"])).toBeNull();
+    expect(parseLocalChatScript("a; b; c; d; e; f; g; h; i", pieces, ["first-uuid"])?.kind).toBe("unknown");
   });
 });

@@ -1,6 +1,6 @@
 import { ModelOperations } from "./automation/ModelOperations";
 export { ModelOperations } from "./automation/ModelOperations";
-export type { ChangeRequest, Proposal, OperationPorts } from "./automation/ModelOperations";
+export type { ChangeRequest, Proposal, CommandsProposal, ObjectQuery, ModelObjectSummary, OperationPorts } from "./automation/ModelOperations";
 export { connectAutomationBridge } from "./automation/BrowserBridge";
 import {
   createBimCore as createAdvancedCadBimCore,
@@ -173,6 +173,14 @@ export async function createBimCore(
     sync: () => { core.designScene.sync(); core.designSelection.refreshHelpers(); },
     getSelection: () => [...core.designSelection.getSelectedIds()],
     setSelection: ids => core.designSelection.setSelection(ids),
+    getInstanceBounds: id => {
+      const bounds = core.designScene.getInstanceWorldBounds(id);
+      if (!bounds) return null;
+      return {
+        min: { x: bounds.min.x, y: bounds.min.y, z: bounds.min.z },
+        max: { x: bounds.max.x, y: bounds.max.y, z: bounds.max.z },
+      };
+    },
     assertReady: () => {
       if (disposed || projectLoading || core.cadCommandManager.hasActiveCommand || core.designTransform.isActive
         || core.align.isActive || core.smartPieceInsertion.isActive || core.designRotate.isActive

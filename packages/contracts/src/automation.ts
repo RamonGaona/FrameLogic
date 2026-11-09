@@ -13,9 +13,20 @@ export const toolSchemas = {
   get_piece: z.object({ id }).strict(),
   list_piece_snaps: z.object({ id }).strict(),
   get_piece_axes: z.object({ id }).strict(),
+  /** Read-only inspection of persisted instances and detailed-asset bounds. */
+  query_objects: z.object({
+    ids: z.array(id).max(100).optional(),
+    search: z.string().max(200).optional(),
+    selectedOnly: z.boolean().optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  }).strict(),
+  describe_object: z.object({ id }).strict(),
   select_pieces: z.object({ ids: z.array(id).max(1000) }).strict(),
   prepare_operation: z.object({ request: changeSchema }).strict(),
   confirm_operation: z.object({ proposalId: id }).strict(),
+  /** Preview only: no commands are executed until confirm_commands approval. */
+  prepare_commands: z.object({ commands: z.array(changeSchema).min(1).max(12) }).strict(),
+  confirm_commands: z.object({ proposalId: id }).strict(),
   undo: z.object({}).strict(),
   redo: z.object({}).strict(),
 };
