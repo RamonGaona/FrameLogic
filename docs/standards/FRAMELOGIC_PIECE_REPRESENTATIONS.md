@@ -21,7 +21,12 @@ ninguna medición se obtiene de la aproximación de trabajo.
 
 El selector de Render controla el cambio. Diseño es el valor inicial; Detalle
 seleccionado mantiene ligeras las piezas restantes. Preparar pieza fuerza detalle
-para esa instancia. No se aplica todavía LOD automático por distancia de cámara.
+para esa instancia cuando se solicita. Desde v0.1.92 el modo opcional
+**Automático (zoom)** escoge LOW/WORK/DETAIL por tamaño proyectado, con
+histéresis, y mantiene en DETAIL la selección y la preparación. Los modos
+manuales anteriores continúan disponibles y el predeterminado sigue siendo
+Diseño. El cálculo automático es exclusivamente visual; nunca reemplaza la
+geometría B-Rep original para consultas, medidas o raycasts.
 
 Los niveles son aproximaciones visuales, no tolerancias de fabricación ni límites
 garantizados de triángulos. Los detalles pequeños pueden desaparecer en LOW/WORK.
