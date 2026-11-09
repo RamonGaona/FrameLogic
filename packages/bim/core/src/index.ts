@@ -448,3 +448,6 @@ export type {
 
 export { loadPieceVisualPackage } from "./design/PieceVisualPackage";
 export type { PieceVisualPackage, LoadedPieceVisualPackage } from "./design/PieceVisualPackage";
+
+// Shared approval gate used by remote MCP and the in-browser command chat.
+export { createOperationDispatcher } from "./automation/dispatch";

@@ -1,4 +1,5 @@
 import { mountAutomationPanel } from "./mountAutomationPanel";
+import { mountLocalChatPanel } from "./mountLocalChatPanel";
 import { connectAutomationBridge } from "@framelogic/bim-core";
 import { loadPieceVisualPackage, type LoadedPieceVisualPackage } from "@framelogic/bim-core";
 import {
@@ -1043,8 +1044,9 @@ export function BimViewport() {
             bimCoreRef.current =
               instance;
             const disposeAutomationPanel = mountAutomationPanel(instance);
+            const disposeLocalChatPanel = mountLocalChatPanel(instance);
             const disposeWithPanel = instance.dispose;
-            instance.dispose = () => { disposeAutomationPanel(); disposeWithPanel(); };
+            instance.dispose = () => { disposeLocalChatPanel(); disposeAutomationPanel(); disposeWithPanel(); };
             if (import.meta.env.DEV) {
               let disconnect: (() => void) | undefined;
               const devWindow = window as typeof window & { frameLogicConnectAutomation?: (token: string) => void };

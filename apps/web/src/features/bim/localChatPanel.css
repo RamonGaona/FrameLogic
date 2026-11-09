@@ -1,0 +1,130 @@
+/* Browser-local assistant. Kept separate from the MCP connector and model panels. */
+.framelogic-chat-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  pointer-events: none;
+  font: 13px system-ui, sans-serif;
+  color: #f1f5f9;
+}
+.framelogic-chat-root button,
+.framelogic-chat-root input { font: inherit; }
+.framelogic-chat-toggle {
+  position: absolute;
+  right: 18px;
+  bottom: 63px;
+  pointer-events: auto;
+  padding: 9px 16px;
+  border: 1px solid #5e8eac;
+  border-radius: 9px;
+  background: #0f3448;
+  color: #f1f5f9;
+  font-weight: 700 !important;
+  cursor: pointer;
+  box-shadow: 0 4px 16px #0006;
+}
+.framelogic-chat-panel {
+  position: absolute;
+  right: 18px;
+  bottom: 115px;
+  width: min(410px, calc(100vw - 36px));
+  height: min(590px, calc(100dvh - 145px));
+  min-height: 270px;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #111d2c;
+  border: 1px solid #617589;
+  border-radius: 12px;
+  box-shadow: 0 14px 40px #000a;
+}
+.framelogic-chat-panel[hidden] { display: none; }
+.framelogic-chat-header {
+  flex-shrink: 0;
+  padding: 13px;
+  border-bottom: 1px solid #405267;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.framelogic-chat-header strong { display: block; font-size: 15px; }
+.framelogic-chat-header small { display: block; margin-top: 3px; color: #a7c0d0; }
+.framelogic-chat-header button {
+  border: none;
+  border-radius: 5px;
+  padding: 2px 9px;
+  background: transparent;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+}
+.framelogic-chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overscroll-behavior: contain;
+}
+.framelogic-chat-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 10px;
+  line-height: 1.5;
+  border-radius: 9px;
+  max-width: 97%;
+}
+.framelogic-chat-message-assistant { background: #263b4d; align-self: flex-start; }
+.framelogic-chat-message-user { background: #125275; align-self: flex-end; }
+.framelogic-chat-tools {
+  border-top: 1px solid #405267;
+  padding: 9px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.framelogic-chat-tools small { color: #afc1cd; line-height: 1.4; }
+.framelogic-chat-tools button,
+.framelogic-chat-preview-actions button {
+  padding: 8px;
+  border: 1px solid #697f93;
+  border-radius: 7px;
+  background: #223448;
+  color: #f1f5f9;
+  cursor: pointer;
+}
+.framelogic-chat-tools button:disabled,
+.framelogic-chat-preview-actions button:disabled { opacity: 0.6; cursor: not-allowed; }
+.framelogic-chat-preview-actions { display: flex; gap: 8px; }
+.framelogic-chat-preview-actions button:first-child { background: #116087; }
+.framelogic-chat-form { border-top: 1px solid #405267; padding: 10px 12px 12px; }
+.framelogic-chat-label { display: block; margin-bottom: 6px; color: #c7d5df; }
+.framelogic-chat-compose { display: flex; gap: 6px; }
+.framelogic-chat-compose input {
+  min-width: 0;
+  flex: 1;
+  padding: 9px;
+  border: 1px solid #60788d;
+  border-radius: 7px;
+  background: #0a1724;
+  color: #fff;
+}
+.framelogic-chat-compose button {
+  border: 1px solid #2883ae;
+  border-radius: 7px;
+  background: #14638a;
+  color: #fff;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.framelogic-chat-compose button:disabled { opacity: 0.6; cursor: not-allowed; }
+html[data-framelogic-piece-workspace-active="true"] .framelogic-chat-root {
+  display: none;
+}
+@media (max-height: 520px) {
+  .framelogic-chat-panel { bottom: 76px; height: calc(100dvh - 92px); }
+  .framelogic-chat-toggle { bottom: 24px; }
+}

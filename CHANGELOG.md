@@ -12,6 +12,26 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.88 — 2026-11-08
+
+### Chat local integrado en FrameLogic Web (sin API de pago)
+
+- Nuevo botón **Chat** dentro del espacio modelo, independiente del panel MCP y de VS Code.
+- Consultas de piezas, ejes, referencias, estado del modelo y comandos básicos de selección, copia, desplazamiento y Undo/Redo.
+- Interpretación determinista en español con selección/identificador de pieza, distancia explícita en milímetros y eje local X/Y/Z. Si faltan datos o hay nombres repetidos, se detiene sin adivinar.
+- Las modificaciones requieren preparación previa, lista de posiciones, botón de revisión y confirmación humana mediante el despachador compartido; se conservan las validaciones de estado y el historial CAD.
+- Opción experimental de **WebLLM** en el navegador: descarga voluntaria de un modelo abierto solo tras consentimiento; exige WebGPU, recursos locales y conexión inicial a CDN/modelo. La IA responde preguntas sobre una vista de solo lectura y no ejecuta operaciones por sí sola.
+- Sin nuevas credenciales, servicios de IA de pago ni descarga del modelo al abrir FrameLogic. MCP remoto y conectores existentes permanecen separados.
+- Pruebas unitarias para comandos, eje obligatorio, distancias, nombres duplicados y aprobación explícita.
+
+### Límites conocidos
+
+- La IA local puede no funcionar en equipos sin WebGPU o con poca memoria y depende de descargas de terceros; en ese caso los comandos básicos siguen disponibles.
+- El chat utiliza órdenes delimitadas, no es un agente CAD autónomo. Los ejes longitudinales no se infieren de la geometría.
+- Despliegue web sujeto a compilación, pruebas y configuración de Cloudflare Pages.
+
+---
+
 ## v0.1.87 — 2026-11-07
 
 ### MCP remoto para la web

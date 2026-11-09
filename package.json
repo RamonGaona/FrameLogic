@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.87",
+  "version": "0.1.88",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -20,6 +20,7 @@
     "test:piece-preparation": "vitest run packages/bim/core/src/interaction/assetPositionForPieceSnap.test.ts packages/bim/core/src/design/pickPieceReferenceAtScreen.test.ts packages/bim/core/src/interaction/PieceReferenceManipulationController.test.ts packages/bim/core/src/design/PieceDefinitionHelperSceneController.test.ts packages/bim/core/src/interaction/PieceDefinitionPreparationController.test.ts packages/bim/core/src/interaction/PieceFrameLogicWorkspaceController.test.ts packages/bim/core/src/interaction/finishActiveLineForAxisConversion.test.ts apps/web/src/features/bim/dockPiecePreparationPanel.test.ts",
     "test:piece-visuals": "vitest run tests/pieceEditorIsolationCss.test.ts tests/modelSpaceChromeStartup.test.ts packages/bim/core/src/design/getStablePieceColorIdentity.test.ts packages/bim/core/src/design/pieceDefinitionLocalViewMatrix.test.ts packages/bim/core/src/navigation/mountModelRenderPanel.test.ts packages/bim/core/src/navigation/resolvePieceDisplayQuality.test.ts apps/web/src/features/bim/installPieceWorkspaceChromeGuard.test.ts packages/bim/core/src/navigation/referenceVisibilitySettings.test.ts packages/bim/core/src/design/PieceVisualGeometry.test.ts packages/bim/core/src/design/DesignSceneController.test.ts packages/bim/core/src/design/PieceVisualPackage.test.ts packages/geometry-engine/src/step/OcctStepVisualCache.test.ts",
     "test:automation": "vitest run packages/bim/core/src/automation/ModelOperations.test.ts apps/mcp/src/integration.test.ts apps/mcp/src/stdio.test.ts apps/mcp/src/remote.test.ts",
+    "test:browser-chat": "vitest run apps/web/src/features/bim/localChatCommand.test.ts",
     "automation:demo": "node --import tsx apps/mcp/src/demo.ts",
     "mcp:start": "node --import tsx apps/mcp/src/main.ts",
     "mcp:deploy": "npx wrangler@4.158.0 deploy --config apps/mcp/wrangler.jsonc"
