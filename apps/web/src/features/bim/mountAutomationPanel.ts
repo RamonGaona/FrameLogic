@@ -1,9 +1,11 @@
 import { connectAutomationBridge, type PrecisionBimCoreInstance } from "@framelogic/bim-core";
+import { getOrCreateAssistantDock, releaseAssistantDock } from "./assistantDockLayout";
 
 /** One explicit session per viewport; no credentials in localStorage or URLs. */
 export function mountAutomationPanel(core: Pick<PrecisionBimCoreInstance, "automation">) {
   const root = document.createElement("div");
-  root.innerHTML = `<button type="button" aria-label="Abrir conexión MCP" style="position:fixed;right:18px;bottom:18px;z-index:1100;padding:8px 14px;border:1px solid #64748b;border-radius:8px;background:#172033;color:white;cursor:pointer">MCP</button>
+  root.className = "framelogic-mcp-root";
+  root.innerHTML = `<button class="framelogic-mcp-toggle" type="button" aria-label="Abrir conexión MCP">MCP</button>
     <dialog aria-label="Conexión MCP" style="width:min(480px,calc(100vw - 40px));max-height:85vh;overflow:auto;padding:24px;border:1px solid #64748b;border-radius:12px;background:#172033;color:#f1f5f9;font:14px system-ui">
       <form method="dialog"><button style="float:right" aria-label="Cerrar panel">Cerrar</button></form>
       <h2 style="margin:0 0 12px">Conectar un agente MCP</h2>
@@ -23,7 +25,8 @@ export function mountAutomationPanel(core: Pick<PrecisionBimCoreInstance, "autom
       </section>
       <p style="font-size:12px;color:#cbd5e1">MCP experimental · No incluye un chat ni un proveedor de IA.</p>
     </dialog>`;
-  document.body.append(root);
+  const dock = getOrCreateAssistantDock();
+  dock.append(root);
   const dialog = root.querySelector("dialog")!;
   const form = root.querySelector<HTMLFormElement>("[data-connect]")!;
   const serverInput = form.elements.namedItem("server") as HTMLInputElement;
@@ -89,5 +92,5 @@ export function mountAutomationPanel(core: Pick<PrecisionBimCoreInstance, "autom
       status.textContent = "Configuración copiada. Compártela solo con tu cliente MCP.";
     } catch { status.textContent = "No se pudo copiar. Selecciona y copia los campos manualmente."; tokenInput.type = "text"; }
   };
-  return () => { disposed = true; abort.abort(); void stop(); dialog.close(); root.remove(); };
+  return () => { disposed = true; abort.abort(); void stop(); dialog.close(); root.remove(); releaseAssistantDock(dock); };
 }
