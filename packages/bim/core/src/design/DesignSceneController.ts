@@ -32,6 +32,7 @@ export class DesignSceneController {
   }
 
   private visualLevel: PieceVisualLevel = "WORK";
+  private readonly adaptiveLevels = new Map<string, PieceVisualLevel>();
   private isolatedPieceWorkspaceInstanceId: string | null = null;
 
   /**
@@ -45,11 +46,27 @@ export class DesignSceneController {
   }
   private readonly detailInstances = new Set<string>();
 
-  setVisualLevel(level: PieceVisualLevel, detailInstanceIds: readonly string[] = []): void {
+  setVisualLevel(
+    level: PieceVisualLevel,
+    detailInstanceIds: readonly string[] = [],
+    adaptiveLevels?: ReadonlyMap<string, PieceVisualLevel>,
+  ): void {
     this.visualLevel = level;
     this.detailInstances.clear();
     for (const id of detailInstanceIds) this.detailInstances.add(id);
+    this.adaptiveLevels.clear();
+    if (adaptiveLevels) for (const [id, visual] of adaptiveLevels) this.adaptiveLevels.set(id, visual);
     this.sync();
+  }
+
+  /** World bounds from the original detailed asset, never from simplified LOD. */
+  getInstanceWorldBounds(instanceId: string): THREE.Box3 | null {
+    const object = this.instanceObjects.get(instanceId);
+    const assetId = object?.userData["frameLogic"]?.assetId as string | undefined;
+    const local = assetId ? this.assetBounds.get(assetId) : undefined;
+    if (!object || !local || local.isEmpty()) return null;
+    object.updateMatrixWorld(true);
+    return local.clone().applyMatrix4(object.matrixWorld);
   }
 
   private readonly scene:
@@ -706,7 +723,7 @@ export class DesignSceneController {
 
       object.traverse((child) => {
         if (child instanceof THREE.Mesh) {
-          setPieceVisualLevel(child, this.detailInstances.has(instance.id) ? "DETAIL" : this.visualLevel);
+          setPieceVisualLevel(child, this.detailInstances.has(instance.id) ? "DETAIL" : (this.adaptiveLevels.get(instance.id) ?? this.visualLevel));
         }
       });
 

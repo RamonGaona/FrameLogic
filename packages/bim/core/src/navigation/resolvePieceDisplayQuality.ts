@@ -1,6 +1,6 @@
 import type { PieceVisualLevel } from "../design/PieceVisualGeometry";
 
-export type PieceDisplayQuality = "DESIGN" | "SELECTED" | "DETAIL" | "LOW";
+export type PieceDisplayQuality = "DESIGN" | "SELECTED" | "DETAIL" | "LOW" | "AUTO";
 
 export interface ResolvedPieceDisplayQuality {
   readonly level: PieceVisualLevel;
@@ -22,6 +22,7 @@ export function resolvePieceDisplayQuality(
       return { level: "DETAIL", detailInstanceIds: [] };
     case "LOW":
       return { level: "LOW", detailInstanceIds: [] };
+    case "AUTO":
     case "DESIGN":
       return { level: "WORK", detailInstanceIds: [] };
     case "SELECTED": {

@@ -25,6 +25,18 @@ proyectos de FrameLogic permanecen independientes. Las cotas derivadas
 necesitan una revisión técnica, especialmente en piezas curvas, ensamblajes
 complejos y casos con proyección de ejes inclinados.
 
+## Extensión v0.1.92 — Precisión e interacción
+
+Las ideas de rastreo por puntos adquiridos y adaptación del detalle al
+tamaño proyectado siguen las orientaciones técnicas de:
+- `services/web/src/core/snap/tracking.ts`
+- `services/web/src/core/render/lod.ts`
+
+FrameLogic implementa sus propios algoritmos en `SnapTrackingMath.ts`,
+`PrecisionSnapEngine.ts` y `AdaptivePieceLod.ts`, para su espacio 3D,
+con WorkPlane y niveles LOW/WORK/DETAIL existentes. No se importaron las
+entidades ni el motor de Cota.
+
 ## Aviso de atribución
 
 Cota

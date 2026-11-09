@@ -234,10 +234,16 @@ export async function createBimCore(
     new ModelRenderModeController({
       container,
       designScene: core.designScene,
+      cameraProvider: () => core.world.camera.three,
+      trackingSnap: core.snapEngine,
       selectedIds: () => core.designSelection.getSelectedIds(),
       preparedInstanceId: () => core.piecePreparation.getState().instanceId ?? undefined,
       referenceDisplay: core.pieceDefinitionHelpers,
     });
+  core.snapEngine.setTrackingFrameProvider(() => {
+    const plane = core.cadWorkPlane.getState();
+    return { enabled: plane.enabled, xAxis: plane.xAxis, yAxis: plane.yAxis };
+  });
 
   const referenceManipulation = new PieceReferenceManipulationController({
     canvas,

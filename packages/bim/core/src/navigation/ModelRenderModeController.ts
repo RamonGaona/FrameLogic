@@ -4,6 +4,8 @@ import type {
   DesignSceneController,
 } from "../design/DesignSceneController";
 import { resolvePieceDisplayQuality, type PieceDisplayQuality } from "./resolvePieceDisplayQuality";
+import { adaptiveVisualLevel, projectedBoundsSizePx } from "./AdaptivePieceLod";
+import type { PieceVisualLevel } from "../design/PieceVisualGeometry";
 import { mountModelRenderPanel } from "./mountModelRenderPanel";
 import {
   GENERAL_REFERENCE_VISIBILITY_STORAGE_KEY,
@@ -26,6 +28,8 @@ export type ModelRenderMode =
 interface Options {
   readonly container: HTMLElement;
   readonly designScene: DesignSceneController;
+  readonly cameraProvider: () => THREE.Camera;
+  readonly trackingSnap?: { setTrackingEnabled(enabled: boolean): void };
   readonly selectedIds?: () => readonly string[];
   readonly preparedInstanceId?: () => string | undefined;
   readonly referenceDisplay?: ReferenceDisplayOptions;
@@ -63,6 +67,7 @@ export class ModelRenderModeController {
   private readonly qualitySelect: HTMLSelectElement;
   private readonly options: Options;
   private qualityKey = "";
+  private readonly adaptiveHistory = new Map<string, PieceVisualLevel>();
   private readonly displayedGeometry = new WeakMap<THREE.Mesh, THREE.BufferGeometry>();
 
   constructor(options: Options) {
@@ -125,6 +130,7 @@ export class ModelRenderModeController {
     for (const [value, text] of [
       ["DESIGN", "Dise\u00f1o"], ["SELECTED", "Detalle seleccionado"],
       ["DETAIL", "Detalle"], ["LOW", "B\u00e1sico"],
+      ["AUTO", "Automático (zoom)"],
     ]) {
       const option = document.createElement("option");
       option.value = value!;
@@ -188,6 +194,7 @@ export class ModelRenderModeController {
       };
       addToggle("Mostrar SNAPs", showSnaps, value => { showSnaps = value; update(); });
       addToggle("Mostrar ejes", showAxes, value => { showAxes = value; update(); });
+      if (options.trackingSnap) addToggle("Rastreo SNAP (X/Y)", false, value => options.trackingSnap?.setTrackingEnabled(value));
       refs.append(summary, menu);
       panel.append(refs);
       update();
@@ -240,12 +247,40 @@ export class ModelRenderModeController {
       this.options.selectedIds?.() ?? [],
       this.options.preparedInstanceId?.(),
     );
-    const key = `${quality}:${[...resolved.detailInstanceIds].sort().join(",")}`;
+    let adaptiveLevels: Map<string, PieceVisualLevel> | undefined;
+    if (quality === "AUTO") {
+      adaptiveLevels = new Map();
+      const selected = new Set(this.options.selectedIds?.() ?? []);
+      const prepared = this.options.preparedInstanceId?.();
+      const rect = this.container.getBoundingClientRect();
+      const camera = this.options.cameraProvider();
+      camera.updateMatrixWorld(true);
+      for (const [id, object] of this.designScene.getInstanceEntries()) {
+        if (!object.visible) continue;
+        const bounds = this.designScene.getInstanceWorldBounds(id);
+        const sizePx = bounds
+          ? projectedBoundsSizePx(bounds, camera, rect.width, rect.height)
+          : null;
+        const level = selected.has(id) || prepared === id
+          ? "DETAIL"
+          : adaptiveVisualLevel(sizePx, this.adaptiveHistory.get(id) ?? "WORK");
+        this.adaptiveHistory.set(id, level);
+        adaptiveLevels.set(id, level);
+      }
+      for (const id of [...this.adaptiveHistory.keys()])
+        if (!adaptiveLevels.has(id)) this.adaptiveHistory.delete(id);
+    } else {
+      this.adaptiveHistory.clear();
+    }
+    const key = quality === "AUTO"
+      ? `AUTO:${[...adaptiveLevels!].sort(([a], [b]) => a.localeCompare(b)).map(([id, level]) => id + ":" + level).join(",")}`
+      : `${quality}:${[...resolved.detailInstanceIds].sort().join(",")}`;
     if (key !== this.qualityKey) {
       this.qualityKey = key;
       this.designScene.setVisualLevel(
         resolved.level,
         resolved.detailInstanceIds,
+        adaptiveLevels,
       );
     }
     this.updatePanelPosition();

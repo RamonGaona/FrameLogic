@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { findTrackingHit } from "./SnapTrackingMath";
 
 import type {
   DesignSnapResult,
@@ -44,6 +45,16 @@ export class PrecisionSnapEngine {
   private readonly enabledProvider: () => boolean;
   private readonly pixelTolerance: number;
   private readonly pointMarker: HTMLDivElement;
+  private readonly trackingLine: HTMLDivElement;
+  private readonly trackingLabel: HTMLDivElement;
+  private readonly trackingRaycaster = new THREE.Raycaster();
+  private trackingEnabled = false;
+  private trackingAnchor: { point: THREE.Vector3; instanceId: string; acquiredAt: number } | null = null;
+  private trackingCandidateKey = "";
+  private trackingTimer: ReturnType<typeof setTimeout> | null = null;
+  private trackingFrameProvider: (() => {
+    enabled: boolean; xAxis: THREE.Vector3; yAxis: THREE.Vector3;
+  }) | null = null;
   private disposed = false;
 
   constructor(
@@ -108,9 +119,21 @@ export class PrecisionSnapEngine {
     this.pointMarker.style.transform =
       "translate(-50%, -50%)";
 
-    document.body.append(
-      this.pointMarker,
-    );
+    document.body.append(this.pointMarker);
+    this.trackingLine = document.createElement("div");
+    Object.assign(this.trackingLine.style, {
+      position: "fixed", display: "none", height: "1px",
+      zIndex: "1000", background: "#3ad6d0", pointerEvents: "none",
+      transformOrigin: "0 50%", boxShadow: "0 0 3px #3ad6d0",
+    });
+    this.trackingLabel = document.createElement("div");
+    Object.assign(this.trackingLabel.style, {
+      position: "fixed", display: "none", zIndex: "1001",
+      padding: "2px 4px", borderRadius: "3px",
+      background: "rgba(8,26,31,0.9)", color: "#69efdf",
+      font: "11px monospace", pointerEvents: "none",
+    });
+    document.body.append(this.trackingLine, this.trackingLabel);
 
     this.domElement.addEventListener(
       "pointerleave",
@@ -123,23 +146,126 @@ export class PrecisionSnapEngine {
     );
   }
 
-  findSnap(
-    clientX: number,
-    clientY: number,
-  ): DesignSnapResult | null {
-    const details =
-      this.findSnapDetails(
-        clientX,
-        clientY,
-      );
+  /** Optional: never enabled automatically, so existing gizmo/snap behavior is unchanged. */
+  setTrackingEnabled(enabled: boolean): void {
+    this.trackingEnabled = enabled;
+    if (!enabled) this.clearTracking();
+  }
 
-    this.updatePointMarker(
-      details?.snap.point
-      ?? null,
+  setTrackingFrameProvider(provider: () => {
+    enabled: boolean; xAxis: THREE.Vector3; yAxis: THREE.Vector3;
+  }): void {
+    this.trackingFrameProvider = provider;
+  }
+
+  clearTracking(): void {
+    this.trackingAnchor = null;
+    this.cancelTrackingCandidate();
+    this.hideTrackingGuide();
+  }
+
+  findSnap(clientX: number, clientY: number): DesignSnapResult | null {
+    const details = this.findSnapDetails(clientX, clientY);
+    let result = details?.snap ?? null;
+    if (this.trackingEnabled && this.enabledProvider()) {
+      if (details) {
+        this.offerTrackingAnchor(details);
+        this.hideTrackingGuide();
+      } else {
+        this.cancelTrackingCandidate();
+        result = this.findTrackedPoint(clientX, clientY);
+      }
+    } else {
+      this.clearTracking();
+    }
+    this.updatePointMarker(result?.point ?? null);
+    return result;
+  }
+
+  private offerTrackingAnchor(details: PrecisionSnapDetails): void {
+    const exact = details.geometry?.precision === "MODEL_EXACT"
+      || ["CUSTOM", "CONNECTION", "ORIGIN"].includes(details.snap.type);
+    if (!exact || !details.snap.instanceId) {
+      this.cancelTrackingCandidate();
+      return;
+    }
+    const p = details.snap.point;
+    const key = [details.snap.instanceId, details.snap.type, p.x, p.y, p.z].join(":");
+    if (key === this.trackingCandidateKey) return;
+    this.cancelTrackingCandidate();
+    this.trackingCandidateKey = key;
+    this.trackingTimer = setTimeout(() => {
+      if (this.disposed || !this.trackingEnabled || this.trackingCandidateKey !== key) return;
+      this.trackingAnchor = {
+        point: p.clone(), instanceId: details.snap.instanceId, acquiredAt: Date.now(),
+      };
+    }, 350);
+  }
+
+  private cancelTrackingCandidate(): void {
+    if (this.trackingTimer !== null) clearTimeout(this.trackingTimer);
+    this.trackingTimer = null;
+    this.trackingCandidateKey = "";
+  }
+
+  private findTrackedPoint(clientX: number, clientY: number): DesignSnapResult | null {
+    const anchor = this.trackingAnchor;
+    const frame = this.trackingFrameProvider?.();
+    if (!anchor || !frame?.enabled || Date.now() - anchor.acquiredAt > 15000) {
+      this.hideTrackingGuide();
+      if (anchor && Date.now() - anchor.acquiredAt > 15000) this.trackingAnchor = null;
+      return null;
+    }
+    const rect = this.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const camera = this.cameraProvider();
+    camera.updateMatrixWorld(true);
+    this.trackingRaycaster.setFromCamera(new THREE.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -((clientY - rect.top) / rect.height * 2 - 1),
+    ), camera);
+    const project = (point: THREE.Vector3) => {
+      const screen = point.clone().project(camera);
+      return {
+        x: rect.left + (screen.x + 1) * rect.width / 2,
+        y: rect.top + (1 - screen.y) * rect.height / 2,
+        visible: screen.z >= -1 && screen.z <= 1,
+      };
+    };
+    const hit = findTrackingHit(
+      anchor.point, this.trackingRaycaster.ray,
+      [
+        { name: "X", direction: frame.xAxis },
+        { name: "Y", direction: frame.yAxis },
+      ],
+      project, clientX, clientY, 10,
     );
+    if (!hit) {
+      this.hideTrackingGuide();
+      return null;
+    }
+    const a = project(anchor.point), b = project(hit.point);
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    if (length > 0.5 && a.visible && b.visible) {
+      this.trackingLine.style.display = "block";
+      this.trackingLine.style.left = a.x + "px";
+      this.trackingLine.style.top = a.y + "px";
+      this.trackingLine.style.width = length + "px";
+      this.trackingLine.style.transform =
+        "rotate(" + Math.atan2(b.y - a.y, b.x - a.x) + "rad)";
+      this.trackingLabel.style.display = "block";
+      this.trackingLabel.style.left = b.x + 12 + "px";
+      this.trackingLabel.style.top = b.y + 8 + "px";
+      this.trackingLabel.textContent = "Rastreo " + hit.axis;
+    } else {
+      this.hideTrackingGuide();
+    }
+    return { type: "POINT", point: hit.point, instanceId: anchor.instanceId };
+  }
 
-    return details?.snap
-      ?? null;
+  private hideTrackingGuide(): void {
+    this.trackingLine.style.display = "none";
+    this.trackingLabel.style.display = "none";
   }
 
   findSnapDetails(
@@ -301,11 +427,15 @@ export class PrecisionSnapEngine {
       this.handlePointerLeave,
     );
 
+    this.clearTracking();
+    this.trackingLine.remove();
+    this.trackingLabel.remove();
     this.pointMarker.remove();
   }
 
   private readonly handlePointerLeave = (): void => {
     this.hidePointMarker();
+    this.clearTracking();
   };
 
   private updatePointMarker(
