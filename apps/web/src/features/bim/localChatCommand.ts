@@ -9,7 +9,8 @@ type Axis = "x" | "y" | "z";
 type Vec = { x: number; y: number; z: number };
 export type ChatCommand =
   | { kind: "help" | "list" | "info" | "undo" | "redo" }
-  | { kind: "axes" | "snaps" | "select" | "piece"; id: string }
+  | { kind: "axes" | "snaps" | "select" | "piece" | "describe"; id: string }
+  | { kind: "query"; search?: string; selectedOnly?: boolean }
   | { kind: "prepare"; request:
     | { operation: "copy_piece" | "copy_piece_array"; id: string; space: "local"; direction: Vec; distance: number; count: number }
     | { operation: "move_piece"; id: string; space: "local"; displacement: Vec } }
@@ -50,6 +51,10 @@ export function parseLocalChatCommand(input: string, pieces: ChatPiece[], select
   if (/\b(?:rehacer|redo)\b/i.test(normalized)) return { kind: "redo" };
   if (/\b(?:confirmar|aprobar|aplicar)\b/i.test(normalized))
     return { kind: "unknown", message: "Para aplicar cambios utiliza el botón de confirmación de la propuesta; nunca se ejecutan solo por escribir una orden." };
+  const search = raw.match(/^(?:buscar|busca|filtrar|filtra)\s+(?:piezas|instancias|objetos)\s+(?:por\s+)?(.+)$/i);
+  if (search) return { kind: "query", search: search[1]!.trim() };
+  if (/^(?:consulta|consultar|muestra|mostrar|ver)\s+(?:las\s+)?(?:piezas|instancias|objetos)\s+seleccionad[ao]s?\b/i.test(normalized))
+    return { kind: "query", selectedOnly: true };
   if (/\b(?:lista|listar|muestra|mostrar|ver|consulta|consultar|cuantas|cuántas)\b.*\b(?:piezas|instancias)\b/i.test(normalized))
     return { kind: "list" };
   if (/^(?:resumen|estado|informaci[oó]n)\b.*\b(?:modelo|proyecto)\b/i.test(normalized)
@@ -59,6 +64,7 @@ export function parseLocalChatCommand(input: string, pieces: ChatPiece[], select
     : /\b(?:mueve|mover|desplaza|desplazar)\b/i.test(normalized) ? "move" : undefined;
   const detail = /\b(?:ejes?|axes?)\b/i.test(normalized) ? "axes"
     : /\b(?:snaps?|puntos de referencia)\b/i.test(normalized) ? "snaps"
+      : /\b(?:describe|describir|inspecciona|inspeccionar)\b/i.test(normalized) ? "describe"
       : /\b(?:selecciona|seleccionar)\b/i.test(normalized) ? "select"
         : /\b(?:detalle|detalles|informaci[oó]n)\b.*\bpieza\b/i.test(normalized) ? "piece" : undefined;
   if (!action && !detail)
@@ -94,4 +100,29 @@ export function parseLocalChatCommand(input: string, pieces: ChatPiece[], select
     operation: count === 1 ? "copy_piece" : "copy_piece_array",
     id, space: "local", direction, distance, count,
   } };
+}
+
+// A deterministic multi-command script: every statement must be a known
+// move/copy command. No AI text, JavaScript or free-form code is executed.
+export type ChatScript = {
+  kind: "commands";
+  requests: Array<Extract<ChatCommand, { kind: "prepare" }>["request"]>;
+} | { kind: "unknown"; message: string };
+export function parseLocalChatScript(
+  input: string,
+  pieces: ChatPiece[],
+  selected: readonly string[],
+): ChatScript | null {
+  if (!input.includes(";")) return null;
+  const statements = input.split(";").map(part => part.trim()).filter(Boolean);
+  if (input.length > 500 || statements.length < 2 || statements.length > 8)
+    return { kind: "unknown", message: "La secuencia debe tener 2–8 instrucciones separadas por «;» y como máximo 500 caracteres." };
+  const requests: Extract<ChatCommand, { kind: "prepare" }>["request"][] = [];
+  for (const statement of statements) {
+    const command = parseLocalChatCommand(statement, pieces, selected);
+    if (command.kind !== "prepare")
+      return { kind: "unknown", message: "Secuencia no válida: " + statement + ". Solo admite mover/copiar piezas con eje local explícito y distancia en mm." };
+    requests.push(command.request);
+  }
+  return { kind: "commands", requests };
 }
