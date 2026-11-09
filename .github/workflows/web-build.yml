@@ -39,6 +39,9 @@ jobs:
       - name: Domain and geometry tests
         run: npm test
 
+      - name: Automatic drawing planner tests
+        run: npm run test:drawings
+
       - name: Gizmo interaction tests
         run: npm run test:gizmos
 
