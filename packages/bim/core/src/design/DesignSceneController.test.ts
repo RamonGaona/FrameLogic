@@ -72,6 +72,15 @@ describe("piece representations in the model space", () => {
     expect(scene.getRaycastInstanceObjects(ray)).toEqual([a]);
     scene.setVisualLevel("DETAIL");
     expect(b.geometry).toBe(original);
+    const boundsBefore = scene.getInstanceWorldBounds(second.id)!;
+    scene.setVisualLevel("WORK", [], new Map([
+      [first.id, "LOW"], [second.id, "DETAIL"],
+    ]));
+    expect(a.geometry).not.toBe(original);
+    expect(b.geometry).toBe(original);
+    expect(scene.getInstanceWorldBounds(second.id)!.equals(boundsBefore)).toBe(true);
+    // Adaptation controls visual geometry only, not picking precision.
+    expect(getPieceDetailGeometry(a)).toBe(original);
     scene.dispose();
     expect(dispose).toHaveBeenCalledOnce();
   });
