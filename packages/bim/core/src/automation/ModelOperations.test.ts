@@ -154,7 +154,7 @@ describe("Stage 3: bounded command sequences with one history entry", () => {
     expect(preview.steps[0]?.targets[0]?.position.x).toBeCloseTo(-100);
     expect(preview.steps[1]?.targets.map(p => p.position.x)).toEqual([-1600, -3100]);
     expect(preview.steps[2]?.targets[0]?.position.x).toBeCloseTo(-200);
-    preview.steps[0]!.targets[0]!.position.x = 99999; // Caller must not alter accepted proposal.
+    Reflect.set(preview.steps[0]!.targets[0]!.position, "x", 99999); // Caller must not alter accepted proposal.
     const response = ops.confirmCommands(preview.id);
     expect(response.operationCount).toBe(3);
     expect(response.movedIds).toEqual(["REC1500-instance"]);
