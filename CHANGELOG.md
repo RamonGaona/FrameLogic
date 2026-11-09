@@ -17,7 +17,7 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 ### Corrección del chat y controles superpuestos
 
 - Los accesos **Chat** y **MCP** comparten ahora un único dock lateral, ubicado debajo del ViewCube y fuera de la barra inferior de secciones, controles Render y etiqueta de versión.
-- El panel de chat se coloca en la zona libre del espacio modelo, ajustando altura según el ViewCube, controles inferiores y etiqueta de versión; en ventanas muy pequeñas se abre como una hoja modal cerrable.
+- El panel de chat se coloca en la zona libre del espacio modelo, ajustando altura según el ViewCube, controles inferiores y etiqueta de versión; si hay un panel lateral de piezas se aparta de él, y en ventanas pequeñas se abre como una hoja modal cerrable.
 - Nuevo selector **Pieza para comandos** dentro del chat para elegir una instancia concreta por nombre e identificador abreviado, sin necesidad de que el panel oculte la pieza del visor. Evita ambigüedad con piezas repetidas.
 - El chat sigue consultando el modelo y requiere preparar y aprobar cualquier modificación; se mantiene la conexión MCP remota y el historial Undo/Redo.
 - Pruebas nuevas de distribución adaptable para pantallas grandes/pequeñas y no superposición con los controles inferiores.
