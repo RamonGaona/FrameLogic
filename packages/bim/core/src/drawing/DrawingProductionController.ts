@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { planAutomaticDimensions, planAutomaticViews, type AutomaticDimensionPoint } from "./AutoDrawingPlanner";
 
 import type {
   DesignLayer,
@@ -456,6 +457,8 @@ export class DrawingProductionController {
 
     const hatchButton = this.makeButton("Hatch", "Activar/desactivar hachurado de corte");
     const addViewButton = this.makeButton("+ Vista", "Agregar otra sección a esta hoja");
+    const automaticViewsButton = this.makeButton("Vistas auto", "Generar alzado, planta, lateral e isométrica del modelo actual");
+    const automaticDimensionsButton = this.makeButton("Cotas auto", "Acotar vértices y círculos exactos B-Rep de la vista activa; revisar antes de fabricar");
     const titleBlockButton = this.makeButton("Cajetín", "Editar cajetín");
     const revisionButton = this.makeButton("Revisión", "Crear revisión del plano");
 
@@ -494,11 +497,13 @@ export class DrawingProductionController {
       this.workspace.render();
     });
     addViewButton.addEventListener("click", () => this.addView());
+    automaticViewsButton.addEventListener("click", () => this.createAutomaticViews());
+    automaticDimensionsButton.addEventListener("click", () => this.createAutomaticDimensions());
     titleBlockButton.addEventListener("click", () => this.editTitleBlock());
     revisionButton.addEventListener("click", () => this.addRevision());
 
     const marker = toolbar.querySelector("button:last-of-type");
-    const controls = [dimensionSelect, sizeSelect, orientationSelect, scaleSelect, hatchButton, addViewButton, titleBlockButton, revisionButton];
+    const controls = [dimensionSelect, sizeSelect, orientationSelect, scaleSelect, hatchButton, addViewButton, automaticViewsButton, automaticDimensionsButton, titleBlockButton, revisionButton];
     for (const control of controls) {
       if (marker) marker.before(control);
       else toolbar.append(control);
@@ -954,6 +959,160 @@ export class DrawingProductionController {
       this.workspace.appendSvgText(x + 40, rowY, revision.date, 8, "#333", "start");
       this.workspace.appendSvgText(x + 112, rowY, revision.description, 8, "#333", "start");
     });
+  }
+
+
+  /** Create orthographic/isometric section definitions from the visible 3D model. */
+  private createAutomaticViews(): void {
+    const bounds = new THREE.Box3();
+    let included = 0;
+    for (const [, object] of this.designScene.getInstanceEntries()) {
+      if (!object.visible) continue;
+      object.updateWorldMatrix(true, true);
+      const current = new THREE.Box3().setFromObject(object);
+      if (current.isEmpty()) continue;
+      bounds.union(current);
+      included++;
+    }
+    if (included === 0 || bounds.isEmpty()) {
+      this.workspace.setStatus("VISTAS AUTO: no hay piezas 3D visibles para proyectar.");
+      return;
+    }
+
+    const generated = planAutomaticViews({
+      min: { x: bounds.min.x, y: bounds.min.y, z: bounds.min.z },
+      max: { x: bounds.max.x, y: bounds.max.y, z: bounds.max.z },
+    });
+    if (generated.length !== 4) {
+      this.workspace.setStatus("VISTAS AUTO: no se pudieron calcular los límites del modelo.");
+      return;
+    }
+    // Do not silently replace manual section definitions or their annotations.
+    if (this.sectionDrawing.getSections().some((entry) =>
+      generated.some((view) => entry.name === view.name))) {
+      this.workspace.setStatus("VISTAS AUTO: ya existen vistas automáticas. Revisa las secciones antes de regenerarlas.");
+      return;
+    }
+
+    const sections: SectionViewDefinition[] = generated.map((view) => ({
+      id: crypto.randomUUID(),
+      name: view.name,
+      origin: view.origin,
+      xAxis: view.xAxis,
+      yAxis: view.yAxis,
+      normal: view.normal,
+      width: view.width,
+      height: view.height,
+      depth: view.depth,
+    }));
+    for (const section of sections) {
+      this.sectionRuntime.sections.push(section);
+      this.sectionRuntime.createVisual(section);
+    }
+    this.sectionRuntime.activeSectionId = sections[0]!.id;
+    this.sectionRuntime.refreshUi();
+    if (!this.drawingWorkspace.openActiveSection()) {
+      this.workspace.setStatus("VISTAS AUTO: se crearon las secciones, pero no se pudo abrir el plano.");
+      return;
+    }
+    const sheet = this.ensureActiveSheet();
+    if (sheet) {
+      for (const section of sections.slice(1)) {
+        if (!sheet.views.some((view) => view.sectionId === section.id)) {
+          sheet.views.push({ id: crypto.randomUUID(), sectionId: section.id });
+        }
+      }
+    }
+    this.workspace.render();
+    this.workspace.setStatus("VISTAS AUTO: 4 vistas creadas desde el modelo. Verifica ocultación, escala y proyecciones antes de usar el plano.");
+  }
+
+  /** Auto dimensions are attached only to exact STEP B-Rep topology, never low-detail meshes. */
+  private createAutomaticDimensions(): void {
+    const snapshot = this.workspace.snapshot;
+    const documentState = this.getActiveDocument();
+    if (!snapshot || !documentState) {
+      this.workspace.setStatus("COTAS AUTO: abre primero una hoja de plano.");
+      return;
+    }
+    const section = snapshot.section;
+    const worldToSection = this.sectionWorldToLocalMatrix(section);
+    const normal = new THREE.Vector3(section.normal.x, section.normal.y, section.normal.z).normalize();
+    const kernel = getOpenCascadeBrepKernel();
+    const features: AutomaticDimensionPoint[] = [];
+
+    for (const instance of this.designModel.pieceInstances.getAll()) {
+      const documentId = getStepBrepDocumentId(instance.definitionId);
+      if (!documentId) continue;
+      const document = kernel.getDocument(documentId);
+      const object = this.designScene.getInstanceObject(instance.id);
+      if (!document || !object || !object.visible) continue;
+      object.updateMatrixWorld(true);
+      const worldScale = new THREE.Vector3();
+      object.getWorldScale(worldScale);
+      const scale = (Math.abs(worldScale.x) + Math.abs(worldScale.y) + Math.abs(worldScale.z)) / 3;
+      const project = (point: { x: number; y: number; z: number }): THREE.Vector3 =>
+        new THREE.Vector3(point.x, point.y, point.z)
+          .multiplyScalar(document.modelScale)
+          .applyMatrix4(object.matrixWorld)
+          .applyMatrix4(worldToSection);
+      const add = (id: string, point: { x: number; y: number; z: number },
+        kind: AutomaticDimensionPoint["kind"], radius?: number): void => {
+        const local = project(point);
+        const tol = 1e-7;
+        if (local.x < -tol || local.x > section.width + tol
+          || local.y < -tol || local.y > section.height + tol
+          || local.z < -tol || local.z > section.depth + tol) return;
+        features.push({ instanceId: instance.id, topologyId: id, kind, x: local.x, y: local.y, radius });
+      };
+      for (const vertex of document.vertices) add(vertex.id, vertex.point, "VERTEX");
+      for (const edge of document.edges) {
+        if (!edge.circle) continue;
+        const circleNormal = new THREE.Vector3(
+          edge.circle.normal.x, edge.circle.normal.y, edge.circle.normal.z,
+        ).transformDirection(object.matrixWorld);
+        // A tilted circle appears elliptic; do not mislabel it with a diameter on paper.
+        if (Math.abs(circleNormal.dot(normal)) < 0.995) continue;
+        add(edge.id + ":center", edge.circle.center, "CIRCLE",
+          edge.circle.radius * document.modelScale * scale);
+      }
+    }
+    const planned = planAutomaticDimensions(features);
+    if (!planned.length) {
+      this.workspace.setStatus("COTAS AUTO: no hay vértices STEP B-Rep exactos en esta sección. No se acotará desde una malla.");
+      return;
+    }
+    const reference = (point: AutomaticDimensionPoint): DrawingPointReferenceRuntime => ({
+      instanceId: point.instanceId,
+      x: point.x,
+      y: point.y,
+      topologyId: point.topologyId,
+      featureId: point.topologyId,
+      snapKind: point.kind === "CIRCLE" ? "CENTER" : "ENDPOINT",
+      precision: "BREP_EXACT",
+      radius: point.radius,
+      centerX: point.kind === "CIRCLE" ? point.x : undefined,
+      centerY: point.kind === "CIRCLE" ? point.y : undefined,
+    });
+    // Regeneration is idempotent and preserves every manual annotation.
+    const manual = documentState.annotations.filter((entry) =>
+      (entry as Record<string, unknown>)["autoSource"] !== "FRAMELOGIC_AUTODIM_V1");
+    const auto = planned.map((plan) => ({
+      id: crypto.randomUUID(),
+      kind: "DIMENSION" as const,
+      a: reference(plan.a),
+      b: reference(plan.b),
+      offsetX: plan.offsetX,
+      offsetY: plan.offsetY,
+      dimensionMode: plan.mode,
+      autoSource: "FRAMELOGIC_AUTODIM_V1",
+    }));
+    documentState.annotations.splice(0, documentState.annotations.length, ...manual, ...auto);
+    this.workspace.pendingDimensionStart = null;
+    this.workspace.setTool("SELECT");
+    this.workspace.render();
+    this.workspace.setStatus("COTAS AUTO: " + auto.length
+      + " cotas desde topología STEP exacta. Los extremos curvos no se infieren de las mallas; revisa la documentación antes de fabricar.");
   }
 
   private addView(): void {
