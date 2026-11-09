@@ -12,6 +12,26 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.93 — 2026-11-09
+
+### Etapa 3 · Automatización segura desde chat web y MCP
+
+- **Consultas del modelo**: herramientas `query_objects` (buscar por ID, nombre/código o selección, hasta 100 resultados) y `describe_object` (posición, rotación, ejes locales, SNAPs persistentes y límites 3D). Los límites salen de la geometría detallada registrada, no de la representación LOW/WORK/DETAIL; si aún no está cargada, se indica explícitamente.
+- **Scripts de comandos**: `prepare_commands` recibe de 1 a 12 órdenes explícitas de movimiento/copia y propone los resultados sin modificar el modelo. Permite movimientos sucesivos de una misma pieza y copias desde su posición simulada.
+- **Aprobación humana**: `confirm_commands` valida ID, caducidad (2 minutos) y vigencia del modelo. Requiere confirmación en la pestaña FrameLogic antes de ejecutar; no hay ejecución de código arbitrario ni cambios directos producidos por la IA.
+- **Undo/Redo conjunto**: toda secuencia se aplica como una única operación compartida en el historial CAD, con prevalidación, rollback de mutaciones parciales y recuperación de IDs de copia al rehacer.
+- **Chat web**: búsqueda y descripción de piezas, y secuencias deterministas separadas por punto y coma; muestra la propuesta con destinos en milímetros y botón **Revisar y aplicar**. La IA WebLLM sigue siendo solo lectura.
+- Pruebas de regresión de consultas, control de permisos, límites de scripts, planes obsoletos, aceptación/denegación, atomicidad, deshacer y rehacer; integración con MCP local/remoto existente.
+- Sin nuevos servicios ni dependencias de pago. Inspirado en la arquitectura de herramientas de Cota (Apache-2.0), con atribución.
+
+### Límites
+
+- Sólo mover/copiar instancias editables no pertenecientes a ensamblajes bloqueados por el sistema actual. Alineación automática, edición de geometría, ejecución de código JavaScript arbitrario y referencias a piezas creadas dentro del mismo script quedan fuera de esta etapa.
+- Las consultas de límites 3D son de la geometría visual detallada cuando está disponible, **no tolerancias B-Rep certificadas**. Consultas SNAP/ejes se mantienen independientes del LOD.
+- Debe comprobarse en la aplicación publicada la aprobación de un lote y el Undo/Redo con un proyecto de prueba real.
+
+---
+
 ## v0.1.92 — 2026-11-09
 
 ### Etapa 2 · Precisión e interacción: rastreo SNAP y LOD adaptativo
