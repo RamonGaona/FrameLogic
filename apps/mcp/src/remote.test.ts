@@ -1,3 +1,4 @@
+import { toolSchemas } from "../../../packages/contracts/src/automation";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -59,7 +60,7 @@ describe("remote MCP worker", () => {
     const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${session.agentToken}` } }, fetch: f.fetchWorker });
     try {
       await client.connect(transport);
-      expect((await client.listTools()).tools).toHaveLength(10);
+      expect((await client.listTools()).tools).toHaveLength(Object.keys(toolSchemas).length);
       const call = async (name: string, args: Record<string, unknown> = {}) => client.callTool({ name, arguments: args }, undefined, { timeout: 10000 });
       expect((await call("list_pieces")).isError).toBe(false);
       const proposal = await call("prepare_operation", { request: { operation: "copy_piece_array", id: "REC1500-instance", space: "local", direction: { x: 1, y: 0, z: 0 }, distance: 1500, count: 4 } });
