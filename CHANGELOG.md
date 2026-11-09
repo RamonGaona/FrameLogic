@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.90 — 2026-11-08
+
+### Chat web: selección de instancias CAD en tiempo real
+
+- El chat ahora lee la selección CAD unificada del mismo núcleo del espacio modelo, en lugar de depender solo de consultas aisladas de `designSelection` al enviar comandos.
+- Suscripción a cambios de selección: el estado visible del chat muestra nombre e identificador corto de la instancia PieceInstance actualmente seleccionada; cambiar de pieza actualiza la referencia sin reiniciar el chat.
+- El selector interno usa identificadores únicos y mantiene una elección manual explícita; al cambiar la selección del visor vuelve automáticamente a seguir la selección del modelo. Se corrige el selector que podía quedar fijado a un identificador anterior.
+- Distingue selección vacía, varias instancias, puntos/líneas CAD y referencias inválidas, con mensajes específicos. Nunca presupone que un punto, una línea o una referencia CAD constituye una instancia de pieza, ni elige arbitrariamente una definición con nombres repetidos.
+- Los movimientos y matrices siguen pasando por preparación, comprobación de vigencia, aprobación humana, historial Undo/Redo y la API compartida de automatización; WebLLM permanece de solo lectura.
+- Pruebas de regresión de resolución del visor y selector, nombres repetidos, cambios de selección, referencias caducadas y comandos de copia por ID; se reutilizan pruebas de automatización/MCP e interfaz adaptable existentes.
+
+### Limitación
+
+- Un CAD DWG/DXF seleccionado como bloque de referencia, o una línea/punto independiente, no equivale a una `PieceInstance` y no puede usarse como origen de copias de piezas. El chat lo indicará expresamente. La verificación visual de un clic real sobre geometría requiere un navegador con WebGL y un proyecto de prueba.
+
+---
+
 ## v0.1.89 — 2026-11-08
 
 ### Corrección del chat y controles superpuestos

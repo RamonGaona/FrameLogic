@@ -1,9 +1,10 @@
 import { createOperationDispatcher, type PrecisionBimCoreInstance } from "@framelogic/bim-core";
 import { parseLocalChatCommand, type ChatPiece } from "./localChatCommand";
+import { resolveChatPieceTarget } from "./localChatPieceTarget";
 import "./localChatPanel.css";
 import { getOrCreateAssistantDock, releaseAssistantDock, syncAssistantDockLayout } from "./assistantDockLayout";
 
-type Core = Pick<PrecisionBimCoreInstance, "automation" | "designSelection">;
+type Core = Pick<PrecisionBimCoreInstance, "automation" | "designSelection" | "getCadSelectionState" | "subscribeCadSelection">;
 type LocalEngine = {
   chat: { completions: { create(input: {
     messages: Array<{ role: "system" | "user"; content: string }>;
@@ -39,7 +40,7 @@ export function mountLocalChatPanel(core: Core): () => void {
     '<button class="framelogic-chat-toggle" type="button" aria-expanded="false" aria-controls="framelogic-chat-panel">Chat</button>',
     '<section id="framelogic-chat-panel" class="framelogic-chat-panel" role="dialog" aria-label="Asistente local de FrameLogic" hidden>',
     '<header class="framelogic-chat-header"><div><strong>Asistente FrameLogic</strong><small>Local · sin API de pago</small></div><button data-close type="button" aria-label="Cerrar chat">×</button></header>',
-    '<label class="framelogic-chat-piece-picker" for="framelogic-chat-piece">Pieza para comandos<select id="framelogic-chat-piece"><option value="">Usar selección del modelo</option></select></label>',
+    '<label class="framelogic-chat-piece-picker" for="framelogic-chat-piece">Pieza para comandos<select id="framelogic-chat-piece"><option value="">Usar selección del modelo</option></select><small class="framelogic-chat-selection-status" role="status" aria-live="polite"></small></label>',
     '<div class="framelogic-chat-messages" role="log" aria-live="polite"></div>',
     '<div class="framelogic-chat-tools"><button type="button" data-ai>Activar IA local (descarga opcional)</button>',
     '<small data-ai-status>Comandos directos sin descarga. La IA requiere WebGPU y memoria gráfica; nunca ejecuta cambios.</small></div>',
@@ -61,6 +62,7 @@ export function mountLocalChatPanel(core: Core): () => void {
   const form = root.querySelector<HTMLFormElement>(".framelogic-chat-form")!;
   const field = root.querySelector<HTMLInputElement>("#framelogic-chat-input")!;
   const pieceSelect = root.querySelector<HTMLSelectElement>("#framelogic-chat-piece")!;
+  const selectionStatus = root.querySelector<HTMLElement>(".framelogic-chat-selection-status")!;
   const send = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
   const aiButton = root.querySelector<HTMLButtonElement>("[data-ai]")!;
   const aiStatus = root.querySelector<HTMLElement>("[data-ai-status]")!;
@@ -75,12 +77,27 @@ export function mountLocalChatPanel(core: Core): () => void {
   let pendingButton: HTMLButtonElement | undefined;
   let disposed = false;
   let busy = false;
-  let manuallyChosenPiece = false;
-  pieceSelect.onchange = () => { manuallyChosenPiece = true; };
+  // A manual picker choice is an explicit override, until the user selects another
+  // PieceInstance in the viewport. Empty picker always follows the live CAD selection.
+  let manuallyChosenPieceId: string | null = null;
+  let lastViewerPieceIds = core.getCadSelectionState().pieceIds.join("\u0000");
+  pieceSelect.onchange = () => {
+    manuallyChosenPieceId = pieceSelect.value || null;
+    updateSelectionStatus();
+  };
+
+  function currentTarget() {
+    return resolveChatPieceTarget(getPieces(core).refs, core.getCadSelectionState(), manuallyChosenPieceId);
+  }
+
+  function updateSelectionStatus(): void {
+    const target = currentTarget();
+    selectionStatus.textContent = target.status;
+    selectionStatus.title = target.issue || target.status;
+  }
 
   function refreshPiecePicker(): void {
     const pieces = getPieces(core).refs;
-    const previous = pieceSelect.value;
     const placeholder = document.createElement("option");
     placeholder.value = "";
     placeholder.textContent = "Usar selección del modelo";
@@ -91,12 +108,23 @@ export function mountLocalChatPanel(core: Core): () => void {
       option.textContent = piece.name + " · " + piece.id.slice(0, 8);
       pieceSelect.append(option);
     }
-    const currentSelection = core.designSelection.getSelectedIds();
-    const selected = currentSelection.length === 1 ? currentSelection[0] : undefined;
-    const target = manuallyChosenPiece && pieces.some(piece => piece.id === previous)
-      ? previous : selected && pieces.some(piece => piece.id === selected) ? selected : "";
-    pieceSelect.value = target;
+    // A removed instance must not leave a hidden, stale manual override.
+    if (manuallyChosenPieceId && !pieces.some(piece => piece.id === manuallyChosenPieceId)) {
+      manuallyChosenPieceId = null;
+    }
+    // Never convert an automatic viewport selection into a sticky picker override.
+    pieceSelect.value = manuallyChosenPieceId || "";
+    updateSelectionStatus();
   }
+
+  const unsubscribeSelection = core.subscribeCadSelection(state => {
+    const viewerIds = state.pieceIds.join("\u0000");
+    if (viewerIds !== lastViewerPieceIds) {
+      lastViewerPieceIds = viewerIds;
+      manuallyChosenPieceId = null;
+    }
+    refreshPiecePicker();
+  });
 
   function appendMessage(role: "user" | "assistant", content: string): void {
     const box = document.createElement("div");
@@ -192,8 +220,8 @@ export function mountLocalChatPanel(core: Core): () => void {
   async function handleCommand(input: string): Promise<void> {
     const { refs, lines } = getPieces(core);
     refreshPiecePicker();
-    const selectedIds = pieceSelect.value ? [pieceSelect.value] : core.designSelection.getSelectedIds();
-    const command = parseLocalChatCommand(input, refs, selectedIds);
+    const target = currentTarget();
+    const command = parseLocalChatCommand(input, refs, target.ids);
     switch (command.kind) {
       case "help": appendMessage("assistant", help); return;
       case "list":
@@ -248,7 +276,8 @@ export function mountLocalChatPanel(core: Core): () => void {
       }
       case "unknown":
         if (ai && command.message.startsWith("No reconozco")) await answerWithAi(input);
-        else appendMessage("assistant", command.message);
+        else appendMessage("assistant", command.message.startsWith("Selecciona exactamente una pieza")
+          ? target.issue || command.message : command.message);
     }
   }
 
@@ -327,6 +356,7 @@ export function mountLocalChatPanel(core: Core): () => void {
     invalidatePreview();
     window.removeEventListener("resize", updateDockLayout);
     window.clearInterval(layoutTimer);
+    unsubscribeSelection();
     void ai?.unload?.();
     root.remove();
     releaseAssistantDock(dock);
