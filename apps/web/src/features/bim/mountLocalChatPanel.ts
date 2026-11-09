@@ -1,6 +1,7 @@
 import { createOperationDispatcher, type PrecisionBimCoreInstance } from "@framelogic/bim-core";
 import { parseLocalChatCommand, type ChatPiece } from "./localChatCommand";
 import "./localChatPanel.css";
+import { getOrCreateAssistantDock, releaseAssistantDock, syncAssistantDockLayout } from "./assistantDockLayout";
 
 type Core = Pick<PrecisionBimCoreInstance, "automation" | "designSelection">;
 type LocalEngine = {
@@ -38,6 +39,7 @@ export function mountLocalChatPanel(core: Core): () => void {
     '<button class="framelogic-chat-toggle" type="button" aria-expanded="false" aria-controls="framelogic-chat-panel">Chat</button>',
     '<section id="framelogic-chat-panel" class="framelogic-chat-panel" role="dialog" aria-label="Asistente local de FrameLogic" hidden>',
     '<header class="framelogic-chat-header"><div><strong>Asistente FrameLogic</strong><small>Local · sin API de pago</small></div><button data-close type="button" aria-label="Cerrar chat">×</button></header>',
+    '<label class="framelogic-chat-piece-picker" for="framelogic-chat-piece">Pieza para comandos<select id="framelogic-chat-piece"><option value="">Usar selección del modelo</option></select></label>',
     '<div class="framelogic-chat-messages" role="log" aria-live="polite"></div>',
     '<div class="framelogic-chat-tools"><button type="button" data-ai>Activar IA local (descarga opcional)</button>',
     '<small data-ai-status>Comandos directos sin descarga. La IA requiere WebGPU y memoria gráfica; nunca ejecuta cambios.</small></div>',
@@ -45,7 +47,12 @@ export function mountLocalChatPanel(core: Core): () => void {
     '<div class="framelogic-chat-compose"><input id="framelogic-chat-input" maxlength="500" autocomplete="off" placeholder="Copia esta pieza 4 veces cada 1500 mm en X" required />',
     '<button type="submit">Enviar</button></div></form></section>',
   ].join("");
-  document.body.append(root);
+  const dock = getOrCreateAssistantDock();
+  dock.prepend(root);
+  const updateDockLayout = () => syncAssistantDockLayout(dock);
+  updateDockLayout();
+  window.addEventListener("resize", updateDockLayout);
+  const layoutTimer = window.setInterval(updateDockLayout, 800);
 
   const toggle = root.querySelector<HTMLButtonElement>(".framelogic-chat-toggle")!;
   const panel = root.querySelector<HTMLElement>(".framelogic-chat-panel")!;
@@ -53,6 +60,7 @@ export function mountLocalChatPanel(core: Core): () => void {
   const messages = root.querySelector<HTMLElement>(".framelogic-chat-messages")!;
   const form = root.querySelector<HTMLFormElement>(".framelogic-chat-form")!;
   const field = root.querySelector<HTMLInputElement>("#framelogic-chat-input")!;
+  const pieceSelect = root.querySelector<HTMLSelectElement>("#framelogic-chat-piece")!;
   const send = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
   const aiButton = root.querySelector<HTMLButtonElement>("[data-ai]")!;
   const aiStatus = root.querySelector<HTMLElement>("[data-ai-status]")!;
@@ -67,6 +75,28 @@ export function mountLocalChatPanel(core: Core): () => void {
   let pendingButton: HTMLButtonElement | undefined;
   let disposed = false;
   let busy = false;
+  let manuallyChosenPiece = false;
+  pieceSelect.onchange = () => { manuallyChosenPiece = true; };
+
+  function refreshPiecePicker(): void {
+    const pieces = getPieces(core).refs;
+    const previous = pieceSelect.value;
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Usar selección del modelo";
+    pieceSelect.replaceChildren(placeholder);
+    for (const piece of pieces) {
+      const option = document.createElement("option");
+      option.value = piece.id;
+      option.textContent = piece.name + " · " + piece.id.slice(0, 8);
+      pieceSelect.append(option);
+    }
+    const currentSelection = core.designSelection.getSelectedIds();
+    const selected = currentSelection.length === 1 ? currentSelection[0] : undefined;
+    const target = manuallyChosenPiece && pieces.some(piece => piece.id === previous)
+      ? previous : selected && pieces.some(piece => piece.id === selected) ? selected : "";
+    pieceSelect.value = target;
+  }
 
   function appendMessage(role: "user" | "assistant", content: string): void {
     const box = document.createElement("div");
@@ -161,7 +191,9 @@ export function mountLocalChatPanel(core: Core): () => void {
 
   async function handleCommand(input: string): Promise<void> {
     const { refs, lines } = getPieces(core);
-    const command = parseLocalChatCommand(input, refs, core.designSelection.getSelectedIds());
+    refreshPiecePicker();
+    const selectedIds = pieceSelect.value ? [pieceSelect.value] : core.designSelection.getSelectedIds();
+    const command = parseLocalChatCommand(input, refs, selectedIds);
     switch (command.kind) {
       case "help": appendMessage("assistant", help); return;
       case "list":
@@ -247,7 +279,7 @@ export function mountLocalChatPanel(core: Core): () => void {
   toggle.onclick = () => {
     panel.hidden = !panel.hidden;
     toggle.setAttribute("aria-expanded", String(!panel.hidden));
-    if (!panel.hidden) field.focus();
+    if (!panel.hidden) { refreshPiecePicker(); updateDockLayout(); field.focus(); }
   };
   close.onclick = () => {
     panel.hidden = true;
@@ -293,7 +325,10 @@ export function mountLocalChatPanel(core: Core): () => void {
   return () => {
     disposed = true;
     invalidatePreview();
+    window.removeEventListener("resize", updateDockLayout);
+    window.clearInterval(layoutTimer);
     void ai?.unload?.();
     root.remove();
+    releaseAssistantDock(dock);
   };
 }
