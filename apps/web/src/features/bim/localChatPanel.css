@@ -135,6 +135,19 @@ html[data-framelogic-piece-workspace-active="true"] .framelogic-chat-root {
   display: none;
 }
 /* An intentionally modal sheet on narrow/short screens, not floating over buttons. */
+/* The compact experience deliberately blocks the CAD surface until the dialog is closed. */
+.framelogic-assistant-dock[data-chat-compact="true"]:has(.framelogic-chat-panel:not([hidden]))::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 12, 20, 0.70);
+  pointer-events: auto;
+}
+/* The high-z-index version label must not draw on top of the compact input. */
+html:has(.framelogic-assistant-dock[data-chat-compact="true"] .framelogic-chat-panel:not([hidden]))
+  [data-framelogic-build-version="true"] {
+  visibility: hidden;
+}
 .framelogic-assistant-dock[data-chat-compact="true"] .framelogic-chat-panel {
   position: fixed;
   inset: 12px;
