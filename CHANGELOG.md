@@ -12,6 +12,25 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.92 — 2026-11-09
+
+### Etapa 2 · Precisión e interacción: rastreo SNAP y LOD adaptativo
+
+- **Refs → Rastreo SNAP (X/Y):** control opcional, desactivado por defecto. Al mantener el cursor sobre un SNAP exacto aproximadamente 350 ms, se adquiere el punto como referencia temporal. Al desplazar el cursor cerca de los ejes X/Y del WorkPlane activo, se dibuja una guía y se genera un punto de posicionamiento 3D sobre el eje; los SNAPs directos siempre tienen prioridad.
+- El rastreo utiliza tolerancia de pantalla de 10 píxeles y la dirección real del WorkPlane (XY, XZ, YZ o personalizado), no presupone ejes globales. Se cancela al salir del canvas, desactivarse o pasados 15 segundos.
+- **Render → Automático (zoom):** selección adaptativa entre LOW, WORK y DETAIL según tamaño proyectado por pieza, con histéresis para evitar parpadeos. La pieza seleccionada o en preparación conserva DETAIL, y los modos manuales Diseño, Básico, Detalle y Detalle seleccionado siguen disponibles.
+- Las representaciones siguen siendo exclusivamente visuales; el STEP y B-Rep original permanecen intactos y el raycast utiliza la geometría detallada. No modifica metadatos ni transformaciones.
+- Pruebas de rastreo en ejes rotados, validación de profundidad y tolerancia, cambio de LOD al zoom y regresión de geometría detallada por instancia.
+- Diseño inspirado en el rastreo y LOD de Cota (Christian Orengia, Apache-2.0), conservando su atribución en `docs/third-party/`.
+
+### Limitaciones
+
+- El rastreo está disponible solo si el WorkPlane está activo; requiere captar previamente un SNAP exacto y admite un único origen temporal X/Y, no cruces entre dos orígenes ni tangencias automáticas.
+- El modo adaptativo no reduce el B-Rep ni sustituye las representaciones LOD existentes. Los elementos sin límites válidos conservan calidad Diseño.
+- Pendiente prueba visual en un modelo STEP complejo y evaluación de FPS/uso de memoria en el navegador antes de ampliar su alcance.
+
+---
+
 ## v0.1.91 — 2026-11-09
 
 ### Etapa 1 · Vistas técnicas y acotación automática (adaptación Cota)
