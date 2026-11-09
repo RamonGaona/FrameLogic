@@ -1,18 +1,27 @@
 /* Browser-local assistant. Kept separate from the MCP connector and model panels. */
-.framelogic-chat-root {
+.framelogic-assistant-dock {
   position: fixed;
-  inset: 0;
+  top: 200px;
+  right: 16px;
   z-index: 1300;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
   pointer-events: none;
+}
+.framelogic-chat-root,
+.framelogic-mcp-root {
+  position: static;
+  pointer-events: auto;
   font: 13px system-ui, sans-serif;
   color: #f1f5f9;
 }
 .framelogic-chat-root button,
 .framelogic-chat-root input { font: inherit; }
-.framelogic-chat-toggle {
-  position: absolute;
-  right: 18px;
-  bottom: 63px;
+.framelogic-chat-toggle,
+.framelogic-mcp-toggle {
+  position: static;
   pointer-events: auto;
   padding: 9px 16px;
   border: 1px solid #5e8eac;
@@ -24,12 +33,13 @@
   box-shadow: 0 4px 16px #0006;
 }
 .framelogic-chat-panel {
-  position: absolute;
-  right: 18px;
-  bottom: 115px;
-  width: min(410px, calc(100vw - 36px));
-  height: min(590px, calc(100dvh - 145px));
-  min-height: 270px;
+  position: fixed;
+  right: var(--assistant-panel-right, 92px);
+  top: var(--assistant-panel-top, 200px);
+  bottom: auto;
+  width: min(410px, calc(100vw - 116px));
+  height: var(--assistant-panel-height, 380px);
+  min-height: 0;
   pointer-events: auto;
   display: flex;
   flex-direction: column;
@@ -124,7 +134,47 @@
 html[data-framelogic-piece-workspace-active="true"] .framelogic-chat-root {
   display: none;
 }
-@media (max-height: 520px) {
-  .framelogic-chat-panel { bottom: 76px; height: calc(100dvh - 92px); }
-  .framelogic-chat-toggle { bottom: 24px; }
+/* An intentionally modal sheet on narrow/short screens, not floating over buttons. */
+.framelogic-assistant-dock[data-chat-compact="true"] .framelogic-chat-panel {
+  position: fixed;
+  inset: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: auto;
+  height: auto;
+  max-height: none;
+  z-index: 1400;
+}
+.framelogic-assistant-dock[data-chat-compact="true"]:has(.framelogic-chat-panel:not([hidden])) :is(
+  .framelogic-chat-toggle,
+  .framelogic-mcp-root
+) {
+  visibility: hidden;
+  pointer-events: none;
+}
+.framelogic-chat-piece-picker {
+  display: block;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid #405267;
+  color: #afc1cd;
+}
+.framelogic-chat-piece-picker select {
+  width: 100%;
+  margin-top: 5px;
+  padding: 7px;
+  border: 1px solid #60788d;
+  border-radius: 7px;
+  background: #0a1724;
+  color: #f1f5f9;
+  font: inherit;
+}
+.framelogic-chat-root button:focus-visible,
+.framelogic-mcp-toggle:focus-visible,
+.framelogic-chat-root select:focus-visible {
+  outline: 2px solid #79c5e8;
+  outline-offset: 2px;
+}
+html[data-framelogic-piece-workspace-active="true"] .framelogic-assistant-dock {
+  display: none;
 }
