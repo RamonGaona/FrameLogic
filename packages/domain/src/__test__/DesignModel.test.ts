@@ -467,3 +467,155 @@ import {
   
     },
   );
+
+function createAssemblyFixture() {
+  const design = new DesignModel();
+  const asset = design.registerAsset({
+    name: "shared-geometry.ifc",
+    format: "IFC",
+  });
+  const definition = design.registerPieceDefinition({
+    code: "TEST_MEMBER",
+    name: "Member",
+    geometryAssetId: asset.id,
+  });
+  const [first, second, third] = [
+    design.registerPieceInstance({ definitionId: definition.id }),
+    design.registerPieceInstance({ definitionId: definition.id }),
+    design.registerPieceInstance({ definitionId: definition.id }),
+  ];
+  return { design, asset, definition, first, second, third };
+}
+
+describe("assembly membership stability", () => {
+  it("regroups pieces without removing instances or duplicating geometry", () => {
+    const { design, asset, definition, first, second, third } =
+      createAssemblyFixture();
+    const original = design.registerAssembly({
+      name: "Original",
+      pieceInstanceIds: [first.id, second.id],
+    });
+
+    const regrouped = design.groupPieceInstances({
+      name: "Regrouped",
+      pieceInstanceIds: [second.id, third.id],
+    });
+
+    expect(design.assemblies.get(original.id)?.pieceInstanceIds)
+      .toEqual([first.id]);
+    expect(design.assemblies.get(regrouped.id)?.pieceInstanceIds)
+      .toEqual([second.id, third.id]);
+    expect(design.pieceInstances.count).toBe(3);
+    expect(design.pieceDefinitions.get(definition.id)?.geometryAssetId)
+      .toBe(asset.id);
+    expect(design.assets.get(asset.id)).toBeDefined();
+  });
+
+  it("does not detach existing groups when assembly creation fails", () => {
+    const { design, first, second } = createAssemblyFixture();
+    const original = design.registerAssembly({
+      id: "original-id",
+      name: "Original",
+      pieceInstanceIds: [first.id],
+    });
+
+    expect(() =>
+      design.groupPieceInstances({
+        id: original.id,
+        name: "Duplicate identifier",
+        pieceInstanceIds: [first.id, second.id],
+      }),
+    ).toThrow(/already exists/i);
+    expect(design.assemblies.get(original.id)?.pieceInstanceIds)
+      .toEqual([first.id]);
+    expect(design.assemblies.count).toBe(1);
+  });
+
+  it("rejects repeated, unknown and already owned member IDs", () => {
+    const { design, first, second } = createAssemblyFixture();
+    expect(() =>
+      design.registerAssembly({
+        name: "Duplicates",
+        pieceInstanceIds: [first.id, first.id],
+      }),
+    ).toThrow(/twice/i);
+    expect(() =>
+      design.groupPieceInstances({
+        name: "Missing piece",
+        pieceInstanceIds: [first.id, "missing-instance"],
+      }),
+    ).toThrow(/does not exist/i);
+
+    design.registerAssembly({
+      name: "Owner",
+      pieceInstanceIds: [first.id],
+    });
+    expect(() =>
+      design.registerAssembly({
+        name: "Second owner",
+        pieceInstanceIds: [first.id, second.id],
+      }),
+    ).toThrow(/already belongs/i);
+    expect(design.assemblies.count).toBe(1);
+  });
+
+  it("moves instances between groups without adding duplicates", () => {
+    const { design, first, second, third } = createAssemblyFixture();
+    const source = design.registerAssembly({
+      name: "Source",
+      pieceInstanceIds: [first.id, second.id],
+    });
+    const target = design.registerAssembly({
+      name: "Target",
+      pieceInstanceIds: [third.id],
+    });
+
+    design.movePieceInstancesToAssembly(
+      target.id,
+      [first.id, second.id, first.id],
+    );
+
+    expect(design.assemblies.get(source.id)?.pieceInstanceIds).toEqual([]);
+    expect(design.assemblies.get(target.id)?.pieceInstanceIds)
+      .toEqual([third.id, first.id, second.id]);
+    expect(design.pieceInstances.count).toBe(3);
+  });
+
+  it("rejects invalid direct updates without damaging existing groups", () => {
+    const { design, first, second, third } = createAssemblyFixture();
+    const source = design.registerAssembly({
+      name: "Source",
+      pieceInstanceIds: [first.id],
+    });
+    const target = design.registerAssembly({
+      name: "Target",
+      pieceInstanceIds: [second.id, third.id],
+    });
+
+    expect(() =>
+      design.updateAssemblyPieceInstances(
+        target.id, [second.id, first.id],
+      ),
+    ).toThrow(/already belongs/i);
+    expect(design.assemblies.get(source.id)?.pieceInstanceIds)
+      .toEqual([first.id]);
+    expect(design.assemblies.get(target.id)?.pieceInstanceIds)
+      .toEqual([second.id, third.id]);
+  });
+
+  it("ungroups without deleting pieces and keeps the assembly snapshot shape", () => {
+    const { design, first, second } = createAssemblyFixture();
+    const assembly = design.groupPieceInstances({
+      name: "Temporary",
+      pieceInstanceIds: [first.id, second.id],
+    });
+    const saved = JSON.parse(JSON.stringify(design.assemblies.getAll()));
+    expect(saved[0].pieceInstanceIds).toEqual([first.id, second.id]);
+    expect(saved[0].name).toBe("Temporary");
+
+    expect(design.removeAssembly(assembly.id)).toBe(true);
+    expect(design.assemblies.count).toBe(0);
+    expect(design.pieceInstances.get(first.id)).toBeDefined();
+    expect(design.pieceInstances.get(second.id)).toBeDefined();
+  });
+});
