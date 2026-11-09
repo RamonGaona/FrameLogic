@@ -83,7 +83,10 @@ export function syncAssistantDockLayout(dock: HTMLElement): DockLayout {
     const element = document.querySelector<HTMLElement>(selector);
     if (!element || !element.isConnected) continue;
     const style = getComputedStyle(element);
-    if (style.display === "none" || style.visibility === "hidden") continue;
+    // The compact chat may temporarily hide the version badge, but its original
+    // rectangle still reserves space so the layout never alternates each refresh.
+    if (style.display === "none" || (style.visibility === "hidden"
+      && selector !== '[data-framelogic-build-version="true"]')) continue;
     const rect = element.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) reservedTop.push(rect.top);
   }
