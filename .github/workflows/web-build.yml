@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -29,6 +32,9 @@ jobs:
 
       - name: Automation and MCP integration tests
         run: npm run test:automation
+
+      - name: Local browser chat parser tests
+        run: npm run test:browser-chat
 
       - name: Domain and geometry tests
         run: npm test
