@@ -7,6 +7,9 @@ import type {
   DesignSceneController,
 } from "../design/DesignSceneController";
 
+import type { CadHistoryController } from "../interaction/CadHistoryController";
+
+
 import type {
   DesignSelectionController,
 } from "../interaction/DesignSelectionController";
@@ -32,6 +35,7 @@ export interface InstanceTreeControllerOptions {
   readonly designModel: DesignModel;
   readonly designScene: DesignSceneController;
   readonly designSelection: DesignSelectionController;
+  readonly cadHistory: CadHistoryController;
   readonly cadReferenceBlocks: CadReferenceBlockController;
   readonly cancelActiveCommand: () => void;
 }
@@ -57,6 +61,10 @@ export class InstanceTreeController {
   private expanded = true;
   private lastSignature = "";
   private focusedItem: FocusedTreeItem = null;
+  // Selecting an assembly in the tree is NOT equivalent to selecting its
+  // component pieces in the viewport. Keep the explicit identity separately.
+  private readonly selectedAssemblyIds = new Set<string>();
+  private updatingTreeSelection = false;
   private contextMenu: HTMLDivElement | null = null;
   private disposed = false;
 
@@ -95,7 +103,10 @@ export class InstanceTreeController {
     );
 
     this.unsubscribeSelection = options.designSelection.subscribe(
-      () => this.render(),
+      () => {
+        if (!this.updatingTreeSelection) this.selectedAssemblyIds.clear();
+        this.render();
+      },
     );
     this.unsubscribeLayers = options.designModel.layers.subscribe(
       () => this.render(),
@@ -200,7 +211,7 @@ export class InstanceTreeController {
     const assemblies = this.options.designModel.assemblies
       .getAll()
       .map((assembly) =>
-        `${assembly.id}:${assembly.name}:${assembly.pieceInstanceIds.join(",")}`,
+        `${assembly.id}:${assembly.name}:${assembly.pieceInstanceIds.join(",")}:${assembly.parentAssemblyId ?? ""}:${Boolean(assembly.locked)}`,
       )
       .sort();
     const cadLayers = this.options.designModel.layers
@@ -218,6 +229,7 @@ export class InstanceTreeController {
       cadLayers,
       selectedPieces,
       selectedCad,
+      selectedAssemblyIds: [...this.selectedAssemblyIds].sort(),
     });
   }
 
