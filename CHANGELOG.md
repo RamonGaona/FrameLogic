@@ -12,6 +12,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.100 — 2026-11-10
+
+### Corrección de la versión visible en Model Space
+
+- **Badge sincronizado:** el indicador `FrameLogic v...` deja de tener el número `0.1.98` fijado manualmente y utiliza `__FRAMELOGIC_VERSION__`, inyectado por Vite desde el `package.json` raíz durante la compilación.
+- **Versionado consistente:** `package.json` y las dos entradas de FrameLogic en `package-lock.json` quedan sincronizados con `0.1.100`.
+- **Protección contra regresiones:** la prueba `npm run test:version-badge` verifica que el badge no conserve versiones literales, que Vite inyecte la versión oficial y que el lockfile coincida con la versión raíz.
+- **Sin cambios funcionales del modelador:** los ensambles jerárquicos incorporados en v0.1.99 permanecen intactos; esta corrección afecta únicamente la identificación de la compilación.
+
+---
+
 ## v0.1.99 — 2026-11-10
 
 ### Ensambles jerárquicos: prevención de ciclos indirectos y agrupación atómica
