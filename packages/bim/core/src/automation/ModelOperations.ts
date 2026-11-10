@@ -2,6 +2,7 @@ import { Euler, Matrix4, Quaternion, Vector3 } from "three";
 import type { DesignModel, PieceInstance, PieceVector3Data } from "@framelogic/domain";
 import type { CadHistoryController } from "../interaction/CadHistoryController";
 import { assetPositionForPieceSnap } from "../interaction/assetPositionForPieceSnap";
+import { AssemblyAutomation, type AssemblyChangeRequest } from "./AssemblyAutomation";
 
 type Vec = PieceVector3Data;
 type Transform = PieceInstance["transform"];
@@ -38,6 +39,9 @@ export interface OperationPorts {
   sync(): void;
   getSelection(): string[];
   setSelection(ids: string[]): void;
+  /** The INSTANCIAS tree stores assembly identities separately from piece IDs. */
+  getSelectedAssemblyIds?(): readonly string[];
+  setSelectedAssemblyIds?(ids: readonly string[]): void;
   /** May omit bounds when the detailed visual asset has not been loaded. */
   getInstanceBounds?(id: string): { min: Vec; max: Vec } | null;
   /** Reject when an interactive command, isolated editor or project load is active. */
@@ -57,8 +61,10 @@ export class ModelOperations {
   private pending = new Map<string, { proposal: Proposal; fingerprint: string; expires: number }>();
   private pendingCommands: { proposal: CommandsProposal; fingerprint: string; expires: number } | null = null;
   readonly audit: { operation: string; success: boolean; message?: string }[] = [];
+  private readonly assemblyCommands: AssemblyAutomation;
   constructor(model: DesignModel, history: CadHistoryController, ports: OperationPorts) {
     this.model = model; this.history = history; this.ports = ports;
+    this.assemblyCommands = new AssemblyAutomation(model, history, ports);
   }
   private log(operation: string, success: boolean, message?: string): void {
     this.audit.push({ operation, success, message });
@@ -74,7 +80,7 @@ export class ModelOperations {
     const p = this.instance(id);
     if (this.model.layers.get(p.layerId)?.locked) throw new Error("Piece layer is locked");
     if (this.model.assemblies.getAll().some(a => a.pieceInstanceIds.includes(id)))
-      throw new Error("Assembly members are not supported by automation phase 1");
+      throw new Error("This piece belongs to an assembly. Use move_assembly/copy_assembly with the assembly ID.");
     return p;
   }
   private matrix(id: string): Matrix4 {
@@ -90,15 +96,25 @@ export class ModelOperations {
   private fingerprint(): string {
     // Full relevant domain snapshot also invalidates previews after manual edits or project replacement.
     return JSON.stringify([this.model.pieceInstances.getAll(), this.model.pieceDefinitions.getAll(),
-      this.model.layers.getAll(), this.model.assemblies.getAll()]);
+      this.model.layers.getAll(), this.model.assemblies.getAll(),
+      this.ports.getSelection(), this.ports.getSelectedAssemblyIds?.() ?? []]);
   }
   getModelInfo() {
     return { units: "mm", instances: this.model.pieceInstances.count,
       definitions: this.model.pieceDefinitions.getAll().length,
       canUndo: this.history.canUndo, canRedo: this.history.canRedo,
-      limitations: ["align_piece unavailable", "assembly members cannot be modified", "persistent snaps only"] };
+      limitations: ["align_piece unavailable", "use assembly commands for grouped pieces", "persistent snaps only", "assembly commands use global XYZ"] };
   }
   listPieces() { return structuredClone({ instances: this.model.pieceInstances.getAll(), definitions: this.model.pieceDefinitions.getAll() }); }
+  listAssemblies(limit = 100) { return this.assemblyCommands.listAssemblies(limit); }
+  getSelectionContext() { return this.assemblyCommands.getSelectionContext(); }
+  selectAssembly(id: string) { return this.assemblyCommands.selectAssembly(id); }
+  prepareAssembly(request: AssemblyChangeRequest) {
+    this.pending.clear();
+    this.pendingCommands = null;
+    return this.assemblyCommands.prepare(request);
+  }
+  confirmAssembly(proposalId: string) { return this.assemblyCommands.confirm(proposalId); }
   getPiece(id: string) { return structuredClone({ instance: this.instance(id), definition: this.definition(id) }); }
   listPieceSnaps(id: string) {
     const d = this.definition(id), m = this.matrix(id);
@@ -234,6 +250,7 @@ export class ModelOperations {
 
   prepare(request: ChangeRequest): Proposal {
     this.ports.assertReady();
+    this.assemblyCommands.invalidate();
     this.pendingCommands = null;
     const source = this.editable(request.id);
     const before = structuredClone(source.transform);
@@ -252,6 +269,7 @@ export class ModelOperations {
   /** Preview an ordered, bounded sequence without changing any CAD state. */
   prepareCommands(requests: readonly ChangeRequest[]): CommandsProposal {
     this.ports.assertReady();
+    this.assemblyCommands.invalidate();
     if (!Array.isArray(requests) || requests.length < 1 || requests.length > 12)
       throw new Error("Command sequence must contain 1–12 operations");
     const staged = new Map<string, Transform>();
@@ -426,6 +444,6 @@ export class ModelOperations {
       return { affectedIds: move ? [source.id] : records.map(r => r.id) };
     } catch (error) { this.log(p.operation, false, String(error)); throw error; }
   }
-  undo() { this.ports.assertReady(); this.pending.clear(); this.pendingCommands = null; const changed = this.history.undo(); this.log("undo", changed); return { changed }; }
-  redo() { this.ports.assertReady(); this.pending.clear(); this.pendingCommands = null; const changed = this.history.redo(); this.log("redo", changed); return { changed }; }
+  undo() { this.ports.assertReady(); this.pending.clear(); this.pendingCommands = null; this.assemblyCommands.invalidate(); const changed = this.history.undo(); this.log("undo", changed); return { changed }; }
+  redo() { this.ports.assertReady(); this.pending.clear(); this.pendingCommands = null; this.assemblyCommands.invalidate(); const changed = this.history.redo(); this.log("redo", changed); return { changed }; }
 }
