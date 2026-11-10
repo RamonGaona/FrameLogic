@@ -37,6 +37,8 @@ import {
   } from "../pieces/PieceInstanceRegistry";
   
   
+  import { validateAssemblyHierarchy } from "../assemblies/validateAssemblyHierarchy";
+
   import {
     AssemblyRegistry,
   } from "../assemblies/AssemblyRegistry";
@@ -415,6 +417,206 @@ import {
     }
 
     // ==========================================================
+    // ASSEMBLY HIERARCHY (no duplicated piece geometry)
+    // ==========================================================
+
+    getAssemblyChildren(parentId: string | null): Assembly[] {
+      return this.assemblies.getAll().filter(
+        (assembly) => (assembly.parentAssemblyId ?? null) === parentId,
+      );
+    }
+
+    getAssemblyPieceIdsDeep(assemblyId: string): string[] {
+      const collected = new Set<string>();
+      const visiting = new Set<string>();
+      const walk = (id: string): void => {
+        if (visiting.has(id)) {
+          throw new Error("Circular assembly relationship detected.");
+        }
+        const assembly = this.assemblies.get(id);
+        if (!assembly) throw new Error(`Assembly "${id}" does not exist.`);
+        visiting.add(id);
+        for (const pieceId of assembly.pieceInstanceIds) {
+          if (this.pieceInstances.get(pieceId)) collected.add(pieceId);
+        }
+        for (const child of this.getAssemblyChildren(id)) walk(child.id);
+        visiting.delete(id);
+      };
+      walk(assemblyId);
+      return [...collected];
+    }
+
+    getAssemblyDescendantIds(assemblyId: string): string[] {
+      const result: string[] = [];
+      const seen = new Set<string>([assemblyId]);
+      const walk = (id: string): void => {
+        for (const child of this.getAssemblyChildren(id)) {
+          if (seen.has(child.id)) {
+            throw new Error("Circular assembly relationship detected.");
+          }
+          seen.add(child.id);
+          result.push(child.id);
+          walk(child.id);
+        }
+      };
+      walk(assemblyId);
+      return result;
+    }
+
+    isAssemblyLocked(assemblyId: string): boolean {
+      const visited = new Set<string>();
+      let id: string | undefined = assemblyId;
+      while (id) {
+        if (visited.has(id)) return true; // invalid legacy cycle: fail closed
+        visited.add(id);
+        const assembly: Assembly | undefined = this.assemblies.get(id);
+        if (!assembly) return true;
+        if (assembly.locked || this.layers.get(assembly.layerId)?.locked) return true;
+        id = assembly.parentAssemblyId;
+      }
+      return false;
+    }
+
+    isPieceLocked(instanceId: string): boolean {
+      const piece = this.pieceInstances.get(instanceId);
+      if (!piece) return true;
+      if (this.layers.get(piece.layerId)?.locked) return true;
+      return this.assemblies.findByPieceInstanceId(instanceId)
+        .some((assembly) => this.isAssemblyLocked(assembly.id));
+    }
+
+    setAssemblyLocked(assemblyId: string, locked: boolean): Assembly {
+      const assembly = this.assemblies.get(assemblyId);
+      if (!assembly) throw new Error("El ensamble no existe.");
+      // A descendant cannot bypass a locked ancestor.
+      if (assembly.parentAssemblyId
+        && this.isAssemblyLocked(assembly.parentAssemblyId)) {
+        throw new Error("No se puede modificar un subensamble dentro de uno bloqueado.");
+      }
+      return this.assemblies.updateLocked(assemblyId, locked)!;
+    }
+
+    setAssemblyParent(
+      assemblyId: string,
+      parentAssemblyId: string | null,
+    ): Assembly {
+      const assembly = this.assemblies.get(assemblyId);
+      if (!assembly) throw new Error("El ensamble seleccionado no existe.");
+      if (parentAssemblyId === assemblyId) {
+        throw new Error("Un ensamble no puede contenerse a sí mismo.");
+      }
+      if (this.isAssemblyLocked(assemblyId)) {
+        throw new Error("No se puede mover un ensamble bloqueado.");
+      }
+      if (parentAssemblyId) {
+        const parent = this.assemblies.get(parentAssemblyId);
+        if (!parent) throw new Error("El ensamble de destino no existe.");
+        if (this.isAssemblyLocked(parentAssemblyId)) {
+          throw new Error("El ensamble de destino está bloqueado.");
+        }
+        if (this.getAssemblyDescendantIds(assemblyId).includes(parentAssemblyId)) {
+          throw new Error("No se puede crear una relación circular de ensambles.");
+        }
+      }
+      return this.assemblies.updateParentAssemblyId(
+        assemblyId, parentAssemblyId,
+      )!;
+    }
+
+    /**
+     * Create a true parent containing selected child assemblies and selected
+     * loose pieces. All validations run before registration or reparenting.
+     * Never detach components from a child assembly as a side effect.
+     */
+    createNestedAssembly(
+      input: RegisterAssemblyInput & { childAssemblyIds?: readonly string[] },
+    ): Assembly {
+      const childIds = [...new Set(input.childAssemblyIds ?? [])];
+      if (childIds.length !== (input.childAssemblyIds ?? []).length) {
+        throw new Error("El mismo subensamble está seleccionado dos veces.");
+      }
+      for (const id of childIds) {
+        if (!this.assemblies.get(id)) {
+          throw new Error(`El subensamble "${id}" no existe.`);
+        }
+        if (this.isAssemblyLocked(id)) {
+          throw new Error("No se puede reagrupar un ensamble bloqueado.");
+        }
+      }
+      for (const id of childIds) {
+        if (this.getAssemblyDescendantIds(id).some(
+          (descendantId) => childIds.includes(descendantId),
+        )) {
+          throw new Error(
+            "Seleccionaste un ensamble y uno de sus descendientes. Selecciona solo el ensamble superior.",
+          );
+        }
+      }
+
+      const pieces = input.pieceInstanceIds ?? [];
+      this.validateAssemblyMemberIds(pieces);
+      for (const pieceId of pieces) {
+        if (this.isPieceLocked(pieceId)) {
+          throw new Error("No se puede agrupar una pieza bloqueada.");
+        }
+      }
+
+      const layerId = input.layerId ?? DEFAULT_DESIGN_LAYER_IDS.GEOMETRY;
+      if (!this.layers.get(layerId)) {
+        throw new Error(`La capa "${layerId}" no existe.`);
+      }
+      if (this.layers.get(layerId)?.locked) {
+        throw new Error("La capa de destino está bloqueada.");
+      }
+
+      // A new parent cannot itself be born inside a selected child.
+      if (input.parentAssemblyId && childIds.includes(input.parentAssemblyId)) {
+        throw new Error("No se puede crear una relación circular de ensambles.");
+      }
+      if (input.parentAssemblyId
+        && (!this.assemblies.get(input.parentAssemblyId)
+          || this.isAssemblyLocked(input.parentAssemblyId))) {
+        throw new Error("El ensamble padre no existe o está bloqueado.");
+      }
+      const created = this.assemblies.register({
+        ...input,
+        layerId,
+        pieceInstanceIds: [...pieces],
+      });
+      for (const id of childIds) {
+        this.assemblies.updateParentAssemblyId(id, created.id);
+      }
+      return created;
+    }
+
+    captureAssemblies(): Assembly[] {
+      return this.assemblies.getAll().map((assembly) => ({
+        ...assembly,
+        tags: [...assembly.tags],
+        pieceInstanceIds: [...assembly.pieceInstanceIds],
+      }));
+    }
+
+    restoreAssemblies(snapshot: readonly Assembly[]): void {
+      validateAssemblyHierarchy(snapshot);
+      // History restoration is allowed to restore locked members. No geometry,
+      // materials, transforms or STEP assets are created or deleted here.
+      this.assemblies.clear();
+      for (const assembly of snapshot) {
+        this.assemblies.register({
+          id: assembly.id,
+          name: assembly.name,
+          layerId: assembly.layerId,
+          classification: assembly.classification,
+          tags: [...assembly.tags],
+          pieceInstanceIds: [...assembly.pieceInstanceIds],
+          parentAssemblyId: assembly.parentAssemblyId,
+          locked: assembly.locked,
+        });
+      }
+    }
+
+    // ==========================================================
     // ASSEMBLIES
     // ==========================================================
 
@@ -447,9 +649,14 @@ import {
       input: RegisterAssemblyInput,
     ): Assembly {
       const pieceInstanceIds = input.pieceInstanceIds ?? [];
-      this.validateAssemblyMemberIds(pieceInstanceIds, {
-        allowAssigned: true,
-      });
+      // Creating a new group from internal parts would silently dissolve
+      // the old assembly. Require an explicitly selected child assembly.
+      this.validateAssemblyMemberIds(pieceInstanceIds);
+      for (const pieceId of pieceInstanceIds) {
+        if (this.isPieceLocked(pieceId)) {
+          throw new Error("No se puede agrupar una pieza bloqueada.");
+        }
+      }
 
       const layerId =
         input.layerId ?? DEFAULT_DESIGN_LAYER_IDS.GEOMETRY;
@@ -459,15 +666,10 @@ import {
         );
       }
 
-      const assembly = this.assemblies.register({
+      return this.assemblies.register({
         ...input,
         layerId,
       });
-      this.detachPiecesFromOtherAssemblies(
-        assembly.id,
-        pieceInstanceIds,
-      );
-      return assembly;
     }
 
     // ==========================================================
@@ -816,11 +1018,24 @@ import {
       id: string,
     ): boolean {
   
-      return this
-        .assemblies
-        .remove(
-          id,
-        );
+      const assembly = this.assemblies.get(id);
+      if (!assembly) return false;
+      if (this.isAssemblyLocked(id)) {
+        throw new Error("No se puede desagrupar un ensamble bloqueado.");
+      }
+      const parentId = assembly.parentAssemblyId ?? null;
+      if (parentId) {
+        const parent = this.assemblies.get(parentId);
+        if (!parent) throw new Error("El ensamble padre no existe.");
+        this.assemblies.updatePieceInstanceIds(parentId, [
+          ...parent.pieceInstanceIds,
+          ...assembly.pieceInstanceIds,
+        ]);
+      }
+      for (const child of this.getAssemblyChildren(id)) {
+        this.assemblies.updateParentAssemblyId(child.id, parentId);
+      }
+      return this.assemblies.remove(id);
   
     }
   
