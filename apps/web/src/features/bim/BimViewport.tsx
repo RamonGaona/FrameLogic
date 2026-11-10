@@ -1812,6 +1812,7 @@ export function BimViewport() {
         <button
           type="button"
           onClick={handleImportPiece}
+          data-framelogic-file-command="import-piece"
           disabled={loading}
           title="Importa una pieza externa STEP/STP o IFC y crea una definición nueva en FrameLogic"
         >
@@ -1825,6 +1826,7 @@ export function BimViewport() {
         <button
           type="button"
           onClick={handleOpenFrameLogicPiece}
+          data-framelogic-file-command="open-piece"
           disabled={loading}
           title="Abre únicamente una pieza FrameLogic READY con geometría y metadatos de ingeniería válidos"
         >
