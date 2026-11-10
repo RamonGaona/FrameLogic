@@ -32,7 +32,8 @@ export function parseLocalAssemblyCommand(
   selectedAssemblyIds: readonly string[],
 ): ChatAssemblyCommand | null {
   const raw = input.trim();
-  if (!/\b(?:sub)?ensambl(?:es?|ajes?)\b/i.test(raw)) return null;
+  if (!/\b(?:sub)?ensambl(?:es?|ajes?)\b/i.test(raw)
+    && !assemblies.some(a => mentioned(raw, a.name) || mentioned(raw, a.id))) return null;
   if (raw.length > 500) return { kind: "unknown", message: "La instrucción supera 500 caracteres." };
   if (raw.includes(";")) return { kind: "unknown", message: "Los scripts mixtos con ensambles todavía no están disponibles; usa una instrucción por vez." };
   if (/\b(?:listar|lista|muestra|mostrar|ver)\b.*\b(?:sub)?ensambl(?:es?|ajes?)\b/i.test(raw))
