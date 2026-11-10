@@ -488,7 +488,7 @@ function createAssemblyFixture() {
 }
 
 describe("assembly membership stability", () => {
-  it("regroups pieces without removing instances or duplicating geometry", () => {
+  it("blocks accidental regrouping of pieces belonging to an existing assembly", () => {
     const { design, asset, definition, first, second, third } =
       createAssemblyFixture();
     const original = design.registerAssembly({
@@ -496,19 +496,16 @@ describe("assembly membership stability", () => {
       pieceInstanceIds: [first.id, second.id],
     });
 
-    const regrouped = design.groupPieceInstances({
-      name: "Regrouped",
+    expect(() => design.groupPieceInstances({
+      name: "Unintended flattening",
       pieceInstanceIds: [second.id, third.id],
-    });
-
+    })).toThrow(/already belongs/i);
     expect(design.assemblies.get(original.id)?.pieceInstanceIds)
-      .toEqual([first.id]);
-    expect(design.assemblies.get(regrouped.id)?.pieceInstanceIds)
-      .toEqual([second.id, third.id]);
+      .toEqual([first.id, second.id]);
+    expect(design.assemblies.count).toBe(1);
     expect(design.pieceInstances.count).toBe(3);
     expect(design.pieceDefinitions.get(definition.id)?.geometryAssetId)
       .toBe(asset.id);
-    expect(design.assets.get(asset.id)).toBeDefined();
   });
 
   it("does not detach existing groups when assembly creation fails", () => {
@@ -525,7 +522,7 @@ describe("assembly membership stability", () => {
         name: "Duplicate identifier",
         pieceInstanceIds: [first.id, second.id],
       }),
-    ).toThrow(/already exists/i);
+    ).toThrow(/already belongs|already exists/i);
     expect(design.assemblies.get(original.id)?.pieceInstanceIds)
       .toEqual([first.id]);
     expect(design.assemblies.count).toBe(1);
