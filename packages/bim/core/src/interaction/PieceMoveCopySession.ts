@@ -20,6 +20,8 @@ export class PieceMoveCopySession {
   readonly rootAssemblyIds: readonly string[];
   private completed = false;
   private readonly originals: string[];
+  private readonly sourceTransforms = new Map<string, PieceInstance["transform"]>();
+  private readonly copyBasePositions = new Map<string, THREE.Vector3>();
   private readonly sourceAssemblyIds: readonly string[];
   private readonly assemblies: readonly Assembly[];
   private readonly model: DesignModel;
@@ -59,6 +61,9 @@ export class PieceMoveCopySession {
         if (model.isPieceLocked?.(id) === true) {
           throw new Error("No se puede copiar una pieza bloqueada.");
         }
+        // A copy gesture must not move the source, even if another pointer
+        // event or a selection refresh previously changed its visual object.
+        this.sourceTransforms.set(id, structuredClone(original.transform));
         const copy = model.registerPieceInstance({
           definitionId: original.definitionId,
           layerId: original.layerId,
@@ -71,6 +76,11 @@ export class PieceMoveCopySession {
         });
         ids.push(copy.id);
         mapping.set(id, copy.id);
+        this.copyBasePositions.set(copy.id, new THREE.Vector3(
+          original.transform.position.x,
+          original.transform.position.y,
+          original.transform.position.z,
+        ));
       }
 
       if (plan) {
@@ -99,6 +109,50 @@ export class PieceMoveCopySession {
     this.rootAssemblyIds = rootAssemblyIds;
   }
 
+  /**
+   * Position duplicate objects from their own immutable starting positions.
+   * Never apply the offset to a source object or infer it from a stale
+   * TransformControls selection map.
+   */
+  placeCopiesAtOffset(offset: THREE.Vector3): void {
+    if (this.completed) throw new Error("La sesión de copia ya terminó.");
+    if (![offset.x, offset.y, offset.z].every(Number.isFinite)) {
+      throw new Error("Desplazamiento de copia no válido.");
+    }
+    for (const id of this.ids) {
+      const object = this.objects.get(id);
+      const base = this.copyBasePositions.get(id);
+      if (!object || !base) throw new Error("Falta el objeto visual de la copia.");
+      object.position.copy(base).add(offset);
+      object.updateMatrix();
+      object.updateMatrixWorld(true);
+    }
+  }
+
+  /**
+   * Restore sources as an invariant of COPY, not as a new edit/history entry.
+   * The copied occurrences are the only objects permitted to move.
+   */
+  private preserveSources(): void {
+    let domainChanged = false;
+    for (const [id, initial] of this.sourceTransforms) {
+      const current = this.model.pieceInstances.get(id);
+      if (!current) throw new Error("Una pieza original dejó de existir durante COPY.");
+      if (JSON.stringify(current.transform) !== JSON.stringify(initial)) {
+        this.model.pieceInstances.updateTransform(id, structuredClone(initial));
+        domainChanged = true;
+      }
+      const object = this.scene.getInstanceObject(id);
+      if (object) {
+        object.position.set(initial.position.x, initial.position.y, initial.position.z);
+        object.rotation.set(initial.rotation.x, initial.rotation.y, initial.rotation.z);
+        object.updateMatrix();
+        object.updateMatrixWorld(true);
+      }
+    }
+    if (domainChanged) this.scene.sync();
+  }
+
   private removeCreated(): void {
     for (const assembly of [...this.assemblies].reverse()) {
       this.model.assemblies.remove(assembly.id);
@@ -109,6 +163,7 @@ export class PieceMoveCopySession {
 
   cancel(): void {
     if (this.completed) return;
+    this.preserveSources();
     this.completed = true;
     this.removeCreated();
   }
@@ -119,6 +174,7 @@ export class PieceMoveCopySession {
    */
   finish(keepOriginalSelection = false): void {
     if (this.completed) return;
+    this.preserveSources();
     const records: PieceInstance[] = this.ids.map((id) => {
       const record = this.model.pieceInstances.get(id);
       if (!record) throw new Error("No existe la copia: " + id);

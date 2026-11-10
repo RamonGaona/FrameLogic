@@ -105,6 +105,60 @@ describe("Ctrl+gizmo copy as a structural transaction", () => {
     expect(f.model.assets.getAll().length).toBe(1);
   });
 
+  it("positions duplicate hierarchy from immutable base without ever translating original visuals", async () => {
+    const f = fixture();
+    const original = [f.a.id, f.b.id].map(id => ({
+      id,
+      transform: structuredClone(f.model.pieceInstances.get(id)!.transform),
+      world: f.scene.getInstanceObject(id)!.position.clone(),
+    }));
+    const session = f.make([f.a.id, f.b.id], [f.parent.id]);
+    session.placeCopiesAtOffset(new THREE.Vector3(40, 0, 0));
+    session.placeCopiesAtOffset(new THREE.Vector3(350, -80, 25));
+
+    for (const source of original) {
+      expect(f.model.pieceInstances.get(source.id)?.transform).toEqual(source.transform);
+      expect(f.scene.getInstanceObject(source.id)?.position.toArray()).toEqual(source.world.toArray());
+    }
+    for (const [i, id] of session.ids.entries()) {
+      const originalPiece = original[i]!;
+      const object = f.scene.getInstanceObject(id)!;
+      expect(object.position.x).toBe(originalPiece.transform.position.x + 350);
+      expect(object.position.y).toBe(originalPiece.transform.position.y - 80);
+      expect(object.position.z).toBe(originalPiece.transform.position.z + 25);
+      f.model.pieceInstances.updateTransform(id, {
+        position: {x: object.position.x, y: object.position.y, z: object.position.z},
+        rotation: {...f.model.pieceInstances.get(id)!.transform.rotation},
+      });
+    }
+    session.finish();
+    await Promise.resolve();
+    for (const source of original) {
+      expect(f.model.pieceInstances.get(source.id)?.transform).toEqual(source.transform);
+    }
+    expect(f.model.getAssemblyPieceIdsDeep(session.rootAssemblyIds[0]!)).toHaveLength(2);
+    f.undo();
+    expect(f.model.pieceInstances.count).toBe(3);
+    f.redo();
+    expect(f.model.pieceInstances.get(session.ids[0]!)?.transform.position)
+      .toEqual({x: 360, y: -60, z: 55});
+  });
+
+  it("restores a source visual and stored transform if a drag inadvertently changes it", () => {
+    const f = fixture();
+    const source = structuredClone(f.model.pieceInstances.get(f.a.id)!.transform);
+    const session = f.make([f.a.id, f.b.id], [f.parent.id]);
+    f.model.pieceInstances.updateTransform(f.a.id, {
+      position: {x: 800, y: 900, z: 1000}, rotation: {x:0,y:0,z:0},
+    });
+    f.scene.getInstanceObject(f.a.id)!.position.set(800, 900, 1000);
+    session.placeCopiesAtOffset(new THREE.Vector3(250, 0, 0));
+    session.finish();
+    expect(f.model.pieceInstances.get(f.a.id)?.transform).toEqual(source);
+    expect(f.scene.getInstanceObject(f.a.id)?.position.x).toBe(10);
+    expect(f.model.pieceInstances.get(session.ids[0]!)?.transform.position.x).toBe(10);
+  });
+
   it("Esc/cancel drops both duplicated pieces and assembly hierarchy", () => {
     const f = fixture();
     const before = f.model.captureAssemblies();

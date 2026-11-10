@@ -1318,23 +1318,18 @@ export class DesignTransformController {
       }
     }
 
-    for (
-      const object
-      of this.transformedObjects.values()
-    ) {
-
-      object.position.add(
-        delta,
+    if (this.copySession) {
+      // Absolute from the original copy base: never accumulate the drag
+      // delta on a stale original selection or on a previous copy.
+      this.copySession.placeCopiesAtOffset(
+        this.pivot.position.clone().sub(this.dragStartPivotPosition),
       );
-
-
-      object.updateMatrix();
-
-
-      object.updateMatrixWorld(
-        true,
-      );
-
+    } else {
+      for (const object of this.transformedObjects.values()) {
+        object.position.add(delta);
+        object.updateMatrix();
+        object.updateMatrixWorld(true);
+      }
     }
 
 
@@ -1511,7 +1506,9 @@ export class DesignTransformController {
 
         if (clickedAxis && this.copySession) {
           this.cancelCopySession();
-        } else {
+        } else if (!this.ctrlCopyGesture || this.copySession) {
+          // A Ctrl gesture may only commit the new instance IDs.
+          // If duplicate creation failed, never move the source instead.
           this.commitTransforms();
           if (this.copySession) this.finishCopySession();
         }
@@ -1838,23 +1835,14 @@ export class DesignTransformController {
 
           if (this.armedCopyMove && !this.beginCopySession()) return;
 
-          for (
-            const object
-            of this.transformedObjects.values()
-          ) {
-
-            object.position.add(
-              correction,
-            );
-
-
-            object.updateMatrix();
-
-
-            object.updateMatrixWorld(
-              true,
-            );
-
+          if (this.copySession) {
+            this.copySession.placeCopiesAtOffset(correction);
+          } else {
+            for (const object of this.transformedObjects.values()) {
+              object.position.add(correction);
+              object.updateMatrix();
+              object.updateMatrixWorld(true);
+            }
           }
 
 
@@ -2001,6 +1989,7 @@ export class DesignTransformController {
     if (
       this.dragMode
       === "MOVE_OBJECTS"
+      && !this.copySession
     ) {
 
       for (
@@ -2039,6 +2028,12 @@ export class DesignTransformController {
       this.pivot.position,
     );
 
+    // Snap correction must land on duplicates, not on source instances.
+    if (this.copySession && this.dragMode === "MOVE_OBJECTS") {
+      this.copySession.placeCopiesAtOffset(
+        this.pivot.position.clone().sub(this.dragStartPivotPosition),
+      );
+    }
 
     this.selection.refreshHelpers();
 
@@ -2057,8 +2052,13 @@ export class DesignTransformController {
         instanceId,
         object,
       ]
-      of this.transformedObjects
+      of (this.copySession ? this.copySession.objects : this.transformedObjects)
     ) {
+
+      // Only cloned occurrence IDs may be persisted during Ctrl+COPY.
+      if (this.copySession && !this.copySession.ids.includes(instanceId)) {
+        throw new Error("COPY intentó modificar una pieza original.");
+      }
 
       this.designModel
         .pieceInstances
