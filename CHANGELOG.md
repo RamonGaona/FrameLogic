@@ -12,6 +12,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.99 — 2026-11-10
+
+### Ensambles jerárquicos: prevención de ciclos indirectos y agrupación atómica
+
+- **Protección de jerarquía:** impide crear un ensamble padre dentro de un descendiente de cualquiera de los subensambles que intenta adoptar. El árbol anterior queda intacto cuando se rechaza la operación.
+- **Agrupación transaccional:** si falla cualquier reasignación de subensambles, se restaura la instantánea completa previa, evitando padres vacíos y estructuras parcialmente modificadas.
+- **Regresión automatizada:** se añaden pruebas para ciclos indirectos con tres niveles y fallo inyectado durante el traslado del segundo subensamble.
+- **Compatibilidad:** no cambia el formato `FRAMELOGIC_PROJECT v1` ni la semántica de selección, movimiento, Ctrl+gizmo, COPYBASE, bloqueo y Undo/Redo existente.
+- **Verificación pendiente:** ejecutar `npm run typecheck`, `npm run test:assembly-hierarchy` y `npm run build` en CI antes de fusionar a `main`.
+
+---
+
 ## v0.1.98 — 2026-11-10
 
 ### Ctrl + gizmo: copia estructural de ensambles y COPY por dos puntos
