@@ -1005,10 +1005,26 @@ export class SectionInstanceTreeBridgeController {
   }
 
   private toggleVisibility(sectionId: string): void {
-    const hide = !this.hidden.has(sectionId);
-    if (hide) this.hidden.add(sectionId);
-    else this.hidden.delete(sectionId);
-    this.setRenderLayerHidden(sectionId, hide);
+    this.setHiddenSections([sectionId], !this.hidden.has(sectionId));
+  }
+
+  /**
+   * Shared by the individual and general section eyes. Apply every flag
+   * first, then synchronize section rendering and rebuild the tree once.
+   */
+  setHiddenSections(sectionIds: readonly string[], hide: boolean): void {
+    const existing = new Set(
+      this.options.sectionDrawing.getSections().map((section) => section.id),
+    );
+    let changed = false;
+    for (const id of new Set(sectionIds)) {
+      if (!existing.has(id) || this.hidden.has(id) === hide) continue;
+      if (hide) this.hidden.add(id);
+      else this.hidden.delete(id);
+      this.setRenderLayerHidden(id, hide);
+      changed = true;
+    }
+    if (!changed) return;
     this.productionRuntime.syncSectionLayerVisibility();
     this.lastSignature = "";
     this.decorate();
