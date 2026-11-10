@@ -228,6 +228,18 @@ export class AssemblyClipboardController {
   private copyAssembly(assemblyId: string): boolean {
     const assembly = this.options.designModel.assemblies.get(assemblyId);
     if (!assembly) return false;
+    // Legacy linked-copy protocol only represents direct PieceInstances.
+    // Never silently copy part of a hierarchical assembly.
+    if (this.options.designModel.getAssemblyChildren(assemblyId).length > 0) {
+      window.alert(
+        "Este ensamble contiene subensambles. La copia vinculada jerárquica aún no está disponible; no se realizó ninguna modificación.",
+      );
+      return false;
+    }
+    if (this.options.designModel.isAssemblyLocked(assemblyId)) {
+      window.alert("No se puede vincular la copia de un ensamble bloqueado.");
+      return false;
+    }
 
     const sourcePieces = assembly.pieceInstanceIds
       .map((id) => this.options.designModel.pieceInstances.get(id))
