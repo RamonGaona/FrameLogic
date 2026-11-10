@@ -84,6 +84,54 @@ describe("piece representations in the model space", () => {
     scene.dispose();
     expect(dispose).toHaveBeenCalledOnce();
   });
+  it("keeps individual and multi-piece visibility hidden through resync and LOD without modifying shared STEP", () => {
+    const model = new DesignModel();
+    const scene = new DesignSceneController(new THREE.Scene(), model);
+    const asset = model.registerAsset({ name: "beam.step", format: "STEP" });
+    const definition = model.registerPieceDefinition({
+      code: "BEAM", name: "Beam", geometryAssetId: asset.id,
+    });
+    const a = model.registerPieceInstance({ definitionId: definition.id });
+    const b = model.registerPieceInstance({ definitionId: definition.id });
+    const c = model.registerPieceInstance({ definitionId: definition.id });
+    const geometry = new THREE.BoxGeometry(10, 20, 30);
+    scene.registerAssetPrototype(
+      asset.id,
+      new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()),
+    );
+    scene.sync();
+    const aa = scene.getInstanceObject(a.id) as THREE.Mesh;
+    const bb = scene.getInstanceObject(b.id) as THREE.Mesh;
+    const cc = scene.getInstanceObject(c.id) as THREE.Mesh;
+
+    scene.setInstancesHidden([a.id, b.id, a.id], true);
+    expect(aa.visible).toBe(false);
+    expect(bb.visible).toBe(false);
+    expect(cc.visible).toBe(true);
+    expect(scene.isInstanceHidden(a.id)).toBe(true);
+    scene.setVisualLevel("LOW");
+    scene.sync();
+    expect(aa.visible).toBe(false);
+    expect(bb.visible).toBe(false);
+    expect(cc.visible).toBe(true);
+
+    scene.setInstancesHidden([a.id], false);
+    expect(aa.visible).toBe(true);
+    expect(bb.visible).toBe(false);
+    scene.setVisibilityFilter((id) => id !== a.id);
+    expect(aa.visible).toBe(false);
+    scene.setInstancesHidden([a.id, b.id], false);
+    expect(aa.visible).toBe(false); // a remains filtered by separate workspace mode
+    expect(bb.visible).toBe(true);
+    scene.setVisibilityFilter(null);
+    expect(aa.visible).toBe(true);
+    expect(bb.visible).toBe(true);
+    expect(aa.geometry).not.toBe(geometry); // LOW only changes mesh rendering
+    expect(model.pieceInstances.count).toBe(3);
+    expect(model.pieceDefinitions.get(definition.id)?.geometryAssetId).toBe(asset.id);
+    scene.dispose();
+  });
+
   it("uses the same automatic pastel color when the same STEP file gets a new asset id", () => {
     function importAsNewAsset(assetId: string): number {
       const model = new DesignModel();
