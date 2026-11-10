@@ -192,7 +192,9 @@ describe("Ctrl+gizmo copies the assembly, never the source positions", () => {
     expect(newRoot).toBeDefined();
     expect(f.model.getAssemblyPieceIdsDeep(newRoot.id).map(id =>
       f.model.pieceInstances.get(id)!.transform.position.x).sort((a,b) => a-b))
-      .toEqual([235, 285]);
+      // The assembly pivot is the mean of the two piece origins (35 mm).
+      // Snap X=250 moves the whole copy by +215 mm, not to piece A X=250.
+      .toEqual([225, 275]);
     expect(f.selected).toEqual(f.originals.map(s => s.id));
     expect(f.selectedAssemblyIds).toEqual([f.parent.id]);
     expect(f.history.recordTransform).not.toHaveBeenCalled();
