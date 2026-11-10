@@ -1,4 +1,11 @@
-const FRAMELOGIC_VERSION = "0.1.98";
+// Vite injects this value from the root package.json at build time.
+// Typechecking the BIM workspace independently does not run Vite.
+declare const __FRAMELOGIC_VERSION__: string;
+
+const FRAMELOGIC_VERSION =
+  typeof __FRAMELOGIC_VERSION__ === "string"
+    ? __FRAMELOGIC_VERSION__
+    : "dev";
 
 const SECTION_PANEL_SELECTOR =
   '[data-framelogic-section-panel="true"]';
