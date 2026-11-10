@@ -165,6 +165,7 @@ export class CadReferenceImportController {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = "Abrir DWG/DXF";
+    button.dataset["framelogicFileCommand"] = "open-cad";
     button.title = "Importar plano CAD 2D como bloque de referencia con SNAP";
     Object.assign(button.style, {
       padding: "5px 8px",
