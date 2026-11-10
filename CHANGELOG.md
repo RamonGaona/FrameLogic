@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.104 — 2026-11-10
+
+### Clash Detection 3D — primera etapa de diagnóstico y revisión desde el navegador
+
+- **Panel Clash Detection:** accesible desde el dock compartido de herramientas del espacio modelo, con análisis completo o por selección (incluidos ensambles y subensambles), tolerancia milimétrica, progreso, cancelación, búsqueda y filtros.
+- **Motor preliminar por parejas:** broad-phase de AABB detalladas y sweep por eje X; narrow-phase de triángulos de detalle (nunca la malla LOW/WORK). No considera una coincidencia de AABB como choque confirmado.
+- **Confirmación limitada de Hard Clash:** solo informa como confirmado un vértice estrictamente interior de una malla sólida cerrada respecto a otra malla cerrada; la ubicación mostrada es aproximada y no equivale al centroide del volumen de intersección.
+- **Resultados explícitamente aproximados:** CONTACT y CLEARANCE son estimaciones de distancia de malla, y UNCONFIRMED identifica casos no resueltos. Las superficies abiertas, los mallados mayores que el límite de inspección y los cruces sin vértices interiores no se declaran Hard Clash confirmados.
+- **Listado y localización:** ID estable por pareja de instancias, nombres/códigos de pieza, ruta de ensamble padre, estados de revisión en memoria, cámara enfocada con los controles existentes, materiales rojos temporales y marcador de ubicación estimada. Botón para restaurar cámara y visualización.
+- **Vigencia:** firma del modelo para invalidar resultados cuando cambian piezas, transformaciones, definiciones o geometrías. No altera la jerarquía, la geometría ni el historial.
+- **Exportación:** CSV y JSON con instancia A/B, clasificación, carácter confirmado/aproximado, estado, coordenadas y distancia estimada cuando existe.
+- **Pruebas y CI:** cobertura unitaria de piezas separadas y superpuestas, contacto, clearance, falso positivo por AABB, rotación, jerarquía, selección, invalidación y cancelación, integrada en las validaciones de Pull Request.
+- **Limitaciones expresas de esta etapa:** no existe aún intersección de sólidos B-rep con booleanas OpenCascade, cálculo del volumen de interferencia, distancia mínima exacta BVH, localización de la superficie de choque exacta, persistencia de estados en proyecto/localStorage, generación PDF, integración MCP o comparación industrial exhaustiva de mallas abiertas/no-manifold. Las revisiones duran solo la sesión actual. Se requieren verificaciones de compilación e integración antes de publicar en `main`.
+
+---
+
 ## v0.1.103 — 2026-11-10
 
 ### Corrección Ctrl + gizmo: la copia se mueve y el ensamble original queda fijo
