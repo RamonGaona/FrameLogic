@@ -539,6 +539,8 @@ export async function createBimCore(
     new InstanceTreeGroupVisibilityController({
       container,
       designModel: core.designModel,
+      designScene: core.designScene,
+      pieceAppearance,
       lineScene: core.cadLineScene,
       pointScene: core.cadPointScene,
       lineSelection: core.cadLineSelection,

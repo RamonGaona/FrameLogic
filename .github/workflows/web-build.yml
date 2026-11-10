@@ -54,6 +54,9 @@ jobs:
       - name: Instance tree layout tests
         run: npm run test:instance-tree
 
+      - name: Model-space visibility and section group tests
+        run: npm run test:visibility
+
       - name: Piece preparation conversion tests
         run: npm run test:piece-preparation
 

@@ -72,8 +72,6 @@ export class PieceAppearanceController {
   private readonly options: Options;
   private readonly materialStates =
     new WeakMap<THREE.Mesh, MaterialState>();
-  private readonly hiddenInstanceIds =
-    new Set<string>();
   private readonly baseSceneSync: () => void;
   private readonly timer: number;
   private palette: HTMLDivElement | null = null;
@@ -136,7 +134,6 @@ export class PieceAppearanceController {
       true,
     );
     this.hidePalette();
-    this.hiddenInstanceIds.clear();
   }
 
 
@@ -208,13 +205,6 @@ export class PieceAppearanceController {
     );
     if (!body) return;
 
-    const activeIds = new Set(
-      this.options.designModel.pieceInstances.getAll().map((piece) => piece.id),
-    );
-    for (const hiddenId of [...this.hiddenInstanceIds]) {
-      if (!activeIds.has(hiddenId)) this.hiddenInstanceIds.delete(hiddenId);
-    }
-
     const rows = Array.from(
       body.querySelectorAll<HTMLDivElement>("div"),
     );
@@ -226,7 +216,9 @@ export class PieceAppearanceController {
     const assemblies = this.options.designModel.assemblies.getAll();
     assemblies.forEach((assembly, index) => {
       const row = assemblyRows[index];
-      if (row) row.dataset["framelogicAssemblyId"] = assembly.id;
+      if (!row) return;
+      row.dataset["framelogicAssemblyId"] = assembly.id;
+      this.ensureAssemblyVisibilityEye(row, assembly.id);
     });
 
     const pieceRows = rows.filter((row) => {
@@ -283,7 +275,7 @@ export class PieceAppearanceController {
     }
 
     eye.dataset["framelogicPieceId"] = pieceId;
-    const hidden = this.hiddenInstanceIds.has(pieceId);
+    const hidden = this.options.designScene.isInstanceHidden(pieceId);
     eye.dataset["framelogicPieceVisible"] = hidden ? "false" : "true";
     eye.innerHTML = eyeSvg(hidden);
     eye.title = hidden ? "Mostrar pieza" : "Ocultar pieza";
@@ -292,20 +284,95 @@ export class PieceAppearanceController {
   }
 
 
-  private togglePieceVisibility(pieceId: string): void {
-    if (this.hiddenInstanceIds.has(pieceId)) {
-      this.hiddenInstanceIds.delete(pieceId);
-    }
-    else {
-      this.hiddenInstanceIds.add(pieceId);
-      const selection = this.options.designSelection
-        .getSelectedIds()
-        .filter((id) => id !== pieceId);
-      this.options.designSelection.setSelection(selection);
-    }
+  /**
+   * One authoritative scene visibility state for pieces and assemblies.
+   * Group operations update all members in a single scene synchronization,
+   * without synthetic DOM clicks or rebuilding rows between members.
+   */
+  setPiecesHidden(pieceIds: readonly string[], hidden: boolean): void {
+    const ids = pieceIds.filter((id) =>
+      this.options.designModel.pieceInstances.get(id) !== undefined,
+    );
+    if (ids.length < 1) return;
 
-    this.options.designScene.sync();
+    this.options.designScene.setInstancesHidden(ids, hidden);
+    if (hidden) {
+      const hiding = new Set(ids);
+      const remaining = this.options.designSelection
+        .getSelectedIds()
+        .filter((id) => !hiding.has(id));
+      if (remaining.length !== this.options.designSelection.getSelectedIds().length) {
+        this.options.designSelection.setSelection(remaining);
+      }
+    }
     this.decorateRows();
+    this.options.designSelection.refreshHelpers();
+  }
+
+  private togglePieceVisibility(pieceId: string): void {
+    this.setPiecesHidden(
+      [pieceId],
+      !this.options.designScene.isInstanceHidden(pieceId),
+    );
+  }
+
+  private ensureAssemblyVisibilityEye(
+    row: HTMLDivElement,
+    assemblyId: string,
+  ): void {
+    const assembly = this.options.designModel.assemblies.get(assemblyId);
+    if (!assembly) return;
+
+    let eye = row.querySelector<HTMLButtonElement>(
+      'button[data-framelogic-assembly-visibility-eye="true"]',
+    );
+    if (!eye) {
+      eye = document.createElement("button");
+      eye.type = "button";
+      eye.dataset["framelogicAssemblyVisibilityEye"] = "true";
+      Object.assign(eye.style, {
+        width: "20px",
+        height: "18px",
+        padding: "0",
+        border: "0",
+        background: "transparent",
+        color: "#cfe8f3",
+        cursor: "pointer",
+        display: "grid",
+        placeItems: "center",
+      });
+      eye.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      eye.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const id = eye?.dataset["framelogicAssemblyId"];
+        const current = id ? this.options.designModel.assemblies.get(id) : null;
+        if (!current || current.pieceInstanceIds.length < 1) return;
+        const anyShown = current.pieceInstanceIds.some(
+          (pieceId) => !this.options.designScene.isInstanceHidden(pieceId),
+        );
+        this.setPiecesHidden(current.pieceInstanceIds, anyShown);
+      });
+      row.prepend(eye);
+    }
+    eye.dataset["framelogicAssemblyId"] = assemblyId;
+    const ids = assembly.pieceInstanceIds.filter(
+      (id) => this.options.designModel.pieceInstances.get(id) !== undefined,
+    );
+    const allHidden = ids.length > 0 && ids.every(
+      (id) => this.options.designScene.isInstanceHidden(id),
+    );
+    eye.disabled = ids.length === 0;
+    eye.innerHTML = eyeSvg(allHidden);
+    eye.title = ids.length === 0
+      ? "Ensamble vacío"
+      : allHidden ? "Mostrar ensamble" : "Ocultar ensamble";
+    eye.setAttribute("aria-label", eye.title);
+    eye.style.opacity = ids.length === 0 ? "0.35" : allHidden ? "0.55" : "1";
+    row.style.gridTemplateColumns = "22px minmax(0,1fr) auto";
   }
 
 
@@ -571,9 +638,6 @@ export class PieceAppearanceController {
         const state = this.ensureMaterialState(object);
         this.applyMaterialColor(object, state, color);
       });
-      if (this.hiddenInstanceIds.has(instanceId)) {
-        root.visible = false;
-      }
     }
   }
 

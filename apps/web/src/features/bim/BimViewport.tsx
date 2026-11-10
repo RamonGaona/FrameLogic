@@ -206,10 +206,6 @@ export function BimViewport() {
       null,
     );
 
-  const hiddenPieceIdsRef =
-    useRef<Set<string>>(
-      new Set(),
-    );
 
   const [cameraOrientation, setCameraOrientation] =
     useState<CameraOrientation>({
@@ -461,36 +457,6 @@ export function BimViewport() {
         .pieceInstances
         .getAll();
 
-    const activeIds =
-      new Set(
-        instances.map(
-          (
-            instance,
-          ) =>
-            instance.id,
-        ),
-      );
-
-
-    for (
-      const hiddenId
-      of Array.from(
-        hiddenPieceIdsRef.current,
-      )
-    ) {
-      if (
-        !activeIds.has(
-          hiddenId,
-        )
-      ) {
-        hiddenPieceIdsRef.current
-          .delete(
-            hiddenId,
-          );
-      }
-    }
-
-
     setPieces(
       instances.map(
         (
@@ -518,10 +484,7 @@ export function BimViewport() {
             layerId:
               instance.layerId,
             visible:
-              !hiddenPieceIdsRef.current
-                .has(
-                  instance.id,
-                ),
+              !bimCore.designScene.isInstanceHidden(instance.id),
           };
         },
       ),
@@ -559,35 +522,13 @@ export function BimViewport() {
     }
 
 
-    if (visible) {
-      hiddenPieceIdsRef.current
-        .delete(
-          instanceId,
-        );
+    bimCore.designScene.setInstancesHidden([instanceId], !visible);
+    if (!visible) {
+      const remainingSelection = bimCore.designSelection
+        .getSelectedIds()
+        .filter((selectedId) => selectedId !== instanceId);
+      bimCore.designSelection.setSelection(remainingSelection);
     }
-    else {
-      hiddenPieceIdsRef.current
-        .add(
-          instanceId,
-        );
-
-      const remainingSelection =
-        bimCore.designSelection
-          .getSelectedIds()
-          .filter(
-            (
-              selectedId,
-            ) =>
-              selectedId
-              !== instanceId,
-          );
-
-      bimCore.designSelection
-        .setSelection(
-          remainingSelection,
-        );
-    }
-
 
     bimCore.designScene
       .sync();
@@ -664,7 +605,7 @@ export function BimViewport() {
       name:
         piece.name,
       visible:
-        piece.visible,
+        !bimCore.designScene.isInstanceHidden(piece.id),
       x:
         event.clientX,
       y:
@@ -1060,17 +1001,6 @@ export function BimViewport() {
                 disconnect?.(); delete devWindow.frameLogicConnectAutomation; baseDispose();
               };
             }
-
-            instance.designScene
-              .setVisibilityFilter(
-                (
-                  instanceId,
-                ) =>
-                  !hiddenPieceIdsRef.current
-                    .has(
-                      instanceId,
-                    ),
-              );
 
             setModels(
               instance.getLoadedModels(),
