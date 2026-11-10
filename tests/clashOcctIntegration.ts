@@ -16,6 +16,7 @@ type Runtime = {
 };
 const identity = (dx = 0, dy = 0, dz = 0) =>
   [1,0,0,0,0,1,0,0,0,0,1,0,dx,dy,dz,1];
+async function main(): Promise<void> {
 const runtime = getOpenCascadeBrepKernel() as unknown as Runtime;
 const names = ["occt-boolean-test-a", "occt-boolean-test-b"];
 const resources: Owned[] = [];
@@ -46,3 +47,6 @@ try {
   for (const name of names) runtime.documents.delete(name);
   for (const resource of resources.reverse()) resource.delete();
 }
+
+}
+void main().catch(error => { console.error(error); process.exitCode = 1; });
