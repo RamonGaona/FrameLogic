@@ -1,3 +1,5 @@
+export { ClashDetectionEngine } from "./clash/ClashDetectionEngine";
+export type { ClashRecord, ClashScan, ClashScanOptions, ClashKind, ClashReviewStatus } from "./clash/ClashDetectionEngine";
 import { ModelOperations } from "./automation/ModelOperations";
 export type { AssemblyChangeRequest, AssemblyProposal } from "./automation/AssemblyAutomation";
 export { ModelOperations } from "./automation/ModelOperations";

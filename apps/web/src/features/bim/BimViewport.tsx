@@ -1,3 +1,4 @@
+import { mountClashDetectionPanel } from "./mountClashDetectionPanel";
 import { mountAutomationPanel } from "./mountAutomationPanel";
 import { mountLocalChatPanel } from "./mountLocalChatPanel";
 import { connectAutomationBridge } from "@framelogic/bim-core";
@@ -985,9 +986,10 @@ export function BimViewport() {
             bimCoreRef.current =
               instance;
             const disposeAutomationPanel = mountAutomationPanel(instance);
+            const disposeClashDetectionPanel = mountClashDetectionPanel(instance);
             const disposeLocalChatPanel = mountLocalChatPanel(instance);
             const disposeWithPanel = instance.dispose;
-            instance.dispose = () => { disposeLocalChatPanel(); disposeAutomationPanel(); disposeWithPanel(); };
+            instance.dispose = () => { disposeClashDetectionPanel(); disposeLocalChatPanel(); disposeAutomationPanel(); disposeWithPanel(); };
             if (import.meta.env.DEV) {
               let disconnect: (() => void) | undefined;
               const devWindow = window as typeof window & { frameLogicConnectAutomation?: (token: string) => void };

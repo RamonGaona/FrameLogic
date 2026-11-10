@@ -75,6 +75,9 @@ jobs:
       - name: Piece visualization tests
         run: npm run test:piece-visuals
 
+      - name: Clash Detection regression tests
+        run: npm run test:clash
+
       - name: Build FrameLogic web for Cloudflare
         run: npm run build:cloudflare
 
