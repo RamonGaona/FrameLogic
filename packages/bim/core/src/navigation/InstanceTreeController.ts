@@ -151,6 +151,25 @@ export class InstanceTreeController {
     this.render();
   }
 
+  /** Explicit whole-assembly identities, independent of the piece selection. */
+  getSelectedAssemblyIds(): readonly string[] {
+    return [...this.selectedAssemblyIds].filter((id) =>
+      this.options.designModel.assemblies.get(id) !== undefined,
+    );
+  }
+
+  /** Called after a structural COPY has selected its new piece instances. */
+  setCopiedAssemblySelection(ids: readonly string[]): void {
+    this.selectedAssemblyIds.clear();
+    for (const id of ids) {
+      if (this.options.designModel.assemblies.get(id)) {
+        this.selectedAssemblyIds.add(id);
+      }
+    }
+    this.render();
+  }
+
+
   private readonly handleToggle = (): void => {
     this.expanded = !this.expanded;
     this.body.style.display = this.expanded ? "block" : "none";
