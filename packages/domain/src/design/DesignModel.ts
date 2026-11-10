@@ -569,8 +569,12 @@ import {
         throw new Error("La capa de destino está bloqueada.");
       }
 
-      // A new parent cannot itself be born inside a selected child.
-      if (input.parentAssemblyId && childIds.includes(input.parentAssemblyId)) {
+      // A new parent cannot be placed anywhere inside a child being
+      // regrouped: the child would later become its own ancestor.
+      if (input.parentAssemblyId && childIds.some((id) =>
+        id === input.parentAssemblyId
+        || this.getAssemblyDescendantIds(id).includes(input.parentAssemblyId!)
+      )) {
         throw new Error("No se puede crear una relación circular de ensambles.");
       }
       if (input.parentAssemblyId
@@ -578,15 +582,23 @@ import {
           || this.isAssemblyLocked(input.parentAssemblyId))) {
         throw new Error("El ensamble padre no existe o está bloqueado.");
       }
-      const created = this.assemblies.register({
-        ...input,
-        layerId,
-        pieceInstanceIds: [...pieces],
-      });
-      for (const id of childIds) {
-        this.assemblies.updateParentAssemblyId(id, created.id);
+      // Reparenting is a single transaction. A registry error must not
+      // leave a new empty parent or half-moved children in the model.
+      const before = this.captureAssemblies();
+      try {
+        const created = this.assemblies.register({
+          ...input,
+          layerId,
+          pieceInstanceIds: [...pieces],
+        });
+        for (const id of childIds) {
+          this.assemblies.updateParentAssemblyId(id, created.id);
+        }
+        return created;
+      } catch (error) {
+        this.restoreAssemblies(before);
+        throw error;
       }
-      return created;
     }
 
     captureAssemblies(): Assembly[] {
