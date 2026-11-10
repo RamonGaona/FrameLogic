@@ -559,6 +559,8 @@ export class FrameLogicProjectPackageController {
       makeButton(
         "Abrir proyecto",
       );
+    save.dataset["framelogicFileCommand"] = "save-project";
+    open.dataset["framelogicFileCommand"] = "open-project";
     save.addEventListener(
       "click",
       () => {

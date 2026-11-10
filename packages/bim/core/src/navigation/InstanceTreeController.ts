@@ -272,6 +272,9 @@ export class InstanceTreeController {
             );
           },
         );
+        // Stable identity for the eye/color controllers, including when the
+        // instance tree is reparented outside its original viewport.
+        row.dataset["framelogicAssemblyId"] = assembly.id;
         row.title = "F2 = renombrar · clic derecho = opciones de ensamble";
         row.addEventListener(
           "contextmenu",
@@ -362,6 +365,9 @@ export class InstanceTreeController {
       }
     }
     this.body.append(cadGroup.details);
+    // The appearance controller may live outside the reparented tree.
+    // Notify it after every full tree rebuild so eyes appear immediately.
+    document.dispatchEvent(new Event("framelogic-instance-tree-rendered"));
   }
 
   private createPieceRow(instanceId: string): HTMLDivElement {
@@ -393,6 +399,7 @@ export class InstanceTreeController {
         this.render();
       },
     );
+    row.dataset["framelogicPieceId"] = instanceId;
     row.title = "F2 = renombrar · clic derecho = crear/mover/copiar a ensamble";
     row.addEventListener(
       "contextmenu",

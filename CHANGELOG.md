@@ -12,6 +12,25 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.96 — 2026-11-09
+
+### Menú ARCHIVO compacto y visibilidad individual de piezas
+
+- **ARCHIVO ▾:** se agrupan en un solo menú desplegable los comandos Guardar proyecto, Abrir proyecto, Abrir DWG/DXF, Importar pieza y Abrir pieza FrameLogic. El menú se despliega hacia abajo, se cierra con clic fuera o Escape, y los comandos conservan sus controladores originales para no romper selección de archivos ni descargas.
+- **Barra más limpia:** los botones originales permanecen montados pero solo se ocultan cuando el menú está disponible; se evita dejar una etiqueta ARCHIVO duplicada en la barra principal. El indicador de autoguardado continúa visible fuera del menú.
+- **Ojos individuales:** las filas de ensamble y de pieza reciben sus IDs reales al crearse. PieceAppearanceController encuentra INSTANCIAS también después de que el layout mueve su panel a document.body, sin inferir identidad del nombre visible o del ID abreviado.
+- **Refresco inmediato:** después de reconstruir el árbol se notifica al controlador de apariencia para volver a colocar los ojos en piezas agrupadas y sueltas, manteniendo el estado centralizado en DesignSceneController.
+- **Menú contextual:** la decoración de color vuelve a recibir clics derechos sobre INSTANCIAS aunque el panel haya sido reubicado.
+- **Regresión:** pruebas del listado y resolución de acciones ARCHIVO, y de la detección por IDs para una pieza dentro de ensamble y una suelta. Se incluyen en el flujo existente de pruebas del árbol.
+- No se cambian los datos del proyecto, la geometría STEP/IFC ni los ojos generales de ensambles, secciones y entidades CAD. Sin nuevas dependencias de pago.
+
+### Verificación visual
+
+- Probar en un proyecto con ensambles y piezas sueltas los ojos individuales y generales, incluido el caso de ocultar una sola pieza dentro de un ensamble.
+- Probar los cinco comandos de ARCHIVO y el cierre con clic fuera / Escape en la aplicación desplegada.
+
+---
+
 ## v0.1.95 — 2026-11-09
 
 ### Corrección de visibilidad · Árbol INSTANCIAS

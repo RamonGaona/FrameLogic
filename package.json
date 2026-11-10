@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.95",
+  "version": "0.1.96",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -17,7 +17,7 @@
     "test:precision-stage2": "vitest run packages/bim/core/src/navigation/AdaptivePieceLod.test.ts packages/bim/core/src/precision/SnapTrackingMath.test.ts packages/bim/core/src/design/DesignSceneController.test.ts",
     "test:drawings": "vitest run packages/bim/core/src/drawing/AutoDrawingPlanner.test.ts",
     "test:gizmos": "vitest run packages/bim/core/src/interaction/DesignTransformCtrlCopy.test.ts packages/bim/core/src/interaction/AlignController.test.ts packages/bim/core/src/interaction/PieceMoveCopySession.test.ts packages/bim/core/src/interaction/TransformGizmoReliability.test.ts packages/bim/core/src/interaction/CadWindowSelectionController.test.ts packages/bim/core/src/interaction/MoveSnapDestinationPolicy.test.ts packages/bim/core/src/interaction/DesignPlacementController.test.ts",
-    "test:instance-tree": "vitest run packages/bim/core/src/navigation/findInstanceTreeBody.test.ts",
+    "test:instance-tree": "vitest run packages/bim/core/src/navigation/findInstanceTreeBody.test.ts packages/bim/core/src/navigation/PieceAppearanceController.test.ts packages/bim/core/src/navigation/FileMenuController.test.ts",
     "test:visibility": "vitest run packages/bim/core/src/navigation/getInstanceGroupIds.test.ts packages/bim/core/src/design/DesignSceneController.test.ts packages/bim/core/src/drawing/SectionInstanceTreeBridgeController.test.ts",
     "test:camera": "vitest run packages/bim/core/src/navigation/CadMouseNavigationController.test.ts",
     "test:piece-preparation": "vitest run packages/bim/core/src/interaction/assetPositionForPieceSnap.test.ts packages/bim/core/src/design/pickPieceReferenceAtScreen.test.ts packages/bim/core/src/interaction/PieceReferenceManipulationController.test.ts packages/bim/core/src/design/PieceDefinitionHelperSceneController.test.ts packages/bim/core/src/interaction/PieceDefinitionPreparationController.test.ts packages/bim/core/src/interaction/PieceFrameLogicWorkspaceController.test.ts packages/bim/core/src/interaction/finishActiveLineForAxisConversion.test.ts apps/web/src/features/bim/dockPiecePreparationPanel.test.ts",
