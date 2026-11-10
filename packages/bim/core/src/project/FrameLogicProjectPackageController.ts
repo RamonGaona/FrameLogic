@@ -318,7 +318,10 @@ export class FrameLogicProjectPackageController {
   ): Promise<void> {
     // Fail before clearing the running model: malformed hierarchy in a
     // .flproject must never replace a healthy in-memory project.
-    validateAssemblyHierarchy(packageValue.assemblies ?? []);
+    if (!Array.isArray(packageValue.assemblies)) {
+      throw new Error("El proyecto no contiene una lista válida de ensambles.");
+    }
+    validateAssemblyHierarchy(packageValue.assemblies);
     this.options.cancelActiveCadCommand();
     this.options.clearReferenceModels();
     this.references.length = 0;
@@ -653,6 +656,7 @@ export function parseProjectPackage(
     || value.version !== 1
     || !Array.isArray(value.pieceDefinitions)
     || !Array.isArray(value.pieceInstances)
+    || !Array.isArray(value.assemblies)
     || !Array.isArray(value.geometrySources)
   ) {
     throw new Error(
