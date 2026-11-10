@@ -365,6 +365,9 @@ export class InstanceTreeController {
       }
     }
     this.body.append(cadGroup.details);
+    // The appearance controller may live outside the reparented tree.
+    // Notify it after every full tree rebuild so eyes appear immediately.
+    document.dispatchEvent(new Event("framelogic-instance-tree-rendered"));
   }
 
   private createPieceRow(instanceId: string): HTMLDivElement {
