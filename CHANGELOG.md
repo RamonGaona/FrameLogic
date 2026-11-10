@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.102 — 2026-11-10
+
+### Automatización MCP y chat unificados para ensambles jerárquicos
+
+- **Motor de comandos compartido:** los movimientos y las copias de ensambles usan una operación de dominio común, accesible por chat web y MCP mediante el despachador seguro existente. La interfaz sigue utilizando sus comandos CAD y el mismo historial Undo/Redo.
+- **Identidad real del ensamble:** `get_selection_context`, `list_assemblies` y `select_assembly` reconocen la selección explícita del árbol INSTANCIAS, independientemente de la selección de piezas. Nunca deducen un ensamble únicamente por tener sus piezas seleccionadas.
+- **Transacciones jerárquicas:** `prepare_assembly_operation` / `confirm_assembly_operation` permiten `move_assembly`, `copy_assembly` y `copy_assembly_array` con desplazamiento global XYZ en milímetros. Las copias conservan hijos y subensambles, pero reciben IDs nuevos y eliminan etiquetas de sincronización de copia vinculada.
+- **Aprobación humana y seguridad:** preparación sin mutación, caducidad de 2 minutos, invalidación si el modelo o la selección cambian, confirmación de un solo uso, rechazo de ensambles bloqueados, validación de coordenadas, límite de 20 copias y cotas de 1000 piezas / 500 nodos por operación. Una acción confirmada crea un único paso Undo/Redo.
+- **Chat integrado:** listar ensambles, consultar selección del árbol, y órdenes como «Mueve este ensamble 200 mm en X» o «Copia este ensamble 3 veces cada 1500 mm en X» con previsualización y botón de aprobación. Los ejes son globales porque el modelo de ensamble actual no define marco local propio.
+- **Pruebas:** nuevas regresiones de 3 niveles, bloqueo, copias estructurales, aprobación, rollback, identidad seleccionada y parser; se integran a `test:automation` y `test:browser-chat`.
+- **Alcance pendiente:** no se incluye alineación paramétrica automática, restricciones cinemáticas ni scripts mixtos con ensambles y piezas. El motor MCP sigue requiriendo una sesión explícita del navegador para aplicar cambios.
+
+---
+
 ## v0.1.101 — 2026-11-10
 
 ### SNAPs geométricos STEP precisos y consistentes con LOD

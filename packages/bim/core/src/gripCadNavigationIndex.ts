@@ -1,4 +1,5 @@
 import { ModelOperations } from "./automation/ModelOperations";
+export type { AssemblyChangeRequest, AssemblyProposal } from "./automation/AssemblyAutomation";
 export { ModelOperations } from "./automation/ModelOperations";
 export type { ChangeRequest, Proposal, CommandsProposal, ObjectQuery, ModelObjectSummary, OperationPorts } from "./automation/ModelOperations";
 export { connectAutomationBridge } from "./automation/BrowserBridge";
@@ -173,6 +174,8 @@ export async function createBimCore(
     sync: () => { core.designScene.sync(); core.designSelection.refreshHelpers(); },
     getSelection: () => [...core.designSelection.getSelectedIds()],
     setSelection: ids => core.designSelection.setSelection(ids),
+    getSelectedAssemblyIds: () => core.instanceTree.getSelectedAssemblyIds(),
+    setSelectedAssemblyIds: ids => core.instanceTree.setCopiedAssemblySelection(ids),
     getInstanceBounds: id => {
       const bounds = core.designScene.getInstanceWorldBounds(id);
       if (!bounds) return null;
