@@ -3,7 +3,8 @@
  * npm run test:clash:occt
  */
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { createRequire } from "node:module";
 import { getOpenCascadeBrepKernel } from "../packages/geometry-engine/src/step/OpenCascadeBrepKernel";
 import { OpenCascadeClashKernel } from "../packages/geometry-engine/src/step/OpenCascadeClashKernel";
 
@@ -24,6 +25,12 @@ const resources: Owned[] = [];
 try {
   // The package's index imports .wasm as an ESM module (Vite-only). In Node,
   // load the Emscripten entry directly, as the web app's Vite alias already does.
+  // The distributed Emscripten ESM uses CommonJS Node globals internally.
+  const nativeFile = resolve(process.cwd(), "node_modules/opencascade.js/dist/opencascade.full.js");
+  Object.assign(globalThis, {
+    __dirname: dirname(nativeFile), __filename: nativeFile,
+    require: createRequire(nativeFile),
+  });
   const entry = await import("opencascade.js/dist/opencascade.full.js");
   const initOc = entry.default;
   const wasmPath = resolve(process.cwd(), "node_modules/opencascade.js/dist/opencascade.full.wasm");
