@@ -1,3 +1,4 @@
+import { validateAssemblyHierarchy } from "@framelogic/domain";
 import type {
   Assembly,
   CadLine,
@@ -315,6 +316,9 @@ export class FrameLogicProjectPackageController {
   async restoreProjectPackage(
     packageValue: FrameLogicProjectPackage,
   ): Promise<void> {
+    // Fail before clearing the running model: malformed hierarchy in a
+    // .flproject must never replace a healthy in-memory project.
+    validateAssemblyHierarchy(packageValue.assemblies ?? []);
     this.options.cancelActiveCadCommand();
     this.options.clearReferenceModels();
     this.references.length = 0;
@@ -471,6 +475,8 @@ export class FrameLogicProjectPackageController {
         classification: assembly.classification,
         tags: [...assembly.tags],
         pieceInstanceIds: [...assembly.pieceInstanceIds],
+        parentAssemblyId: assembly.parentAssemblyId,
+        locked: assembly.locked,
       });
     }
 
