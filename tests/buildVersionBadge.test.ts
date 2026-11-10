@@ -10,7 +10,7 @@ describe("FrameLogic deployed version badge", () => {
     const vite = read("../apps/web/vite.config.ts");
     expect(badge).toContain("typeof __FRAMELOGIC_VERSION__");
     expect(badge).toContain("? __FRAMELOGIC_VERSION__");
-    expect(badge).not.toMatch(/const FRAMELOGIC_VERSION\\s*=\\s*["']\\d+\\.\\d+\\.\\d+/);
+    expect(badge).not.toMatch(/const FRAMELOGIC_VERSION\s*=\s*["']\d+\.\d+\.\d+/);
     expect(vite).toContain("__FRAMELOGIC_VERSION__: JSON.stringify(appVersion)");
     expect(vite).toContain("packageJson.version");
   });
