@@ -272,6 +272,9 @@ export class InstanceTreeController {
             );
           },
         );
+        // Stable identity for the eye/color controllers, including when the
+        // instance tree is reparented outside its original viewport.
+        row.dataset["framelogicAssemblyId"] = assembly.id;
         row.title = "F2 = renombrar · clic derecho = opciones de ensamble";
         row.addEventListener(
           "contextmenu",
@@ -393,6 +396,7 @@ export class InstanceTreeController {
         this.render();
       },
     );
+    row.dataset["framelogicPieceId"] = instanceId;
     row.title = "F2 = renombrar · clic derecho = crear/mover/copiar a ensamble";
     row.addEventListener(
       "contextmenu",
