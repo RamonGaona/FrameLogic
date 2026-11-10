@@ -101,8 +101,8 @@ describe("Ctrl+gizmo copy as a structural transaction", () => {
     expect(f.model.assemblies.get(child.id)?.parentAssemblyId).toBe(root.id);
     expect(f.model.getAssemblyPieceIdsDeep(root.id)).toHaveLength(2);
     expect(f.model.pieceInstances.get(copyAId)?.transform.position.x).toBe(360);
-    expect(f.model.pieceDefinitions.count).toBe(1);
-    expect(f.model.assets.count).toBe(1);
+    expect(f.model.pieceDefinitions.getAll().length).toBe(1);
+    expect(f.model.assets.getAll().length).toBe(1);
   });
 
   it("Esc/cancel drops both duplicated pieces and assembly hierarchy", () => {
