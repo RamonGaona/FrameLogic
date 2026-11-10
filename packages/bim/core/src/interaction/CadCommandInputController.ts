@@ -214,7 +214,7 @@ export class CadCommandInputController {
 
       if (
         (!startsLineFamily && !startsRectangle && !startsCopy)
-        || this.hasActiveCommand()
+        || (this.hasActiveCommand() && !startsCopy)
         || hasExternalCadCommand()
       ) {
         return;
