@@ -159,6 +159,8 @@ export class DesignTransformController {
   private ctrlCopyGesture = false;
   private armedCopyMove = false;
   private copySession: PieceMoveCopySession | null = null;
+  private copyAssemblyIds: () => readonly string[] = () => [];
+  private selectCopiedAssemblies: (ids: readonly string[]) => void = () => {};
   private cancelingCtrlGesture = false;
 
 
@@ -1010,12 +1012,26 @@ export class DesignTransformController {
     }
   };
 
+  /**
+   * The INSTANCIAS tree owns assembly identity, while the viewport selection
+   * owns individual piece IDs. Pass both to an independent copy transaction.
+   */
+  setAssemblyCopySelection(
+    getSelectedAssemblyIds: () => readonly string[],
+    onSelectAssemblies: (ids: readonly string[]) => void,
+  ): void {
+    this.copyAssemblyIds = getSelectedAssemblyIds;
+    this.selectCopiedAssemblies = onSelectAssemblies;
+  }
+
   private beginCopySession(): boolean {
     if (this.copySession) return true;
     try {
       const session = new PieceMoveCopySession(
         this.designModel, this.designScene, this.selection, this.history,
         this.selection.getSelectedIds(),
+        this.copyAssemblyIds(),
+        this.selectCopiedAssemblies,
       );
       this.copySession = session;
       this.transformedObjects.clear();
