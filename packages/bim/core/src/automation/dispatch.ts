@@ -1,10 +1,12 @@
 import { toolSchemas, type ToolName, type OperationResult } from "../../../../contracts/src/automation";
 import type { ModelOperations, Proposal, CommandsProposal } from "./ModelOperations";
+import type { AssemblyProposal } from "./AssemblyAutomation";
 
 /** Browser owns approval. Agent never receives a bypass flag. */
 export function createOperationDispatcher(ops: ModelOperations, approve: (summary: unknown) => boolean | Promise<boolean>) {
   let proposal: Proposal | undefined;
   let commandsProposal: CommandsProposal | undefined;
+  let assemblyProposal: AssemblyProposal | undefined;
   return async (tool: ToolName, args: unknown): Promise<OperationResult> => {
     try {
       if (!(tool in toolSchemas)) throw new Error("Unknown tool");
@@ -18,10 +20,34 @@ export function createOperationDispatcher(ops: ModelOperations, approve: (summar
         case "get_piece_axes": data = ops.getPieceAxes((a as {id:string}).id); break;
         case "query_objects": data = ops.queryObjects(toolSchemas.query_objects.parse(a)); break;
         case "describe_object": data = ops.describeObject(toolSchemas.describe_object.parse(a).id); break;
+        case "list_assemblies": data = ops.listAssemblies(toolSchemas.list_assemblies.parse(a).limit); break;
+        case "get_selection_context": data = ops.getSelectionContext(); break;
+        case "select_assembly": {
+          if (!await approve({ operation: tool, ...a })) throw new Error("User declined assembly selection");
+          data = ops.selectAssembly(toolSchemas.select_assembly.parse(a).id);
+          break;
+        }
+        case "prepare_assembly_operation":
+          proposal = undefined; commandsProposal = undefined;
+          assemblyProposal = ops.prepareAssembly(toolSchemas.prepare_assembly_operation.parse(a).request);
+          data = assemblyProposal;
+          break;
+        case "confirm_assembly_operation": {
+          const { proposalId } = toolSchemas.confirm_assembly_operation.parse(a);
+          if (!assemblyProposal || assemblyProposal.id !== proposalId)
+            throw new Error("Prepare the assembly in this session first");
+          const summary = assemblyProposal;
+          assemblyProposal = undefined; // one-shot regardless of approval
+          if (!await approve(summary)) throw new Error("User declined assembly operation");
+          data = ops.confirmAssembly(proposalId);
+          break;
+        }
         case "prepare_operation":
+          assemblyProposal = undefined;
           commandsProposal = undefined;
           proposal = ops.prepare(toolSchemas.prepare_operation.parse(a).request); data = proposal; break;
         case "prepare_commands":
+          assemblyProposal = undefined;
           proposal = undefined;
           commandsProposal = ops.prepareCommands(toolSchemas.prepare_commands.parse(a).commands);
           data = commandsProposal;
