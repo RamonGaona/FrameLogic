@@ -257,63 +257,28 @@ export class InstanceTreeController {
     this.body.append(summary);
 
     const assemblyGroup = this.createGroup("ENSAMBLAJES", true);
+    const rendered = new Set<string>();
+    for (const selectedId of [...this.selectedAssemblyIds]) {
+      if (!this.options.designModel.assemblies.get(selectedId)) {
+        this.selectedAssemblyIds.delete(selectedId);
+      }
+    }
     if (assemblies.length < 1) {
       assemblyGroup.content.append(this.createEmpty("Sin ensambles"));
-    }
-    else {
+    } else {
       for (const assembly of assemblies) {
-        const members = assembly.pieceInstanceIds
-          .map((id) => this.options.designModel.pieceInstances.get(id))
-          .filter((value): value is PieceInstance => value !== undefined);
-        const allSelected = members.length > 0
-          && members.every((member) =>
-            this.options.designSelection.isSelected(member.id),
-          );
-        const row = this.createSelectableRow(
-          `▦ ${assembly.name}`,
-          `${members.length} pieza${members.length === 1 ? "" : "s"}`,
-          allSelected,
-          (event) => {
-            this.focusedItem = {
-              kind: "ASSEMBLY",
-              id: assembly.id,
-            };
-            this.selectAssembly(
-              assembly.pieceInstanceIds,
-              event.ctrlKey || event.metaKey,
-            );
-          },
-        );
-        // Stable identity for the eye/color controllers, including when the
-        // instance tree is reparented outside its original viewport.
-        row.dataset["framelogicAssemblyId"] = assembly.id;
-        row.title = "F2 = renombrar · clic derecho = opciones de ensamble";
-        row.addEventListener(
-          "contextmenu",
-          (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            this.focusedItem = {
-              kind: "ASSEMBLY",
-              id: assembly.id,
-            };
-            this.showAssemblyContextMenu(
-              event.clientX,
-              event.clientY,
-              assembly.id,
-            );
-          },
-        );
-        assemblyGroup.content.append(row);
-
-        const children = document.createElement("div");
-        children.style.paddingLeft = "16px";
-        for (const member of members) {
-          children.append(
-            this.createPieceRow(member.id),
-          );
+        if (assembly.parentAssemblyId
+          && this.options.designModel.assemblies.get(assembly.parentAssemblyId)) {
+          continue;
         }
-        assemblyGroup.content.append(children);
+        this.appendAssemblyNode(assembly.id, assemblyGroup.content, rendered);
+      }
+      // Guard against corrupt legacy data: display unvisited entries but
+      // never recurse forever into invalid parent cycles.
+      for (const assembly of assemblies) {
+        if (!rendered.has(assembly.id)) {
+          this.appendAssemblyNode(assembly.id, assemblyGroup.content, rendered);
+        }
       }
     }
     this.body.append(assemblyGroup.details);
@@ -381,6 +346,66 @@ export class InstanceTreeController {
     // Notify it after every full tree rebuild so eyes appear immediately.
     document.dispatchEvent(new Event("framelogic-instance-tree-rendered"));
   }
+
+  private appendAssemblyNode(
+    assemblyId: string,
+    parent: HTMLElement,
+    rendered: Set<string>,
+  ): void {
+    const assembly = this.options.designModel.assemblies.get(assemblyId);
+    if (!assembly || rendered.has(assemblyId)) return;
+    rendered.add(assemblyId);
+
+    const allIds = this.options.designModel.getAssemblyPieceIdsDeep(assemblyId);
+    const directMembers = assembly.pieceInstanceIds
+      .map((id) => this.options.designModel.pieceInstances.get(id))
+      .filter((member): member is PieceInstance => member !== undefined);
+    const children = this.options.designModel.getAssemblyChildren(assemblyId);
+    const selected = this.selectedAssemblyIds.has(assembly.id);
+
+    const row = this.createSelectableRow(
+      `▦ ${assembly.locked ? "🔒 " : ""}${assembly.name}`,
+      `${allIds.length} pieza${allIds.length === 1 ? "" : "s"}${children.length ? ` · ${children.length} sub` : ""}`,
+      selected,
+      (event) => {
+        this.focusedItem = { kind: "ASSEMBLY", id: assembly.id };
+        this.selectAssembly(assembly.id, event.ctrlKey || event.metaKey);
+      },
+    );
+    row.dataset["framelogicAssemblyId"] = assembly.id;
+    row.title = "Clic = seleccionar ensamble completo · Ctrl = multiselección · clic derecho = opciones";
+    row.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.focusedItem = { kind: "ASSEMBLY", id: assembly.id };
+      if (!this.selectedAssemblyIds.has(assembly.id)) {
+        this.selectedAssemblyIds.clear();
+        this.selectedAssemblyIds.add(assembly.id);
+        this.updatingTreeSelection = true;
+        try {
+          this.options.designSelection.setSelection(allIds);
+        } finally {
+          this.updatingTreeSelection = false;
+        }
+      }
+      this.showAssemblyContextMenu(
+        event.clientX, event.clientY, assembly.id,
+      );
+    });
+    parent.append(row);
+
+    const items = document.createElement("div");
+    items.dataset["framelogicAssemblyChildren"] = assembly.id;
+    items.style.paddingLeft = "16px";
+    for (const child of children) {
+      this.appendAssemblyNode(child.id, items, rendered);
+    }
+    for (const member of directMembers) {
+      items.append(this.createPieceRow(member.id));
+    }
+    parent.append(items);
+  }
+
 
   private createPieceRow(instanceId: string): HTMLDivElement {
     const instance = this.options.designModel.pieceInstances.get(instanceId);
