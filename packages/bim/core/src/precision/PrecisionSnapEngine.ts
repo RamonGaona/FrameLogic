@@ -292,6 +292,8 @@ export class PrecisionSnapEngine {
     if (
       legacy
       && legacy.type !== "REFERENCE"
+      && !(legacy.derivedFromMesh
+        && this.geometryQuery.hasExactTopologyForSource(legacy.instanceId))
     ) {
       candidates.push({
         snap: {
