@@ -818,6 +818,7 @@ export class DesignRotateController {
         !instance
         || layer?.visible === false
         || layer?.locked === true
+        || this.designModel.isPieceLocked?.(instanceId) === true
       ) {
 
         this.transformedObjects.clear();
