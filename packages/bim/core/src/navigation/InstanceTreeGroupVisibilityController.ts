@@ -4,6 +4,9 @@ import type {
   DesignModel,
 } from "@framelogic/domain";
 
+import type { DesignSceneController } from "../design/DesignSceneController";
+import type { PieceAppearanceController } from "./PieceAppearanceController";
+
 import type {
   CadLineSceneController,
 } from "../design/CadLineSceneController";
@@ -35,12 +38,14 @@ import {
 
 interface SectionTreeRuntime {
   readonly hidden: Set<string>;
-  toggleVisibility(sectionId: string): void;
+  setHiddenSections(sectionIds: readonly string[], hidden: boolean): void;
 }
 
 interface Options {
   readonly container: HTMLElement;
   readonly designModel: DesignModel;
+  readonly designScene: DesignSceneController;
+  readonly pieceAppearance: PieceAppearanceController;
   readonly lineScene: CadLineSceneController;
   readonly pointScene: CadPointSceneController;
   readonly lineSelection: CadLineSelectionController;
@@ -97,6 +102,8 @@ export class InstanceTreeGroupVisibilityController {
       'details[data-framelogic-section-tree="true"]',
     );
     const referenceDetails = this.findGroup("REFERENCIAS CAD");
+    const assemblyDetails = this.findGroup("ENSAMBLAJES");
+    const looseDetails = this.findGroup("PIEZAS SUELTAS");
 
     if (cadDetails) {
       const lines = this.options.designModel.cadLines.getAll();
@@ -128,6 +135,32 @@ export class InstanceTreeGroupVisibilityController {
         allHidden,
         sections.length > 0,
         () => this.toggleAllSections(),
+      );
+    }
+
+    if (assemblyDetails) {
+      const pieceIds = this.getAssemblyPieceIds();
+      this.ensureEye(
+        assemblyDetails,
+        "assemblies",
+        pieceIds.length > 0 && pieceIds.every(
+          (id) => this.options.designScene.isInstanceHidden(id),
+        ),
+        pieceIds.length > 0,
+        () => this.togglePieces("assemblies"),
+      );
+    }
+
+    if (looseDetails) {
+      const pieceIds = this.getLoosePieceIds();
+      this.ensureEye(
+        looseDetails,
+        "loose",
+        pieceIds.length > 0 && pieceIds.every(
+          (id) => this.options.designScene.isInstanceHidden(id),
+        ),
+        pieceIds.length > 0,
+        () => this.togglePieces("loose"),
       );
     }
 
@@ -227,19 +260,43 @@ export class InstanceTreeGroupVisibilityController {
   private toggleAllSections(): void {
     const sections = this.options.sectionDrawing.getSections();
     if (sections.length < 1) return;
-
-    const anyVisible = sections.some((section) =>
-      !this.sectionRuntime.hidden.has(section.id),
+    const hide = sections.some(
+      (section) => !this.sectionRuntime.hidden.has(section.id),
     );
-    const hide = anyVisible;
+    // One batch: the tree and the scene are refreshed after ALL section
+    // visibility flags change, never between individual rows.
+    this.sectionRuntime.setHiddenSections(
+      sections.map((section) => section.id),
+      hide,
+    );
+    this.decorate();
+  }
 
-    for (const section of sections) {
-      const currentlyHidden =
-        this.sectionRuntime.hidden.has(section.id);
-      if (currentlyHidden === hide) continue;
-      this.sectionRuntime.toggleVisibility(section.id);
-    }
+  private getAssemblyPieceIds(): string[] {
+    return Array.from(new Set(
+      this.options.designModel.assemblies.getAll()
+        .flatMap((assembly) => assembly.pieceInstanceIds),
+    )).filter(
+      (id) => this.options.designModel.pieceInstances.get(id) !== undefined,
+    );
+  }
 
+  private getLoosePieceIds(): string[] {
+    const grouped = new Set(this.getAssemblyPieceIds());
+    return this.options.designModel.pieceInstances.getAll()
+      .filter((piece) => !grouped.has(piece.id))
+      .map((piece) => piece.id);
+  }
+
+  private togglePieces(group: "assemblies" | "loose"): void {
+    const ids = group === "assemblies"
+      ? this.getAssemblyPieceIds()
+      : this.getLoosePieceIds();
+    if (ids.length === 0) return;
+    const hide = ids.some(
+      (id) => !this.options.designScene.isInstanceHidden(id),
+    );
+    this.options.pieceAppearance.setPiecesHidden(ids, hide);
     this.decorate();
   }
 
