@@ -51,6 +51,9 @@ jobs:
       - name: Instance tree layout tests
         run: npm run test:instance-tree
 
+      - name: Hierarchical assembly and CAD history regression
+        run: npm run test:assembly-hierarchy
+
       - name: Model-space visibility and section group tests
         run: npm run test:visibility
 
