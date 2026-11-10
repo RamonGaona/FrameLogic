@@ -147,6 +147,12 @@ export async function createBimCore(
         core.cadPointSelection,
       designSelection:
         core.designSelection,
+      designScene:
+        core.designScene,
+      selectedAssemblyIds: () =>
+        core.instanceTree.getSelectedAssemblyIds(),
+      onCopiedAssemblySelection: (ids) =>
+        core.instanceTree.setCopiedAssemblySelection(ids),
       workPlane:
         core.cadWorkPlane,
       history:
@@ -160,6 +166,23 @@ export async function createBimCore(
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
     });
+
+  core.instanceTree.setCopySelectionMode(
+    () => cadCopy.isAwaitingSelection,
+  );
+
+  // The floating CAD text input belongs to an earlier layer. Its callback is
+  // installed here, once the actual COPY controller is available.
+  const commandWindow = window as Window & {
+    __frameLogicStartCopyBaseCommand?: () => boolean;
+    __frameLogicCopyBaseCommandActive?: () => boolean;
+  };
+  const previousStartCopy = commandWindow.__frameLogicStartCopyBaseCommand;
+  const previousActiveCopy = commandWindow.__frameLogicCopyBaseCommandActive;
+  const startTypedCopy = (): boolean => cadCopy.start();
+  const isCopyActive = (): boolean => cadCopy.isActive;
+  commandWindow.__frameLogicStartCopyBaseCommand = startTypedCopy;
+  commandWindow.__frameLogicCopyBaseCommandActive = isCopyActive;
 
   cadStretch =
     new CadStretchController({
@@ -432,6 +455,13 @@ export async function createBimCore(
     core.cadTrim.activate =
       baseTrimActivate;
 
+    if (commandWindow.__frameLogicStartCopyBaseCommand === startTypedCopy) {
+      commandWindow.__frameLogicStartCopyBaseCommand = previousStartCopy;
+    }
+    if (commandWindow.__frameLogicCopyBaseCommandActive === isCopyActive) {
+      commandWindow.__frameLogicCopyBaseCommandActive = previousActiveCopy;
+    }
+    core.instanceTree.setCopySelectionMode(() => false);
     cadPolylineEdit.dispose();
     cadStretch.dispose();
     cadCopy.dispose();
