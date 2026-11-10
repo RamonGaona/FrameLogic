@@ -497,54 +497,122 @@ export class InstanceTreeController {
   }
 
 
-  private createAssemblyFromSelection(): void {
-    const selected = [
-      ...this.options.designSelection.getSelectedIds(),
-    ].filter((id) =>
-      this.options.designModel.pieceInstances.get(id) !== undefined,
+  private selectedLoosePieceIds(): string[] {
+    const covered = new Set<string>();
+    for (const assemblyId of this.selectedAssemblyIds) {
+      for (const id of this.options.designModel.getAssemblyPieceIdsDeep(assemblyId)) {
+        covered.add(id);
+      }
+    }
+    return this.options.designSelection.getSelectedIds()
+      .filter((id) => !covered.has(id))
+      .filter((id) => this.options.designModel.pieceInstances.get(id) !== undefined);
+  }
+
+  private recordAssemblyHistory(
+    label: string,
+    before: ReturnType<DesignModel["captureAssemblies"]>,
+  ): void {
+    const after = this.options.designModel.captureAssemblies();
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    const restore = (snapshot: typeof before): void => {
+      this.options.designModel.restoreAssemblies(snapshot);
+      this.selectedAssemblyIds.clear();
+      this.focusedItem = null;
+      this.options.designScene.sync();
+      this.refresh();
+    };
+    this.options.cadHistory.recordOperation(
+      label,
+      () => restore(before),
+      () => restore(after),
     );
-    if (selected.length < 1) {
-      window.alert("Selecciona una o varias piezas para crear el ensamble.");
+  }
+
+  private createAssemblyFromSelection(): void {
+    const model = this.options.designModel;
+    const children = [...this.selectedAssemblyIds];
+    const loose = this.selectedLoosePieceIds();
+    if (children.length === 0 && loose.length === 0) {
+      window.alert("Selecciona un ensamble completo o piezas sueltas.");
       return;
     }
 
-    const defaultName =
-      `Ensamble ${this.options.designModel.assemblies.count + 1}`;
-    const name = window.prompt(
-      "Nombre del ensamble",
-      defaultName,
-    )?.trim();
-    if (!name) return;
-
-    // Grouping validates the whole operation before changing old groups.
-    const assembly = this.options.designModel.groupPieceInstances({
-      name,
-      pieceInstanceIds: selected,
-    });
-    this.focusedItem = {
-      kind: "ASSEMBLY",
-      id: assembly.id,
-    };
-    this.hideContextMenu();
-    this.refresh();
+    try {
+      // Never take pieces from an existing group through '+ Grupo'.
+      // The user must select that assembly row explicitly.
+      for (const id of loose) {
+        const owner = model.assemblies.findByPieceInstanceId(id)[0];
+        if (owner) {
+          throw new Error(
+            `La pieza pertenece a "${owner.name}". Selecciona la fila del ENSAMBLE (Ctrl+clic para combinar) y no sus piezas internas.`,
+          );
+        }
+      }
+      const defaultName = `Ensamble ${model.assemblies.count + 1}`;
+      const name = window.prompt("Nombre del ensamble", defaultName)?.trim();
+      if (!name) return;
+      const before = model.captureAssemblies();
+      const created = model.createNestedAssembly({
+        name,
+        pieceInstanceIds: loose,
+        childAssemblyIds: children,
+      });
+      this.selectedAssemblyIds.clear();
+      this.selectedAssemblyIds.add(created.id);
+      this.focusedItem = { kind: "ASSEMBLY", id: created.id };
+      this.recordAssemblyHistory("Crear ensamble jerárquico", before);
+      this.hideContextMenu();
+      this.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
   }
 
   private moveSelectionToAssembly(assemblyId: string): void {
-    const selected = [
-      ...this.options.designSelection.getSelectedIds(),
-    ].filter((id) =>
-      this.options.designModel.pieceInstances.get(id) !== undefined,
-    );
-    if (selected.length < 1) return;
+    const model = this.options.designModel;
+    const childIds = [...this.selectedAssemblyIds]
+      .filter((id) => id !== assemblyId);
+    const looseIds = this.selectedLoosePieceIds();
+    if (childIds.length === 0 && looseIds.length === 0) return;
 
-    const moved = this.options.designModel.movePieceInstancesToAssembly(
-      assemblyId,
-      selected,
-    );
-    if (!moved) return;
-
-    this.hideContextMenu();
-    this.refresh();
+    const before = model.captureAssemblies();
+    try {
+      // Prevalidate every move: no partial edits if a child would create
+      // a cycle or a parent layer is locked.
+      if (model.isAssemblyLocked(assemblyId)) {
+        throw new Error("El ensamble de destino está bloqueado.");
+      }
+      for (const id of childIds) {
+        if (model.isAssemblyLocked(id)
+          || model.getAssemblyDescendantIds(id).includes(assemblyId)) {
+          throw new Error("Ensamble bloqueado o relación circular: operación cancelada.");
+        }
+      }
+      for (const id of looseIds) {
+        if (model.isPieceLocked(id)) {
+          throw new Error("Hay piezas bloqueadas en la selección.");
+        }
+        if (model.assemblies.findByPieceInstanceId(id).length > 0) {
+          throw new Error(
+            "No se extraerán piezas de otro ensamble. Selecciona el ensamble completo para anidarlo.",
+          );
+        }
+      }
+      for (const id of childIds) model.setAssemblyParent(id, assemblyId);
+      if (looseIds.length > 0) {
+        model.movePieceInstancesToAssembly(assemblyId, looseIds);
+      }
+      this.selectedAssemblyIds.clear();
+      this.selectedAssemblyIds.add(assemblyId);
+      this.recordAssemblyHistory("Mover subensambles y piezas", before);
+      this.hideContextMenu();
+      this.refresh();
+    } catch (error) {
+      model.restoreAssemblies(before);
+      window.alert(error instanceof Error ? error.message : String(error));
+      this.refresh();
+    }
   }
 
   private copySelectionToAssembly(assemblyId: string): void {
