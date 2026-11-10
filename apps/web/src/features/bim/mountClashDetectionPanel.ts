@@ -33,14 +33,10 @@ export function mountClashDetectionPanel(core: Core): () => void {
   root.innerHTML = `
     <button type="button" class="framelogic-clash-toggle" aria-expanded="false" aria-controls="framelogic-clash-panel">Clash Detection</button>
     <section id="framelogic-clash-panel" class="framelogic-clash-panel" role="dialog" aria-label="Detección de interferencias" hidden>
-      <header class="framelogic-clash-header"><div><strong>Clash Detection</strong><small>Diagnóstico geométrico · versión inicial</small></div><button type="button" data-close aria-label="Cerrar">×</button></header>
+      <header class="framelogic-clash-header"><div><strong>Clash Detection</strong><small>Solo penetraciones volumétricas STEP B-rep</small></div><button type="button" data-close aria-label="Cerrar">×</button></header>
       <div class="framelogic-clash-scroll">
         <label>Alcance<select data-scope><option value="all">Modelo completo</option><option value="selection">Selección actual</option></select></label>
-        <label>Tolerancia / separación mínima (mm)<input data-tolerance type="number" min="0" max="100000" step="0.1" value="1" /></label>
-        <div class="framelogic-clash-checks">
-          <label><input data-contact type="checkbox" checked /> Contactos</label>
-          <label><input data-clearance type="checkbox" checked /> Separación mínima</label>
-        </div>
+        <label>Volumen mínimo de interferencia (mm³)<input data-tolerance type="number" min="0" max="100000000000" step="0.001" value="0.01" /></label>
         <div class="framelogic-clash-actions">
           <button data-run type="button">Analizar</button><button data-cancel type="button" disabled>Cancelar</button>
           <button data-clear type="button">Limpiar</button>
@@ -48,8 +44,7 @@ export function mountClashDetectionPanel(core: Core): () => void {
         <p role="status" data-summary aria-live="polite">Listo para analizar. Los datos son solo de esta sesión.</p>
         <div class="framelogic-clash-filters">
           <input data-search type="search" placeholder="Buscar pieza o código" aria-label="Buscar interferencias" />
-          <select data-filter aria-label="Filtrar por tipo"><option value="">Todos los tipos</option><option>HARD</option><option>CONTACT</option><option>CLEARANCE</option><option>UNCONFIRMED</option></select>
-          <select data-status-filter aria-label="Filtrar por estado"><option value="">Todos los estados</option>${STATUSES.map(s => `<option>${s}</option>`).join("")}</select>
+                    <select data-status-filter aria-label="Filtrar por estado"><option value="">Todos los estados</option>${STATUSES.map(s => `<option>${s}</option>`).join("")}</select>
         </div>
         <div data-results class="framelogic-clash-results"><p>Ejecuta un análisis para ver posibles interferencias.</p></div>
         <div class="framelogic-clash-actions">
@@ -57,7 +52,7 @@ export function mountClashDetectionPanel(core: Core): () => void {
           <button data-hide type="button">Quitar resaltado</button>
           <button data-csv type="button">CSV</button><button data-json type="button">JSON</button>
         </div>
-        <small class="framelogic-clash-disclaimer">HARD solo se confirma si hay vértices interiores en mallas cerradas. CONTACT, CLEARANCE y UNCONFIRMED son aproximaciones. No se calcula volumen ni se ejecutan booleanas B-rep.</small>
+        <small class="framelogic-clash-disclaimer">Solo se muestran penetraciones con volumen B-rep positivo superior al umbral. Los contactos, separaciones y casos no comprobables no aparecen; revisa el contador de parejas sin verificar. Requiere STEP B-rep cargado.</small>
       </div>
     </section>`;
   const dock = getOrCreateAssistantDock();
@@ -71,10 +66,7 @@ export function mountClashDetectionPanel(core: Core): () => void {
   const cancelButton = find<HTMLButtonElement>("[data-cancel]");
   const scope = find<HTMLSelectElement>("[data-scope]");
   const tolerance = find<HTMLInputElement>("[data-tolerance]");
-  const contact = find<HTMLInputElement>("[data-contact]");
-  const clearance = find<HTMLInputElement>("[data-clearance]");
   const search = find<HTMLInputElement>("[data-search]");
-  const filter = find<HTMLSelectElement>("[data-filter]");
   const statusFilter = find<HTMLSelectElement>("[data-status-filter]");
   const savedStates = new Map<string, ClashReviewStatus>();
   let records: readonly ClashRecord[] = [];
@@ -113,17 +105,16 @@ export function mountClashDetectionPanel(core: Core): () => void {
 
   const render = () => {
     const query = search.value.trim().toLocaleLowerCase();
-    const visible = records.filter(r => (!filter.value || r.kind === filter.value)
-      && (!statusFilter.value || (savedStates.get(r.pairKey) || "Pendiente") === statusFilter.value)
+    const visible = records.filter(r => (!statusFilter.value || (savedStates.get(r.pairKey) || "Pendiente") === statusFilter.value)
       && (!query || [r.aName, r.bName, r.aCode, r.bCode, r.aAssembly, r.bAssembly]
         .some(s => s.toLocaleLowerCase().includes(query))));
     results.innerHTML = visible.length ? visible.map(r => `
       <div class="framelogic-clash-item">
         <button type="button" data-clash="${escapeHtml(r.id)}" title="Ir a la interferencia">
-          <b>${escapeHtml(r.id)}</b> · ${escapeHtml(r.kind)} ${r.confirmed ? "(confirmado)" : "(aproximado)"}
+          <b>${escapeHtml(r.id)}</b> · ${escapeHtml(r.kind)} (B-rep confirmado)
           <span>${escapeHtml(r.aName)} / ${escapeHtml(r.aCode)} ↔ ${escapeHtml(r.bName)} / ${escapeHtml(r.bCode)}</span>
           <small>${escapeHtml(r.aAssembly)} ${r.aAssembly || r.bAssembly ? "↔" : ""} ${escapeHtml(r.bAssembly)}</small>
-          ${r.distanceMm === undefined ? "" : `<small>Estimación: ${r.distanceMm.toFixed(3)} mm</small>`}
+          <small>Volumen de interferencia: ${r.volumeMm3.toLocaleString("es-CO", { maximumFractionDigits: 5 })} mm³</small>
         </button>
         <select data-review="${escapeHtml(r.pairKey)}" aria-label="Estado de ${escapeHtml(r.id)}">
           ${STATUSES.map(s => `<option ${(savedStates.get(r.pairKey) || "Pendiente") === s ? "selected" : ""}>${s}</option>`).join("")}
@@ -209,8 +200,8 @@ export function mountClashDetectionPanel(core: Core): () => void {
   const execute = async () => {
     if (controller) return;
     const limit = Number(tolerance.value);
-    if (!Number.isFinite(limit) || limit < 0 || limit > 100000) {
-      summary.textContent = "Tolerancia inválida. Introduce milímetros entre 0 y 100000.";
+    if (!Number.isFinite(limit) || limit < 0 || limit > 100000000000) {
+      summary.textContent = "Volumen mínimo inválido. Introduce un volumen no negativo en mm³.";
       return;
     }
     const selection = scope.value === "selection" ? selectedPieceIds() : undefined;
@@ -226,8 +217,7 @@ export function mountClashDetectionPanel(core: Core): () => void {
     cancelButton.disabled = false;
     try {
       const scan = await engine.scan({
-        selection, toleranceMm: limit,
-        includeContact: contact.checked, includeClearance: clearance.checked,
+        selection, minVolumeMm3: limit,
         signal, onProgress: (done, total) => {
           if (!disposed) summary.textContent = `Analizando candidatos: ${done}/${total}...`;
         },
@@ -235,10 +225,7 @@ export function mountClashDetectionPanel(core: Core): () => void {
       if (disposed || signal.aborted) return;
       records = scan.records;
       scanSignature = scan.signature;
-      const types = (kind: ClashRecord["kind"]) => records.filter(r => r.kind === kind).length;
-      summary.textContent = `${scan.pieces} piezas · ${scan.candidates} parejas candidatas ·
-        ${types("HARD")} Hard confirmados · ${types("CONTACT")} contactos posibles ·
-        ${types("CLEARANCE")} separaciones estimadas · ${types("UNCONFIRMED")} sin confirmar.`;
+      summary.textContent = `${scan.pieces} piezas · ${scan.candidates} parejas candidatas · ${records.length} penetraciones B-rep · ${scan.uncheckedPairs} parejas sin verificar.`;
       render();
     } catch (error) {
       if (!disposed) clearResults(signal.aborted ? "Análisis cancelado." :
@@ -254,7 +241,7 @@ export function mountClashDetectionPanel(core: Core): () => void {
     id: r.id, instanceA: r.aId, pieceA: r.aName, codeA: r.aCode, assemblyA: r.aAssembly,
     instanceB: r.bId, pieceB: r.bName, codeB: r.bCode, assemblyB: r.bAssembly,
     type: r.kind, confirmed: r.confirmed, status: savedStates.get(r.pairKey) || "Pendiente",
-    distanceMm: r.distanceMm ?? null, x: r.location.x, y: r.location.y, z: r.location.z,
+    volumeMm3: r.volumeMm3, x: r.location.x, y: r.location.y, z: r.location.z,
     approximateLocation: r.approximateLocation, explanation: r.explanation,
   }));
   const exportResults = (format: "csv" | "json") => {
@@ -266,7 +253,7 @@ export function mountClashDetectionPanel(core: Core): () => void {
     const rows = exportRows();
     if (format === "json") {
       download("FrameLogic-clashes.json", "application/json", JSON.stringify({
-        version: 1, units: "mm", geometry: "detail-mesh", confirmedVolumeAvailable: false, records: rows,
+        version: 2, units: "mm", volumeUnits: "mm3", geometry: "STEP-BREP-boolean-common", confirmedVolumeAvailable: true, records: rows,
       }, null, 2));
     } else {
       const keys = Object.keys(rows[0]!);
@@ -286,7 +273,7 @@ export function mountClashDetectionPanel(core: Core): () => void {
   find<HTMLButtonElement>("[data-back]").onclick = back;
   find<HTMLButtonElement>("[data-csv]").onclick = () => exportResults("csv");
   find<HTMLButtonElement>("[data-json]").onclick = () => exportResults("json");
-  for (const control of [search, filter, statusFilter]) control.addEventListener("input", render);
+  for (const control of [search, statusFilter]) control.addEventListener("input", render);
   results.addEventListener("click", event => {
     const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("[data-clash]") : null;
     if (button) focus(button.dataset["clash"]!);
