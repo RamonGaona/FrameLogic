@@ -7,6 +7,12 @@ export const changeSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("copy_piece"), id, space, direction: vec, distance: z.number().positive().finite(), count: z.literal(1) }).strict(),
   z.object({ operation: z.literal("copy_piece_array"), id, space, direction: vec, distance: z.number().positive().finite(), count: z.number().int().min(1).max(100) }).strict(),
 ]);
+export const assemblyChangeSchema = z.discriminatedUnion("operation", [
+  z.object({ operation: z.literal("move_assembly"), id, space: z.literal("world"), displacement: vec }).strict(),
+  z.object({ operation: z.literal("copy_assembly"), id, space: z.literal("world"), displacement: vec, count: z.literal(1) }).strict(),
+  z.object({ operation: z.literal("copy_assembly_array"), id, space: z.literal("world"), displacement: vec, count: z.number().int().min(1).max(20) }).strict(),
+]);
+
 export const toolSchemas = {
   get_model_info: z.object({}).strict(),
   list_pieces: z.object({}).strict(),
@@ -21,6 +27,13 @@ export const toolSchemas = {
     limit: z.number().int().min(1).max(100).optional(),
   }).strict(),
   describe_object: z.object({ id }).strict(),
+  /** The hierarchy is distinct from piece selection, even when all members are selected. */
+  list_assemblies: z.object({ limit: z.number().int().min(1).max(100).optional() }).strict(),
+  get_selection_context: z.object({}).strict(),
+  select_assembly: z.object({ id }).strict(),
+  /** Exact same preview/confirmation engine for browser chat and remote MCP. */
+  prepare_assembly_operation: z.object({ request: assemblyChangeSchema }).strict(),
+  confirm_assembly_operation: z.object({ proposalId: id }).strict(),
   select_pieces: z.object({ ids: z.array(id).max(1000) }).strict(),
   prepare_operation: z.object({ request: changeSchema }).strict(),
   confirm_operation: z.object({ proposalId: id }).strict(),
