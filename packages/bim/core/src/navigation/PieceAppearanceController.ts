@@ -350,18 +350,18 @@ export class PieceAppearanceController {
         event.stopPropagation();
         const id = eye?.dataset["framelogicAssemblyId"];
         const current = id ? this.options.designModel.assemblies.get(id) : null;
-        if (!current || current.pieceInstanceIds.length < 1) return;
-        const anyShown = current.pieceInstanceIds.some(
+        if (!current) return;
+        const allIds = this.options.designModel.getAssemblyPieceIdsDeep(current.id);
+        if (allIds.length < 1) return;
+        const anyShown = allIds.some(
           (pieceId) => !this.options.designScene.isInstanceHidden(pieceId),
         );
-        this.setPiecesHidden(current.pieceInstanceIds, anyShown);
+        this.setPiecesHidden(allIds, anyShown);
       });
       row.prepend(eye);
     }
     eye.dataset["framelogicAssemblyId"] = assemblyId;
-    const ids = assembly.pieceInstanceIds.filter(
-      (id) => this.options.designModel.pieceInstances.get(id) !== undefined,
-    );
+    const ids = this.options.designModel.getAssemblyPieceIdsDeep(assemblyId);
     const allHidden = ids.length > 0 && ids.every(
       (id) => this.options.designScene.isInstanceHidden(id),
     );
@@ -404,7 +404,7 @@ export class PieceAppearanceController {
     const ids = pieceId
       ? [pieceId]
       : assemblyId
-        ? this.options.designModel.assemblies.get(assemblyId)?.pieceInstanceIds ?? []
+        ? this.options.designModel.getAssemblyPieceIdsDeep(assemblyId)
         : [];
     if (ids.length < 1) return;
 
