@@ -12,6 +12,28 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.98 — 2026-11-10
+
+### Ctrl + gizmo: copia estructural de ensambles y COPY por dos puntos
+
+- **Ctrl + gizmo con ensamble seleccionado:** duplica los `PieceInstance` seleccionados **y** todas las filas de ensamble y subensamble que correspondan a la selección explícita desde INSTANCIAS. Las copias reciben IDs nuevos; la estructura padre/hijo, orden de componentes, capas, giros y referencias FrameLogic se conservan. El ensamble original permanece intacto.
+- **Copias independientes:** Ctrl + gizmo y COPY no generan vínculos involuntarios con la instancia original: se eliminan únicamente las etiquetas de sincronización de ensamble vinculado en las piezas copiadas. La función independiente de `Copiar instancia de ensamble` vinculada no se modifica.
+- **Historial coherente:** una copia estructural completa (piezas + ensambles) es **una** operación COPY reversible. Esc cancela transacciones aún sin confirmar. Undo elimina las nuevas filas de ensamble antes de las piezas, y Redo recupera las mismas identidades y posiciones. El modo de copiar sucesivamente a SNAP conserva la selección del ensamble original.
+- **Comando textual:** `C`, `COPY`, `CP` y `COPIAR` más Enter activan **COPY por punto base y destino** desde el campo de comandos CAD junto al cursor. El botón existente COPIAR y Ctrl+D mantienen el mismo flujo.
+- **Selección antes o después del comando:** se pueden seleccionar una o varias piezas, un ensamble jerárquico o una combinación de ensambles y piezas sueltas. Si no hay selección, COPY permite escogerla en el canvas o en INSTANCIAS y confirmarla con Enter.
+- **Dos puntos exactos:** el primer punto define la referencia; el segundo define el destino; las copias se trasladan mediante `destino - base` en X/Y/Z (mm), priorizando SNAP y usando la intersección con WorkPlane cuando no existe SNAP. Un desplazamiento cero no crea copias.
+- **Compatibilidad CAD:** cuando se seleccionan líneas/polilíneas, COPIAR sigue utilizando el mismo motor anterior que conserva las polilíneas. Si hay piezas y líneas preseleccionadas, se priorizan las piezas.
+- **Seguridad:** se valida que un ensamble seleccionado incluya todas sus piezas descendientes, se bloquea la copia de conjuntos bloqueados y se evita crear jerarquías incompletas. Si falla la operación, se revierte la creación parcial.
+- **Pruebas:** selección padre/hijo, IDs independientes, metadatos, desplazamiento tridimensional, historial, cancelación y entrada de comando, con suite nueva `npm run test:copybase` en GitHub Actions.
+
+### Uso
+
+1. Selecciona un ensamble en INSTANCIAS, pulsa **M** y arrastra un eje manteniendo **Ctrl**, o haz clic en un eje con Ctrl y después en SNAP para copiar el ensamble completo.
+2. Escribe **COPY + Enter**, selecciona las piezas/ensambles si todavía no estaban seleccionados, pulsa **Enter** para terminar la selección, elige un **punto base** y después un **punto destino**. La distancia se calcula automáticamente.
+3. Para obtener desplazamientos 3D exactos, selecciona SNAPs persistentes en ambos puntos; sin SNAP el clic se proyecta sobre el WorkPlane.
+
+---
+
 ## v0.1.97 — 2026-11-09
 
 ### Ensambles jerárquicos: múltiples niveles, integridad y control

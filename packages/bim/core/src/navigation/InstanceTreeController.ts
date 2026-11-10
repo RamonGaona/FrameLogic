@@ -64,6 +64,7 @@ export class InstanceTreeController {
   // Selecting an assembly in the tree is NOT equivalent to selecting its
   // component pieces in the viewport. Keep the explicit identity separately.
   private readonly selectedAssemblyIds = new Set<string>();
+  private copySelecting = () => false;
   private updatingTreeSelection = false;
   private contextMenu: HTMLDivElement | null = null;
   private disposed = false;
@@ -150,6 +151,30 @@ export class InstanceTreeController {
     this.lastSignature = "";
     this.render();
   }
+
+  /** Explicit whole-assembly identities, independent of the piece selection. */
+  /** Keep COPY in its SELECT stage when users choose pieces in the tree. */
+  setCopySelectionMode(isSelecting: () => boolean): void {
+    this.copySelecting = isSelecting;
+  }
+
+  getSelectedAssemblyIds(): readonly string[] {
+    return [...this.selectedAssemblyIds].filter((id) =>
+      this.options.designModel.assemblies.get(id) !== undefined,
+    );
+  }
+
+  /** Called after a structural COPY has selected its new piece instances. */
+  setCopiedAssemblySelection(ids: readonly string[]): void {
+    this.selectedAssemblyIds.clear();
+    for (const id of ids) {
+      if (this.options.designModel.assemblies.get(id)) {
+        this.selectedAssemblyIds.add(id);
+      }
+    }
+    this.render();
+  }
+
 
   private readonly handleToggle = (): void => {
     this.expanded = !this.expanded;
@@ -429,7 +454,7 @@ export class InstanceTreeController {
           kind: "PIECE",
           id: instanceId,
         };
-        this.options.cancelActiveCommand();
+        if (!this.copySelecting()) this.options.cancelActiveCommand();
         const additive = event.ctrlKey || event.metaKey;
         if (!additive) this.selectedAssemblyIds.clear();
         this.updatingTreeSelection = true;
@@ -474,7 +499,7 @@ export class InstanceTreeController {
     assemblyId: string,
     additive: boolean,
   ): void {
-    this.options.cancelActiveCommand();
+    if (!this.copySelecting()) this.options.cancelActiveCommand();
     const ids = this.options.designModel.getAssemblyPieceIdsDeep(assemblyId);
     const current = new Set(this.options.designSelection.getSelectedIds());
     if (!additive) {

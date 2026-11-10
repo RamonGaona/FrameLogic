@@ -472,6 +472,11 @@ export async function createBimCore(
       core.cancelActiveCadCommand(),
   });
 
+  core.designTransform.setAssemblyCopySelection(
+    () => instanceTree.getSelectedAssemblyIds(),
+    (ids) => instanceTree.setCopiedAssemblySelection(ids),
+  );
+
   const assemblyClipboard =
     new AssemblyClipboardController({
       designModel: core.designModel,

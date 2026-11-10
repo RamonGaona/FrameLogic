@@ -34,6 +34,9 @@ import type {
   DesignSelectionController,
 } from "./DesignSelectionController";
 
+import type { DesignSceneController } from "../design/DesignSceneController";
+import { PieceMoveCopySession } from "./PieceMoveCopySession";
+
 
 type CopyStage =
   | "SELECT"
@@ -50,6 +53,9 @@ export interface CadCopyControllerOptions {
   readonly lineSelection: CadLineSelectionController;
   readonly pointSelection: CadPointSelectionController;
   readonly designSelection: DesignSelectionController;
+  readonly designScene: DesignSceneController;
+  readonly selectedAssemblyIds: () => readonly string[];
+  readonly onCopiedAssemblySelection: (ids: readonly string[]) => void;
   readonly workPlane: CadWorkPlaneController;
   readonly history: CadHistoryController;
   readonly findSnapPoint: (
@@ -114,6 +120,8 @@ export class CadCopyController {
   private disposed = false;
   private stage: CopyStage = "SELECT";
   private sourceLineIds: string[] = [];
+  private sourcePieceIds: string[] = [];
+  private sourceAssemblyIds: string[] = [];
   private basePoint: THREE.Vector3 | null = null;
 
   constructor(
@@ -150,40 +158,63 @@ export class CadCopyController {
     return this.active;
   }
 
+  get isAwaitingSelection(): boolean {
+    return this.active && this.stage === "SELECT";
+  }
+
   start(): boolean {
     if (this.disposed) return false;
-
     this.options.beforeStart();
     this.active = true;
     this.basePoint = null;
-
-    const selected =
-      this.expandSelection(
-        this.options.lineSelection.getSelectedIds(),
-      );
-
-    this.options.designSelection.setEnabled(false);
+    this.sourceLineIds = [];
+    this.sourcePieceIds = [];
+    this.sourceAssemblyIds = [];
     this.options.pointSelection.setEnabled(false);
 
-    if (selected.length > 0) {
-      this.sourceLineIds = selected;
-      this.options.lineSelection.setSelection(
-        selected,
-        true,
-      );
+    // A preselected 3D piece or whole assembly takes priority over CAD lines.
+    // Both commands share the same base-point / destination-point workflow.
+    if (this.capturePieceSelection()) return true;
+
+    const selectedLines = this.expandSelection(
+      this.options.lineSelection.getSelectedIds(),
+    );
+    if (selectedLines.length > 0) {
+      this.sourceLineIds = selectedLines;
+      this.options.lineSelection.setSelection(selectedLines, true);
       this.options.lineSelection.setEnabled(false);
+      this.options.designSelection.setEnabled(false);
       this.stage = "BASE";
       this.setStatus(
-        `COPIAR · ${selected.length} tramo(s) · indique punto base · Esc cancelar`,
+        `COPY · ${selectedLines.length} tramo(s) CAD · indica punto base · Esc cancela`,
       );
       return true;
     }
 
-    this.sourceLineIds = [];
+    // No preselection: allow selecting pieces on canvas (or entire assemblies
+    // in INSTANCIAS), and CAD lines, then confirm with Enter.
     this.stage = "SELECT";
     this.options.lineSelection.setEnabled(true);
+    this.options.designSelection.setEnabled(true);
     this.setStatus(
-      "COPIAR · seleccione líneas/polilíneas con Ctrl · Enter confirmar · Esc cancelar",
+      "COPY · selecciona piezas o ensambles (Ctrl añade) · Enter confirmar · Esc cancelar",
+    );
+    return true;
+  }
+
+  private capturePieceSelection(): boolean {
+    const selected = [...new Set(
+      this.options.designSelection.getSelectedIds(),
+    )].filter((id) => this.options.designModel.pieceInstances.get(id));
+    if (selected.length === 0) return false;
+
+    this.sourcePieceIds = selected;
+    this.sourceAssemblyIds = [...this.options.selectedAssemblyIds()];
+    this.options.designSelection.setEnabled(false);
+    this.options.lineSelection.setEnabled(false);
+    this.stage = "BASE";
+    this.setStatus(
+      `COPY · ${selected.length} pieza(s) · selecciona punto base · Esc cancela`,
     );
     return true;
   }
@@ -197,6 +228,8 @@ export class CadCopyController {
     this.active = false;
     this.stage = "SELECT";
     this.sourceLineIds = [];
+    this.sourcePieceIds = [];
+    this.sourceAssemblyIds = [];
     this.basePoint = null;
     this.status.style.display = "none";
     this.options.designSelection.setEnabled(true);
@@ -329,27 +362,23 @@ export class CadCopyController {
   };
 
   private confirmSelection(): void {
-    const expanded =
-      this.expandSelection(
-        this.options.lineSelection.getSelectedIds(),
-      );
+    if (this.capturePieceSelection()) return;
 
+    const expanded = this.expandSelection(
+      this.options.lineSelection.getSelectedIds(),
+    );
     if (expanded.length === 0) {
-      this.setStatus(
-        "COPIAR · seleccione al menos una línea o polilínea",
-      );
+      this.setStatus("COPY · selecciona una pieza, ensamble o línea CAD");
       return;
     }
 
     this.sourceLineIds = expanded;
-    this.options.lineSelection.setSelection(
-      expanded,
-      true,
-    );
+    this.options.lineSelection.setSelection(expanded, true);
     this.options.lineSelection.setEnabled(false);
+    this.options.designSelection.setEnabled(false);
     this.stage = "BASE";
     this.setStatus(
-      `COPIAR · ${expanded.length} tramo(s) · indique punto base`,
+      `COPY · ${expanded.length} tramo(s) CAD · selecciona punto base`,
     );
   }
 
@@ -382,6 +411,11 @@ export class CadCopyController {
   private commitCopy(
     delta: THREE.Vector3,
   ): void {
+    if (this.sourcePieceIds.length > 0) {
+      this.commitPieceCopy(delta);
+      return;
+    }
+
     const sources: CadLine[] = [];
 
     for (const lineId of this.sourceLineIds) {
@@ -532,6 +566,8 @@ export class CadCopyController {
     this.active = false;
     this.stage = "SELECT";
     this.sourceLineIds = [];
+    this.sourcePieceIds = [];
+    this.sourceAssemblyIds = [];
     this.basePoint = null;
     this.options.designSelection.setEnabled(true);
     this.options.pointSelection.setEnabled(true);
@@ -540,6 +576,48 @@ export class CadCopyController {
       `COPIAR · ${lineSnapshots.length} tramo(s) copiados`,
       1200,
     );
+  }
+
+  private commitPieceCopy(delta: THREE.Vector3): void {
+    let session: PieceMoveCopySession | null = null;
+    try {
+      session = new PieceMoveCopySession(
+        this.options.designModel,
+        this.options.designScene,
+        this.options.designSelection,
+        this.options.history,
+        this.sourcePieceIds,
+        this.sourceAssemblyIds,
+        this.options.onCopiedAssemblySelection,
+      );
+
+      for (const id of session.ids) {
+        const copy = this.options.designModel.pieceInstances.get(id);
+        if (!copy) throw new Error("Una copia dejó de existir durante la operación.");
+        this.options.designModel.pieceInstances.updateTransform(id, {
+          position: {
+            x: copy.transform.position.x + delta.x,
+            y: copy.transform.position.y + delta.y,
+            z: copy.transform.position.z + delta.z,
+          },
+          rotation: { ...copy.transform.rotation },
+        });
+      }
+      this.options.designScene.sync();
+      session.finish();
+      const total = session.ids.length;
+      this.cancel();
+      this.options.clearGeometryQueryCache?.();
+      this.setStatus(
+        `COPY · ${total} pieza(s) copiadas · ΔX ${delta.x.toFixed(2)}, ΔY ${delta.y.toFixed(2)}, ΔZ ${delta.z.toFixed(2)} mm`,
+        1800,
+      );
+    } catch (error) {
+      session?.cancel();
+      this.setStatus(
+        `COPY · ${error instanceof Error ? error.message : "No se pudo completar la copia"}`,
+      );
+    }
   }
 
   private pickPoint(
@@ -566,7 +644,7 @@ export class CadCopyController {
     button.type = "button";
     button.textContent = "COPIAR";
     button.title =
-      "COPIAR / COPY · Ctrl+D · selección + punto base + destino · edición CAD / RECORT";
+      "COPY / COPIAR · piezas, ensambles y CAD · selección + punto base + punto destino · Ctrl+D";
     button.dataset["framelogicCopyButton"] = "true";
     button.addEventListener(
       "click",
