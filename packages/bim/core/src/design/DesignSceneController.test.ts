@@ -126,7 +126,8 @@ describe("piece representations in the model space", () => {
     scene.setVisibilityFilter(null);
     expect(aa.visible).toBe(true);
     expect(bb.visible).toBe(true);
-    expect(aa.geometry).not.toBe(geometry); // LOW only changes mesh rendering
+    expect(getPieceDetailGeometry(aa)).toBe(getPieceDetailGeometry(bb));
+    expect(getPieceDetailGeometry(bb)).toBe(getPieceDetailGeometry(cc));
     expect(model.pieceInstances.count).toBe(3);
     expect(model.pieceDefinitions.get(definition.id)?.geometryAssetId).toBe(asset.id);
     scene.dispose();
