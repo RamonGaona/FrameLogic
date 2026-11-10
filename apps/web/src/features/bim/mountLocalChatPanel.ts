@@ -1,6 +1,7 @@
 import { createOperationDispatcher, type PrecisionBimCoreInstance } from "@framelogic/bim-core";
 import { parseLocalChatCommand, parseLocalChatScript, type ChatPiece } from "./localChatCommand";
 import { resolveChatPieceTarget } from "./localChatPieceTarget";
+import { parseLocalAssemblyCommand } from "./localChatAssemblyCommand";
 import "./localChatPanel.css";
 import { getOrCreateAssistantDock, releaseAssistantDock, syncAssistantDockLayout } from "./assistantDockLayout";
 
@@ -144,28 +145,46 @@ export function mountLocalChatPanel(core: Core): () => void {
     "• «Lista las piezas» o «Resumen del modelo».",
     "• «Muestra los ejes de esta pieza» (selecciona una pieza).",
     "• «Copia esta pieza 4 veces cada 1500 mm en X».",
+    "• «Lista los ensambles» o «Qué ensamble está seleccionado».",
+    "• Selecciona un ensamble en INSTANCIAS y escribe «Mueve este ensamble 200 mm en X» o «Copia este ensamble 3 veces cada 1500 mm en X».",
     "• «Mueve esta pieza 200 mm en -Y».",
     "• «Buscar piezas REC» o «Consultar piezas seleccionadas».",
     "• «Describe esta pieza» (código, ejes, SNAPs y límites si existen).",
     "• Script: «Mueve esta pieza 200 mm en X; copia esta pieza 2 veces cada 1500 mm en Y».",
     "• Un script es una sola propuesta, una aprobación y un Undo.",
     "• «Deshacer» y «Rehacer» (con autorización).",
-    "Las direcciones son ejes LOCALES; nunca suponemos cuál es el longitudinal.",
+    "Para piezas se usan los ejes LOCALES; los ensambles usan XYZ global. Nunca suponemos cuál es el longitudinal.",
     "Siempre se prepara una propuesta antes de modificar el modelo.",
     "Si hay piezas con el mismo nombre, selecciónala en el visor.",
   ].join("\n");
 
   function showPreview(value: unknown): void {
     const preview = value as { id?: string; operation?: string; sourceId?: string;
+      assemblyId?: string; assemblyName?: string; pieceCount?: number; subassemblyCount?: number;
+      displacement?: { x: number; y: number; z: number };
+      previewPositions?: Array<{ pieceId: string; to: { x: number; y: number; z: number } }>;
       targets?: Array<{ position: { x: number; y: number; z: number } }>;
       steps?: Array<{ operation: string; sourceId: string;
         targets: Array<{ position: { x: number; y: number; z: number } }> }>;
       copyCount?: number };
     const isBatch = preview.operation === "commands" && Array.isArray(preview.steps);
-    if (!preview.id || (!isBatch && !Array.isArray(preview.targets)))
+    const isAssembly = Boolean(preview.assemblyId && Array.isArray(preview.previewPositions));
+    if (!preview.id || (!isBatch && !isAssembly && !Array.isArray(preview.targets)))
       throw new Error("El motor no devolvió una propuesta válida.");
     invalidatePreview();
-    if (isBatch) {
+    if (isAssembly) {
+      const d = preview.displacement!;
+      const sample = preview.previewPositions!;
+      appendMessage("assistant", "Propuesta de ensamble (sin cambios):\n"
+        + "Operación: " + preview.operation + "\nEnsamble: " + preview.assemblyName
+        + " · " + preview.assemblyId + "\n"
+        + "Piezas: " + preview.pieceCount + " · subensambles: " + preview.subassemblyCount
+        + " · copias: " + (preview.copyCount ?? 0) + "\n"
+        + "Desplazamiento global (mm): " + JSON.stringify(d) + "\n"
+        + "Primeros destinos (" + sample.length + "):\n"
+        + sample.map(p => p.pieceId + " → " + JSON.stringify(p.to)).join("\n")
+        + "\nSe aplicará como un solo Undo. Caduca en 2 minutos.");
+    } else if (isBatch) {
       const summary = preview.steps!.map((step, index) =>
         String(index + 1) + ". " + step.operation + " | " + step.sourceId
         + " → " + step.targets.map(target => "("
@@ -205,7 +224,8 @@ export function mountLocalChatPanel(core: Core): () => void {
       apply.disabled = true;
       cancel.disabled = true;
       try {
-        const answer = await dispatch(isBatch ? "confirm_commands" : "confirm_operation", { proposalId: preview.id! });
+        const answer = await dispatch(isAssembly ? "confirm_assembly_operation"
+          : isBatch ? "confirm_commands" : "confirm_operation", { proposalId: preview.id! });
         if (!answer.ok) throw new Error(answer.error || "No se pudo aplicar");
         appendMessage("assistant", "Cambio aplicado con aprobación. Instancias afectadas:\n"
           + JSON.stringify(answer.data?.affectedIds ?? [], null, 2)
@@ -242,6 +262,35 @@ export function mountLocalChatPanel(core: Core): () => void {
     const { refs, lines } = getPieces(core);
     refreshPiecePicker();
     const target = currentTarget();
+    const assemblyList = core.automation.listAssemblies(100);
+    const assemblyCommand = parseLocalAssemblyCommand(input, assemblyList.assemblies,
+      core.automation.getSelectionContext().assemblyIds);
+    if (assemblyCommand) {
+      switch (assemblyCommand.kind) {
+        case "unknown":
+          appendMessage("assistant", assemblyCommand.message); return;
+        case "list":
+          appendMessage("assistant", "Ensambles (" + assemblyList.total + "):\n"
+            + (assemblyList.assemblies.length
+              ? assemblyList.assemblies.map(a => a.name + " · " + a.id
+                + " · " + a.pieceCount + " piezas · padre: " + (a.parentAssemblyId ?? "raíz")
+                + (a.locked ? " · bloqueado" : "")).join("\n")
+              : "Sin ensambles.")); return;
+        case "selection":
+          appendMessage("assistant", "Ensambles seleccionados explícitamente en INSTANCIAS: "
+            + JSON.stringify(core.automation.getSelectionContext().assemblyIds)); return;
+        case "select": {
+          const result = await dispatch("select_assembly", { id: assemblyCommand.id });
+          appendMessage("assistant", result.ok ? "Ensamble completo seleccionado." : "Selección cancelada: " + result.error);
+          return;
+        }
+        case "prepare": {
+          const result = await dispatch("prepare_assembly_operation", { request: assemblyCommand.request });
+          if (!result.ok) throw new Error(result.error || "Error al preparar el ensamble.");
+          showPreview(result.data); return;
+        }
+      }
+    }
     const script = parseLocalChatScript(input, refs, target.ids);
     if (script) {
       if (script.kind === "unknown") {
