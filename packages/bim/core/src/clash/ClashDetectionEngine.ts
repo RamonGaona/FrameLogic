@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { DesignModel } from "@framelogic/domain";
-import { DesignSceneController } from "../design/DesignSceneController";
+import type { DesignSceneController } from "../design/DesignSceneController";
 import { getPieceDetailGeometry } from "../design/PieceVisualGeometry";
 
 export type ClashKind = "HARD" | "CONTACT" | "CLEARANCE" | "UNCONFIRMED";
