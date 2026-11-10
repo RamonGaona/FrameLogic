@@ -22,7 +22,7 @@ describe("general section visibility eye", () => {
         lastSignature: "old",
         decorate: rebuildTree,
       },
-    ) as SectionInstanceTreeBridgeController;
+    ) as unknown as SectionInstanceTreeBridgeController;
 
     bridge.setHiddenSections(["section-A", "section-B"], true);
     expect(hidden).toEqual(new Set(["section-A", "section-B"]));
