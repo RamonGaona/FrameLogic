@@ -77,6 +77,34 @@ export class DesignSceneController {
     DesignModel;
 
 
+  /**
+   * Model Space-only visibility, keyed by stable PieceInstance ID.
+   * Independent from layers and temporary preparation filters; no geometry or
+   * project metadata is changed by hiding an instance.
+   */
+  private readonly hiddenInstanceIds = new Set<string>();
+
+  isInstanceHidden(instanceId: string): boolean {
+    return this.hiddenInstanceIds.has(instanceId);
+  }
+
+  setInstancesHidden(instanceIds: readonly string[], hidden: boolean): void {
+    let changed = false;
+    for (const id of new Set(instanceIds)) {
+      if (!this.designModel.pieceInstances.get(id)) continue;
+      if (hidden) {
+        if (!this.hiddenInstanceIds.has(id)) {
+          this.hiddenInstanceIds.add(id);
+          changed = true;
+        }
+      }
+      else if (this.hiddenInstanceIds.delete(id)) {
+        changed = true;
+      }
+    }
+    if (changed) this.sync();
+  }
+
   private visibilityFilter:
     (
       (
@@ -522,6 +550,12 @@ export class DesignSceneController {
       );
 
 
+    for (const hiddenId of this.hiddenInstanceIds) {
+      if (!activeInstanceIds.has(hiddenId)) {
+        this.hiddenInstanceIds.delete(hiddenId);
+      }
+    }
+
     // --------------------------------------------------------
     // REMOVE OBJECTS WHOSE INSTANCE NO LONGER EXISTS
     // --------------------------------------------------------
@@ -704,7 +738,8 @@ export class DesignSceneController {
 
 
       object.visible =
-        (
+        !this.hiddenInstanceIds.has(instance.id)
+        && (
           layer?.visible
           ?? true
         )
@@ -801,6 +836,7 @@ export class DesignSceneController {
 
 
     this.instanceObjects.clear();
+    this.hiddenInstanceIds.clear();
 
   }
 
