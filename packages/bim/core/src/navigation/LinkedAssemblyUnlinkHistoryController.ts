@@ -129,6 +129,10 @@ export class LinkedAssemblyUnlinkHistoryController {
   private unlinkWithHistory(assemblyId: string): boolean {
     const assembly = this.options.designModel.assemblies.get(assemblyId);
     if (!assembly) return false;
+    if (this.options.designModel.isAssemblyLocked(assemblyId)) {
+      window.alert("No se puede desvincular un ensamble bloqueado.");
+      return false;
+    }
 
     const linkId = this.getAssemblyLinkId(assembly);
     if (!linkId) return false;
