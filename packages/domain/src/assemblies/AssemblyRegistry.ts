@@ -6,6 +6,8 @@ import type {
   Assembly,
 } from "./Assembly";
 
+import { validateAssemblyHierarchy } from "./validateAssemblyHierarchy";
+
 
 export interface RegisterAssemblyInput {
 
@@ -294,6 +296,11 @@ export class AssemblyRegistry {
     const updated: Assembly = parentAssemblyId
       ? { ...withoutParent, parentAssemblyId }
       : withoutParent;
+    // Validate even registry-level calls; external integrations must not
+    // bypass the DesignModel cycle guard accidentally.
+    validateAssemblyHierarchy(
+      this.getAll().map((assembly) => assembly.id === id ? updated : assembly),
+    );
     this.assemblies.set(id, updated);
     return updated;
   }
