@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.100",
+  "version": "0.1.101",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -14,6 +14,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "test:geometric-snaps": "vitest run packages/bim/core/src/precision/GeometryQueryEngineExactSnap.test.ts",
     "test:precision-stage2": "vitest run packages/bim/core/src/navigation/AdaptivePieceLod.test.ts packages/bim/core/src/precision/SnapTrackingMath.test.ts packages/bim/core/src/design/DesignSceneController.test.ts",
     "test:drawings": "vitest run packages/bim/core/src/drawing/AutoDrawingPlanner.test.ts",
     "test:gizmos": "vitest run packages/bim/core/src/interaction/DesignTransformCtrlCopy.test.ts packages/bim/core/src/interaction/AlignController.test.ts packages/bim/core/src/interaction/PieceMoveCopySession.test.ts packages/bim/core/src/interaction/TransformGizmoReliability.test.ts packages/bim/core/src/interaction/CadWindowSelectionController.test.ts packages/bim/core/src/interaction/MoveSnapDestinationPolicy.test.ts packages/bim/core/src/interaction/DesignPlacementController.test.ts",
