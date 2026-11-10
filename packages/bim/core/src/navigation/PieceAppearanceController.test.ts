@@ -35,8 +35,7 @@ describe("individual eyes after INSTANCIAS reparenting", () => {
     const viewportContainer = {} as HTMLElement;
     const controller = Object.create(
       PieceAppearanceController.prototype,
-    ) as PieceAppearanceController & {
-      options: unknown;
+    ) as {
       decorateRows(): void;
       ensureAssemblyVisibilityEye: ReturnType<typeof vi.fn>;
       ensurePieceVisibilityEye: ReturnType<typeof vi.fn>;
