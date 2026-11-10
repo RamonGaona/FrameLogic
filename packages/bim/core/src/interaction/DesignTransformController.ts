@@ -730,6 +730,7 @@ export class DesignTransformController {
         !instance
         || layer?.visible === false
         || layer?.locked === true
+        || this.designModel.isPieceLocked?.(instanceId) === true
       ) {
 
         this.transformedObjects.clear();
