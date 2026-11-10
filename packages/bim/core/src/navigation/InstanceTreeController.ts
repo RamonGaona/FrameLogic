@@ -618,6 +618,10 @@ export class InstanceTreeController {
   private copySelectionToAssembly(assemblyId: string): void {
     const target = this.options.designModel.assemblies.get(assemblyId);
     if (!target) return;
+    if (this.options.designModel.isAssemblyLocked(assemblyId)) {
+      window.alert("No se pueden insertar piezas en un ensamble bloqueado.");
+      return;
+    }
     const selected = [
       ...this.options.designSelection.getSelectedIds(),
     ];
@@ -678,10 +682,13 @@ export class InstanceTreeController {
         assembly.name,
       )?.trim();
       if (!name) return;
-      this.options.designModel.assemblies.updateName(
-        focused.id,
-        name,
-      );
+      if (this.options.designModel.isAssemblyLocked(focused.id)) {
+        window.alert("No se puede renombrar un ensamble bloqueado.");
+        return;
+      }
+      const before = this.options.designModel.captureAssemblies();
+      this.options.designModel.assemblies.updateName(focused.id, name);
+      this.recordAssemblyHistory("Renombrar ensamble", before);
       this.refresh();
       return;
     }
@@ -764,33 +771,72 @@ export class InstanceTreeController {
         label: "Renombrar ensamble · F2",
         action: () => this.renameFocusedItem(),
       },
+      {
+        label: assembly.locked ? "Desbloquear ensamble" : "Bloquear ensamble y subensambles",
+        action: () => {
+          try {
+            const model = this.options.designModel;
+            const before = model.captureAssemblies();
+            model.setAssemblyLocked(assemblyId, !assembly.locked);
+            this.recordAssemblyHistory("Bloqueo de ensamble", before);
+            this.refresh();
+          } catch (error) {
+            window.alert(error instanceof Error ? error.message : String(error));
+          }
+        },
+      },
     ];
 
-    if (this.options.designSelection.getSelectedIds().length > 0) {
-      entries.push(
-        {
-          label: "Mover selección aquí",
-          action: () => this.moveSelectionToAssembly(assemblyId),
+    if (assembly.parentAssemblyId) {
+      entries.push({
+        label: "Desanidar ensamble (llevar a raíz)",
+        action: () => {
+          const model = this.options.designModel;
+          const before = model.captureAssemblies();
+          try {
+            model.setAssemblyParent(assemblyId, null);
+            this.recordAssemblyHistory("Desanidar ensamble", before);
+            this.refresh();
+          } catch (error) {
+            window.alert(error instanceof Error ? error.message : String(error));
+          }
         },
-        {
-          label: "Copiar selección aquí",
-          action: () => this.copySelectionToAssembly(assemblyId),
-        },
-      );
+      });
+    }
+
+    if (this.selectedAssemblyIds.size > 0
+      || this.selectedLoosePieceIds().length > 0) {
+      entries.push({
+        label: "Anidar ensambles / mover piezas sueltas aquí",
+        action: () => this.moveSelectionToAssembly(assemblyId),
+      });
     }
 
     entries.push({
-      label: "Desagrupar ensamble (conservar piezas)",
+      label: "Crear ensamble superior con selección",
+      action: () => this.createAssemblyFromSelection(),
+    });
+
+    entries.push({
+      label: "Desagrupar (conservar piezas y subensambles)",
       action: () => {
-        this.options.designModel.assemblies.remove(assemblyId);
-        this.focusedItem = null;
-        this.hideContextMenu();
-        this.refresh();
+        const model = this.options.designModel;
+        const before = model.captureAssemblies();
+        try {
+          model.removeAssembly(assemblyId);
+          this.selectedAssemblyIds.delete(assemblyId);
+          this.focusedItem = null;
+          this.recordAssemblyHistory("Desagrupar ensamble", before);
+          this.refresh();
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : String(error));
+        }
       },
     });
 
     this.showContextMenu(x, y, entries);
   }
+
 
   private showContextMenu(
     x: number,
