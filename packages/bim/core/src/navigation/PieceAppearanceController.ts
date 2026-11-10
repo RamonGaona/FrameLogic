@@ -17,6 +17,8 @@ import type {
   DesignSelectionController,
 } from "../interaction/DesignSelectionController";
 
+import { findInstanceTreeBody } from "./findInstanceTreeBody";
+
 import {
   getLinkedAssemblyComponentId,
   getLinkedAssemblyId,
@@ -85,7 +87,7 @@ export class PieceAppearanceController {
 
     options.designScene.sync = this.syncSceneWithAppearance;
 
-    options.container.addEventListener(
+    document.addEventListener(
       "contextmenu",
       this.handleContextMenuCapture,
       true,
@@ -118,7 +120,7 @@ export class PieceAppearanceController {
     this.disposed = true;
     window.clearInterval(this.timer);
     this.options.designScene.sync = this.baseSceneSync;
-    this.options.container.removeEventListener(
+    document.removeEventListener(
       "contextmenu",
       this.handleContextMenuCapture,
       true,
@@ -157,7 +159,7 @@ export class PieceAppearanceController {
     const row = target?.closest<HTMLElement>(
       "[data-framelogic-piece-id], [data-framelogic-assembly-id]",
     );
-    if (!row) return;
+    if (!row || !findInstanceTreeBody(this.options.container)?.contains(row)) return;
 
     const pieceId = row.dataset["framelogicPieceId"] ?? null;
     const assemblyId = row.dataset["framelogicAssemblyId"] ?? null;
@@ -200,41 +202,26 @@ export class PieceAppearanceController {
 
 
   private decorateRows(): void {
-    const body = this.options.container.querySelector<HTMLElement>(
-      '[data-framelogic-instance-tree-body="true"]',
-    );
+    // The layout organizer can move INSTANCIAS outside the BIM viewport.
+    // Always resolve the current tree globally, just like the group-eye
+    // controller, rather than only searching this.options.container.
+    const body = findInstanceTreeBody(this.options.container);
     if (!body) return;
 
-    const rows = Array.from(
-      body.querySelectorAll<HTMLDivElement>("div"),
-    );
+    for (const row of body.querySelectorAll<HTMLDivElement>(
+      'div[data-framelogic-assembly-id]',
+    )) {
+      const id = row.dataset["framelogicAssemblyId"];
+      if (!id || !this.options.designModel.assemblies.get(id)) continue;
+      this.ensureAssemblyVisibilityEye(row, id);
+    }
 
-    const assemblyRows = rows.filter((row) => {
-      const spans = this.directSpans(row);
-      return spans[0]?.textContent?.startsWith("▦ ") ?? false;
-    });
-    const assemblies = this.options.designModel.assemblies.getAll();
-    assemblies.forEach((assembly, index) => {
-      const row = assemblyRows[index];
-      if (!row) return;
-      row.dataset["framelogicAssemblyId"] = assembly.id;
-      this.ensureAssemblyVisibilityEye(row, assembly.id);
-    });
-
-    const pieceRows = rows.filter((row) => {
-      const spans = this.directSpans(row);
-      return spans[0]?.textContent?.startsWith("◇ ") ?? false;
-    });
-    for (const piece of this.options.designModel.pieceInstances.getAll()) {
-      const shortId = piece.id.slice(0, 8);
-      const row = pieceRows.find((candidate) => {
-        if (candidate.dataset["framelogicPieceId"] === piece.id) return true;
-        const spans = this.directSpans(candidate);
-        return spans[1]?.textContent?.trim().startsWith(shortId) ?? false;
-      });
-      if (!row) continue;
-      row.dataset["framelogicPieceId"] = piece.id;
-      this.ensurePieceVisibilityEye(row, piece.id);
+    for (const row of body.querySelectorAll<HTMLDivElement>(
+      'div[data-framelogic-piece-id]',
+    )) {
+      const id = row.dataset["framelogicPieceId"];
+      if (!id || !this.options.designModel.pieceInstances.get(id)) continue;
+      this.ensurePieceVisibilityEye(row, id);
     }
   }
 
@@ -373,13 +360,6 @@ export class PieceAppearanceController {
     eye.setAttribute("aria-label", eye.title);
     eye.style.opacity = ids.length === 0 ? "0.35" : allHidden ? "0.55" : "1";
     row.style.gridTemplateColumns = "22px minmax(0,1fr) auto";
-  }
-
-
-  private directSpans(row: HTMLElement): HTMLSpanElement[] {
-    return Array.from(row.children).filter(
-      (child): child is HTMLSpanElement => child instanceof HTMLSpanElement,
-    );
   }
 
 
