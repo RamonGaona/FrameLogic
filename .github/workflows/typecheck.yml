@@ -54,6 +54,9 @@ jobs:
       - name: Hierarchical assembly and CAD history regression
         run: npm run test:assembly-hierarchy
 
+      - name: Assembly Ctrl-gizmo and COPY by base/destination points
+        run: npm run test:copybase
+
       - name: Model-space visibility and section group tests
         run: npm run test:visibility
 
