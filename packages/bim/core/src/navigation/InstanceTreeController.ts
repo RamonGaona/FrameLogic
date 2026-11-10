@@ -378,8 +378,13 @@ export class InstanceTreeController {
       event.preventDefault();
       event.stopPropagation();
       this.focusedItem = { kind: "ASSEMBLY", id: assembly.id };
-      if (!this.selectedAssemblyIds.has(assembly.id)) {
-        this.selectedAssemblyIds.clear();
+      // Right-clicking a destination must not discard the explicitly selected
+      // source assemblies or loose pieces; otherwise "Anidar aquí" moves
+      // nothing. With no prior selection, right-click simply focuses this row.
+      if (
+        this.selectedAssemblyIds.size === 0
+        && this.options.designSelection.getSelectedIds().length === 0
+      ) {
         this.selectedAssemblyIds.add(assembly.id);
         this.updatingTreeSelection = true;
         try {
