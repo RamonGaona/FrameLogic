@@ -3,6 +3,7 @@
  * npm run test:clash:occt
  */
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { getOpenCascadeBrepKernel } from "../packages/geometry-engine/src/step/OpenCascadeBrepKernel";
 import { OpenCascadeClashKernel } from "../packages/geometry-engine/src/step/OpenCascadeClashKernel";
 
@@ -21,7 +22,13 @@ const runtime = getOpenCascadeBrepKernel() as unknown as Runtime;
 const names = ["occt-boolean-test-a", "occt-boolean-test-b"];
 const resources: Owned[] = [];
 try {
-  const oc = await runtime.getOpenCascade();
+  // The package's index imports .wasm as an ESM module (Vite-only). In Node,
+  // load the Emscripten entry directly, as the web app's Vite alias already does.
+  const entry = await import("opencascade.js/dist/opencascade.full.js");
+  const initOc = entry.default;
+  const wasmPath = fileURLToPath(new URL("../node_modules/opencascade.js/dist/opencascade.full.wasm", import.meta.url));
+  const oc = await initOc({ locateFile: (path: string) => path.endsWith(".wasm") ? wasmPath : path });
+  runtime.getOpenCascade = async () => oc;
   for (const name of names) {
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     resources.push(box);
