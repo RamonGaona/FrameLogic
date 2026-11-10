@@ -56,15 +56,17 @@ export class GeneralPdfTreeBridgeController {
   }
 
   private decorateAssemblies(rows: readonly HTMLDivElement[]): void {
-    const assemblyRows = rows.filter((row) => {
-      const spans = this.directSpans(row);
-      return spans[0]?.textContent?.startsWith("▦ ") ?? false;
-    });
+    // The tree is now depth-first rather than registry order. Resolve each
+    // row by its stable assembly ID, never by an index or displayed name.
+    const assemblyRows = rows.filter((row) =>
+      Boolean(row.dataset["framelogicAssemblyId"]),
+    );
     const assemblies = this.options.designModel.assemblies.getAll();
 
-    for (let index = 0; index < assemblies.length; index += 1) {
-      const assembly = assemblies[index];
-      const row = assemblyRows[index];
+    for (const assembly of assemblies) {
+      const row = assemblyRows.find(
+        (candidate) => candidate.dataset["framelogicAssemblyId"] === assembly.id,
+      );
       if (!assembly || !row) continue;
       const key = `assembly:${assembly.id}`;
       if (row.dataset["framelogicGeneralPdfContextId"] === key) continue;
@@ -196,7 +198,7 @@ export class GeneralPdfTreeBridgeController {
     this.options.generalPdf.sendAssembly({
       assemblyId: assembly.id,
       assemblyName: assembly.name,
-      instanceIds: assembly.pieceInstanceIds,
+      instanceIds: this.options.designModel.getAssemblyPieceIdsDeep(assembly.id),
       workPlane: this.options.workPlane.getState(),
     });
   }
