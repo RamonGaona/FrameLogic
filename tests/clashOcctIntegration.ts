@@ -3,7 +3,7 @@
  * npm run test:clash:occt
  */
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { getOpenCascadeBrepKernel } from "../packages/geometry-engine/src/step/OpenCascadeBrepKernel";
 import { OpenCascadeClashKernel } from "../packages/geometry-engine/src/step/OpenCascadeClashKernel";
 
@@ -26,7 +26,7 @@ try {
   // load the Emscripten entry directly, as the web app's Vite alias already does.
   const entry = await import("opencascade.js/dist/opencascade.full.js");
   const initOc = entry.default;
-  const wasmPath = fileURLToPath(new URL("../node_modules/opencascade.js/dist/opencascade.full.wasm", import.meta.url));
+  const wasmPath = resolve(process.cwd(), "node_modules/opencascade.js/dist/opencascade.full.wasm");
   const oc = await initOc({ locateFile: (path: string) => path.endsWith(".wasm") ? wasmPath : path });
   runtime.getOpenCascade = async () => oc;
   for (const name of names) {
