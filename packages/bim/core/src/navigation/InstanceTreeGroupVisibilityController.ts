@@ -1,4 +1,5 @@
 import { findInstanceTreeBody } from "./findInstanceTreeBody";
+import { getInstanceGroupIds } from "./getInstanceGroupIds";
 
 import type {
   DesignModel,
@@ -273,19 +274,11 @@ export class InstanceTreeGroupVisibilityController {
   }
 
   private getAssemblyPieceIds(): string[] {
-    return Array.from(new Set(
-      this.options.designModel.assemblies.getAll()
-        .flatMap((assembly) => assembly.pieceInstanceIds),
-    )).filter(
-      (id) => this.options.designModel.pieceInstances.get(id) !== undefined,
-    );
+    return getInstanceGroupIds(this.options.designModel, "assemblies");
   }
 
   private getLoosePieceIds(): string[] {
-    const grouped = new Set(this.getAssemblyPieceIds());
-    return this.options.designModel.pieceInstances.getAll()
-      .filter((piece) => !grouped.has(piece.id))
-      .map((piece) => piece.id);
+    return getInstanceGroupIds(this.options.designModel, "loose");
   }
 
   private togglePieces(group: "assemblies" | "loose"): void {
