@@ -325,8 +325,8 @@ export class FrameLogicProjectPackageController {
     validateAssemblyHierarchy(packageValue.assemblies);
     // Undo/Redo from another .flproject must never restore that project's
     // assembly structure into the newly opened project.
-    this.options.clearCadHistory?.();
     this.options.cancelActiveCadCommand();
+    this.options.clearCadHistory?.();
     this.options.clearReferenceModels();
     this.references.length = 0;
 
