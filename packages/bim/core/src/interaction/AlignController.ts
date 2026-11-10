@@ -156,6 +156,15 @@ export class AlignController {
       ...this.options.cadReferenceBlocks.getSelectedReferenceNames(),
     ];
 
+    if (this.selectedPieceIds.some(
+      (id) => this.options.designModel.isPieceLocked(id),
+    )) {
+      window.alert(
+        "ALINEAR cancelado: una pieza pertenece a un ensamble o subensamble bloqueado.",
+      );
+      return;
+    }
+
     if (
       this.selectedPieceIds.length < 1
       && this.selectedCadReferences.length < 1
