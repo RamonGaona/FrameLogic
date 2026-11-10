@@ -142,6 +142,7 @@ export class LinkedAssemblyInstanceController {
     let changed = false;
 
     for (const copy of assemblies) {
+      if (this.options.designModel.getAssemblyChildren(copy.id).length > 0) continue;
       const match = copy.name.match(/^(.*) copia(?: \d+)?$/i);
       if (!match) continue;
 
@@ -153,6 +154,7 @@ export class LinkedAssemblyInstanceController {
         && candidate.name === baseName,
       );
       if (!base) continue;
+      if (this.options.designModel.getAssemblyChildren(base.id).length > 0) continue;
 
       const basePieces = this.getPieces(base);
       const copyPieces = this.getPieces(copy);
@@ -220,6 +222,9 @@ export class LinkedAssemblyInstanceController {
     let changed = false;
 
     for (const assembly of this.options.designModel.assemblies.getAll()) {
+      // Linked composition assumes a flat list of components. Leaf assemblies
+      // remain linked; true parents are not silently treated as flat copies.
+      if (this.options.designModel.getAssemblyChildren(assembly.id).length > 0) continue;
       const pieces = this.getPieces(assembly);
       if (pieces.length < 1) continue;
 
@@ -484,6 +489,9 @@ export class LinkedAssemblyInstanceController {
     const result = new Map<string, AssemblySnapshot>();
 
     for (const assembly of this.options.designModel.assemblies.getAll()) {
+      // Linked composition assumes a flat list of components. Leaf assemblies
+      // remain linked; true parents are not silently treated as flat copies.
+      if (this.options.designModel.getAssemblyChildren(assembly.id).length > 0) continue;
       const pieces = this.getPieces(assembly);
       const linkId =
         this.getDominantLinkId(pieces)

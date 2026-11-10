@@ -541,6 +541,8 @@ export async function createBimCore(
       },
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
+      clearCadHistory: () =>
+        core.cadHistory.clear(),
       onProjectRestored: async () => {
         cadTrim.deactivate();
         cadReferenceLayers

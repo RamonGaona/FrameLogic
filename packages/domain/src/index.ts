@@ -52,6 +52,8 @@ export type {
   Assembly,
 } from "./assemblies/Assembly";
 
+export { validateAssemblyHierarchy } from "./assemblies/validateAssemblyHierarchy";
+
 export {
   AssemblyRegistry,
 } from "./assemblies/AssemblyRegistry";

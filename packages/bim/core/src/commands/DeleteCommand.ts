@@ -74,6 +74,11 @@ export class DeleteCommand {
       if (!instance) continue;
 
       const layer = this.designModel.layers.get(instance.layerId);
+      if (this.designModel.isPieceLocked(instanceId)) {
+        throw new Error(
+          `Cannot delete piece instance "${instanceId}": its assembly, a parent assembly, or its layer is locked.`,
+        );
+      }
       if (layer?.locked) {
         throw new Error(
           `Cannot delete piece instance "${instanceId}" because layer "${layer.name}" is locked.`,

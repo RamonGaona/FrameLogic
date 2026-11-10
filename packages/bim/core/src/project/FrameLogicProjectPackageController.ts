@@ -1,3 +1,4 @@
+import { validateAssemblyHierarchy } from "@framelogic/domain";
 import type {
   Assembly,
   CadLine,
@@ -138,6 +139,7 @@ export interface FrameLogicProjectPackageControllerOptions {
   readonly setReferenceLayer: (id: string, layerId: string) => boolean;
   readonly clearReferenceModels: () => void;
   readonly cancelActiveCadCommand: () => void;
+  readonly clearCadHistory?: () => void;
   readonly clearGeometryQueryCache: () => void;
   readonly onProjectRestored?: () => void | Promise<void>;
 }
@@ -315,7 +317,16 @@ export class FrameLogicProjectPackageController {
   async restoreProjectPackage(
     packageValue: FrameLogicProjectPackage,
   ): Promise<void> {
+    // Fail before clearing the running model: malformed hierarchy in a
+    // .flproject must never replace a healthy in-memory project.
+    if (!Array.isArray(packageValue.assemblies)) {
+      throw new Error("El proyecto no contiene una lista válida de ensambles.");
+    }
+    validateAssemblyHierarchy(packageValue.assemblies);
+    // Undo/Redo from another .flproject must never restore that project's
+    // assembly structure into the newly opened project.
     this.options.cancelActiveCadCommand();
+    this.options.clearCadHistory?.();
     this.options.clearReferenceModels();
     this.references.length = 0;
 
@@ -471,6 +482,8 @@ export class FrameLogicProjectPackageController {
         classification: assembly.classification,
         tags: [...assembly.tags],
         pieceInstanceIds: [...assembly.pieceInstanceIds],
+        parentAssemblyId: assembly.parentAssemblyId,
+        locked: assembly.locked,
       });
     }
 
@@ -647,6 +660,7 @@ export function parseProjectPackage(
     || value.version !== 1
     || !Array.isArray(value.pieceDefinitions)
     || !Array.isArray(value.pieceInstances)
+    || !Array.isArray(value.assemblies)
     || !Array.isArray(value.geometrySources)
   ) {
     throw new Error(

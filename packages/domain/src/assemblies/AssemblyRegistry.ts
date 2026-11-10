@@ -6,6 +6,8 @@ import type {
   Assembly,
 } from "./Assembly";
 
+import { validateAssemblyHierarchy } from "./validateAssemblyHierarchy";
+
 
 export interface RegisterAssemblyInput {
 
@@ -20,6 +22,10 @@ export interface RegisterAssemblyInput {
   tags?: string[];
 
   pieceInstanceIds?: string[];
+
+  parentAssemblyId?: string;
+
+  locked?: boolean;
 
 }
 
@@ -88,6 +94,11 @@ export class AssemblyRegistry {
             ?? []
           ),
         ],
+
+        ...(input.parentAssemblyId
+          ? { parentAssemblyId: input.parentAssemblyId }
+          : {}),
+        ...(input.locked ? { locked: true } : {}),
 
       };
 
@@ -268,6 +279,38 @@ export class AssemblyRegistry {
 
     return updated;
 
+  }
+
+
+  // ==========================================================
+  // HIERARCHY / LOCK STATE
+  // ==========================================================
+
+  updateParentAssemblyId(
+    id: string,
+    parentAssemblyId: string | null,
+  ): Assembly | undefined {
+    const current = this.assemblies.get(id);
+    if (!current) return undefined;
+    const { parentAssemblyId: _previous, ...withoutParent } = current;
+    const updated: Assembly = parentAssemblyId
+      ? { ...withoutParent, parentAssemblyId }
+      : withoutParent;
+    // Validate even registry-level calls; external integrations must not
+    // bypass the DesignModel cycle guard accidentally.
+    validateAssemblyHierarchy(
+      this.getAll().map((assembly) => assembly.id === id ? updated : assembly),
+    );
+    this.assemblies.set(id, updated);
+    return updated;
+  }
+
+  updateLocked(id: string, locked: boolean): Assembly | undefined {
+    const current = this.assemblies.get(id);
+    if (!current) return undefined;
+    const updated: Assembly = { ...current, locked };
+    this.assemblies.set(id, updated);
+    return updated;
   }
 
 

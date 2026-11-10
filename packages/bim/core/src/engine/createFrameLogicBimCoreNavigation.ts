@@ -466,6 +466,7 @@ export async function createBimCore(
     designModel: core.designModel,
     designScene: core.designScene,
     designSelection: core.designSelection,
+    cadHistory: core.cadHistory,
     cadReferenceBlocks,
     cancelActiveCommand: () =>
       core.cancelActiveCadCommand(),

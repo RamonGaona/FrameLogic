@@ -380,6 +380,11 @@ export class LinkedAssemblyInteractionController {
   }
 
   private getAssemblyLinkId(assembly: Assembly): string | null {
+    // Nested parents are distinct instances, not flat linked compositions.
+    // Leaf subassemblies retain the established linked-copy behavior.
+    if (this.options.designModel.getAssemblyChildren(assembly.id).length > 0) {
+      return null;
+    }
     const counts = new Map<string, number>();
     for (const piece of this.getPieces(assembly)) {
       const linkId = getLinkedAssemblyId(piece.tags);

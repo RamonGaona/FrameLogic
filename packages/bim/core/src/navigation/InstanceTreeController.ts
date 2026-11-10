@@ -7,6 +7,9 @@ import type {
   DesignSceneController,
 } from "../design/DesignSceneController";
 
+import type { CadHistoryController } from "../interaction/CadHistoryController";
+
+
 import type {
   DesignSelectionController,
 } from "../interaction/DesignSelectionController";
@@ -32,6 +35,7 @@ export interface InstanceTreeControllerOptions {
   readonly designModel: DesignModel;
   readonly designScene: DesignSceneController;
   readonly designSelection: DesignSelectionController;
+  readonly cadHistory: CadHistoryController;
   readonly cadReferenceBlocks: CadReferenceBlockController;
   readonly cancelActiveCommand: () => void;
 }
@@ -57,6 +61,10 @@ export class InstanceTreeController {
   private expanded = true;
   private lastSignature = "";
   private focusedItem: FocusedTreeItem = null;
+  // Selecting an assembly in the tree is NOT equivalent to selecting its
+  // component pieces in the viewport. Keep the explicit identity separately.
+  private readonly selectedAssemblyIds = new Set<string>();
+  private updatingTreeSelection = false;
   private contextMenu: HTMLDivElement | null = null;
   private disposed = false;
 
@@ -95,7 +103,10 @@ export class InstanceTreeController {
     );
 
     this.unsubscribeSelection = options.designSelection.subscribe(
-      () => this.render(),
+      () => {
+        if (!this.updatingTreeSelection) this.selectedAssemblyIds.clear();
+        this.render();
+      },
     );
     this.unsubscribeLayers = options.designModel.layers.subscribe(
       () => this.render(),
@@ -200,7 +211,7 @@ export class InstanceTreeController {
     const assemblies = this.options.designModel.assemblies
       .getAll()
       .map((assembly) =>
-        `${assembly.id}:${assembly.name}:${assembly.pieceInstanceIds.join(",")}`,
+        `${assembly.id}:${assembly.name}:${assembly.pieceInstanceIds.join(",")}:${assembly.parentAssemblyId ?? ""}:${Boolean(assembly.locked)}`,
       )
       .sort();
     const cadLayers = this.options.designModel.layers
@@ -218,6 +229,7 @@ export class InstanceTreeController {
       cadLayers,
       selectedPieces,
       selectedCad,
+      selectedAssemblyIds: [...this.selectedAssemblyIds].sort(),
     });
   }
 
@@ -245,63 +257,28 @@ export class InstanceTreeController {
     this.body.append(summary);
 
     const assemblyGroup = this.createGroup("ENSAMBLAJES", true);
+    const rendered = new Set<string>();
+    for (const selectedId of [...this.selectedAssemblyIds]) {
+      if (!this.options.designModel.assemblies.get(selectedId)) {
+        this.selectedAssemblyIds.delete(selectedId);
+      }
+    }
     if (assemblies.length < 1) {
       assemblyGroup.content.append(this.createEmpty("Sin ensambles"));
-    }
-    else {
+    } else {
       for (const assembly of assemblies) {
-        const members = assembly.pieceInstanceIds
-          .map((id) => this.options.designModel.pieceInstances.get(id))
-          .filter((value): value is PieceInstance => value !== undefined);
-        const allSelected = members.length > 0
-          && members.every((member) =>
-            this.options.designSelection.isSelected(member.id),
-          );
-        const row = this.createSelectableRow(
-          `▦ ${assembly.name}`,
-          `${members.length} pieza${members.length === 1 ? "" : "s"}`,
-          allSelected,
-          (event) => {
-            this.focusedItem = {
-              kind: "ASSEMBLY",
-              id: assembly.id,
-            };
-            this.selectAssembly(
-              assembly.pieceInstanceIds,
-              event.ctrlKey || event.metaKey,
-            );
-          },
-        );
-        // Stable identity for the eye/color controllers, including when the
-        // instance tree is reparented outside its original viewport.
-        row.dataset["framelogicAssemblyId"] = assembly.id;
-        row.title = "F2 = renombrar · clic derecho = opciones de ensamble";
-        row.addEventListener(
-          "contextmenu",
-          (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            this.focusedItem = {
-              kind: "ASSEMBLY",
-              id: assembly.id,
-            };
-            this.showAssemblyContextMenu(
-              event.clientX,
-              event.clientY,
-              assembly.id,
-            );
-          },
-        );
-        assemblyGroup.content.append(row);
-
-        const children = document.createElement("div");
-        children.style.paddingLeft = "16px";
-        for (const member of members) {
-          children.append(
-            this.createPieceRow(member.id),
-          );
+        if (assembly.parentAssemblyId
+          && this.options.designModel.assemblies.get(assembly.parentAssemblyId)) {
+          continue;
         }
-        assemblyGroup.content.append(children);
+        this.appendAssemblyNode(assembly.id, assemblyGroup.content, rendered);
+      }
+      // Guard against corrupt legacy data: display unvisited entries but
+      // never recurse forever into invalid parent cycles.
+      for (const assembly of assemblies) {
+        if (!rendered.has(assembly.id)) {
+          this.appendAssemblyNode(assembly.id, assemblyGroup.content, rendered);
+        }
       }
     }
     this.body.append(assemblyGroup.details);
@@ -370,6 +347,71 @@ export class InstanceTreeController {
     document.dispatchEvent(new Event("framelogic-instance-tree-rendered"));
   }
 
+  private appendAssemblyNode(
+    assemblyId: string,
+    parent: HTMLElement,
+    rendered: Set<string>,
+  ): void {
+    const assembly = this.options.designModel.assemblies.get(assemblyId);
+    if (!assembly || rendered.has(assemblyId)) return;
+    rendered.add(assemblyId);
+
+    const allIds = this.options.designModel.getAssemblyPieceIdsDeep(assemblyId);
+    const directMembers = assembly.pieceInstanceIds
+      .map((id) => this.options.designModel.pieceInstances.get(id))
+      .filter((member): member is PieceInstance => member !== undefined);
+    const children = this.options.designModel.getAssemblyChildren(assemblyId);
+    const selected = this.selectedAssemblyIds.has(assembly.id);
+
+    const row = this.createSelectableRow(
+      `▦ ${this.options.designModel.isAssemblyLocked(assembly.id) ? "🔒 " : ""}${assembly.name}`,
+      `${allIds.length} pieza${allIds.length === 1 ? "" : "s"}${children.length ? ` · ${children.length} sub` : ""}`,
+      selected,
+      (event) => {
+        this.focusedItem = { kind: "ASSEMBLY", id: assembly.id };
+        this.selectAssembly(assembly.id, event.ctrlKey || event.metaKey);
+      },
+    );
+    row.dataset["framelogicAssemblyId"] = assembly.id;
+    row.title = "Clic = seleccionar ensamble completo · Ctrl = multiselección · clic derecho = opciones";
+    row.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.focusedItem = { kind: "ASSEMBLY", id: assembly.id };
+      // Right-clicking a destination must not discard the explicitly selected
+      // source assemblies or loose pieces; otherwise "Anidar aquí" moves
+      // nothing. With no prior selection, right-click simply focuses this row.
+      if (
+        this.selectedAssemblyIds.size === 0
+        && this.options.designSelection.getSelectedIds().length === 0
+      ) {
+        this.selectedAssemblyIds.add(assembly.id);
+        this.updatingTreeSelection = true;
+        try {
+          this.options.designSelection.setSelection(allIds);
+        } finally {
+          this.updatingTreeSelection = false;
+        }
+      }
+      this.showAssemblyContextMenu(
+        event.clientX, event.clientY, assembly.id,
+      );
+    });
+    parent.append(row);
+
+    const items = document.createElement("div");
+    items.dataset["framelogicAssemblyChildren"] = assembly.id;
+    items.style.paddingLeft = "16px";
+    for (const child of children) {
+      this.appendAssemblyNode(child.id, items, rendered);
+    }
+    for (const member of directMembers) {
+      items.append(this.createPieceRow(member.id));
+    }
+    parent.append(items);
+  }
+
+
   private createPieceRow(instanceId: string): HTMLDivElement {
     const instance = this.options.designModel.pieceInstances.get(instanceId);
     const definition = instance
@@ -389,12 +431,17 @@ export class InstanceTreeController {
         };
         this.options.cancelActiveCommand();
         const additive = event.ctrlKey || event.metaKey;
-        if (additive) {
-          this.options.designSelection.toggle(instanceId);
-        }
-        else {
-          this.options.cadReferenceBlocks.clearSelection();
-          this.options.designSelection.selectSingle(instanceId);
+        if (!additive) this.selectedAssemblyIds.clear();
+        this.updatingTreeSelection = true;
+        try {
+          if (additive) {
+            this.options.designSelection.toggle(instanceId);
+          } else {
+            this.options.cadReferenceBlocks.clearSelection();
+            this.options.designSelection.selectSingle(instanceId);
+          }
+        } finally {
+          this.updatingTreeSelection = false;
         }
         this.render();
       },
@@ -424,84 +471,169 @@ export class InstanceTreeController {
   }
 
   private selectAssembly(
-    instanceIds: readonly string[],
+    assemblyId: string,
     additive: boolean,
   ): void {
     this.options.cancelActiveCommand();
-    const selectableIds = instanceIds.filter((id) =>
-      this.options.designModel.pieceInstances.get(id) !== undefined,
-    );
-    if (!additive) {
-      this.options.cadReferenceBlocks.clearSelection();
-      this.options.designSelection.setSelection(selectableIds);
-      this.render();
-      return;
-    }
-
+    const ids = this.options.designModel.getAssemblyPieceIdsDeep(assemblyId);
     const current = new Set(this.options.designSelection.getSelectedIds());
-    const allSelected = selectableIds.length > 0
-      && selectableIds.every((id) => current.has(id));
-    for (const id of selectableIds) {
-      if (allSelected) current.delete(id);
-      else current.add(id);
+    if (!additive) {
+      this.selectedAssemblyIds.clear();
+      this.selectedAssemblyIds.add(assemblyId);
+      current.clear();
+      for (const id of ids) current.add(id);
+      this.options.cadReferenceBlocks.clearSelection();
+    } else {
+      const wasSelected = this.selectedAssemblyIds.has(assemblyId);
+      if (wasSelected) this.selectedAssemblyIds.delete(assemblyId);
+      else this.selectedAssemblyIds.add(assemblyId);
+      for (const id of ids) {
+        if (wasSelected) current.delete(id);
+        else current.add(id);
+      }
     }
-    this.options.designSelection.setSelection([...current]);
+    this.updatingTreeSelection = true;
+    try {
+      this.options.designSelection.setSelection([...current]);
+    } finally {
+      this.updatingTreeSelection = false;
+    }
     this.render();
   }
 
-  private createAssemblyFromSelection(): void {
-    const selected = [
-      ...this.options.designSelection.getSelectedIds(),
-    ].filter((id) =>
-      this.options.designModel.pieceInstances.get(id) !== undefined,
+
+  private selectedLoosePieceIds(): string[] {
+    const covered = new Set<string>();
+    for (const assemblyId of this.selectedAssemblyIds) {
+      for (const id of this.options.designModel.getAssemblyPieceIdsDeep(assemblyId)) {
+        covered.add(id);
+      }
+    }
+    return this.options.designSelection.getSelectedIds()
+      .filter((id) => !covered.has(id))
+      .filter((id) => this.options.designModel.pieceInstances.get(id) !== undefined);
+  }
+
+  private recordAssemblyHistory(
+    label: string,
+    before: ReturnType<DesignModel["captureAssemblies"]>,
+  ): void {
+    const after = this.options.designModel.captureAssemblies();
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    const restore = (snapshot: typeof before): void => {
+      this.options.designModel.restoreAssemblies(snapshot);
+      this.selectedAssemblyIds.clear();
+      this.focusedItem = null;
+      this.options.designScene.sync();
+      this.refresh();
+    };
+    this.options.cadHistory.recordOperation(
+      label,
+      () => restore(before),
+      () => restore(after),
     );
-    if (selected.length < 1) {
-      window.alert("Selecciona una o varias piezas para crear el ensamble.");
+  }
+
+  private createAssemblyFromSelection(): void {
+    const model = this.options.designModel;
+    const children = [...this.selectedAssemblyIds];
+    const loose = this.selectedLoosePieceIds();
+    if (children.length === 0 && loose.length === 0) {
+      window.alert("Selecciona un ensamble completo o piezas sueltas.");
       return;
     }
 
-    const defaultName =
-      `Ensamble ${this.options.designModel.assemblies.count + 1}`;
-    const name = window.prompt(
-      "Nombre del ensamble",
-      defaultName,
-    )?.trim();
-    if (!name) return;
-
-    // Grouping validates the whole operation before changing old groups.
-    const assembly = this.options.designModel.groupPieceInstances({
-      name,
-      pieceInstanceIds: selected,
-    });
-    this.focusedItem = {
-      kind: "ASSEMBLY",
-      id: assembly.id,
-    };
-    this.hideContextMenu();
-    this.refresh();
+    try {
+      // Never take pieces from an existing group through '+ Grupo'.
+      // The user must select that assembly row explicitly.
+      for (const id of loose) {
+        const owner = model.assemblies.findByPieceInstanceId(id)[0];
+        if (owner) {
+          throw new Error(
+            `La pieza pertenece a "${owner.name}". Selecciona la fila del ENSAMBLE (Ctrl+clic para combinar) y no sus piezas internas.`,
+          );
+        }
+      }
+      const defaultName = `Ensamble ${model.assemblies.count + 1}`;
+      const name = window.prompt("Nombre del ensamble", defaultName)?.trim();
+      if (!name) return;
+      const before = model.captureAssemblies();
+      const created = model.createNestedAssembly({
+        name,
+        pieceInstanceIds: loose,
+        childAssemblyIds: children,
+      });
+      this.selectedAssemblyIds.clear();
+      this.selectedAssemblyIds.add(created.id);
+      this.focusedItem = { kind: "ASSEMBLY", id: created.id };
+      this.recordAssemblyHistory("Crear ensamble jerárquico", before);
+      this.hideContextMenu();
+      this.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
   }
 
   private moveSelectionToAssembly(assemblyId: string): void {
-    const selected = [
-      ...this.options.designSelection.getSelectedIds(),
-    ].filter((id) =>
-      this.options.designModel.pieceInstances.get(id) !== undefined,
-    );
-    if (selected.length < 1) return;
+    const model = this.options.designModel;
+    const childIds = [...this.selectedAssemblyIds]
+      .filter((id) => id !== assemblyId);
+    const looseIds = this.selectedLoosePieceIds();
+    if (childIds.length === 0 && looseIds.length === 0) return;
 
-    const moved = this.options.designModel.movePieceInstancesToAssembly(
-      assemblyId,
-      selected,
-    );
-    if (!moved) return;
-
-    this.hideContextMenu();
-    this.refresh();
+    const before = model.captureAssemblies();
+    try {
+      // Prevalidate every move: no partial edits if a child would create
+      // a cycle or a parent layer is locked.
+      if (model.isAssemblyLocked(assemblyId)) {
+        throw new Error("El ensamble de destino está bloqueado.");
+      }
+      for (const id of childIds) {
+        if (model.isAssemblyLocked(id)
+          || model.getAssemblyDescendantIds(id).includes(assemblyId)) {
+          throw new Error("Ensamble bloqueado o relación circular: operación cancelada.");
+        }
+        if (model.getAssemblyDescendantIds(id).some(
+          (descendantId) => childIds.includes(descendantId),
+        )) {
+          throw new Error(
+            "Seleccionaste un ensamble y uno de sus subensambles. Selecciona solo el ensamble superior.",
+          );
+        }
+      }
+      for (const id of looseIds) {
+        if (model.isPieceLocked(id)) {
+          throw new Error("Hay piezas bloqueadas en la selección.");
+        }
+        if (model.assemblies.findByPieceInstanceId(id).length > 0) {
+          throw new Error(
+            "No se extraerán piezas de otro ensamble. Selecciona el ensamble completo para anidarlo.",
+          );
+        }
+      }
+      for (const id of childIds) model.setAssemblyParent(id, assemblyId);
+      if (looseIds.length > 0) {
+        model.movePieceInstancesToAssembly(assemblyId, looseIds);
+      }
+      this.selectedAssemblyIds.clear();
+      this.selectedAssemblyIds.add(assemblyId);
+      this.recordAssemblyHistory("Mover subensambles y piezas", before);
+      this.hideContextMenu();
+      this.refresh();
+    } catch (error) {
+      model.restoreAssemblies(before);
+      window.alert(error instanceof Error ? error.message : String(error));
+      this.refresh();
+    }
   }
 
   private copySelectionToAssembly(assemblyId: string): void {
     const target = this.options.designModel.assemblies.get(assemblyId);
     if (!target) return;
+    if (this.options.designModel.isAssemblyLocked(assemblyId)) {
+      window.alert("No se pueden insertar piezas en un ensamble bloqueado.");
+      return;
+    }
     const selected = [
       ...this.options.designSelection.getSelectedIds(),
     ];
@@ -562,10 +694,13 @@ export class InstanceTreeController {
         assembly.name,
       )?.trim();
       if (!name) return;
-      this.options.designModel.assemblies.updateName(
-        focused.id,
-        name,
-      );
+      if (this.options.designModel.isAssemblyLocked(focused.id)) {
+        window.alert("No se puede renombrar un ensamble bloqueado.");
+        return;
+      }
+      const before = this.options.designModel.captureAssemblies();
+      this.options.designModel.assemblies.updateName(focused.id, name);
+      this.recordAssemblyHistory("Renombrar ensamble", before);
       this.refresh();
       return;
     }
@@ -585,6 +720,10 @@ export class InstanceTreeController {
       currentName,
     )?.trim();
     if (!name) return;
+    if (this.options.designModel.isPieceLocked(focused.id)) {
+      window.alert("No se puede renombrar una pieza de un ensamble bloqueado.");
+      return;
+    }
 
     this.options.designModel.pieceInstances.updateName(
       focused.id,
@@ -648,33 +787,72 @@ export class InstanceTreeController {
         label: "Renombrar ensamble · F2",
         action: () => this.renameFocusedItem(),
       },
+      {
+        label: assembly.locked ? "Desbloquear ensamble" : "Bloquear ensamble y subensambles",
+        action: () => {
+          try {
+            const model = this.options.designModel;
+            const before = model.captureAssemblies();
+            model.setAssemblyLocked(assemblyId, !assembly.locked);
+            this.recordAssemblyHistory("Bloqueo de ensamble", before);
+            this.refresh();
+          } catch (error) {
+            window.alert(error instanceof Error ? error.message : String(error));
+          }
+        },
+      },
     ];
 
-    if (this.options.designSelection.getSelectedIds().length > 0) {
-      entries.push(
-        {
-          label: "Mover selección aquí",
-          action: () => this.moveSelectionToAssembly(assemblyId),
+    if (assembly.parentAssemblyId) {
+      entries.push({
+        label: "Desanidar ensamble (llevar a raíz)",
+        action: () => {
+          const model = this.options.designModel;
+          const before = model.captureAssemblies();
+          try {
+            model.setAssemblyParent(assemblyId, null);
+            this.recordAssemblyHistory("Desanidar ensamble", before);
+            this.refresh();
+          } catch (error) {
+            window.alert(error instanceof Error ? error.message : String(error));
+          }
         },
-        {
-          label: "Copiar selección aquí",
-          action: () => this.copySelectionToAssembly(assemblyId),
-        },
-      );
+      });
+    }
+
+    if (this.selectedAssemblyIds.size > 0
+      || this.selectedLoosePieceIds().length > 0) {
+      entries.push({
+        label: "Anidar ensambles / mover piezas sueltas aquí",
+        action: () => this.moveSelectionToAssembly(assemblyId),
+      });
     }
 
     entries.push({
-      label: "Desagrupar ensamble (conservar piezas)",
+      label: "Crear ensamble superior con selección",
+      action: () => this.createAssemblyFromSelection(),
+    });
+
+    entries.push({
+      label: "Desagrupar (conservar piezas y subensambles)",
       action: () => {
-        this.options.designModel.assemblies.remove(assemblyId);
-        this.focusedItem = null;
-        this.hideContextMenu();
-        this.refresh();
+        const model = this.options.designModel;
+        const before = model.captureAssemblies();
+        try {
+          model.removeAssembly(assemblyId);
+          this.selectedAssemblyIds.delete(assemblyId);
+          this.focusedItem = null;
+          this.recordAssemblyHistory("Desagrupar ensamble", before);
+          this.refresh();
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : String(error));
+        }
       },
     });
 
     this.showContextMenu(x, y, entries);
   }
+
 
   private showContextMenu(
     x: number,
