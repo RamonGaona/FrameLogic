@@ -39,6 +39,8 @@ interface Pending {
 export class AssemblyAutomation {
   private pending: Pending | null = null;
 
+  invalidate(): void { this.pending = null; }
+
   constructor(
     private readonly model: DesignModel,
     private readonly history: CadHistoryController,
@@ -51,6 +53,8 @@ export class AssemblyAutomation {
       this.model.assemblies.getAll(),
       this.model.pieceDefinitions.getAll(),
       this.model.layers.getAll(),
+      this.ports.getSelection(),
+      this.ports.getSelectedAssemblyIds?.() ?? [],
     ]);
   }
 
@@ -141,6 +145,16 @@ export class AssemblyAutomation {
     const before = ids.map(id => {
       const piece = this.model.pieceInstances.get(id);
       if (!piece) throw new Error("Una pieza del ensamble ya no existe.");
+      for (const vector of [piece.transform.position, piece.transform.rotation])
+        if (![vector.x, vector.y, vector.z].every(Number.isFinite))
+          throw new Error("El ensamble contiene coordenadas no válidas.");
+      const target = {
+        x: piece.transform.position.x + d.x * (copy ? count : 1),
+        y: piece.transform.position.y + d.y * (copy ? count : 1),
+        z: piece.transform.position.z + d.z * (copy ? count : 1),
+      };
+      if (![target.x, target.y, target.z].every(Number.isFinite))
+        throw new Error("Las coordenadas de destino exceden el rango válido.");
       return { id, transform: structuredClone(piece.transform) };
     });
     const previewPositions = before.slice(0, 20).map(({ id, transform }) => ({
@@ -214,7 +228,8 @@ export class AssemblyAutomation {
             written.push(entry);
           }
           this.ports.sync();
-          sourceSelection();
+          if (useAfter) sourceSelection();
+          else restoreSelection();
         } catch (error) {
           for (const entry of written.reverse()) {
             this.model.pieceInstances.updateTransform(
