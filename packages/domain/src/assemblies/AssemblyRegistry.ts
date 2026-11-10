@@ -21,6 +21,10 @@ export interface RegisterAssemblyInput {
 
   pieceInstanceIds?: string[];
 
+  parentAssemblyId?: string;
+
+  locked?: boolean;
+
 }
 
 
@@ -88,6 +92,11 @@ export class AssemblyRegistry {
             ?? []
           ),
         ],
+
+        ...(input.parentAssemblyId
+          ? { parentAssemblyId: input.parentAssemblyId }
+          : {}),
+        ...(input.locked ? { locked: true } : {}),
 
       };
 
@@ -268,6 +277,33 @@ export class AssemblyRegistry {
 
     return updated;
 
+  }
+
+
+  // ==========================================================
+  // HIERARCHY / LOCK STATE
+  // ==========================================================
+
+  updateParentAssemblyId(
+    id: string,
+    parentAssemblyId: string | null,
+  ): Assembly | undefined {
+    const current = this.assemblies.get(id);
+    if (!current) return undefined;
+    const { parentAssemblyId: _previous, ...withoutParent } = current;
+    const updated: Assembly = parentAssemblyId
+      ? { ...withoutParent, parentAssemblyId }
+      : withoutParent;
+    this.assemblies.set(id, updated);
+    return updated;
+  }
+
+  updateLocked(id: string, locked: boolean): Assembly | undefined {
+    const current = this.assemblies.get(id);
+    if (!current) return undefined;
+    const updated: Assembly = { ...current, locked };
+    this.assemblies.set(id, updated);
+    return updated;
   }
 
 
