@@ -605,7 +605,7 @@ export function BimViewport() {
       name:
         piece.name,
       visible:
-        piece.visible,
+        !bimCore.designScene.isInstanceHidden(piece.id),
       x:
         event.clientX,
       y:
