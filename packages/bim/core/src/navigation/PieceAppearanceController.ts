@@ -103,6 +103,10 @@ export class PieceAppearanceController {
       true,
     );
 
+    document.addEventListener(
+      "framelogic-instance-tree-rendered",
+      this.handleTreeRendered,
+    );
     this.decorateRows();
     this.applyToAll();
     this.timer = window.setInterval(
@@ -135,8 +139,17 @@ export class PieceAppearanceController {
       this.handleKeyDown,
       true,
     );
+    document.removeEventListener(
+      "framelogic-instance-tree-rendered",
+      this.handleTreeRendered,
+    );
     this.hidePalette();
   }
+
+
+  private readonly handleTreeRendered = (): void => {
+    this.decorateRows();
+  };
 
 
   private readonly syncSceneWithAppearance = (): void => {
