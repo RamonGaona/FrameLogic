@@ -12,6 +12,24 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.95 — 2026-11-09
+
+### Corrección de visibilidad · Árbol INSTANCIAS
+
+- **Piezas y ensambles:** los ojos individuales, el ojo de cada ensamble y los ojos generales de ENSAMBLAJES y PIEZAS SUELTAS emplean un único estado de ocultación por PieceInstance en DesignSceneController. Ocultar no altera posiciones, definiciones, geometría STEP ni los datos de proyecto.
+- **Actualización estable:** las operaciones de visibilidad sobre grupos utilizan IDs del modelo y una sola sincronización, sin generar clics sintéticos en botones del DOM que pueden haber sido reconstruidos.
+- **Propietario único de controles:** PieceAppearanceController administra los ojos individuales y por ensamble. Se retiró el segundo decorador del panel antiguo y la lógica duplicada del controlador de consistencia.
+- **Vistas de sección:** el ojo general aplica la ocultación/restitución a todas las vistas en lote, con una sola resincronización; se preserva la acción individual.
+- **Entidades y referencias CAD:** no se modifican sus controles de visibilidad.
+- **Pruebas:** regresiones para grupos mixtos/legados, visibilidad de instancias con LOD/filtros, y visibilidad múltiple de secciones; se agrega validación específica en GitHub Actions.
+
+### Límites
+
+- La ocultación de piezas desde INSTANCIAS es una preferencia temporal del espacio modelo, no cambia la visibilidad de una capa ni el formato .flproject.
+- Confirmar manualmente los ojos en los proyectos reales con STEP, secciones y componentes enlazados tras el despliegue.
+
+---
+
 ## v0.1.94 — 2026-11-09
 
 ### Ensambles · Etapa A: estabilidad de composición
