@@ -200,6 +200,20 @@ export class StepEngineeringFeatureProvider
   }
 
 
+  hasExactTopologyForSource(instanceId: string): boolean {
+    const instance = this.designModel.pieceInstances.get(instanceId);
+    if (!instance) return false;
+    const documentId = getStepBrepDocumentId(instance.definitionId);
+    const document = documentId
+      ? getOpenCascadeBrepKernel().getDocument(documentId)
+      : undefined;
+    return Boolean(document && (
+      document.vertices.length > 0
+      || document.edges.length > 0
+      || document.cylinders.length > 0
+    ));
+  }
+
   private collectBrepTopology(
     pieceDefinitionId: string,
     instanceId: string,
@@ -589,8 +603,10 @@ export class StepEngineeringFeatureProvider
       kind,
       point:
         worldPoint,
+      // The source is the real selected piece occurrence, not a synthetic
+      // "instance:feature" id that copy, align and exclusion cannot resolve.
       sourceId:
-        `${instanceId}:${featureId}`,
+        instanceId,
       relatedSourceIds: [
         instanceId,
         featureId,
