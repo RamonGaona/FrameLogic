@@ -75,6 +75,13 @@ export interface GeometryQueryProvider {
   query(
     context: GeometryQueryContext,
   ): readonly GeometryQueryResult[];
+
+  /**
+   * True only when exact CAD topology is loaded for this piece occurrence.
+   * Mesh-based snaps must not override vertices, edges or circles from B-rep.
+   * Providers without a loaded exact source retain the legacy mesh fallback.
+   */
+  hasExactTopologyForSource?(instanceId: string): boolean;
 }
 
 interface EdgeRecord {
@@ -146,6 +153,13 @@ export class GeometryQueryEngine {
 
   clearCache(): void {
     this.geometryCache.clear();
+  }
+
+  hasExactTopologyForSource(instanceId: string): boolean {
+    for (const provider of this.providers) {
+      if (provider.hasExactTopologyForSource?.(instanceId)) return true;
+    }
+    return false;
   }
 
   queryAt(
@@ -227,14 +241,31 @@ export class GeometryQueryEngine {
       }
     }
 
-    results.sort((first, second) => {
+    // Keep face raycasts for surface queries, but use only CAD topology as
+    // positional SNAP authority while a live B-rep exists for a given piece.
+    // This is per occurrence; other pieces still use their mesh fallback.
+    const authoritative = new Map<string, boolean>();
+    const hasExact = (id: string): boolean => {
+      let value = authoritative.get(id);
+      if (value === undefined) {
+        value = this.hasExactTopologyForSource(id);
+        authoritative.set(id, value);
+      }
+      return value;
+    };
+    const positionalResults = results.filter((result) =>
+      result.precision !== "DERIVED_MESH"
+      || ![result.sourceId, ...(result.relatedSourceIds ?? [])].some(hasExact)
+    );
+
+    positionalResults.sort((first, second) => {
       const priorityDelta = QUERY_PRIORITY[first.kind] - QUERY_PRIORITY[second.kind];
       return priorityDelta !== 0
         ? priorityDelta
         : first.screenDistancePx - second.screenDistancePx;
     });
 
-    return this.dedupeResults(results).slice(0, maxResults);
+    return this.dedupeResults(positionalResults).slice(0, maxResults);
   }
 
   findBest(
@@ -575,6 +606,7 @@ export class GeometryQueryEngine {
         !sourceId
         || excludedSourceIds.has(sourceId)
         || !this.isPieceSnapEnabled(sourceId)
+        || this.hasExactTopologyForSource(sourceId)
       ) {
         continue;
       }
