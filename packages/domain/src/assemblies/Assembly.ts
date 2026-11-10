@@ -40,4 +40,15 @@ export interface Assembly
   readonly pieceInstanceIds:
     readonly string[];
 
+  /**
+   * Optional parent for true nested assemblies. Missing = project root;
+   * legacy FRAMELOGIC_PROJECT v1 snapshots therefore keep working.
+   */
+  readonly parentAssemblyId?: string;
+
+  /**
+   * A locked parent protects its whole subtree from interactive edits.
+   */
+  readonly locked?: boolean;
+
 }
