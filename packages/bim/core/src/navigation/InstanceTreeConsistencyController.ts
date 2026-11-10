@@ -48,9 +48,8 @@ interface Options {
  *   no fue abierta una primera vez.
  * - Si InstanceTreeController reconstruye el body, fuerza a los grupos
  *   dinámicos CAD/PDF a repoblarse aunque sus datos no hayan cambiado.
- * - Añade ojos masivos a ENSAMBLAJES y PIEZAS SUELTAS reutilizando los ojos
- *   individuales que ya controla BimViewport, evitando un segundo estado de
- *   visibilidad. El ojo permanece visible aunque el grupo esté vacío.
+ * - Los ojos de ensambles y piezas pertenecen al controlador único de
+ *   visibilidad del Model Space, no a este reparador de árboles/PDF.
  */
 export class InstanceTreeConsistencyController {
   private readonly container: HTMLElement;
@@ -89,9 +88,6 @@ export class InstanceTreeConsistencyController {
     window.clearInterval(this.timer);
     this.pdfRuntime.getEntries = this.baseGetEntries;
 
-    this.container
-      .querySelectorAll('[data-framelogic-piece-group-eye="true"]')
-      .forEach((element) => element.remove());
   }
 
 
@@ -124,16 +120,6 @@ export class InstanceTreeConsistencyController {
     if (this.disposed) return;
 
     this.repairDynamicGroups();
-    this.decoratePieceGroup(
-      "ENSAMBLAJES",
-      "assemblies",
-      "ensambles",
-    );
-    this.decoratePieceGroup(
-      "PIEZAS SUELTAS",
-      "loose",
-      "piezas sueltas",
-    );
     this.hideEmptyCadGroupEye();
   }
 
@@ -159,142 +145,6 @@ export class InstanceTreeConsistencyController {
   }
 
 
-  private decoratePieceGroup(
-    title: string,
-    key: string,
-    label: string,
-  ): void {
-    const details = this.findGroup(title);
-    if (!details) return;
-
-    const summary = details.querySelector<HTMLElement>(":scope > summary");
-    if (!summary) return;
-
-    const pieceEyes = this.getPieceEyes(details);
-    let button = summary.querySelector<HTMLButtonElement>(
-      `button[data-framelogic-piece-group-eye-key="${key}"]`,
-    );
-
-    if (!button) {
-      button = document.createElement("button");
-      button.type = "button";
-      button.dataset["framelogicPieceGroupEye"] = "true";
-      button.dataset["framelogicPieceGroupEyeKey"] = key;
-      Object.assign(button.style, {
-        float: "right",
-        width: "22px",
-        height: "18px",
-        margin: "-1px 0 0 6px",
-        padding: "0",
-        border: "0",
-        background: "transparent",
-        color: "#cfe8f3",
-        cursor: "pointer",
-      });
-      button.addEventListener("pointerdown", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      });
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.togglePieceGroup(title);
-      });
-      summary.append(button);
-    }
-
-    if (pieceEyes.length < 1) {
-      button.style.display = "";
-      button.disabled = true;
-      button.innerHTML = eyeSvg(false);
-      button.style.opacity = "0.35";
-      button.style.cursor = "default";
-      button.title = `Sin ${label}`;
-      button.setAttribute("aria-label", button.title);
-      return;
-    }
-
-    button.disabled = false;
-    button.style.display = "";
-    button.style.cursor = "pointer";
-    const visibleCount = pieceEyes.filter(
-      (eye) => this.isPieceEyeVisible(eye),
-    ).length;
-    const allVisible = visibleCount === pieceEyes.length;
-    const allHidden = visibleCount === 0;
-
-    button.innerHTML = eyeSvg(allHidden);
-    button.style.opacity = allVisible || allHidden ? "1" : "0.72";
-    button.title = allVisible
-      ? `Ocultar ${label}`
-      : `Mostrar ${label}`;
-    button.setAttribute("aria-label", button.title);
-  }
-
-
-  private togglePieceGroup(title: string): void {
-    const details = this.findGroup(title);
-    if (!details) return;
-
-    const eyes = this.getPieceEyes(details);
-    if (eyes.length < 1) return;
-
-    const allVisible = eyes.every(
-      (eye) => this.isPieceEyeVisible(eye),
-    );
-    const targetVisible = !allVisible;
-
-    for (const eye of eyes) {
-      if (this.isPieceEyeVisible(eye) === targetVisible) continue;
-      eye.click();
-    }
-
-    window.setTimeout(
-      () => this.sync(),
-      0,
-    );
-  }
-
-
-  private getPieceEyes(
-    details: HTMLDetailsElement,
-  ): HTMLButtonElement[] {
-    return Array.from(
-      details.querySelectorAll<HTMLButtonElement>(
-        'button[data-framelogic-piece-visibility-eye]',
-      ),
-    );
-  }
-
-
-  private isPieceEyeVisible(
-    eye: HTMLButtonElement,
-  ): boolean {
-    return eye.dataset["framelogicPieceVisible"] !== "false";
-  }
-
-
-  private findGroup(
-    title: string,
-  ): HTMLDetailsElement | null {
-    const body = findInstanceTreeBody(this.container);
-    if (!body) return null;
-
-    return Array.from(
-      body.querySelectorAll<HTMLDetailsElement>(":scope > details"),
-    ).find((details) => {
-      const summary = details.querySelector<HTMLElement>(":scope > summary");
-      if (!summary) return false;
-      const text = Array.from(summary.childNodes)
-        .filter((node) => node.nodeType === Node.TEXT_NODE)
-        .map((node) => node.textContent ?? "")
-        .join("")
-        .trim();
-      return text === title;
-    }) ?? null;
-  }
-
-
   private hideEmptyCadGroupEye(): void {
     const button = findInstanceTreeBody(this.container)
       ?.querySelector<HTMLButtonElement>(
@@ -305,21 +155,3 @@ export class InstanceTreeConsistencyController {
   }
 }
 
-
-function eyeSvg(hidden: boolean): string {
-  if (hidden) {
-    return [
-      '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">',
-      '<path d="M3 3l18 18" fill="none" stroke="currentColor" stroke-width="1.8"/>',
-      '<path d="M2.5 12s3.5-6 9.5-6c2.1 0 3.9.7 5.4 1.7M21.5 12s-3.5 6-9.5 6c-2.1 0-3.9-.7-5.4-1.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
-      '</svg>',
-    ].join("");
-  }
-
-  return [
-    '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">',
-    '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.6"/>',
-    '<circle cx="12" cy="12" r="2.6" fill="currentColor"/>',
-    '</svg>',
-  ].join("");
-}
