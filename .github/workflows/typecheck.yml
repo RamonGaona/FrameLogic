@@ -39,6 +39,9 @@ jobs:
       - name: Domain and geometry tests
         run: npm test
 
+      - name: Exact STEP geometric snapping regression
+        run: npm run test:geometric-snaps
+
       - name: Precision and adaptive visualization tests
         run: npm run test:precision-stage2
 

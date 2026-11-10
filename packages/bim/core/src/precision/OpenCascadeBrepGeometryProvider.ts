@@ -76,6 +76,20 @@ export class OpenCascadeBrepGeometryProvider
   }
 
 
+  hasExactTopologyForSource(instanceId: string): boolean {
+    const instance = this.designModel.pieceInstances.get(instanceId);
+    if (!instance) return false;
+    const documentId = this.definitionDocuments.get(instance.definitionId);
+    const document = documentId
+      ? getOpenCascadeBrepKernel().getDocument(documentId)
+      : undefined;
+    return Boolean(document && (
+      document.vertices.length > 0
+      || document.edges.length > 0
+      || document.cylinders.length > 0
+    ));
+  }
+
   query(
     context: GeometryQueryContext,
   ): readonly GeometryQueryResult[] {

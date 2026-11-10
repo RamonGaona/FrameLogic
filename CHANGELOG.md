@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.101 — 2026-11-10
+
+### SNAPs geométricos STEP precisos y consistentes con LOD
+
+- **Autoridad B-rep:** cuando una pieza tiene topología STEP exacta activa, los vértices, centros y puntos de arista usados para posicionar se obtienen de la geometría B-rep, no de triángulos de la malla visual. Los niveles LOW, WORK y DETAIL no alteran esos SNAPs.
+- **Fallback controlado:** si la pieza no dispone de B-rep activo, se conserva el comportamiento anterior basado en malla. La política es independiente por instancia, de modo que piezas CAD exactas y objetos solo-malla conviven.
+- **Protección de snaps persistentes:** los SNAPs definidos manualmente y las referencias CAD siguen disponibles; solo se descarta el SNAP heredado que realmente procede de una malla cuando existe topología exacta.
+- **Identidad de pieza:** los resultados de las features de ingeniería STEP pasan a identificar su `PieceInstance` real; los IDs de feature permanecen en `relatedSourceIds`. Se evitan referencias sintéticas `instancia:feature` en operaciones de alineación y posicionamiento.
+- **Pruebas:** se incorpora `npm run test:geometric-snaps` a CI, cubriendo prioridad de topología exacta, fallback de mallas, transformaciones y asociación correcta con la pieza.
+- **Alcance:** no se introduce un nuevo kernel CAD ni se modifica el formato de proyectos, ensambles, guardado o historial. No implica que la intersección de superficies curvas o todas las referencias geométricas STEP estén ya soportadas.
+
+---
+
 ## v0.1.100 — 2026-11-10
 
 ### Corrección de la versión visible en Model Space

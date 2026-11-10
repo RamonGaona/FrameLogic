@@ -38,6 +38,9 @@ export interface DesignSnapResult {
   readonly instanceId:
     string;
 
+  /** Mesh estimates are superseded by exact STEP topology when available. */
+  readonly derivedFromMesh?: boolean;
+
 }
 
 
@@ -761,6 +764,7 @@ export class DesignSnapController {
             worldPoint,
 
           instanceId,
+          derivedFromMesh: true,
         };
 
       }
