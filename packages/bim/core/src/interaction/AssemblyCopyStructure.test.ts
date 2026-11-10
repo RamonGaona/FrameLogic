@@ -55,8 +55,8 @@ describe("structural copy planning and assembly IDs", () => {
     expect(f.model.assemblies.get(f.parent.id)?.pieceInstanceIds).toEqual([f.c.id]);
     expect(f.model.assemblies.get(f.child.id)?.pieceInstanceIds)
       .toEqual([f.a.id, f.b.id]);
-    expect(f.model.pieceDefinitions.count).toBe(1);
-    expect(f.model.assets.count).toBe(1);
+    expect(f.model.pieceDefinitions.getAll().length).toBe(1);
+    expect(f.model.assets.getAll().length).toBe(1);
   });
 
   it("refuses a partial child selection before making changes", () => {
