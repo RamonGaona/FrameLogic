@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.103 — 2026-11-10
+
+### Corrección Ctrl + gizmo: la copia se mueve y el ensamble original queda fijo
+
+- **Transformaciones exclusivas de la copia:** al mantener Ctrl y mover el gizmo, el controlador posiciona los nuevos objetos a partir de la ubicación inicial de cada duplicado. Nunca aplica desplazamiento a objetos de las piezas originales.
+- **Guardado seguro:** durante una copia, solo se persisten los transform de los nuevos ID de instancia, incluso si cambia la selección visual durante el arrastre o el clic sobre SNAP.
+- **Consistencia visual y de dominio:** se conserva/restaura la posición y rotación inicial de las piezas del ensamble original al confirmar o cancelar la sesión.
+- **Copias jerárquicas:** se mantienen todos los subensambles y sus IDs nuevos, con los assets y definiciones compartidos; el original permanece en sus coordenadas iniciales.
+- **SNAP y copias repetidas:** el posicionamiento con Ctrl + eje y clic en SNAP mantiene el mismo origen para cada nueva copia, sin acumular desplazamientos.
+- **Undo/Redo:** el historial conserva la copia como una sola operación reversible sin registrar un movimiento accidental del original.
+- **Pruebas de regresión:** nuevas pruebas de integración de Ctrl + arrastre y Ctrl + eje/SNAP sobre ensambles con subensambles, además de pruebas de offsets absolutos y restauración ante cambios accidentales.
+
+---
+
 ## v0.1.102 — 2026-11-10
 
 ### Automatización MCP y chat unificados para ensambles jerárquicos
