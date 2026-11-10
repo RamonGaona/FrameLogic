@@ -23,9 +23,10 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 - **Bloqueo heredado:** bloqueo/desbloqueo desde el árbol, propagado a descendientes. Mover/rotar con gizmo, Alinear, desagrupar, reanidar y desvincular una colocación bloqueada son rechazados.
 - **Visibilidad y color:** los ojos y colores de cada ensamble alcanzan recursivamente todas las piezas de su jerarquía. Los ojos generales de categorías siguen sin depender de la estructura visual del árbol.
 - **Undo/Redo:** se registran instantáneas de ensambles al crear, anidar, desanidar, renombrar, bloquear y desagrupar. Los comandos de movimiento 3D siguen utilizando su historial CAD.
+- **Eliminación y planos:** DELETE y DELETE MIXED bloquean la eliminación de piezas heredadas de ensambles bloqueados. La acción de enviar un ensamble a PDF reconoce el ID real de la fila anidada y reúne las piezas de todos los niveles, no solo las directas.
 - **Compatibilidad de proyectos:** `FRAMELOGIC_PROJECT v1` conserva su esquema; el padre y el bloqueo son campos opcionales en cada ensamble. Los proyectos anteriores se interpretan como ensambles raíz. El archivo con referencias circulares o padres ausentes se rechaza *antes de borrar el proyecto actual*.
 - **Protección de copia vinculada:** se impide copiar con el mecanismo heredado un ensamble con subensambles, porque solo copiaría sus piezas directas; se muestra un aviso explícito.
-- **Pruebas:** composición de dos y tres niveles, seguridad, ciclos, bloqueo heredado, desagrupación, serialización JSON, restauración de instantáneas y Undo/Redo CAD.
+- **Pruebas:** composición de dos y tres niveles, seguridad, ciclos, bloqueo heredado, desagrupación, serialización JSON, restauración de instantáneas, Undo/Redo CAD y regresión directa del caso «ensamble seleccionado + pieza suelta».
 
 ### Alcance pendiente
 
