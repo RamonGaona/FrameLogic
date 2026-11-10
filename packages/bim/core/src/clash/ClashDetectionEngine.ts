@@ -147,7 +147,7 @@ function pointInsideClosedMesh(point: THREE.Vector3, mesh: TriangleMesh): boolea
 }
 
 function sampledMinimumDistance(
-  a: TriangleMesh, b: TriangleMesh, limitMm: number,
+  a: TriangleMesh, b: TriangleMesh,
 ): { distance: number; point: THREE.Vector3 } {
   let minimum = Infinity;
   let point = new THREE.Vector3();
@@ -166,7 +166,7 @@ function sampledMinimumDistance(
       }
     }
   }
-  return { distance: minimum > limitMm && Number.isFinite(minimum) ? minimum : minimum, point };
+  return { distance: minimum, point };
 }
 
 function classifyPair(
@@ -196,9 +196,10 @@ function classifyPair(
         "Penetración volumétrica acreditada por un vértice interior de una malla cerrada. Ubicación aproximada; volumen no calculado.");
     }
   }
-  const distance = sampledMinimumDistance(geometryA, geometryB, settings.toleranceMm);
+  const distance = sampledMinimumDistance(geometryA, geometryB);
   const nearContact = distance.distance <= 0.001;
-  if (nearContact && settings.includeContact && overlap.isEmpty()) {
+  if (nearContact && settings.includeContact && (overlap.isEmpty()
+    || overlap.getSize(new THREE.Vector3()).toArray().some(size => size <= 0.001))) {
     return record("CONTACT", false, distance.point,
       "Posible contacto entre triangulaciones; requiere confirmación B-rep.", distance.distance);
   }
@@ -308,7 +309,7 @@ export class ClashDetectionEngine {
     const records: ClashRecord[] = [];
     for (let i = 0; i < pairs.length; i++) {
       isAbortError(options.signal);
-      if (this.signature() !== signature) throw new Error("El modelo cambió durante el análisis. Ejecútalo nuevamente.");
+      if (i % 5 === 0 && this.signature() !== signature) throw new Error("El modelo cambió durante el análisis. Ejecútalo nuevamente.");
       const [a, b] = pairs[i]!;
       const record = classifyPair(a, b, meshFor(a), meshFor(b), options);
       if (record) records.push(record);
@@ -317,6 +318,7 @@ export class ClashDetectionEngine {
         await new Promise<void>(resolve => setTimeout(resolve, 0));
       }
     }
+    if (this.signature() !== signature) throw new Error("El modelo cambió durante el análisis. Ejecútalo nuevamente.");
     return { records, signature, pieces: parts.length, candidates: pairs.length };
   }
 }
