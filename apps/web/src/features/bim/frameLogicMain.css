@@ -36,6 +36,14 @@ html:not([data-framelogic-model-space-layout-ready="true"]) :is(
   display: none;
 }
 
+/* Keep the original commands mounted for their file inputs and React handlers,
+ * but show them only through the ARCHIVO dropdown while it is active.
+ * If the controller is unavailable, the original controls remain usable.
+ */
+html[data-framelogic-file-menu-ready="true"] button[data-framelogic-file-command] {
+  display: none !important;
+}
+
 /* The isolated piece editor owns the viewport's UI while it is active.
  * The important rule survives layout adapters and React updates that write
  * display styles to Model Space controls after the editor opens.
