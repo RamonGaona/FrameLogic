@@ -364,7 +364,7 @@ export class InstanceTreeController {
     const selected = this.selectedAssemblyIds.has(assembly.id);
 
     const row = this.createSelectableRow(
-      `▦ ${assembly.locked ? "🔒 " : ""}${assembly.name}`,
+      `▦ ${this.options.designModel.isAssemblyLocked(assembly.id) ? "🔒 " : ""}${assembly.name}`,
       `${allIds.length} pieza${allIds.length === 1 ? "" : "s"}${children.length ? ` · ${children.length} sub` : ""}`,
       selected,
       (event) => {
@@ -588,6 +588,13 @@ export class InstanceTreeController {
           || model.getAssemblyDescendantIds(id).includes(assemblyId)) {
           throw new Error("Ensamble bloqueado o relación circular: operación cancelada.");
         }
+        if (model.getAssemblyDescendantIds(id).some(
+          (descendantId) => childIds.includes(descendantId),
+        )) {
+          throw new Error(
+            "Seleccionaste un ensamble y uno de sus subensambles. Selecciona solo el ensamble superior.",
+          );
+        }
       }
       for (const id of looseIds) {
         if (model.isPieceLocked(id)) {
@@ -708,6 +715,10 @@ export class InstanceTreeController {
       currentName,
     )?.trim();
     if (!name) return;
+    if (this.options.designModel.isPieceLocked(focused.id)) {
+      window.alert("No se puede renombrar una pieza de un ensamble bloqueado.");
+      return;
+    }
 
     this.options.designModel.pieceInstances.updateName(
       focused.id,
