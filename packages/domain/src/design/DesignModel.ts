@@ -625,6 +625,17 @@ import {
     ): Assembly {
       const pieceInstanceIds = input.pieceInstanceIds ?? [];
       this.validateAssemblyMemberIds(pieceInstanceIds);
+      if (input.parentAssemblyId) {
+        if (!this.assemblies.get(input.parentAssemblyId)) {
+          throw new Error("El ensamble padre no existe.");
+        }
+        if (this.isAssemblyLocked(input.parentAssemblyId)) {
+          throw new Error("El ensamble padre está bloqueado.");
+        }
+        if (input.id === input.parentAssemblyId) {
+          throw new Error("Un ensamble no puede ser su propio padre.");
+        }
+      }
 
       const layerId =
         input.layerId ?? DEFAULT_DESIGN_LAYER_IDS.GEOMETRY;
@@ -641,9 +652,9 @@ import {
     }
 
     /**
-     * Group or regroup existing pieces atomically with respect to validation:
-     * create the target first, then detach its members from prior assemblies.
-     * A duplicate assembly ID or invalid input cannot lose memberships.
+     * Create a flat assembly only from currently loose pieces. Attempting to
+     * regroup children without selecting the original assembly explicitly is
+     * forbidden; use createNestedAssembly for true parent/child composition.
      */
     groupPieceInstances(
       input: RegisterAssemblyInput,
@@ -699,6 +710,14 @@ import {
     ): Assembly | undefined {
       const assembly = this.assemblies.get(assemblyId);
       if (!assembly) return undefined;
+      if (this.isAssemblyLocked(assemblyId)) {
+        throw new Error("El ensamble de destino está bloqueado.");
+      }
+      for (const id of pieceInstanceIds) {
+        if (this.isPieceLocked(id)) {
+          throw new Error("La pieza seleccionada está bloqueada.");
+        }
+      }
 
       const members = [
         ...new Set([...assembly.pieceInstanceIds, ...pieceInstanceIds]),
