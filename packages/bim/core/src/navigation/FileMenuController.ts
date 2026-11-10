@@ -34,10 +34,12 @@ export class FileMenuController {
   private readonly list: HTMLDivElement;
   private readonly entries = new Map<FileActionId, HTMLButtonElement>();
   private readonly timer: number;
+  private readonly container: HTMLElement;
   private disposed = false;
   private opened = false;
 
-  constructor(private readonly container: HTMLElement) {
+  constructor(container: HTMLElement) {
+    this.container = container;
     this.wrapper = document.createElement("div");
     this.wrapper.dataset["framelogicFileMenu"] = "true";
     Object.assign(this.wrapper.style, {
