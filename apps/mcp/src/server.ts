@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { toolSchemas, resultSchema, type ToolName, type OperationResult } from "../../../packages/contracts/src/automation";
 export function createMcpServer(call: (name: ToolName, args: unknown) => Promise<OperationResult>) {
-  const server = new McpServer({ name: "framelogic-experimental", version: "0.1.93" });
+  const server = new McpServer({ name: "framelogic-experimental", version: "0.1.102" });
   for (const name of Object.keys(toolSchemas) as ToolName[]) {
     server.registerTool(name, {
       description: name === "prepare_operation" ? "Validate and preview move_piece/copy_piece/copy_piece_array. Does not modify model. Distances in mm."
@@ -10,9 +10,14 @@ export function createMcpServer(call: (name: ToolName, args: unknown) => Promise
         : name === "confirm_commands" ? "Request a single human approval for a prepared command sequence. Executes all commands atomically as one Undo step."
         : name === "query_objects" ? "Read-only: filter CAD instances by ID, name/code or selection; return identity, transforms and detailed-asset bounds in mm."
         : name === "describe_object" ? "Read-only: inspect a piece instance's model data, local axes and persistent snaps."
+        : name === "list_assemblies" ? "Read-only: list nested assemblies, parent/child IDs, component counts and effective locks."
+        : name === "get_selection_context" ? "Read-only: inspect explicit INSTANCIAS assembly selection, selected pieces and loose pieces."
+        : name === "select_assembly" ? "Select a full nested assembly by exact ID; requires browser approval."
+        : name === "prepare_assembly_operation" ? "PREVIEW ONLY: move or copy an entire nested assembly on global XYZ in mm, preserving subassemblies. No mutations before approval."
+        : name === "confirm_assembly_operation" ? "Request browser approval and apply the saved assembly move/copy as one reversible CAD history operation."
         : `FrameLogic ${name}`,
       inputSchema: toolSchemas[name].shape, outputSchema: resultSchema.shape,
-      annotations: { readOnlyHint: name.startsWith("get_") || name.startsWith("list_") || name === "prepare_operation" || name === "prepare_commands" || name === "query_objects" || name === "describe_object", openWorldHint: false },
+      annotations: { readOnlyHint: name.startsWith("get_") || name.startsWith("list_") || name === "prepare_operation" || name === "prepare_commands" || name === "prepare_assembly_operation" || name === "query_objects" || name === "describe_object", openWorldHint: false },
     }, async (args: unknown) => {
       try {
         const result = resultSchema.parse(await call(name, args));
