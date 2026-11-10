@@ -36,7 +36,7 @@ function makeTree(
     selectedAssemblyIds,
     refresh,
     hideContextMenu,
-  }) as {
+  }) as unknown as {
     createAssemblyFromSelection(): void;
   };
   return { tree, recordOperation, refresh };
