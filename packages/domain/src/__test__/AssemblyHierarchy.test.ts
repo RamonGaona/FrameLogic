@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DesignModel, validateAssemblyHierarchy } from "../index";
 
 function fixture() {
@@ -46,6 +46,41 @@ describe("hierarchical assemblies (FRAMELOGIC_PROJECT v1 compatible)", () => {
     expect(model.getAssemblyDescendantIds(level1.id)).toEqual([level2.id, level3.id]);
     expect(model.getAssemblyPieceIdsDeep(level1.id)).toEqual([c.id, b.id, a.id]);
     expect(model.assemblies.get(level3.id)?.pieceInstanceIds).toEqual([a.id]);
+  });
+
+  it("rejects regrouping an ancestor under a descendant without mutations", () => {
+    const { model, a, b } = fixture();
+    const root = model.registerAssembly({ name: "Root", pieceInstanceIds: [a.id] });
+    const nested = model.createNestedAssembly({ name: "Nested", childAssemblyIds: [root.id] });
+    const leaf = model.createNestedAssembly({ name: "Leaf", pieceInstanceIds: [b.id], parentAssemblyId: root.id });
+    const before = model.captureAssemblies();
+    expect(() => model.createNestedAssembly({
+      name: "Invalid", parentAssemblyId: leaf.id, childAssemblyIds: [nested.id],
+    })).toThrow(/circular/i);
+    expect(model.captureAssemblies()).toEqual(before);
+    expect(model.pieceInstances.count).toBe(3);
+  });
+
+  it("rolls back all regrouping when a registry reparent fails", () => {
+    const { model, a, b } = fixture();
+    const first = model.registerAssembly({ name: "First", pieceInstanceIds: [a.id] });
+    const second = model.registerAssembly({ name: "Second", pieceInstanceIds: [b.id] });
+    const before = model.captureAssemblies();
+    const original = model.assemblies.updateParentAssemblyId.bind(model.assemblies);
+    let calls = 0;
+    const spy = vi.spyOn(model.assemblies, "updateParentAssemblyId").mockImplementation((id, parent) => {
+      if (++calls === 2) throw new Error("Injected registry failure");
+      return original(id, parent);
+    });
+    try {
+      expect(() => model.createNestedAssembly({
+        name: "Parent", childAssemblyIds: [first.id, second.id],
+      })).toThrow(/Injected registry failure/);
+      expect(model.captureAssemblies()).toEqual(before);
+      expect(model.pieceInstances.count).toBe(3);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("rejects circular and self-parent relationships without changing the tree", () => {
