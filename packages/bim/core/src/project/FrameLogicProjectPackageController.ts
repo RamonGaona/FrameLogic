@@ -139,6 +139,7 @@ export interface FrameLogicProjectPackageControllerOptions {
   readonly setReferenceLayer: (id: string, layerId: string) => boolean;
   readonly clearReferenceModels: () => void;
   readonly cancelActiveCadCommand: () => void;
+  readonly clearCadHistory?: () => void;
   readonly clearGeometryQueryCache: () => void;
   readonly onProjectRestored?: () => void | Promise<void>;
 }
@@ -322,6 +323,9 @@ export class FrameLogicProjectPackageController {
       throw new Error("El proyecto no contiene una lista válida de ensambles.");
     }
     validateAssemblyHierarchy(packageValue.assemblies);
+    // Undo/Redo from another .flproject must never restore that project's
+    // assembly structure into the newly opened project.
+    this.options.clearCadHistory?.();
     this.options.cancelActiveCadCommand();
     this.options.clearReferenceModels();
     this.references.length = 0;
