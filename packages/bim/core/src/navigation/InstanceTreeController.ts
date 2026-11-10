@@ -426,12 +426,17 @@ export class InstanceTreeController {
         };
         this.options.cancelActiveCommand();
         const additive = event.ctrlKey || event.metaKey;
-        if (additive) {
-          this.options.designSelection.toggle(instanceId);
-        }
-        else {
-          this.options.cadReferenceBlocks.clearSelection();
-          this.options.designSelection.selectSingle(instanceId);
+        if (!additive) this.selectedAssemblyIds.clear();
+        this.updatingTreeSelection = true;
+        try {
+          if (additive) {
+            this.options.designSelection.toggle(instanceId);
+          } else {
+            this.options.cadReferenceBlocks.clearSelection();
+            this.options.designSelection.selectSingle(instanceId);
+          }
+        } finally {
+          this.updatingTreeSelection = false;
         }
         this.render();
       },
@@ -461,30 +466,36 @@ export class InstanceTreeController {
   }
 
   private selectAssembly(
-    instanceIds: readonly string[],
+    assemblyId: string,
     additive: boolean,
   ): void {
     this.options.cancelActiveCommand();
-    const selectableIds = instanceIds.filter((id) =>
-      this.options.designModel.pieceInstances.get(id) !== undefined,
-    );
-    if (!additive) {
-      this.options.cadReferenceBlocks.clearSelection();
-      this.options.designSelection.setSelection(selectableIds);
-      this.render();
-      return;
-    }
-
+    const ids = this.options.designModel.getAssemblyPieceIdsDeep(assemblyId);
     const current = new Set(this.options.designSelection.getSelectedIds());
-    const allSelected = selectableIds.length > 0
-      && selectableIds.every((id) => current.has(id));
-    for (const id of selectableIds) {
-      if (allSelected) current.delete(id);
-      else current.add(id);
+    if (!additive) {
+      this.selectedAssemblyIds.clear();
+      this.selectedAssemblyIds.add(assemblyId);
+      current.clear();
+      for (const id of ids) current.add(id);
+      this.options.cadReferenceBlocks.clearSelection();
+    } else {
+      const wasSelected = this.selectedAssemblyIds.has(assemblyId);
+      if (wasSelected) this.selectedAssemblyIds.delete(assemblyId);
+      else this.selectedAssemblyIds.add(assemblyId);
+      for (const id of ids) {
+        if (wasSelected) current.delete(id);
+        else current.add(id);
+      }
     }
-    this.options.designSelection.setSelection([...current]);
+    this.updatingTreeSelection = true;
+    try {
+      this.options.designSelection.setSelection([...current]);
+    } finally {
+      this.updatingTreeSelection = false;
+    }
     this.render();
   }
+
 
   private createAssemblyFromSelection(): void {
     const selected = [
