@@ -443,6 +443,17 @@ export class ModelSpaceToolbarOrganizerController {
       };
 
     for (const child of children) {
+      // React-owned file commands are now represented in the standalone
+      // ARCHIVO menu. Do not leave a second, empty Archivo category label.
+      if (
+        child instanceof HTMLButtonElement
+        && (
+          child.dataset["framelogicFileCommand"] !== undefined
+          || child.textContent?.trim().toUpperCase() === "ABRIR IFC REFERENCIA"
+        )
+      ) {
+        continue;
+      }
       const category =
         this.getCategory(child);
       const index =
