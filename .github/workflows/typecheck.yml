@@ -78,6 +78,9 @@ jobs:
       - name: Clash Detection regression tests
         run: npm run test:clash
 
+      - name: OpenCascade B-rep boolean smoke test (Node)
+        run: npm run test:clash:occt
+
       - name: Build web
         run: npm run build
 

@@ -59,6 +59,9 @@ export type {
   OpenCascadeBrepSnapshot,
 } from "./step/OpenCascadeBrepKernel";
 
+export { OpenCascadeClashKernel, getOpenCascadeClashKernel } from "./step/OpenCascadeClashKernel";
+export type { BooleanClashResult } from "./step/OpenCascadeClashKernel";
+
 export {
   OpenCascadeDrawingKernel,
 } from "./step/OpenCascadeDrawingKernel";

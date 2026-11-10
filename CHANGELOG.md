@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.105 — 2026-11-10
+
+### Clash Detection — solo penetraciones volumétricas STEP B-rep
+
+- **Contactos ignorados:** las caras apoyadas, aristas/vértices en contacto y piezas cercanas no se registran como interferencia. El filtro AABB exige superposición positiva en los tres ejes; una caja solapada por sí sola nunca constituye un Clash.
+- **Booleana real:** para parejas con documentos STEP B-rep vivos se transforman copias de ambos TopoDS_Shape con las matrices de instancia y sus escalas a milímetros, sin mover las piezas originales. OpenCascade BRepAlgoAPI_Common calcula el sólido compartido.
+- **Volumen geométrico:** se exige resultado B-rep con TopAbs_SOLID, sin errores de construcción y volumen positivo medido por BRepGProp, calculando además el centroide de la penetración. Umbral configurable de volumen mínimo en **mm³** (inicial 0,01 mm³), sin aumentar el fuzzy de la booleana.
+- **Sin falsos positivos por incertidumbre:** geometría sin B-rep, intersecciones no válidas, errores del kernel o escalas incompatibles quedan como parejas **sin verificar**, nunca como Hard Clash. El panel presenta ese contador y exporta volumen a CSV/JSON; se conservan enfoque de cámara y resaltado temporal rojo.
+- **Pruebas:** casos para contacto cara/cara, borde/vértice, separación, falsos candidatos AABB, volumen positivo, umbral, falta de B-rep, rotación, selección, jerarquías e invalidación. Test de integración adicional que ejecuta booleanas reales OCCT sobre dos sólidos cúbicos.
+- **Alcance:** la precisión B-rep solo está disponible cuando ambas piezas tienen su documento STEP exacto aún cargado. No hay fallback con malla para diagnosticar penetración, ni persistencia de estados, PDF o MCP clash. Los casos sin verificar no prueban ausencia de interferencias; requieren revisión.
+- **Validación pendiente:** comprobar en navegador con archivos STEP reales y ensambles grandes; los tests de coordinación usan un intersector simulado y el test de integración ejecuta geometrías primitivas B-rep de OCCT.
+
+---
+
 ## v0.1.104 — 2026-11-10
 
 ### Clash Detection 3D — primera etapa de diagnóstico y revisión desde el navegador
