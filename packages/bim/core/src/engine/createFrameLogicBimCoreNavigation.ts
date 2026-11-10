@@ -42,6 +42,8 @@ import {
   InstanceTreeGroupVisibilityController,
 } from "../navigation/InstanceTreeGroupVisibilityController";
 
+import { FileMenuController } from "../navigation/FileMenuController";
+
 import {
   BuildVersionBadgeController,
 } from "../navigation/BuildVersionBadgeController";
@@ -221,6 +223,9 @@ export async function createBimCore(
 
   const buildVersion =
     new BuildVersionBadgeController(container);
+
+  const fileMenu =
+    new FileMenuController(container);
 
   const pieceAppearance =
     new PieceAppearanceController({
@@ -727,6 +732,7 @@ export async function createBimCore(
     modelRenderMode.dispose();
     pieceAppearance.dispose();
     cadMouseNavigation.dispose();
+    fileMenu.dispose();
     buildVersion.dispose();
     baseDispose();
   };
