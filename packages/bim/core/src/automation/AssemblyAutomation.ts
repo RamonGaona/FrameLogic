@@ -41,11 +41,19 @@ export class AssemblyAutomation {
 
   invalidate(): void { this.pending = null; }
 
+  private readonly model: DesignModel;
+  private readonly history: CadHistoryController;
+  private readonly ports: OperationPorts;
+
   constructor(
-    private readonly model: DesignModel,
-    private readonly history: CadHistoryController,
-    private readonly ports: OperationPorts,
-  ) {}
+    model: DesignModel,
+    history: CadHistoryController,
+    ports: OperationPorts,
+  ) {
+    this.model = model;
+    this.history = history;
+    this.ports = ports;
+  }
 
   private snapshot(): string {
     return JSON.stringify([
@@ -242,7 +250,14 @@ export class AssemblyAutomation {
       };
       set(true);
       this.history.recordOperation("MOVE_ASSEMBLY", () => set(false), () => set(true));
-      return { operation: "move_assembly", affectedIds: ids, assemblyIds: [assembly.id] };
+      return {
+        operation: "move_assembly",
+        affectedIds: ids,
+        assemblyIds: [assembly.id],
+        createdIds: [] as string[],
+        createdAssemblyIds: [] as string[],
+        rootAssemblyIds: [] as string[],
+      };
     }
 
     const plan = planAssemblyCopy(this.model, ids, [assembly.id]);
@@ -338,6 +353,7 @@ export class AssemblyAutomation {
       createdIds: copies.map(piece => piece.id),
       createdAssemblyIds: copiesOfAssemblies.map(record => record.id),
       rootAssemblyIds: [...copyRoots],
+      assemblyIds: [...copyRoots],
     };
   }
 }
