@@ -54,6 +54,9 @@ jobs:
       - name: Instance tree layout tests
         run: npm run test:instance-tree
 
+      - name: Verify build version badge stays synchronized
+        run: npm run test:version-badge
+
       - name: Hierarchical assembly and CAD history regression
         run: npm run test:assembly-hierarchy
 
