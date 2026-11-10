@@ -17,7 +17,15 @@ export function createAutomationFixture() {
   model.registerPieceInstance({ id:"REC1500-instance", definitionId:definition.id, name:"REC1500", tags:["phase:1"],
     transform:{position:{x:100,y:200,z:300}, rotation:{x:0,y:0,z:Math.PI/2}} });
   let selected: string[] = [];
-  const ports = { sync: () => {}, getSelection: () => [...selected], setSelection: (ids:string[]) => { selected = [...ids]; }, assertReady: () => {} };
+  let selectedAssemblies: string[] = [];
+  const ports = {
+    sync: () => {},
+    getSelection: () => [...selected],
+    setSelection: (ids: string[]) => { selected = [...ids]; selectedAssemblies = []; },
+    getSelectedAssemblyIds: () => [...selectedAssemblies],
+    setSelectedAssemblyIds: (ids: readonly string[]) => { selectedAssemblies = [...ids]; },
+    assertReady: () => {},
+  };
   const history = new CadHistoryController(model, { sync: ports.sync } as unknown as DesignSceneController,
     { setSelection:ports.setSelection } as unknown as DesignSelectionController);
   const operations = new ModelOperations(model, history, ports);
