@@ -13,6 +13,8 @@ interface FrameLogicCommandWindow extends Window {
     () => boolean;
   __frameLogicCanStartRectangleTextCommand?:
     () => boolean;
+  __frameLogicStartCopyBaseCommand?: () => boolean;
+  __frameLogicCopyBaseCommandActive?: () => boolean;
 }
 
 function isEditableTarget(
@@ -34,10 +36,10 @@ function commandRuntime(): FrameLogicCommandWindow {
 
 function hasExternalCadCommand(): boolean {
   try {
-    return commandRuntime()
-      .__frameLogicExternalCadCommandActive
-      ?.()
-      ?? false;
+    return Boolean(
+      commandRuntime().__frameLogicExternalCadCommandActive?.()
+      || commandRuntime().__frameLogicCopyBaseCommandActive?.()
+    );
   }
   catch {
     return false;
@@ -75,6 +77,7 @@ function normalizeCommand(
 /**
  * Entrada textual CAD junto al cursor.
  *
+ * - C / COPY / COPIAR + Enter: copia 3D o CAD por punto base y destino.
  * - L / LINE + Enter: línea.
  * - LL / LINEA PARALELA + Enter: línea paralela.
  * - REC / RECTANGULO + Enter: rectángulo.
@@ -204,12 +207,13 @@ export class CadCommandInputController {
         event.key.toLowerCase();
       const startsLineFamily =
         key === "l";
+      const startsCopy = key === "c";
       const startsRectangle =
         key === "r"
         && canStartRectangleTextCommand();
 
       if (
-        (!startsLineFamily && !startsRectangle)
+        (!startsLineFamily && !startsRectangle && !startsCopy)
         || this.hasActiveCommand()
         || hasExternalCadCommand()
       ) {
@@ -219,9 +223,7 @@ export class CadCommandInputController {
       event.preventDefault();
       event.stopImmediatePropagation();
       this.command =
-        startsRectangle
-          ? "R"
-          : "L";
+        startsRectangle ? "R" : startsCopy ? "C" : "L";
       this.show();
       return;
     }
@@ -256,11 +258,10 @@ export class CadCommandInputController {
     if (event.key === "Tab") {
       event.preventDefault();
       event.stopImmediatePropagation();
-      this.command =
-        normalizeCommand(this.command)
-          .startsWith("R")
-          ? "RECTANGULO"
-          : "LINE";
+      const value = normalizeCommand(this.command);
+      this.command = value.startsWith("R")
+        ? "RECTANGULO"
+        : value.startsWith("C") ? "COPY" : "LINE";
       this.render();
       return;
     }
@@ -299,6 +300,16 @@ export class CadCommandInputController {
       normalizeCommand(
         this.command,
       );
+
+    if (command === "C" || command === "COPY"
+      || command === "COPIAR" || command === "CP") {
+      const started = commandRuntime().__frameLogicStartCopyBaseCommand?.();
+      this.hide();
+      if (!started) {
+        window.alert("No se pudo iniciar COPY. Cierra la herramienta activa y vuelve a intentarlo.");
+      }
+      return;
+    }
 
     if (
       command === "L"
@@ -367,6 +378,14 @@ export class CadCommandInputController {
       normalizeCommand(
         this.command,
       );
+
+    if (normalized === "C"
+      || "COPY".startsWith(normalized)
+      || "COPIAR".startsWith(normalized)) {
+      this.suggestionElement.textContent =
+        "COPY / COPIAR · selecciona piezas o ensambles, punto base y destino";
+      return;
+    }
 
     if (normalized === "L") {
       this.suggestionElement.textContent =
