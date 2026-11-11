@@ -1,4 +1,9 @@
 import { validateAssemblyHierarchy } from "@framelogic/domain";
+import {
+  fileNameToProjectName,
+  saveProjectWithDialog,
+} from "./ProjectFileSaveDialog";
+import type { ProjectSaveDialogHost } from "./ProjectFileSaveDialog";
 import type {
   Assembly,
   CadLine,
@@ -163,6 +168,7 @@ export class FrameLogicProjectPackageController {
   private readonly toolbar: HTMLDivElement;
   private readonly fileInput: HTMLInputElement;
   private disposed = false;
+  private projectName = "FrameLogic Project";
 
   constructor(
     options: FrameLogicProjectPackageControllerOptions,
@@ -267,39 +273,74 @@ export class FrameLogicProjectPackageController {
     };
   }
 
-  saveProject(
+  /**
+   * Siempre solicita nombre y carpeta antes de guardar, mediante el diálogo
+   * nativo en navegadores compatibles. Nunca sobrescribe sin confirmación.
+   */
+  async saveProject(
     name?: string,
+  ): Promise<void> {
+    const proposedName =
+      name?.trim() || this.projectName;
+    const proposedFileName =
+      `${safeFileName(proposedName)}.flproject`;
+    const host = window as unknown as ProjectSaveDialogHost;
+
+    // El selector necesita la activación directa del usuario. No realizar
+    // trabajo asíncrono ni serializar STEP antes de abrirlo.
+    if (typeof host.showSaveFilePicker !== "function") {
+      window.alert(
+        "Este navegador no permite elegir una carpeta con el diálogo de FrameLogic. "
+        + "Se descargará el proyecto de manera convencional. "
+        + "Para escoger la ubicación, activa «Preguntar dónde guardar cada archivo» "
+        + "en los ajustes del navegador, o utiliza Chrome/Edge actualizado.",
+      );
+      this.downloadProject(
+        this.createProjectBlob(proposedName),
+        proposedFileName,
+      );
+      this.projectName = proposedName;
+      return;
+    }
+
+    const result = await saveProjectWithDialog(
+      host,
+      proposedFileName,
+      (chosenFileName) =>
+        this.createProjectBlob(
+          fileNameToProjectName(chosenFileName),
+        ),
+    );
+    if (result.status === "saved") {
+      this.projectName =
+        fileNameToProjectName(result.fileName);
+    }
+  }
+
+  private createProjectBlob(name: string): Blob {
+    const packageValue = this.createProjectPackage(name);
+    return new Blob(
+      [JSON.stringify(packageValue, null, 2)],
+      { type: "application/json" },
+    );
+  }
+
+  private downloadProject(
+    blob: Blob,
+    fileName: string,
   ): void {
-    const packageValue =
-      this.createProjectPackage(
-        name
-        ?? "FrameLogic Project",
-      );
-    const blob =
-      new Blob(
-        [
-          JSON.stringify(
-            packageValue,
-            null,
-            2,
-          ),
-        ],
-        {
-          type: "application/json",
-        },
-      );
-    const url =
-      URL.createObjectURL(blob);
-    const anchor =
-      document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download =
-      `${safeFileName(packageValue.name)}.flproject`;
+    anchor.download = fileName;
     anchor.style.display = "none";
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
-    URL.revokeObjectURL(url);
+    window.setTimeout(
+      () => URL.revokeObjectURL(url),
+      1000,
+    );
   }
 
   async openProjectFile(
@@ -312,6 +353,7 @@ export class FrameLogicProjectPackageController {
     await this.restoreProjectPackage(
       packageValue,
     );
+    this.projectName = fileNameToProjectName(file.name);
   }
 
   async restoreProjectPackage(
@@ -532,6 +574,8 @@ export class FrameLogicProjectPackageController {
 
     this.options.clearGeometryQueryCache();
     await this.options.onProjectRestored?.();
+    this.projectName =
+      packageValue.name?.trim() || "FrameLogic Project";
   }
 
   dispose(): void {
@@ -577,25 +621,16 @@ export class FrameLogicProjectPackageController {
     save.addEventListener(
       "click",
       () => {
-        try {
-          const name =
-            window.prompt(
-              "Nombre del proyecto",
-              "FrameLogic Project",
-            );
-          if (name === null) return;
-          this.saveProject(
-            name.trim()
-            || "FrameLogic Project",
-          );
-        }
-        catch (error) {
+        void this.saveProject().catch((error: unknown) => {
+          console.error("Error saving FrameLogic project:", error);
           window.alert(
-            error instanceof Error
-              ? error.message
-              : String(error),
+            `No se pudo guardar el proyecto.\n\n${
+              error instanceof Error
+                ? error.message
+                : String(error)
+            }`,
           );
-        }
+        });
       },
     );
     open.addEventListener(
