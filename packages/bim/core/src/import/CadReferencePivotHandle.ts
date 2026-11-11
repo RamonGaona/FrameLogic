@@ -20,14 +20,24 @@ export class CadReferencePivotHandle {
   private active = false;
   private mode: "translate" | "rotate" = "translate";
   private frame: number | null = null;
+  private readonly canvas: HTMLElement;
+  private readonly cameraProvider: () => THREE.Camera;
+  private readonly pivot: THREE.Object3D;
+  private readonly setCameraEnabled: (enabled: boolean) => void;
+  private readonly onArm: () => void;
 
   constructor(
-    private readonly canvas: HTMLElement,
-    private readonly cameraProvider: () => THREE.Camera,
-    private readonly pivot: THREE.Object3D,
-    private readonly setCameraEnabled: (enabled: boolean) => void,
-    private readonly onArm: () => void,
+    canvas: HTMLElement,
+    cameraProvider: () => THREE.Camera,
+    pivot: THREE.Object3D,
+    setCameraEnabled: (enabled: boolean) => void,
+    onArm: () => void,
   ) {
+    this.canvas = canvas;
+    this.cameraProvider = cameraProvider;
+    this.pivot = pivot;
+    this.setCameraEnabled = setCameraEnabled;
+    this.onArm = onArm;
     const button = document.createElement("button");
     this.button = button;
     button.type = "button";
