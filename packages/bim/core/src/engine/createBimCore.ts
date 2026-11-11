@@ -1717,6 +1717,7 @@ designRotate.setNumericAxisHandler(
 
     cadNumericInput.showRotate(
       axis,
+      false, // Never steal focus while the physical mouse still drags a ring.
     );
 
   },
@@ -1857,6 +1858,8 @@ const rotateCommand =
   new RotateCommand(
     designSelection,
     designRotate,
+    () => cadNumericInput.showRotate("Z", false),
+    () => cadNumericInput.hide(),
   );
 
 
