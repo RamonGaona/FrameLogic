@@ -156,12 +156,12 @@ export class CadReferenceBlockController {
       this.handleTransformEnd,
     );
 
-    options.domElement.addEventListener(
+    window.addEventListener(
       "pointerdown",
       this.handlePointerDown,
       true,
     );
-    options.domElement.addEventListener(
+    window.addEventListener(
       "pointerup",
       this.handlePointerUp,
       true,
@@ -179,12 +179,12 @@ export class CadReferenceBlockController {
     if (this.disposed) return;
     this.disposed = true;
     this.deactivateTransform();
-    this.options.domElement.removeEventListener(
+    window.removeEventListener(
       "pointerdown",
       this.handlePointerDown,
       true,
     );
-    this.options.domElement.removeEventListener(
+    window.removeEventListener(
       "pointerup",
       this.handlePointerUp,
       true,
@@ -792,6 +792,9 @@ export class CadReferenceBlockController {
 
   private pointerDownInternal(event: PointerEvent): void {
     if (!this.interactionEnabled || event.button !== 0) return;
+    const target = event.target;
+    if (target && target !== this.options.domElement
+      && !(target instanceof Node && this.options.domElement.contains(target))) return;
     if (this.activeMode === "rotate") {
       this.ringGesture = { pointerId: event.pointerId, x: event.clientX,
         y: event.clientY, axis: this.pickRotateRingAxis(event.clientX, event.clientY),
@@ -881,6 +884,11 @@ export class CadReferenceBlockController {
     ) {
       return;
     }
+
+    // While a CAD reference gizmo is active, canvas clicks belong to that
+    // tool. Never reselect even if native TransformControls misses a ring.
+    // Retain the same block and its two-click gesture state.
+    if (this.activeMode) return;
 
     const referenceName = this.getReferenceAt(
       event.clientX,
