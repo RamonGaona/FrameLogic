@@ -243,10 +243,11 @@ export class CadCopyController {
     // No preselection: allow selecting pieces on canvas (or entire assemblies
     // in INSTANCIAS), and CAD lines, then confirm with Enter.
     this.stage = "SELECT";
+    this.options.pointSelection.setEnabled(true);
     this.options.lineSelection.setEnabled(true);
     this.options.designSelection.setEnabled(true);
     this.setStatus(
-      "COPY · selecciona piezas o ensambles (Ctrl añade) · Enter confirmar · Esc cancelar",
+      "COPY · selecciona piezas, CAD y/o DWG (Ctrl añade) · Enter confirmar · Esc cancelar",
     );
     return true;
   }
@@ -483,6 +484,29 @@ export class CadCopyController {
     }
 
     return Array.from(expanded);
+  }
+
+  /** Shared COPY used by Ctrl+gizmo on any mixed selection, without
+   * entering the two-point command or changing the original selection. */
+  copyCurrentSelectionAtOffset(delta: THREE.Vector3): number {
+    const reference = getActiveCadReferenceBlockController();
+    return copyUnifiedCadSelection({
+      model: this.options.designModel,
+      designScene: this.options.designScene,
+      lineScene: this.options.lineScene,
+      pointScene: this.options.pointScene,
+      polylines: this.options.polylines,
+      designSelection: this.options.designSelection,
+      history: this.options.history,
+      onCopiedAssemblySelection: this.options.onCopiedAssemblySelection,
+      clearCache: this.options.clearGeometryQueryCache,
+    }, {
+      pieceIds: this.options.designSelection.getSelectedIds(),
+      assemblyIds: this.options.selectedAssemblyIds(),
+      lineIds: this.options.lineSelection.getSelectedIds(),
+      pointIds: this.options.pointSelection.getSelectedIds(),
+      referenceNames: reference?.getSelectedReferenceNames() ?? [],
+    }, delta);
   }
 
   private commitCopy(
