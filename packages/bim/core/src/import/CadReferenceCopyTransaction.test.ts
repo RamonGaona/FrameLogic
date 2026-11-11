@@ -11,7 +11,7 @@ function fixture() {
   });
   const two = model.layers.create({
     name: "CAD Planta · Oculto", color: "#102030",
-    visible: false, locked: true, snapEnabled: false,
+    visible: false, locked: false, snapEnabled: false,
   });
   const line = model.registerCadLine({
     layerId: one.id, start: { x: 2, y: 3, z: 4 },
@@ -20,6 +20,7 @@ function fixture() {
   const point = model.registerCadPoint({
     layerId: two.id, position: { x: 2, y: 7, z: 0 },
   });
+  model.layers.update(two.id, { locked: true });
   const undoActions: Array<() => void> = [];
   const redoActions: Array<() => void> = [];
   const history = {
