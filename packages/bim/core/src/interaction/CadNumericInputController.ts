@@ -258,6 +258,7 @@ export class CadNumericInputController {
 
     this.rotateAxes = document.createElement("div");
     this.rotateAxes.dataset["framelogicRotateAxes"] = "true";
+    this.rotateAxes.title = "Doble clic en el aro X, Y o Z del gizmo: giro de +90°";
     Object.assign(this.rotateAxes.style, {
       display: "none", alignItems: "center", gap: "4px",
     });
@@ -476,7 +477,7 @@ export class CadNumericInputController {
 
     this.applyButton.textContent = "Girar";
 
-    this.buildInputs(["°"], "grados");
+    this.buildInputs(["Ángulo"], "°");
 
     const input = this.fields.querySelector<HTMLInputElement>("input");
     if (input) {
