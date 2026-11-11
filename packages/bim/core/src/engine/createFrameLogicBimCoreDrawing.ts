@@ -393,6 +393,9 @@ export async function createBimCore(
       },
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
+      history: core.cadHistory,
+      onRotateAxis: axis => core.showCadRotateInput(axis),
+      onRotateDeactivated: () => core.hideCadRotateInput(),
       clearOtherSelections: () => {
         cadTrim.deactivate();
         core.cancelActiveCadCommand();
