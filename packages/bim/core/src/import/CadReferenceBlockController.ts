@@ -679,7 +679,9 @@ export class CadReferenceBlockController {
     this.refreshSelectionVisual();
   };
 
-  private readonly handleTransformEnd = (): void => {
+  private readonly handleTransformEnd = (): void => { this.transformEndInternal(); };
+
+  private transformEndInternal(): void {
     const start = this.transformSnapshot;
     if (this.activeMode === "translate" && start) {
       const axis = this.controls.axis;
@@ -723,7 +725,7 @@ export class CadReferenceBlockController {
     } else if (this.armedMoveAxis) {
       this.badge.textContent = `MOVE DWG · Eje ${this.armedMoveAxis}: selecciona SNAP de destino`;
     }
-  };
+  }
 
   private captureSelection(): TransformSnapshot {
     const layerIds = new Set<string>();
@@ -756,9 +758,11 @@ export class CadReferenceBlockController {
     };
   }
 
-  private readonly handlePointerDown = (
-    event: PointerEvent,
-  ): void => {
+  private readonly handlePointerDown = (event: PointerEvent): void => {
+    this.pointerDownInternal(event);
+  };
+
+  private pointerDownInternal(event: PointerEvent): void {
     if (!this.interactionEnabled || event.button !== 0) return;
     if (this.activeMode === "rotate") {
       this.ringGesture = { pointerId: event.pointerId, x: event.clientX,
@@ -776,11 +780,13 @@ export class CadReferenceBlockController {
     this.pointerDownX = event.clientX;
     this.pointerDownY = event.clientY;
     this.pointerDownActive = true;
+  }
+
+  private readonly handlePointerUp = (event: PointerEvent): void => {
+    this.pointerUpInternal(event);
   };
 
-  private readonly handlePointerUp = (
-    event: PointerEvent,
-  ): void => {
+  private pointerUpInternal(event: PointerEvent): void {
     if (!this.interactionEnabled || event.button !== 0 || !this.pointerDownActive) {
       this.pointerDownActive = false;
       return;
@@ -862,7 +868,7 @@ export class CadReferenceBlockController {
     ) {
       this.clearSelection();
     }
-  };
+  }
 
   private constrainMoveCorrection(
     correction: THREE.Vector3, axis: "X" | "Y" | "Z" | "XY" | "XZ" | "YZ",
@@ -884,6 +890,10 @@ export class CadReferenceBlockController {
   };
 
   private readonly handleRingDoubleClick = (event: MouseEvent): void => {
+    this.ringDoubleClickInternal(event);
+  };
+
+  private ringDoubleClickInternal(event: MouseEvent): void {
     if (!this.isRotateActive || event.button !== 0) return;
     const axis = this.ringClicks.take(event.clientX, event.clientY, Date.now());
     if (!axis) return;
@@ -891,7 +901,7 @@ export class CadReferenceBlockController {
     event.stopImmediatePropagation();
     this.options.onRotateAxis?.(axis);
     this.applyNumericRotation(axis, 90);
-  };
+  }
 
   private readonly handleKeyDown = (
     event: KeyboardEvent,
