@@ -802,10 +802,8 @@ export class CadMixedMoveController {
           );
 
 
-      if (
-        layer?.visible === false
-        || layer?.locked === true
-      ) {
+      if ((layer?.visible === false || layer?.locked === true)
+          && !this.isReferenceLayer(point.layerId)) {
 
         return false;
 
@@ -844,10 +842,8 @@ export class CadMixedMoveController {
           );
 
 
-      if (
-        layer?.visible === false
-        || layer?.locked === true
-      ) {
+      if ((layer?.visible === false || layer?.locked === true)
+          && !this.isReferenceLayer(line.layerId)) {
 
         return false;
 
@@ -1060,7 +1056,10 @@ export class CadMixedMoveController {
 
       this.armedMoveAxis =
         null;
-
+      this.armedCopy = false;
+      this.draggingCopy = this.ctrlAtStart
+        && this.controls.axis !== "XYZ"
+        && Boolean(this.copySelectionAtOffset);
 
       this.armedPivot =
         false;
@@ -1166,10 +1165,7 @@ export class CadMixedMoveController {
       }
 
 
-      this.applyDelta(
-        delta,
-      );
-
+      if (!this.draggingCopy) this.applyDelta(delta);
 
       this.previousPivot.copy(
         this.pivot.position,
@@ -1245,6 +1241,7 @@ export class CadMixedMoveController {
 
         this.armedMoveAxis =
           axis as MoveNumericAxis;
+        this.armedCopy = this.draggingCopy;
 
 
         this.armedPivot =
@@ -1293,6 +1290,17 @@ export class CadMixedMoveController {
       }
 
 
+      if (before && this.draggingCopy && movedDistance > 1e-9 && axis !== "XYZ") {
+        try { this.copySelectionAtOffset?.(this.pivot.position.clone().sub(this.dragStartPivot)); }
+        catch (error) { console.error("COPY MIXED:", error); }
+        this.pivot.position.copy(this.dragStartPivot);
+        this.pivot.updateMatrixWorld(true);
+        this.previousPivot.copy(this.dragStartPivot);
+        this.draggingCopy = false;
+        this.clearArmedSnap();
+        return;
+      }
+      this.draggingCopy = false;
       this.clearArmedSnap();
 
 
@@ -1344,6 +1352,8 @@ export class CadMixedMoveController {
 
       this.armedPointerDownActive =
         true;
+      event.preventDefault();
+      event.stopImmediatePropagation();
 
   };
 
@@ -1466,6 +1476,12 @@ export class CadMixedMoveController {
           axis,
           snap.point,
         );
+      if (this.armedCopy && correction.lengthSq() > 1e-18) {
+        try { this.copySelectionAtOffset?.(correction); }
+        catch (error) { console.error("COPY MIXED at SNAP:", error); }
+        // Repeated copies retain the original selection and pivot.
+        return;
+      }
 
 
       if (
@@ -1595,6 +1611,7 @@ export class CadMixedMoveController {
 
     this.armedMoveAxis =
       null;
+    this.armedCopy = false;
 
 
     this.armedPivot =
@@ -2339,6 +2356,7 @@ export class CadMixedMoveController {
 
 
     this.releasePointerLifecycle();
+    this.domElement.removeEventListener("pointerdown", this.handleCopyPointerDown, true);
     this.controls.dispose();
 
   }
