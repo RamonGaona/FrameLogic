@@ -36,6 +36,8 @@ import type {
 
 import type { DesignSceneController } from "../design/DesignSceneController";
 import { PieceMoveCopySession } from "./PieceMoveCopySession";
+import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
+import type { CadReferenceBlockController } from "../import/CadReferenceBlockController";
 
 
 type CopyStage =
@@ -122,6 +124,8 @@ export class CadCopyController {
   private sourceLineIds: string[] = [];
   private sourcePieceIds: string[] = [];
   private sourceAssemblyIds: string[] = [];
+  private sourceReferenceNames: string[] = [];
+  private copyingReferences: CadReferenceBlockController | null = null;
   private basePoint: THREE.Vector3 | null = null;
 
   constructor(
@@ -164,13 +168,28 @@ export class CadCopyController {
 
   start(): boolean {
     if (this.disposed) return false;
+    // Capture DWG/DXF reference identity BEFORE canceling other tools.
+    const reference = getActiveCadReferenceBlockController();
+    const referenceNames = [...(reference?.getSelectedReferenceNames() ?? [])];
     this.options.beforeStart();
     this.active = true;
     this.basePoint = null;
     this.sourceLineIds = [];
     this.sourcePieceIds = [];
     this.sourceAssemblyIds = [];
+    this.sourceReferenceNames = referenceNames;
+    this.copyingReferences = referenceNames.length ? reference : null;
     this.options.pointSelection.setEnabled(false);
+
+    if (this.copyingReferences) {
+      // The reference picker must not intercept base/destination pointerups.
+      this.copyingReferences.setInteractionEnabled(false);
+      this.options.lineSelection.setEnabled(false);
+      this.options.designSelection.setEnabled(false);
+      this.stage = "BASE";
+      this.setStatus(`COPYBASE DWG/DXF · ${referenceNames.length} referencia(s) · selecciona SNAP base`);
+      return true;
+    }
 
     // A preselected 3D piece or whole assembly takes priority over CAD lines.
     // Both commands share the same base-point / destination-point workflow.
@@ -230,6 +249,9 @@ export class CadCopyController {
     this.sourceLineIds = [];
     this.sourcePieceIds = [];
     this.sourceAssemblyIds = [];
+    this.sourceReferenceNames = [];
+    this.copyingReferences?.setInteractionEnabled(true);
+    this.copyingReferences = null;
     this.basePoint = null;
     this.status.style.display = "none";
     this.options.designSelection.setEnabled(true);
@@ -411,6 +433,20 @@ export class CadCopyController {
   private commitCopy(
     delta: THREE.Vector3,
   ): void {
+    if (this.sourceReferenceNames.length && this.copyingReferences) {
+      const controller = this.copyingReferences;
+      try {
+        const copies = controller.copyReferencesByBase(this.sourceReferenceNames, delta);
+        this.cancel();
+        this.options.clearGeometryQueryCache?.();
+        this.setStatus(`COPYBASE · ${copies.referenceNames.join(", ")} · copia independiente creada`, 2000);
+      } catch (error) {
+        this.setStatus(
+          `COPYBASE DWG/DXF · ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      return;
+    }
     if (this.sourcePieceIds.length > 0) {
       this.commitPieceCopy(delta);
       return;
@@ -644,7 +680,7 @@ export class CadCopyController {
     button.type = "button";
     button.textContent = "COPIAR";
     button.title =
-      "COPY / COPIAR · piezas, ensambles y CAD · selección + punto base + punto destino · Ctrl+D";
+      "COPY / COPYBASE / COPIAR · piezas, ensambles, referencias DWG/DXF y CAD · punto base + punto destino · Ctrl+D";
     button.dataset["framelogicCopyButton"] = "true";
     button.addEventListener(
       "click",
