@@ -93,7 +93,7 @@ export class CadReferenceBlockController {
   private transformSnapshot: TransformSnapshot | null = null;
   private readonly ringClicks = new RotateRingDoubleClick();
   private ringGesture: { pointerId: number; x: number; y: number;
-    axis: RotateNumericAxis | null; dragged: boolean } | null = null;
+    axis: RotateNumericAxis | null; dragged: boolean; recorded?: boolean } | null = null;
   private activeMode: "translate" | "rotate" | null = null;
   private pointerDownX = 0;
   private pointerDownY = 0;
@@ -729,13 +729,17 @@ export class CadReferenceBlockController {
       this.pivotOnlyDrag = false;
     }
     if (this.activeMode === "rotate" && this.transformSnapshot) {
+      // A pointerup may precede the native TransformControls mouseUp.
+      // Commit a ring click once, from either order, independently of dblclick.
+      this.recordRingClick();
       const gesture = this.ringGesture;
+      if (gesture?.axis && !gesture.dragged) {
+        // A short ring click must not apply an accidental fractional drag.
+        this.applyGeometrySnapshot(this.transformSnapshot);
+      } else {
+        this.recordGeometryHistory(this.transformSnapshot, "ROTATE DWG/DXF");
+      }
       this.ringGesture = null;
-      if (gesture?.axis) this.ringClicks.record(
-        gesture.axis, gesture.x, gesture.y, Date.now(), gesture.dragged,
-      );
-      else this.ringClicks.reset();
-      this.recordGeometryHistory(this.transformSnapshot, "ROTATE DWG/DXF");
       // ROTATE uses global X/Y/Z; reset only the temporary gizmo orientation.
       this.pivot.quaternion.identity();
       this.pivot.updateMatrixWorld(true);
@@ -790,9 +794,10 @@ export class CadReferenceBlockController {
     if (!this.interactionEnabled || event.button !== 0) return;
     if (this.activeMode === "rotate") {
       this.ringGesture = { pointerId: event.pointerId, x: event.clientX,
-        y: event.clientY, axis: null, dragged: false };
+        y: event.clientY, axis: this.pickRotateRingAxis(event.clientX, event.clientY),
+        dragged: false };
     }
-    if (this.activeMode === "translate" && (this.armedPivot || this.armedMoveAxis)) {
+    if (this.armedPivot || (this.activeMode === "translate" && this.armedMoveAxis)) {
       this.destinationDown = true;
       this.pointerDownX = event.clientX;
       this.pointerDownY = event.clientY;
@@ -817,6 +822,13 @@ export class CadReferenceBlockController {
     }
     this.pointerDownActive = false;
 
+    if (this.activeMode === "rotate" && this.ringGesture?.pointerId === event.pointerId) {
+      if (Math.hypot(event.clientX - this.ringGesture.x, event.clientY - this.ringGesture.y) > 5) {
+        this.ringGesture.dragged = true;
+      }
+      this.recordRingClick();
+    }
+
     // Native mouseUp may happen before or after pointerup, depending on browser.
     // Neither ordering should turn a gizmo click into a new reference selection.
     if (this.transformPointerActive || this.controls.dragging) {
@@ -825,8 +837,8 @@ export class CadReferenceBlockController {
       return;
     }
 
-    if (this.destinationDown && this.activeMode === "translate"
-      && (this.armedPivot || this.armedMoveAxis)) {
+    if (this.destinationDown
+      && (this.armedPivot || (this.activeMode === "translate" && this.armedMoveAxis))) {
       this.destinationDown = false;
       if (Math.hypot(event.clientX - this.pointerDownX, event.clientY - this.pointerDownY) > 5) return;
       const snap = this.options.findSnapPoint?.(event.clientX, event.clientY);
@@ -894,6 +906,61 @@ export class CadReferenceBlockController {
     }
   }
 
+  /** Native dblclick is not guaranteed on a WebGL canvas. Both pointerup
+   * and mouseUp feed the same tracker; the second confirmed ring click is enough. */
+  private recordRingClick(): void {
+    const gesture = this.ringGesture;
+    if (!gesture || gesture.recorded || this.activeMode !== "rotate") return;
+    gesture.recorded = true;
+    if (!gesture.axis || gesture.dragged) {
+      this.ringClicks.reset();
+      return;
+    }
+    this.ringClicks.record(gesture.axis, gesture.x, gesture.y, Date.now(), false);
+    if (!this.ringClicks.pendingAxis || this.pendingDoubleClickTimer !== null) return;
+    const x = gesture.x, y = gesture.y;
+    // macrotask: let Three.js process pointerup/mouseUp and reset its quaternion
+    // before changing the DWG exactly once.
+    this.pendingDoubleClickTimer = window.setTimeout(() => {
+      this.pendingDoubleClickTimer = null;
+      if (!this.isRotateActive) return;
+      const axis = this.ringClicks.take(x, y, Date.now());
+      if (axis) {
+        this.options.onRotateAxis?.(axis);
+        this.applyNumericRotation(axis, 90);
+      }
+    }, 0);
+  }
+
+  private pickRotateRingAxis(x: number, y: number): RotateNumericAxis | null {
+    const rect = this.options.domElement.getBoundingClientRect();
+    if (!(rect.width > 0 && rect.height > 0)) return null;
+    this.ringPointer.set((x - rect.left) / rect.width * 2 - 1,
+      -(y - rect.top) / rect.height * 2 + 1);
+    this.ringRaycaster.setFromCamera(this.ringPointer, this.options.cameraProvider());
+    let picker: THREE.Object3D | null = null;
+    this.helper.traverse(child => {
+      const gizmo = child as THREE.Object3D & { picker?: { rotate?: THREE.Object3D } };
+      if (child.type === "TransformControlsGizmo" && gizmo.picker?.rotate) {
+        picker = gizmo.picker.rotate;
+      }
+    });
+    if (picker) {
+      const matches = this.ringRaycaster.intersectObjects((picker as THREE.Object3D).children, true);
+      for (const match of matches) {
+        let node: THREE.Object3D | null = match.object;
+        while (node && node !== picker) {
+          if (node.name === "X" || node.name === "Y" || node.name === "Z") return node.name;
+          node = node.parent;
+        }
+      }
+    }
+    // TransformControls also resolves the hovered ring itself; use that
+    // when an invisible native picker could not be raycast in this Three.js version.
+    const axis = this.controls.axis;
+    return axis === "X" || axis === "Y" || axis === "Z" ? axis : null;
+  }
+
   private constrainMoveCorrection(
     correction: THREE.Vector3, axis: "X" | "Y" | "Z" | "XY" | "XZ" | "YZ",
   ): void {
@@ -921,6 +988,10 @@ export class CadReferenceBlockController {
     if (!this.isRotateActive || event.button !== 0) return;
     const axis = this.ringClicks.take(event.clientX, event.clientY, Date.now());
     if (!axis) return;
+    if (this.pendingDoubleClickTimer !== null) {
+      window.clearTimeout(this.pendingDoubleClickTimer);
+      this.pendingDoubleClickTimer = null;
+    }
     event.preventDefault();
     event.stopImmediatePropagation();
     this.options.onRotateAxis?.(axis);
