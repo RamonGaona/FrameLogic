@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.112 — 2026-11-10
+
+### DWG/DXF — MOVE eje + SNAP, Ctrl+eje copia independiente y COPYBASE por 2 puntos
+
+- **MOVE por eje y SNAP:** se mantiene la secuencia seleccionar referencia DWG/DXF → M → clic corto en eje X/Y/Z o plano → clic en SNAP destino. Se elimina el conflicto del indicador de puntero activo de la interacción anterior, para no descartar el clic de destino cuando los eventos de `TransformControls` llegan en órdenes distintos. El delta se restringe al eje/plano seleccionado, se mueve la referencia completa y se registra Undo/Redo.
+- **Ctrl + eje + SNAP:** presionar Ctrl al iniciar el gesto sobre un eje de MOVE activa copia de referencia completa en lugar de trasladar el original. La primera y siguientes elecciones de SNAP crean copias independientes conservando siempre el DWG y el punto base originales; Esc termina el modo de copias repetidas y deja activo el gizmo MOVE.
+- **Ctrl + arrastre de eje:** soltar el eje arrastrado con Ctrl crea una copia en la posición desplazada, conservando el original y restaurando su pivote, sin aplicar cambios a sus entidades.
+- **Copias realmente independientes:** cada DWG/DXF copiado recibe nuevas capas `CAD Nombre copia N · capa` y nuevos ID de líneas/puntos, con color, visibilidad, bloqueo y snaps heredados de la referencia original. No se duplican solamente las líneas visibles ni se mezclan capas de origen y copia.
+- **COPYBASE:** seleccionar una referencia DWG/DXF completa, escribir COPYBASE (o COPY/COPIAR, o botón COPIAR), elegir punto base y SNAP destino crea una nueva referencia con desplazamiento exacto. El controlador de selección DWG queda temporalmente inactivo para no interceptar el flujo de dos puntos. Funciona también con referencias múltiples seleccionadas. El comando sigue admitiendo piezas 3D, ensambles y líneas CAD.
+- **Undo/Redo y robustez:** cada copia es una transacción reversible con los mismos ID al rehacer; fallos intermedios eliminan sus geometrías y capas parciales. El comando rechaza traslaciones inválidas o referencias inexistentes sin mover los originales.
+- **Pruebas:** copia completa de múltiples capas y puntos, repetición con nombres únicos, Undo/Redo, preservación de original, Ctrl+eje, Ctrl+arrastre, SNAP inválido, comando COPYBASE textual y su paso por el controlador de copia.
+- **Validación manual pendiente:** confirmar picking de eje y SNAP contra archivos DWG/DXF reales en navegador y que la compilación llegue a Cloudflare Pages.
+
+---
+
 ## v0.1.111 — 2026-11-10
 
 ### Gizmo DWG — centro seleccionable en MOVE y ROTATE, doble clic +90° fiable
