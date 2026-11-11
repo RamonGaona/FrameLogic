@@ -75,6 +75,9 @@ jobs:
       - name: Piece visualization tests
         run: npm run test:piece-visuals
 
+      - name: DWG runtime asset copy regression
+        run: npm run test:dwg
+
       - name: Clash Detection regression tests
         run: npm run test:clash
 
