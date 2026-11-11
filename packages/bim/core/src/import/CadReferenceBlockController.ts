@@ -4,6 +4,7 @@ import type { RotateNumericAxis } from "../interaction/CadNumericInputController
 import { RotateRingDoubleClick } from "../interaction/RotateRingDoubleClick";
 import { installTransformPointerLifecycle, completeRotationRings } from "../interaction/TransformGizmoReliability";
 import { CadReferencePivotHandle } from "./CadReferencePivotHandle";
+import { copyCadReferenceBlocks, type CadReferenceCopyResult } from "./CadReferenceCopyTransaction";
 
 import {
   TransformControls,
@@ -102,6 +103,10 @@ export class CadReferenceBlockController {
   private transformPointerActive = false;
   private armedPivot = false;
   private armedMoveAxis: "X" | "Y" | "Z" | "XY" | "XZ" | "YZ" | null = null;
+  private armedCopyMove = false;
+  private ctrlCopyGesture = false;
+  private copyDrag = false;
+  private moveDragAxis: "X" | "Y" | "Z" | "XY" | "XZ" | "YZ" | null = null;
   private destinationDown = false;
   private readonly transformStartPivot = new THREE.Vector3();
   private pivotOnlyDrag = false;
@@ -370,6 +375,19 @@ export class CadReferenceBlockController {
     return this.activateTransform("translate");
   }
 
+  /** COPYBASE and Ctrl+MOVE share the same full-reference copy transaction. */
+  copyReferencesByBase(
+    names: readonly string[], delta: THREE.Vector3,
+  ): CadReferenceCopyResult {
+    if (!this.options.history) throw new Error("No está disponible el historial COPY CAD.");
+    const result = copyCadReferenceBlocks(
+      this.options.designModel, this.options.history, names, delta,
+      () => this.syncGeometry(),
+    );
+    this.refreshSelectionVisual();
+    return result;
+  }
+
   get isMoveActive(): boolean {
     return this.activeMode === "translate" && this.selectedReferenceNames.size > 0;
   }
@@ -572,6 +590,10 @@ export class CadReferenceBlockController {
     this.transformPointerActive = false;
     this.armedPivot = false;
     this.armedMoveAxis = null;
+    this.armedCopyMove = false;
+    this.ctrlCopyGesture = false;
+    this.copyDrag = false;
+    this.moveDragAxis = null;
     this.destinationDown = false;
     this.pivotOnlyDrag = false;
     this.ringGesture = null;
@@ -605,6 +627,10 @@ export class CadReferenceBlockController {
     this.transformPointerActive = false;
     this.armedPivot = false;
     this.armedMoveAxis = null;
+    this.armedCopyMove = false;
+    this.ctrlCopyGesture = false;
+    this.copyDrag = false;
+    this.moveDragAxis = null;
     this.destinationDown = false;
     this.pivotOnlyDrag = false;
     this.ringGesture = null;
