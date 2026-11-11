@@ -352,6 +352,10 @@ export class CadReferenceBlockController {
     return this.activateTransform("translate");
   }
 
+  get isMoveActive(): boolean {
+    return this.activeMode === "translate" && this.selectedReferenceNames.size > 0;
+  }
+
   get isRotateActive(): boolean {
     return this.activeMode === "rotate" && this.selectedReferenceNames.size > 0;
   }
