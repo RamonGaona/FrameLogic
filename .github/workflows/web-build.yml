@@ -75,6 +75,9 @@ jobs:
       - name: Piece visualization tests
         run: npm run test:piece-visuals
 
+      - name: DWG runtime asset copy regression
+        run: npm run test:dwg
+
       - name: Clash Detection regression tests
         run: npm run test:clash
 
@@ -97,6 +100,12 @@ jobs:
             echo "$oversized"
             exit 1
           fi
+
+      - name: Verify DWG converter glue and binary are deployed
+        run: |
+          test -s apps/web/dist/assets/wasm/dwgdxf.js
+          test -s apps/web/dist/assets/wasm/dwgdxf_bg.wasm
+          echo "DWG runtime assets packaged successfully."
 
       - name: Verify OpenCascade full WASM is externalized
         run: |

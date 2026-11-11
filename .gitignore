@@ -40,3 +40,6 @@ temp/
 .wrangler/
 .dev.vars
 .dev.vars.*
+
+# Generated from the installed dwgdxf package during web prebuild/predev
+apps/web/public/assets/wasm/

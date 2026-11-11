@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.107 — 2026-11-10
+
+### Corrección de importación DWG en Cloudflare Pages
+
+- **Fallo detectado:** la importación dinámica de `dwgdxf` buscaba `/assets/wasm/dwgdxf.js` pero esa dependencia generada por WASM no se estaba publicando con el sitio. No significa que el DWG del usuario esté dañado.
+- **Runtime autocontenido:** al ejecutar `npm run dev` o `npm run build` del workspace web, un paso previo copia desde el paquete `dwgdxf@2.0.1` los archivos `dwgdxf.js` y `dwgdxf_bg.wasm` a `apps/web/public/assets/wasm`, y Vite los publica en `dist/assets/wasm`.
+- **URL explícita:** el convertidor utiliza `init({ wasmBase: <origen>/assets/wasm/ })` para cargar el JavaScript y el WASM desde la propia aplicación, sin depender de otra API ni CDN; el DWG se procesa localmente en el navegador.
+- **Diagnóstico claro:** si el runtime falla, el error ahora identifica la URL del recurso y recomienda recargar la página. No altera referencias CAD, SNAP ni los archivos STEP.
+- **Verificación automática:** prueba de sincronización byte a byte de los dos recursos en `test:dwg` y comprobación obligatoria de ambos archivos en la compilación de Cloudflare Pages.
+- **Compatibilidad del archivo de prueba:** `cad1.dwg` adjunto tiene cabecera `AC1032` (DWG AutoCAD 2018), que la versión instalada de `dwgdxf` declara admitir. Es necesario comprobar la geometría/entidades reales en el navegador después de desplegar.
+
+---
+
 ## v0.1.106 — 2026-11-10
 
 ### Guardar proyecto — elegir ubicación, nombre y confirmar reemplazos

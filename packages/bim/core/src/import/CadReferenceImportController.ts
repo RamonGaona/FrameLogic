@@ -214,7 +214,20 @@ export class CadReferenceImportController {
 
   private async convertDwgToDxfText(file: File): Promise<string> {
     const module = await import("dwgdxf");
-    await module.init();
+    // dwgdxf dynamically imports its WASM glue from <wasmBase>/dwgdxf.js.
+    // Vite does not bundle this runtime-computed import automatically, so
+    // predev/prebuild publish both glue and binary under /assets/wasm.
+    const wasmBase = new URL("/assets/wasm/", window.location.origin).href;
+    try {
+      await module.init({ wasmBase });
+    } catch (error) {
+      throw new Error(
+        "No se pudo cargar el convertidor DWG local de FrameLogic. "
+        + "Comprueba la conexión y recarga la página (Ctrl+F5). "
+        + `Recurso: ${wasmBase}dwgdxf.js. `
+        + (error instanceof Error ? error.message : String(error)),
+      );
+    }
     const converted = await module.convertDwgToDxf(
       new Uint8Array(await file.arrayBuffer()),
     );

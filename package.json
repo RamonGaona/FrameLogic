@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.106",
+  "version": "0.1.107",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -26,6 +26,7 @@
     "test:camera": "vitest run packages/bim/core/src/navigation/CadMouseNavigationController.test.ts",
     "test:piece-preparation": "vitest run packages/bim/core/src/interaction/assetPositionForPieceSnap.test.ts packages/bim/core/src/design/pickPieceReferenceAtScreen.test.ts packages/bim/core/src/interaction/PieceReferenceManipulationController.test.ts packages/bim/core/src/design/PieceDefinitionHelperSceneController.test.ts packages/bim/core/src/interaction/PieceDefinitionPreparationController.test.ts packages/bim/core/src/interaction/PieceFrameLogicWorkspaceController.test.ts packages/bim/core/src/interaction/finishActiveLineForAxisConversion.test.ts apps/web/src/features/bim/dockPiecePreparationPanel.test.ts",
     "test:piece-visuals": "vitest run tests/pieceEditorIsolationCss.test.ts tests/modelSpaceChromeStartup.test.ts packages/bim/core/src/design/getStablePieceColorIdentity.test.ts packages/bim/core/src/design/pieceDefinitionLocalViewMatrix.test.ts packages/bim/core/src/navigation/mountModelRenderPanel.test.ts packages/bim/core/src/navigation/resolvePieceDisplayQuality.test.ts apps/web/src/features/bim/installPieceWorkspaceChromeGuard.test.ts packages/bim/core/src/navigation/referenceVisibilitySettings.test.ts packages/bim/core/src/design/PieceVisualGeometry.test.ts packages/bim/core/src/design/DesignSceneController.test.ts packages/bim/core/src/design/PieceVisualPackage.test.ts packages/geometry-engine/src/step/OcctStepVisualCache.test.ts",
+    "test:dwg": "vitest run tests/dwgWasmPackaging.test.ts",
     "test:clash": "vitest run packages/bim/core/src/clash/ClashDetectionEngine.test.ts",
     "test:clash:occt": "node --import tsx tests/clashOcctIntegration.ts",
     "test:automation": "vitest run packages/bim/core/src/automation/ModelOperations.test.ts packages/bim/core/src/automation/AssemblyAutomation.test.ts apps/mcp/src/integration.test.ts apps/mcp/src/stdio.test.ts apps/mcp/src/remote.test.ts",
