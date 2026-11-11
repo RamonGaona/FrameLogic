@@ -88,7 +88,7 @@ export class CadReferenceBlockController {
   private readonly pivotHandle: CadReferencePivotHandle;
   private readonly ringRaycaster = new THREE.Raycaster();
   private readonly ringPointer = new THREE.Vector2();
-  private pendingDoubleClickTimer: number | null = null;
+  private pendingDoubleClickTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly selectedReferenceNames = new Set<string>();
   private transformSnapshot: TransformSnapshot | null = null;
   private readonly ringClicks = new RotateRingDoubleClick();
@@ -929,7 +929,7 @@ export class CadReferenceBlockController {
     const x = gesture.x, y = gesture.y;
     // macrotask: let Three.js process pointerup/mouseUp and reset its quaternion
     // before changing the DWG exactly once.
-    this.pendingDoubleClickTimer = window.setTimeout(() => {
+    this.pendingDoubleClickTimer = setTimeout(() => {
       this.pendingDoubleClickTimer = null;
       if (!this.isRotateActive) return;
       const axis = this.ringClicks.take(x, y, Date.now());
@@ -997,7 +997,7 @@ export class CadReferenceBlockController {
     const axis = this.ringClicks.take(event.clientX, event.clientY, Date.now());
     if (!axis) return;
     if (this.pendingDoubleClickTimer !== null) {
-      window.clearTimeout(this.pendingDoubleClickTimer);
+      clearTimeout(this.pendingDoubleClickTimer);
       this.pendingDoubleClickTimer = null;
     }
     event.preventDefault();
