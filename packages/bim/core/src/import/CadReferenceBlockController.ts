@@ -739,7 +739,14 @@ export class CadReferenceBlockController {
   private transformEndInternal(): void {
     const start = this.transformSnapshot;
     if (this.activeMode === "translate" && start) {
-      const axis = this.moveDragAxis;
+      // Fall back to the native axis if Three.js skipped mouseDown while
+      // pointer events were retargeted, so a short axis click still arms SNAP.
+      const currentAxis = this.controls.axis;
+      const axis = this.moveDragAxis ?? (
+        currentAxis === "X" || currentAxis === "Y" || currentAxis === "Z"
+        || currentAxis === "XY" || currentAxis === "XZ" || currentAxis === "YZ"
+          ? currentAxis : null
+      );
       const delta = this.pivot.position.clone().sub(this.transformStartPivot);
       const shortClick = delta.lengthSq() <= 1e-16;
       if (this.pivotOnlyDrag) {
