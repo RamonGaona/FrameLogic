@@ -98,6 +98,12 @@ jobs:
             exit 1
           fi
 
+      - name: Verify DWG converter glue and binary are deployed
+        run: |
+          test -s apps/web/dist/assets/wasm/dwgdxf.js
+          test -s apps/web/dist/assets/wasm/dwgdxf_bg.wasm
+          echo "DWG runtime assets packaged successfully."
+
       - name: Verify OpenCascade full WASM is externalized
         run: |
           if find apps/web/dist -type f -name 'opencascade.full*.wasm' | grep -q .; then
