@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.106 — 2026-11-10
+
+### Guardar proyecto — elegir ubicación, nombre y confirmar reemplazos
+
+- **Diálogo Guardar como:** al pulsar ARCHIVO → Guardar proyecto se abre el selector nativo del navegador compatible (File System Access API, por ejemplo Chrome/Edge sobre HTTPS). El usuario elige carpeta y nombre del archivo `.flproject`, sin una pregunta de nombre separada.
+- **Protección contra sobrescritura:** además de la confirmación del diálogo nativo al escoger un archivo existente, FrameLogic pide confirmación expresa antes de abrir un flujo de escritura si el destino ya contiene datos. Al rechazar, cancelar o cerrar el diálogo no se reemplaza el archivo y no se modifica el modelo.
+- **Nombre coherente:** el nombre del archivo seleccionado se utiliza también en el paquete del proyecto, y se recuerda en esta sesión para el próximo Guardar. Al abrir un proyecto existente, se conserva su nombre como sugerencia del siguiente guardado.
+- **Compatibilidad:** en navegadores sin `showSaveFilePicker` se explica la limitación y se realiza la descarga tradicional; la elección de carpeta depende de la opción del navegador «Preguntar dónde guardar cada archivo». Una web no puede inspeccionar ni sobrescribir archivos locales arbitrarios en ese modo.
+- **Seguridad de escritura:** si se produce un error, se intenta abortar el flujo de escritura y se muestra un mensaje. El formato de proyecto FRAMELOGIC_PROJECT v1 no cambia.
+- **Pruebas:** selector y tipo de archivo, nuevo destino, archivo existente aprobado/rechazado, cancelación, incompatibilidad, error al escribir y nombres de proyecto.
+
+---
+
 ## v0.1.105 — 2026-11-10
 
 ### Clash Detection — solo penetraciones volumétricas STEP B-rep
