@@ -819,6 +819,14 @@ export class CadReferenceBlockController {
   };
 
   private pointerUpInternal(event: PointerEvent): void {
+    // Pointer releases on the independent HTML pivot marker are never canvas
+    // selection clicks; its own handler finalizes them.
+    const target = event.target;
+    if (target && target !== this.options.domElement
+      && !(target instanceof Node && this.options.domElement.contains(target))) {
+      this.pointerDownActive = false;
+      return;
+    }
     if (!this.interactionEnabled || event.button !== 0 || !this.pointerDownActive) {
       this.pointerDownActive = false;
       return;
