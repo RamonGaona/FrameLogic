@@ -132,11 +132,13 @@ export function copyUnifiedCadSelection(
   // be duplicated exactly once, as part of its parent reference.
   const lineIds = [...new Set(selection.lineIds)].filter(id => {
     const line = ctx.model.cadLines.get(id);
-    return line && !referenceLayers.has(line.layerId);
+    if (!line) throw new Error(`Línea CAD no encontrada: ${id}`);
+    return !referenceLayers.has(line.layerId);
   });
   const pointIds = [...new Set(selection.pointIds)].filter(id => {
     const point = ctx.model.cadPoints.get(id);
-    return point && !referenceLayers.has(point.layerId);
+    if (!point) throw new Error(`Punto CAD no encontrado: ${id}`);
+    return !referenceLayers.has(point.layerId);
   });
   const pieceIds = [...new Set(selection.pieceIds)];
   if (!pieceIds.length && !lineIds.length && !pointIds.length && !names.length)
