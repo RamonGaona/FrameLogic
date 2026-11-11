@@ -4,6 +4,7 @@ import type { RotateNumericAxis } from "../interaction/CadNumericInputController
 import { RotateRingDoubleClick } from "../interaction/RotateRingDoubleClick";
 import { installTransformPointerLifecycle, completeRotationRings } from "../interaction/TransformGizmoReliability";
 import { CadReferencePivotHandle } from "./CadReferencePivotHandle";
+import { copyCadReferenceBlocks, type CadReferenceCopyResult } from "./CadReferenceCopyTransaction";
 
 import {
   TransformControls,
@@ -102,6 +103,10 @@ export class CadReferenceBlockController {
   private transformPointerActive = false;
   private armedPivot = false;
   private armedMoveAxis: "X" | "Y" | "Z" | "XY" | "XZ" | "YZ" | null = null;
+  private armedCopyMove = false;
+  private ctrlCopyGesture = false;
+  private copyDrag = false;
+  private moveDragAxis: "X" | "Y" | "Z" | "XY" | "XZ" | "YZ" | null = null;
   private destinationDown = false;
   private readonly transformStartPivot = new THREE.Vector3();
   private pivotOnlyDrag = false;
@@ -370,6 +375,19 @@ export class CadReferenceBlockController {
     return this.activateTransform("translate");
   }
 
+  /** COPYBASE and Ctrl+MOVE share the same full-reference copy transaction. */
+  copyReferencesByBase(
+    names: readonly string[], delta: THREE.Vector3,
+  ): CadReferenceCopyResult {
+    if (!this.options.history) throw new Error("No está disponible el historial COPY CAD.");
+    const result = copyCadReferenceBlocks(
+      this.options.designModel, this.options.history, names, delta,
+      () => this.syncGeometry(),
+    );
+    this.refreshSelectionVisual();
+    return result;
+  }
+
   get isMoveActive(): boolean {
     return this.activeMode === "translate" && this.selectedReferenceNames.size > 0;
   }
@@ -572,6 +590,10 @@ export class CadReferenceBlockController {
     this.transformPointerActive = false;
     this.armedPivot = false;
     this.armedMoveAxis = null;
+    this.armedCopyMove = false;
+    this.ctrlCopyGesture = false;
+    this.copyDrag = false;
+    this.moveDragAxis = null;
     this.destinationDown = false;
     this.pivotOnlyDrag = false;
     this.ringGesture = null;
@@ -605,6 +627,10 @@ export class CadReferenceBlockController {
     this.transformPointerActive = false;
     this.armedPivot = false;
     this.armedMoveAxis = null;
+    this.armedCopyMove = false;
+    this.ctrlCopyGesture = false;
+    this.copyDrag = false;
+    this.moveDragAxis = null;
     this.destinationDown = false;
     this.pivotOnlyDrag = false;
     this.ringGesture = null;
@@ -628,8 +654,13 @@ export class CadReferenceBlockController {
     this.transformStartPivot.copy(this.pivot.position);
     this.pivotOnlyDrag = this.activeMode === "translate" && this.controls.axis === "XYZ";
     if (this.activeMode === "translate") {
+      const axis = this.controls.axis;
+      this.moveDragAxis = axis === "X" || axis === "Y" || axis === "Z"
+        || axis === "XY" || axis === "XZ" || axis === "YZ" ? axis : null;
+      this.copyDrag = this.ctrlCopyGesture && this.moveDragAxis !== null;
       this.armedPivot = false;
       this.armedMoveAxis = null;
+      this.armedCopyMove = false;
     }
     if (this.activeMode === "rotate") {
       const axis = this.controls.axis;
@@ -647,7 +678,7 @@ export class CadReferenceBlockController {
 
     if (this.activeMode === "translate") {
       // Center XYZ repositions the base point only, never the DWG geometry.
-      if (this.pivotOnlyDrag) return;
+      if (this.pivotOnlyDrag || this.copyDrag) return;
       const delta = this.pivot.position
         .clone()
         .sub(snapshot.pivotPosition);
@@ -708,25 +739,54 @@ export class CadReferenceBlockController {
   private transformEndInternal(): void {
     const start = this.transformSnapshot;
     if (this.activeMode === "translate" && start) {
-      const axis = this.controls.axis;
-      const shortClick = this.pivot.position.distanceTo(this.transformStartPivot) <= 1e-8;
+      // Fall back to the native axis if Three.js skipped mouseDown while
+      // pointer events were retargeted, so a short axis click still arms SNAP.
+      const currentAxis = this.controls.axis;
+      const axis = this.moveDragAxis ?? (
+        currentAxis === "X" || currentAxis === "Y" || currentAxis === "Z"
+        || currentAxis === "XY" || currentAxis === "XZ" || currentAxis === "YZ"
+          ? currentAxis : null
+      );
+      const delta = this.pivot.position.clone().sub(this.transformStartPivot);
+      const shortClick = delta.lengthSq() <= 1e-16;
       if (this.pivotOnlyDrag) {
         if (shortClick) {
           this.armedPivot = true;
           this.armedMoveAxis = null;
+          this.armedCopyMove = false;
         }
-      } else if (shortClick && (
-        axis === "X" || axis === "Y" || axis === "Z"
-        || axis === "XY" || axis === "XZ" || axis === "YZ"
-      )) {
+      } else if (shortClick && axis) {
+        // Ctrl+axis arms a repeatable copy-at-SNAP flow; no clone is created
+        // until an actual destination is chosen, as in the 3D gizmo.
         this.armedMoveAxis = axis;
+        this.armedCopyMove = this.copyDrag;
+        this.armedPivot = false;
+      } else if (this.copyDrag) {
+        try {
+          if (delta.lengthSq() > 1e-18) {
+            this.copyReferencesByBase([...this.selectedReferenceNames], delta);
+          }
+        } catch (error) {
+          this.badge.textContent = error instanceof Error ? error.message : String(error);
+        } finally {
+          // Native gizmo changed its pivot during drag, but original CAD
+          // references were never touched. Keep selection and pivot on source.
+          this.pivot.position.copy(this.transformStartPivot);
+          this.pivot.updateMatrixWorld(true);
+        }
+        this.armedMoveAxis = null;
+        this.armedCopyMove = false;
         this.armedPivot = false;
       } else {
         this.recordGeometryHistory(start, "MOVE DWG/DXF");
         this.armedMoveAxis = null;
+        this.armedCopyMove = false;
         this.armedPivot = false;
       }
       this.pivotOnlyDrag = false;
+      this.copyDrag = false;
+      this.moveDragAxis = null;
+      this.ctrlCopyGesture = false;
     }
     if (this.activeMode === "rotate" && this.transformSnapshot) {
       // A pointerup may precede the native TransformControls mouseUp.
@@ -749,9 +809,11 @@ export class CadReferenceBlockController {
     this.syncGeometry();
     this.refreshSelectionVisual();
     if (this.armedPivot) {
-      this.badge.textContent = "MOVE DWG · Selecciona SNAP para el punto base";
+      this.badge.textContent = "DWG · Selecciona SNAP para el punto base";
     } else if (this.armedMoveAxis) {
-      this.badge.textContent = `MOVE DWG · Eje ${this.armedMoveAxis}: selecciona SNAP de destino`;
+      this.badge.textContent = this.armedCopyMove
+        ? `COPY DWG · Ctrl + eje ${this.armedMoveAxis} · SNAP de destino (repetible; Esc termina)`
+        : `MOVE DWG · Eje ${this.armedMoveAxis}: selecciona SNAP de destino`;
     }
   }
 
@@ -800,7 +862,13 @@ export class CadReferenceBlockController {
         y: event.clientY, axis: this.pickRotateRingAxis(event.clientX, event.clientY),
         dragged: false };
     }
+    if (this.activeMode === "translate") {
+      this.ctrlCopyGesture = event.ctrlKey;
+    }
     if (this.armedPivot || (this.activeMode === "translate" && this.armedMoveAxis)) {
+      // A prior gizmo click can still have a stale transform pointer flag
+      // in some browsers. A destination click must be handled first.
+      this.transformPointerActive = false;
       this.destinationDown = true;
       this.pointerDownX = event.clientX;
       this.pointerDownY = event.clientY;
@@ -842,9 +910,8 @@ export class CadReferenceBlockController {
 
     // Native mouseUp may happen before or after pointerup, depending on browser.
     // Neither ordering should turn a gizmo click into a new reference selection.
-    if (this.transformPointerActive || this.controls.dragging) {
+    if ((this.transformPointerActive || this.controls.dragging) && !this.destinationDown) {
       this.transformPointerActive = false;
-      this.destinationDown = false;
       return;
     }
 
@@ -859,28 +926,41 @@ export class CadReferenceBlockController {
       if (this.armedPivot) {
         this.pivot.position.copy(snap); // Pivot only: no model modification.
       } else if (this.armedMoveAxis) {
-        const before = this.captureSelection();
         const delta = snap.clone().sub(this.pivot.position);
         this.constrainMoveCorrection(delta, this.armedMoveAxis);
-        if (delta.lengthSq() > 1e-18) {
-          for (const line of before.lines) {
-            this.options.designModel.cadLines.updateGeometry(
-              line.id, addPoint(line.start, delta), addPoint(line.end, delta),
-            );
+        if (delta.lengthSq() <= 1e-18) return; // Preserve axis for another target.
+        if (this.armedCopyMove) {
+          try {
+            const result = this.copyReferencesByBase([...this.selectedReferenceNames], delta);
+            this.badge.textContent = `COPY DWG · ${result.referenceNames.join(", ")} · otro SNAP o Esc`;
+          } catch (error) {
+            this.badge.textContent = `COPY DWG · ${error instanceof Error ? error.message : String(error)}`;
+            return;
           }
-          for (const point of before.points) {
-            this.options.designModel.cadPoints.updatePosition(
-              point.id, addPoint(point.position, delta),
-            );
-          }
-          this.pivot.position.add(delta);
-          this.recordGeometryHistory(before, "MOVE DWG/DXF");
-          this.syncGeometry();
+          // Each repeated copy has the same source and base point. Do not
+          // move the reference, pivot or selected names.
+          this.pivot.updateMatrixWorld(true);
+          return;
         }
+        const before = this.captureSelection();
+        for (const line of before.lines) {
+          this.options.designModel.cadLines.updateGeometry(
+            line.id, addPoint(line.start, delta), addPoint(line.end, delta),
+          );
+        }
+        for (const point of before.points) {
+          this.options.designModel.cadPoints.updatePosition(
+            point.id, addPoint(point.position, delta),
+          );
+        }
+        this.pivot.position.add(delta);
+        this.recordGeometryHistory(before, "MOVE DWG/DXF");
+        this.syncGeometry();
       }
       this.pivot.updateMatrixWorld(true);
       this.armedPivot = false;
       this.armedMoveAxis = null;
+      this.armedCopyMove = false;
       this.refreshSelectionVisual();
       return;
     }
@@ -1037,6 +1117,17 @@ export class CadReferenceBlockController {
     }
 
     if (event.key === "Escape") {
+      if (this.isMoveActive && this.armedCopyMove && this.armedMoveAxis) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        this.armedCopyMove = false;
+        this.armedMoveAxis = null;
+        this.destinationDown = false;
+        this.armedPivot = false;
+        this.refreshSelectionVisual();
+        return;
+      }
       if (this.activeMode) {
         event.preventDefault();
         event.stopPropagation();

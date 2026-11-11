@@ -301,7 +301,7 @@ export class CadCommandInputController {
         this.command,
       );
 
-    if (command === "C" || command === "COPY"
+    if (command === "C" || command === "COPY" || command === "COPYBASE"
       || command === "COPIAR" || command === "CP") {
       const started = commandRuntime().__frameLogicStartCopyBaseCommand?.();
       this.hide();
@@ -381,9 +381,10 @@ export class CadCommandInputController {
 
     if (normalized === "C"
       || "COPY".startsWith(normalized)
+      || "COPYBASE".startsWith(normalized)
       || "COPIAR".startsWith(normalized)) {
       this.suggestionElement.textContent =
-        "COPY / COPIAR · selecciona piezas o ensambles, punto base y destino";
+        "COPY / COPYBASE · piezas, ensambles, referencias DWG/DXF y líneas CAD · punto base y destino";
       return;
     }
 

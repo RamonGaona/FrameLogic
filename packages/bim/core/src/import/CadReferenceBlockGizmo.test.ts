@@ -177,4 +177,71 @@ describe("DWG gizmo events: don't reselect imported CAD through rotate ring", ()
     expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
     vi.restoreAllMocks();
   });
+
+  it("Ctrl+axis followed by repeated SNAP clicks creates independent DWG blocks without moving original", () => {
+    const f = fixture();
+    f.controls.axis = "X";
+    const down = { ...f.pointerEvent(), ctrlKey: true };
+    f.handler("pointerDownInternal")(down);
+    expect(Reflect.get(f.controller, "ctrlCopyGesture")).toBe(true);
+
+    // TransformControls started on X and completed a short click (no drag).
+    Reflect.set(f.controller, "moveDragAxis", "X");
+    Reflect.set(f.controller, "copyDrag", true);
+    Reflect.set(f.controller, "transformStartPivot", f.pivot.position.clone());
+    Reflect.set(f.controller, "transformSnapshot", f.handler("captureSelection")());
+    f.handler("transformEndInternal")();
+    expect(Reflect.get(f.controller, "armedMoveAxis")).toBe("X");
+    expect(Reflect.get(f.controller, "armedCopyMove")).toBe(true);
+
+    f.snap.set(25, 300, -400);
+    f.handler("pointerDownInternal")(f.pointerEvent());
+    f.release();
+    const copy1 = f.model.layers.getAll().find(l => l.name === "CAD Obra copia 1 · 0")!;
+    expect(copy1).toBeDefined();
+    expect(f.model.cadLines.findByLayerId(copy1.id)[0]?.start.x).toBeCloseTo(20);
+    expect(f.model.cadLines.get(f.line.id)?.start.x).toBe(0);
+    expect(f.pivot.position.toArray()).toEqual([5, 0, 0]);
+
+    f.snap.set(55, 0, 0);
+    f.handler("pointerDownInternal")(f.pointerEvent());
+    f.release();
+    const copy2 = f.model.layers.getAll().find(l => l.name === "CAD Obra copia 2 · 0")!;
+    expect(copy2).toBeDefined();
+    expect(f.model.cadLines.findByLayerId(copy2.id)[0]?.start.x).toBeCloseTo(50);
+    expect(f.model.cadLines.findByLayerId(copy1.id)[0]?.start.x).toBeCloseTo(20);
+    expect(f.model.cadLines.get(f.line.id)?.start.x).toBe(0);
+    expect(Reflect.get(f.controller, "armedCopyMove")).toBe(true);
+    expect(Reflect.get(f.controller, "armedMoveAxis")).toBe("X");
+    expect(f.history.recordOperation).toHaveBeenCalledTimes(2);
+  });
+
+  it("Ctrl+drag copies DWG at released delta without moving original or keeping displaced pivot", () => {
+    const f = fixture();
+    f.controls.axis = "Y";
+    Reflect.set(f.controller, "copyDrag", true);
+    Reflect.set(f.controller, "moveDragAxis", "Y");
+    Reflect.set(f.controller, "pivotOnlyDrag", false);
+    Reflect.set(f.controller, "transformStartPivot", f.pivot.position.clone());
+    Reflect.set(f.controller, "transformSnapshot", f.handler("captureSelection")());
+    f.pivot.position.set(5, 40, 0);
+    f.handler("transformEndInternal")();
+    const layer = f.model.layers.getAll().find(l => l.name === "CAD Obra copia 1 · 0")!;
+    expect(f.model.cadLines.findByLayerId(layer.id)[0]?.end.y).toBe(40);
+    expect(f.model.cadLines.get(f.line.id)?.end.y).toBe(0);
+    expect(f.pivot.position.toArray()).toEqual([5, 0, 0]);
+    expect(f.history.recordOperation).toHaveBeenCalledOnce();
+  });
+
+  it("invalid SNAP does not end Ctrl repeated copy mode", () => {
+    const f = fixture();
+    f.controls.axis = "Z";
+    Reflect.set(f.controller, "armedMoveAxis", "Z");
+    Reflect.set(f.controller, "armedCopyMove", true);
+    f.options.findSnapPoint.mockReturnValueOnce(null as never);
+    f.handler("pointerDownInternal")(f.pointerEvent());
+    f.release();
+    expect(Reflect.get(f.controller, "armedCopyMove")).toBe(true);
+    expect(f.model.layers.getAll().filter(l => l.name.includes("copia"))).toHaveLength(0);
+  });
 });
