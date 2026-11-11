@@ -5060,20 +5060,9 @@ function startMoveCommand():
         .start(
           moveMixedSelectionCommand,
         )
-    : selectedLineCount > 0
-      ? cadCommandManager
-          .start(
-            moveCadLineCommand,
-          )
-    : selectedPointCount > 0
-      ? cadCommandManager
-          .start(
-            moveCadPointCommand,
-          )
-      : cadCommandManager
-          .start(
-            moveCommand,
-          );
+    : selectedLineCount > 0 || selectedPointCount > 0
+      ? cadCommandManager.start(moveMixedSelectionCommand)
+      : cadCommandManager.start(moveCommand);
 
 }
 
