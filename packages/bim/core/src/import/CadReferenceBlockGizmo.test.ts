@@ -1,0 +1,144 @@
+import * as THREE from "three";
+import { describe, expect, it, vi } from "vitest";
+import { DesignModel } from "@framelogic/domain";
+import { CadReferenceBlockController } from "./CadReferenceBlockController";
+import { RotateRingDoubleClick } from "../interaction/RotateRingDoubleClick";
+
+function fixture() {
+  const model = new DesignModel();
+  const layer = model.layers.create({
+    name: "CAD Obra · 0", visible: true, locked: false, snapEnabled: true,
+  });
+  const line = model.registerCadLine({
+    layerId: layer.id,
+    start: { x: 0, y: 0, z: 0 },
+    end: { x: 10, y: 0, z: 0 },
+  });
+  let undo = () => {};
+  let redo = () => {};
+  const history = { recordOperation: vi.fn((_label: string, back: () => void,
+    forward: () => void) => { undo = back; redo = forward; }) };
+  const snap = new THREE.Vector3(2, 0, 0);
+  const controller = Object.create(CadReferenceBlockController.prototype) as CadReferenceBlockController;
+  const badge = { textContent: "" };
+  const controls = { axis: "XYZ", dragging: false };
+  const options = {
+    designModel: model,
+    history,
+    findSnapPoint: vi.fn(() => snap.clone()),
+    setCameraEnabled: vi.fn(),
+    onRotateAxis: vi.fn(),
+  };
+  const pivot = new THREE.Object3D();
+  pivot.position.set(5, 0, 0);
+  const names = new Set(["Obra"]);
+  Reflect.set(controller, "options", options);
+  Reflect.set(controller, "pivot", pivot);
+  Reflect.set(controller, "selectedReferenceNames", names);
+  Reflect.set(controller, "activeMode", "translate");
+  Reflect.set(controller, "ringClicks", new RotateRingDoubleClick());
+  Reflect.set(controller, "transformStartPivot", new THREE.Vector3());
+  Reflect.set(controller, "ringGesture", null);
+  Reflect.set(controller, "controls", controls);
+  Reflect.set(controller, "badge", badge);
+  Reflect.set(controller, "interactionEnabled", true);
+  Reflect.set(controller, "syncGeometry", vi.fn());
+  Reflect.set(controller, "refreshSelectionVisual", vi.fn());
+  const handler = (method: string) => Reflect.get(controller, method) as
+    (...args: any[]) => void;
+  const pointerEvent = (x = 120, y = 80) => ({
+    button: 0, pointerId: 7, clientX: x, clientY: y,
+    preventDefault: vi.fn(), stopPropagation: vi.fn(), stopImmediatePropagation: vi.fn(),
+    ctrlKey: false, metaKey: false,
+  });
+  const release = (x = 120, y = 80) => {
+    const event = pointerEvent(x, y);
+    handler("handlePointerUp")(event);
+    return event;
+  };
+  return { model, line, history, pivot, names, controls, badge, options, controller, snap,
+    handler, pointerEvent, release, undo: () => undo(), redo: () => redo() };
+}
+
+describe("DWG gizmo events: don't reselect imported CAD through rotate ring", () => {
+  it("recognizes 2 clicks on same ring and rotates exactly once despite pointerup on DWG geometry", () => {
+    const f = fixture();
+    Reflect.set(f.controller, "activeMode", "rotate");
+    const noReselect = vi.spyOn(f.controller, "selectReference");
+    vi.spyOn(Date, "now").mockReturnValue(1000);
+    try {
+      for (let i = 0; i < 2; i++) {
+        Reflect.set(f.controller, "ringGesture",
+          { pointerId: 7, x: 120, y: 80, axis: "Z", dragged: false });
+        Reflect.set(f.controller, "transformPointerActive", true);
+        Reflect.set(f.controller, "pointerDownActive", true);
+        Reflect.set(f.controller, "pointerDownX", 120);
+        Reflect.set(f.controller, "pointerDownY", 80);
+        Reflect.set(f.controller, "transformSnapshot",
+          f.handler("captureSelection")());
+        f.handler("handleTransformEnd")();
+        f.release();
+      }
+      expect(noReselect).not.toHaveBeenCalled();
+      expect(f.controller.isRotateActive).toBe(true);
+      const event = f.pointerEvent();
+      f.handler("handleRingDoubleClick")(event);
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+      expect(event.stopImmediatePropagation).toHaveBeenCalledOnce();
+      expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(5);
+      expect(f.model.cadLines.get(f.line.id)?.start.y).toBeCloseTo(-5);
+      expect(f.history.recordOperation).toHaveBeenCalledOnce();
+    } finally { vi.restoreAllMocks(); }
+  });
+
+  it("a short center click arms SNAP, then updates base/pivot ONLY, never DWG geometry", () => {
+    const f = fixture();
+    Reflect.set(f.controller, "pivotOnlyDrag", true);
+    Reflect.set(f.controller, "transformStartPivot", f.pivot.position.clone());
+    Reflect.set(f.controller, "transformSnapshot", f.handler("captureSelection")());
+    f.handler("handleTransformEnd")();
+    expect(Reflect.get(f.controller, "armedPivot")).toBe(true);
+    expect(f.badge.textContent).toContain("punto base");
+    const down = f.pointerEvent();
+    f.handler("handlePointerDown")(down);
+    expect(down.stopImmediatePropagation).toHaveBeenCalledOnce();
+    f.release();
+    expect(f.pivot.position.x).toBeCloseTo(2);
+    expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(0);
+    expect(f.model.cadLines.get(f.line.id)?.end.x).toBeCloseTo(10);
+    expect(f.history.recordOperation).not.toHaveBeenCalled();
+  });
+
+  it("after rebase, click axis and choose destination SNAP to move DWG with Undo/Redo", () => {
+    const f = fixture();
+    f.pivot.position.set(2, 0, 0);
+    f.controls.axis = "X";
+    Reflect.set(f.controller, "pivotOnlyDrag", false);
+    Reflect.set(f.controller, "transformStartPivot", f.pivot.position.clone());
+    Reflect.set(f.controller, "transformSnapshot", f.handler("captureSelection")());
+    f.handler("handleTransformEnd")();
+    expect(Reflect.get(f.controller, "armedMoveAxis")).toBe("X");
+    f.snap.set(20, 50, 0); // Y must be suppressed by X-only move.
+    f.handler("handlePointerDown")(f.pointerEvent());
+    f.release();
+    expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(18);
+    expect(f.model.cadLines.get(f.line.id)?.end.y).toBeCloseTo(0);
+    expect(f.pivot.position.toArray()).toEqual([20, 0, 0]);
+    expect(f.history.recordOperation).toHaveBeenCalledOnce();
+    f.undo();
+    expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(0);
+    f.redo();
+    expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(18);
+  });
+
+  it("does not move the block or lose the armed pivot when no SNAP exists", () => {
+    const f = fixture();
+    Reflect.set(f.controller, "armedPivot", true);
+    f.options.findSnapPoint.mockReturnValueOnce(null as never);
+    f.handler("handlePointerDown")(f.pointerEvent());
+    f.release();
+    expect(Reflect.get(f.controller, "armedPivot")).toBe(true);
+    expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(0);
+    expect(f.pivot.position.x).toBeCloseTo(5);
+  });
+});
