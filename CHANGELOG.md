@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.111 — 2026-11-10
+
+### Gizmo DWG — centro seleccionable en MOVE y ROTATE, doble clic +90° fiable
+
+- **Centro de giro visible:** al activar R sobre una referencia DWG/DXF aparece un pequeño botón central amarillo, siempre situado sobre el pivote proyectado. Un clic sobre él arma la elección de un SNAP como nuevo centro de rotación, sin mover el plano. El mismo control está disponible para el punto base de MOVE con M.
+- **No se confunde con un clic al modelo:** el centro es un control independiente sobre el lienzo 3D con gestión propia de eventos, no depende de que TransformControls detecte el eje XYZ. Arrastrar el botón modifica únicamente el centro del gizmo; no modifica las líneas del DWG.
+- **Doble clic +90° robusto:** el gestor DWG reconoce dos clics cortos consecutivos sobre el mismo anillo X/Y/Z a partir de eventos pointerup o del propio TransformControls. No depende exclusivamente del evento nativo dblclick; identifica el anillo con raycasting sobre los pickers del gizmo y conserva el fallback de eje seleccionado. La acción se ejecuta una sola vez, después de terminar la interacción del ratón.
+- **Sin reselección del plano:** mientras el gizmo está activo, los clics del lienzo no vuelven a seleccionar el DWG ni cancelan la secuencia; los eventos de puntero se escuchan en fase de captura antes de la selección general.
+- **SNAP para ambos modos:** el motor de SNAP está habilitado mientras estén activos MOVE o ROTATE de una referencia DWG. Después de hacer clic sobre el centro amarillo, un clic sobre ENDPOINT/CENTER/MIDPOINT/POINT válido cambia el pivote sin crear historial, y los giros siguientes usan ese nuevo centro.
+- **Pruebas de regresión:** controlador del botón real con eventos puntero, click/drag/cancelación, doble clic sin evento nativo, selección conservada, cambios de punto base y movimiento restringido con Undo/Redo. No se altera la geometría interna ni la estructura de referencia CAD.
+- **Pendiente:** verificar visualmente el gesto sobre los anillos con un DWG real y el despliegue en Cloudflare; los tests DOM y de lógica no reemplazan la prueba de navegador completa.
+
+---
+
 ## v0.1.110 — 2026-11-10
 
 ### DWG/DXF — doble clic ROTATE y punto base MOVE con SNAP
