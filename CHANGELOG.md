@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.110 — 2026-11-10
+
+### DWG/DXF — doble clic ROTATE y punto base MOVE con SNAP
+
+- **Giro de +90° por doble clic:** se corrigió el conflicto de eventos entre TransformControls y la selección de referencias DWG. Un clic sobre un anillo ya no se interpreta al soltar como una nueva selección del plano que desactiva el gizmo y borra el estado del doble clic. El doble clic corto en el mismo aro X/Y/Z invoca una sola rotación numérica de +90°; los arrastres y cambios de eje continúan excluidos.
+- **Punto base móvil:** el centro XYZ del gizmo MOVE se comporta como en piezas 3D: clic corto para armar la elección del punto base, seguido de clic sobre SNAP para mover solo el pivote sin modificar las entidades DWG. Arrastrar el centro mueve el pivote libremente, sin mover el dibujo.
+- **Mover el DWG con SNAP:** tras establecer el punto base, clic corto sobre un eje del gizmo (X/Y/Z/XY/XZ/YZ) y clic en un SNAP de destino traslada todo el DWG en el eje o plano indicado. Los SNAP son suministrados por el motor unificado CAD/3D y el estado de las líneas y puntos se registra para Undo/Redo. El DWG conserva su identidad de bloque.
+- **Protección de selección:** los eventos del gizmo o de la búsqueda de SNAP no vuelven a seleccionar entidades, no desactivan el gizmo y no disparan movimientos accidentales de la referencia.
+- **Pruebas de regresión:** doble clic con evento pointerup sobre dibujo, selección intacta, reubicar solamente el pivote, mover con corrección restringida al eje, Undo/Redo y destino SNAP inexistente.
+- **Límites:** si no hay un SNAP detectable, el gizmo continúa esperando uno; Esc cancela la interacción. La selección de referencia y la visualización del badge permanecen sin cambios. Es necesaria la comprobación de interacción manual en navegador con archivos DWG reales.
+
+---
+
 ## v0.1.109 — 2026-11-10
 
 ### ROTATE CAD — DWG/DXF completos y líneas/puntos

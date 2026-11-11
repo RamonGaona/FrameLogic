@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { CadHistoryController } from "../interaction/CadHistoryController";
 import type { RotateNumericAxis } from "../interaction/CadNumericInputController";
 import { RotateRingDoubleClick } from "../interaction/RotateRingDoubleClick";
+import { installTransformPointerLifecycle } from "../interaction/TransformGizmoReliability";
 
 import {
   TransformControls,
@@ -62,6 +63,7 @@ export interface CadReferenceBlockControllerOptions {
   readonly history?: CadHistoryController;
   readonly onRotateAxis?: (axis: RotateNumericAxis) => void;
   readonly onRotateDeactivated?: () => void;
+  readonly findSnapPoint?: (clientX: number, clientY: number) => THREE.Vector3 | null;
 }
 
 /**
@@ -74,6 +76,7 @@ export interface CadReferenceBlockControllerOptions {
 export class CadReferenceBlockController {
   private readonly options: CadReferenceBlockControllerOptions;
   private readonly controls: TransformControls;
+  private readonly releasePointerLifecycle: () => void;
   private readonly helper: THREE.Object3D;
   private readonly pivot = new THREE.Object3D();
   private readonly selectionBox = new THREE.Box3Helper(
@@ -91,6 +94,12 @@ export class CadReferenceBlockController {
   private pointerDownY = 0;
   private pointerDownActive = false;
   private interactionEnabled = true;
+  private transformPointerActive = false;
+  private armedPivot = false;
+  private armedMoveAxis: "X" | "Y" | "Z" | "XY" | "XZ" | "YZ" | null = null;
+  private destinationDown = false;
+  private readonly transformStartPivot = new THREE.Vector3();
+  private pivotOnlyDrag = false;
   private disposed = false;
 
   constructor(
@@ -103,6 +112,7 @@ export class CadReferenceBlockController {
     );
     this.controls.setSpace("world");
     this.controls.size = 0.8;
+    this.releasePointerLifecycle = installTransformPointerLifecycle(options.domElement, this.controls);
     this.helper = this.controls.getHelper();
     this.helper.visible = false;
     this.pivot.name = "FrameLogicCadReferenceBlockPivot";
@@ -187,6 +197,7 @@ export class CadReferenceBlockController {
       this.selectionBox,
     );
     this.selectionBox.dispose();
+    this.releasePointerLifecycle();
     this.controls.dispose();
     this.badge.remove();
   }
@@ -341,6 +352,10 @@ export class CadReferenceBlockController {
     return this.activateTransform("translate");
   }
 
+  get isMoveActive(): boolean {
+    return this.activeMode === "translate" && this.selectedReferenceNames.size > 0;
+  }
+
   get isRotateActive(): boolean {
     return this.activeMode === "rotate" && this.selectedReferenceNames.size > 0;
   }
@@ -400,13 +415,13 @@ export class CadReferenceBlockController {
     this.refreshSelectionVisual();
   }
 
-  private recordGeometryHistory(before: TransformSnapshot): void {
+  private recordGeometryHistory(before: TransformSnapshot, label = "ROTATE DWG/DXF"): void {
     if (!this.options.history) return;
     const after = this.captureSelection();
     if (JSON.stringify({ lines: before.lines, points: before.points })
       === JSON.stringify({ lines: after.lines, points: after.points })) return;
     this.options.history.recordOperation(
-      "ROTATE DWG/DXF",
+      label,
       () => this.applyGeometrySnapshot(before),
       () => this.applyGeometrySnapshot(after),
     );
@@ -536,6 +551,11 @@ export class CadReferenceBlockController {
 
     this.controls.camera = this.options.cameraProvider();
     this.activeMode = mode;
+    this.transformPointerActive = false;
+    this.armedPivot = false;
+    this.armedMoveAxis = null;
+    this.destinationDown = false;
+    this.pivotOnlyDrag = false;
     this.ringGesture = null;
     this.ringClicks.reset();
     this.pivot.position.copy(
@@ -558,6 +578,11 @@ export class CadReferenceBlockController {
     const wasRotating = this.activeMode === "rotate";
     this.transformSnapshot = null;
     this.activeMode = null;
+    this.transformPointerActive = false;
+    this.armedPivot = false;
+    this.armedMoveAxis = null;
+    this.destinationDown = false;
+    this.pivotOnlyDrag = false;
     this.ringGesture = null;
     this.ringClicks.reset();
     if (wasRotating) this.options.onRotateDeactivated?.();
@@ -573,6 +598,15 @@ export class CadReferenceBlockController {
       || this.selectedReferenceNames.size < 1
     ) return;
     this.transformSnapshot = this.captureSelection();
+    // A transform click belongs to the gizmo, not the underlying DWG. Without
+    // this guard pointerup may reselect the block and erase double-click state.
+    this.transformPointerActive = true;
+    this.transformStartPivot.copy(this.pivot.position);
+    this.pivotOnlyDrag = this.activeMode === "translate" && this.controls.axis === "XYZ";
+    if (this.activeMode === "translate") {
+      this.armedPivot = false;
+      this.armedMoveAxis = null;
+    }
     if (this.activeMode === "rotate") {
       const axis = this.controls.axis;
       if (this.ringGesture) {
@@ -588,6 +622,8 @@ export class CadReferenceBlockController {
     if (!snapshot || !this.activeMode) return;
 
     if (this.activeMode === "translate") {
+      // Center XYZ repositions the base point only, never the DWG geometry.
+      if (this.pivotOnlyDrag) return;
       const delta = this.pivot.position
         .clone()
         .sub(snapshot.pivotPosition);
@@ -643,7 +679,31 @@ export class CadReferenceBlockController {
     this.refreshSelectionVisual();
   };
 
-  private readonly handleTransformEnd = (): void => {
+  private readonly handleTransformEnd = (): void => { this.transformEndInternal(); };
+
+  private transformEndInternal(): void {
+    const start = this.transformSnapshot;
+    if (this.activeMode === "translate" && start) {
+      const axis = this.controls.axis;
+      const shortClick = this.pivot.position.distanceTo(this.transformStartPivot) <= 1e-8;
+      if (this.pivotOnlyDrag) {
+        if (shortClick) {
+          this.armedPivot = true;
+          this.armedMoveAxis = null;
+        }
+      } else if (shortClick && (
+        axis === "X" || axis === "Y" || axis === "Z"
+        || axis === "XY" || axis === "XZ" || axis === "YZ"
+      )) {
+        this.armedMoveAxis = axis;
+        this.armedPivot = false;
+      } else {
+        this.recordGeometryHistory(start, "MOVE DWG/DXF");
+        this.armedMoveAxis = null;
+        this.armedPivot = false;
+      }
+      this.pivotOnlyDrag = false;
+    }
     if (this.activeMode === "rotate" && this.transformSnapshot) {
       const gesture = this.ringGesture;
       this.ringGesture = null;
@@ -651,7 +711,7 @@ export class CadReferenceBlockController {
         gesture.axis, gesture.x, gesture.y, Date.now(), gesture.dragged,
       );
       else this.ringClicks.reset();
-      this.recordGeometryHistory(this.transformSnapshot);
+      this.recordGeometryHistory(this.transformSnapshot, "ROTATE DWG/DXF");
       // ROTATE uses global X/Y/Z; reset only the temporary gizmo orientation.
       this.pivot.quaternion.identity();
       this.pivot.updateMatrixWorld(true);
@@ -660,7 +720,12 @@ export class CadReferenceBlockController {
     this.options.setCameraEnabled(true);
     this.syncGeometry();
     this.refreshSelectionVisual();
-  };
+    if (this.armedPivot) {
+      this.badge.textContent = "MOVE DWG · Selecciona SNAP para el punto base";
+    } else if (this.armedMoveAxis) {
+      this.badge.textContent = `MOVE DWG · Eje ${this.armedMoveAxis}: selecciona SNAP de destino`;
+    }
+  }
 
   private captureSelection(): TransformSnapshot {
     const layerIds = new Set<string>();
@@ -693,32 +758,85 @@ export class CadReferenceBlockController {
     };
   }
 
-  private readonly handlePointerDown = (
-    event: PointerEvent,
-  ): void => {
+  private readonly handlePointerDown = (event: PointerEvent): void => {
+    this.pointerDownInternal(event);
+  };
+
+  private pointerDownInternal(event: PointerEvent): void {
     if (!this.interactionEnabled || event.button !== 0) return;
     if (this.activeMode === "rotate") {
       this.ringGesture = { pointerId: event.pointerId, x: event.clientX,
         y: event.clientY, axis: null, dragged: false };
     }
+    if (this.activeMode === "translate" && (this.armedPivot || this.armedMoveAxis)) {
+      this.destinationDown = true;
+      this.pointerDownX = event.clientX;
+      this.pointerDownY = event.clientY;
+      this.pointerDownActive = true;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     this.pointerDownX = event.clientX;
     this.pointerDownY = event.clientY;
     this.pointerDownActive = true;
+  }
+
+  private readonly handlePointerUp = (event: PointerEvent): void => {
+    this.pointerUpInternal(event);
   };
 
-  private readonly handlePointerUp = (
-    event: PointerEvent,
-  ): void => {
-    if (
-      !this.interactionEnabled
-      || event.button !== 0
-      || !this.pointerDownActive
-      || this.controls.dragging
-    ) {
+  private pointerUpInternal(event: PointerEvent): void {
+    if (!this.interactionEnabled || event.button !== 0 || !this.pointerDownActive) {
       this.pointerDownActive = false;
       return;
     }
     this.pointerDownActive = false;
+
+    // Native mouseUp may happen before or after pointerup, depending on browser.
+    // Neither ordering should turn a gizmo click into a new reference selection.
+    if (this.transformPointerActive || this.controls.dragging) {
+      this.transformPointerActive = false;
+      this.destinationDown = false;
+      return;
+    }
+
+    if (this.destinationDown && this.activeMode === "translate"
+      && (this.armedPivot || this.armedMoveAxis)) {
+      this.destinationDown = false;
+      if (Math.hypot(event.clientX - this.pointerDownX, event.clientY - this.pointerDownY) > 5) return;
+      const snap = this.options.findSnapPoint?.(event.clientX, event.clientY);
+      if (!snap || ![snap.x, snap.y, snap.z].every(Number.isFinite)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (this.armedPivot) {
+        this.pivot.position.copy(snap); // Pivot only: no model modification.
+      } else if (this.armedMoveAxis) {
+        const before = this.captureSelection();
+        const delta = snap.clone().sub(this.pivot.position);
+        this.constrainMoveCorrection(delta, this.armedMoveAxis);
+        if (delta.lengthSq() > 1e-18) {
+          for (const line of before.lines) {
+            this.options.designModel.cadLines.updateGeometry(
+              line.id, addPoint(line.start, delta), addPoint(line.end, delta),
+            );
+          }
+          for (const point of before.points) {
+            this.options.designModel.cadPoints.updatePosition(
+              point.id, addPoint(point.position, delta),
+            );
+          }
+          this.pivot.position.add(delta);
+          this.recordGeometryHistory(before, "MOVE DWG/DXF");
+          this.syncGeometry();
+        }
+      }
+      this.pivot.updateMatrixWorld(true);
+      this.armedPivot = false;
+      this.armedMoveAxis = null;
+      this.refreshSelectionVisual();
+      return;
+    }
     if (
       Math.hypot(
         event.clientX - this.pointerDownX,
@@ -750,7 +868,18 @@ export class CadReferenceBlockController {
     ) {
       this.clearSelection();
     }
-  };
+  }
+
+  private constrainMoveCorrection(
+    correction: THREE.Vector3, axis: "X" | "Y" | "Z" | "XY" | "XZ" | "YZ",
+  ): void {
+    if (axis === "X") { correction.y = 0; correction.z = 0; }
+    else if (axis === "Y") { correction.x = 0; correction.z = 0; }
+    else if (axis === "Z") { correction.x = 0; correction.y = 0; }
+    else if (axis === "XY") correction.z = 0;
+    else if (axis === "XZ") correction.y = 0;
+    else if (axis === "YZ") correction.x = 0;
+  }
 
   private readonly handleRingPointerMove = (event: PointerEvent): void => {
     const gesture = this.ringGesture;
@@ -761,6 +890,10 @@ export class CadReferenceBlockController {
   };
 
   private readonly handleRingDoubleClick = (event: MouseEvent): void => {
+    this.ringDoubleClickInternal(event);
+  };
+
+  private ringDoubleClickInternal(event: MouseEvent): void {
     if (!this.isRotateActive || event.button !== 0) return;
     const axis = this.ringClicks.take(event.clientX, event.clientY, Date.now());
     if (!axis) return;
@@ -768,7 +901,7 @@ export class CadReferenceBlockController {
     event.stopImmediatePropagation();
     this.options.onRotateAxis?.(axis);
     this.applyNumericRotation(axis, 90);
-  };
+  }
 
   private readonly handleKeyDown = (
     event: KeyboardEvent,
