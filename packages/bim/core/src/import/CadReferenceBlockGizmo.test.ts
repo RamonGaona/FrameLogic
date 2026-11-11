@@ -44,8 +44,8 @@ function fixture() {
   Reflect.set(controller, "interactionEnabled", true);
   Reflect.set(controller, "syncGeometry", vi.fn());
   Reflect.set(controller, "refreshSelectionVisual", vi.fn());
-  const handler = (method: string) => Reflect.get(controller, method) as
-    (...args: any[]) => void;
+  const handler = (method: string) => (...args: any[]) =>
+    (Reflect.get(controller, method) as (...args: any[]) => unknown).apply(controller, args);
   const pointerEvent = (x = 120, y = 80) => ({
     button: 0, pointerId: 7, clientX: x, clientY: y,
     preventDefault: vi.fn(), stopPropagation: vi.fn(), stopImmediatePropagation: vi.fn(),
@@ -53,7 +53,7 @@ function fixture() {
   });
   const release = (x = 120, y = 80) => {
     const event = pointerEvent(x, y);
-    handler("handlePointerUp")(event);
+    handler("pointerUpInternal")(event);
     return event;
   };
   return { model, line, history, pivot, names, controls, badge, options, controller, snap,
@@ -76,13 +76,13 @@ describe("DWG gizmo events: don't reselect imported CAD through rotate ring", ()
         Reflect.set(f.controller, "pointerDownY", 80);
         Reflect.set(f.controller, "transformSnapshot",
           f.handler("captureSelection")());
-        f.handler("handleTransformEnd")();
+        f.handler("transformEndInternal")();
         f.release();
       }
       expect(noReselect).not.toHaveBeenCalled();
       expect(f.controller.isRotateActive).toBe(true);
       const event = f.pointerEvent();
-      f.handler("handleRingDoubleClick")(event);
+      f.handler("ringDoubleClickInternal")(event);
       expect(event.preventDefault).toHaveBeenCalledOnce();
       expect(event.stopImmediatePropagation).toHaveBeenCalledOnce();
       expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(5);
@@ -96,11 +96,11 @@ describe("DWG gizmo events: don't reselect imported CAD through rotate ring", ()
     Reflect.set(f.controller, "pivotOnlyDrag", true);
     Reflect.set(f.controller, "transformStartPivot", f.pivot.position.clone());
     Reflect.set(f.controller, "transformSnapshot", f.handler("captureSelection")());
-    f.handler("handleTransformEnd")();
+    f.handler("transformEndInternal")();
     expect(Reflect.get(f.controller, "armedPivot")).toBe(true);
     expect(f.badge.textContent).toContain("punto base");
     const down = f.pointerEvent();
-    f.handler("handlePointerDown")(down);
+    f.handler("pointerDownInternal")(down);
     expect(down.stopImmediatePropagation).toHaveBeenCalledOnce();
     f.release();
     expect(f.pivot.position.x).toBeCloseTo(2);
@@ -116,10 +116,10 @@ describe("DWG gizmo events: don't reselect imported CAD through rotate ring", ()
     Reflect.set(f.controller, "pivotOnlyDrag", false);
     Reflect.set(f.controller, "transformStartPivot", f.pivot.position.clone());
     Reflect.set(f.controller, "transformSnapshot", f.handler("captureSelection")());
-    f.handler("handleTransformEnd")();
+    f.handler("transformEndInternal")();
     expect(Reflect.get(f.controller, "armedMoveAxis")).toBe("X");
     f.snap.set(20, 50, 0); // Y must be suppressed by X-only move.
-    f.handler("handlePointerDown")(f.pointerEvent());
+    f.handler("pointerDownInternal")(f.pointerEvent());
     f.release();
     expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(18);
     expect(f.model.cadLines.get(f.line.id)?.end.y).toBeCloseTo(0);
@@ -135,7 +135,7 @@ describe("DWG gizmo events: don't reselect imported CAD through rotate ring", ()
     const f = fixture();
     Reflect.set(f.controller, "armedPivot", true);
     f.options.findSnapPoint.mockReturnValueOnce(null as never);
-    f.handler("handlePointerDown")(f.pointerEvent());
+    f.handler("pointerDownInternal")(f.pointerEvent());
     f.release();
     expect(Reflect.get(f.controller, "armedPivot")).toBe(true);
     expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(0);
