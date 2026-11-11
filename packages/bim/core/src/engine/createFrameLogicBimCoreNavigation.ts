@@ -368,6 +368,7 @@ export async function createBimCore(
         || core.designRotate.isActive
         || referenceManipulation.isActive
         || cadReferenceBlocks.isMoveActive
+        || cadReferenceBlocks.isRotateActive
         || workPlaneEditActive
         || pieceOriginEditActive;
 
