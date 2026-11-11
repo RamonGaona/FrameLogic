@@ -2,7 +2,8 @@ import * as THREE from "three";
 import type { CadHistoryController } from "../interaction/CadHistoryController";
 import type { RotateNumericAxis } from "../interaction/CadNumericInputController";
 import { RotateRingDoubleClick } from "../interaction/RotateRingDoubleClick";
-import { installTransformPointerLifecycle } from "../interaction/TransformGizmoReliability";
+import { installTransformPointerLifecycle, completeRotationRings } from "../interaction/TransformGizmoReliability";
+import { CadReferencePivotHandle } from "./CadReferencePivotHandle";
 
 import {
   TransformControls,
@@ -84,6 +85,10 @@ export class CadReferenceBlockController {
     0x6fd6ff,
   );
   private readonly badge: HTMLDivElement;
+  private readonly pivotHandle: CadReferencePivotHandle;
+  private readonly ringRaycaster = new THREE.Raycaster();
+  private readonly ringPointer = new THREE.Vector2();
+  private pendingDoubleClickTimer: number | null = null;
   private readonly selectedReferenceNames = new Set<string>();
   private transformSnapshot: TransformSnapshot | null = null;
   private readonly ringClicks = new RotateRingDoubleClick();
@@ -114,6 +119,7 @@ export class CadReferenceBlockController {
     this.controls.size = 0.8;
     this.releasePointerLifecycle = installTransformPointerLifecycle(options.domElement, this.controls);
     this.helper = this.controls.getHelper();
+    completeRotationRings(this.helper);
     this.helper.visible = false;
     this.pivot.name = "FrameLogicCadReferenceBlockPivot";
     this.selectionBox.name = "FrameLogicCadReferenceBlockSelection";
@@ -125,6 +131,17 @@ export class CadReferenceBlockController {
     );
 
     this.badge = this.createBadge(options.container);
+    this.pivotHandle = new CadReferencePivotHandle(
+      options.domElement, options.cameraProvider, this.pivot,
+      options.setCameraEnabled, () => {
+        this.armedPivot = true;
+        this.armedMoveAxis = null;
+        this.destinationDown = false;
+        this.badge.textContent = this.activeMode === "rotate"
+          ? "ROTATE DWG · Selecciona SNAP para el centro de giro"
+          : "MOVE DWG · Selecciona SNAP para el punto base";
+      },
+    );
 
     this.controls.addEventListener(
       "mouseDown",
@@ -197,6 +214,7 @@ export class CadReferenceBlockController {
       this.selectionBox,
     );
     this.selectionBox.dispose();
+    this.pivotHandle.dispose();
     this.releasePointerLifecycle();
     this.controls.dispose();
     this.badge.remove();
@@ -570,11 +588,17 @@ export class CadReferenceBlockController {
     this.controls.showZ = true;
     this.controls.attach(this.pivot);
     this.helper.visible = true;
+    this.pivotHandle.activate(mode);
     if (mode === "rotate") this.options.onRotateAxis?.("Z");
     return true;
   }
 
   private deactivateTransform(): void {
+    this.pivotHandle.deactivate();
+    if (this.pendingDoubleClickTimer !== null) {
+      clearTimeout(this.pendingDoubleClickTimer);
+      this.pendingDoubleClickTimer = null;
+    }
     const wasRotating = this.activeMode === "rotate";
     this.transformSnapshot = null;
     this.activeMode = null;
