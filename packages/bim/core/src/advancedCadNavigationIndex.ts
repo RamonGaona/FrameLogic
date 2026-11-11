@@ -139,6 +139,8 @@ export async function createBimCore(
         core.designModel,
       lineScene:
         core.cadLineScene,
+      pointScene:
+        core.cadPointScene,
       polylines:
         core.cadPolylines,
       lineSelection:
