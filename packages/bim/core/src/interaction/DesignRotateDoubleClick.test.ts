@@ -75,8 +75,8 @@ function fixture() {
   type Args = ConstructorParameters<typeof DesignRotateController>;
   const controller = new DesignRotateController(
     world, new THREE.PerspectiveCamera(), dom,
-    model, scene as Args[4], selection as Args[5],
-    history, snap as Args[7], vi.fn(),
+    model, scene as unknown as Args[4], selection as unknown as Args[5],
+    history, snap as unknown as Args[7], vi.fn(),
   );
   expect(controller.activate()).toBe(true);
   const controls = Reflect.get(controller, "controls") as { axis: string | null };
