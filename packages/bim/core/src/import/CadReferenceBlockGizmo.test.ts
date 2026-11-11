@@ -42,6 +42,7 @@ function fixture() {
   Reflect.set(controller, "controls", controls);
   Reflect.set(controller, "badge", badge);
   Reflect.set(controller, "interactionEnabled", true);
+  Reflect.set(controller, "pendingDoubleClickTimer", null);
   Reflect.set(controller, "syncGeometry", vi.fn());
   Reflect.set(controller, "refreshSelectionVisual", vi.fn());
   const handler = (method: string) => (...args: any[]) =>
@@ -140,5 +141,40 @@ describe("DWG gizmo events: don't reselect imported CAD through rotate ring", ()
     expect(Reflect.get(f.controller, "armedPivot")).toBe(true);
     expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(0);
     expect(f.pivot.position.x).toBeCloseTo(5);
+  });
+
+  it("detects +90° on two pointer releases even if browser never emits native dblclick", async () => {
+    const f = fixture();
+    Reflect.set(f.controller, "activeMode", "rotate");
+    f.controls.axis = "Z";
+    vi.spyOn(Date, "now").mockReturnValue(1000);
+    const noReselect = vi.spyOn(f.controller, "selectReference");
+    for (let i = 0; i < 2; i++) {
+      Reflect.set(f.controller, "ringGesture", {
+        pointerId: 7, x: 120, y: 80, axis: "Z", dragged: false,
+      });
+      Reflect.set(f.controller, "pointerDownActive", true);
+      Reflect.set(f.controller, "transformPointerActive", true);
+      f.release();
+    }
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(noReselect).not.toHaveBeenCalled();
+    expect(f.history.recordOperation).toHaveBeenCalledOnce();
+    expect(f.model.cadLines.get(f.line.id)?.start.y).toBeCloseTo(-5);
+    expect(f.model.cadLines.get(f.line.id)?.end.y).toBeCloseTo(5);
+    vi.restoreAllMocks();
+  });
+
+  it("does not reselect a CAD reference below an active gizmo even if native picking missed", () => {
+    const f = fixture();
+    Reflect.set(f.controller, "activeMode", "rotate");
+    Reflect.set(f.controller, "pointerDownActive", true);
+    Reflect.set(f.controller, "transformPointerActive", false);
+    const selected = vi.spyOn(f.controller, "selectReference");
+    const event = f.release();
+    expect(selected).not.toHaveBeenCalled();
+    expect(f.controller.isRotateActive).toBe(true);
+    expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
   });
 });
