@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.105",
+  "version": "0.1.106",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -18,7 +18,7 @@
     "test:precision-stage2": "vitest run packages/bim/core/src/navigation/AdaptivePieceLod.test.ts packages/bim/core/src/precision/SnapTrackingMath.test.ts packages/bim/core/src/design/DesignSceneController.test.ts",
     "test:drawings": "vitest run packages/bim/core/src/drawing/AutoDrawingPlanner.test.ts",
     "test:gizmos": "vitest run packages/bim/core/src/interaction/DesignTransformCtrlCopy.test.ts packages/bim/core/src/interaction/DesignTransformAssemblyCtrlCopy.test.ts packages/bim/core/src/interaction/AlignController.test.ts packages/bim/core/src/interaction/PieceMoveCopySession.test.ts packages/bim/core/src/interaction/TransformGizmoReliability.test.ts packages/bim/core/src/interaction/CadWindowSelectionController.test.ts packages/bim/core/src/interaction/MoveSnapDestinationPolicy.test.ts packages/bim/core/src/interaction/DesignPlacementController.test.ts",
-    "test:instance-tree": "vitest run packages/bim/core/src/navigation/findInstanceTreeBody.test.ts packages/bim/core/src/navigation/PieceAppearanceController.test.ts packages/bim/core/src/navigation/FileMenuController.test.ts",
+    "test:instance-tree": "vitest run packages/bim/core/src/navigation/findInstanceTreeBody.test.ts packages/bim/core/src/navigation/PieceAppearanceController.test.ts packages/bim/core/src/navigation/FileMenuController.test.ts packages/bim/core/src/project/ProjectFileSaveDialog.test.ts",
     "test:version-badge": "vitest run tests/buildVersionBadge.test.ts",
     "test:assembly-hierarchy": "vitest run packages/domain/src/__test__/AssemblyHierarchy.test.ts packages/bim/core/src/navigation/AssemblyHierarchyHistory.test.ts packages/bim/core/src/navigation/InstanceTreeHierarchy.test.ts",
     "test:copybase": "vitest run packages/bim/core/src/interaction/AssemblyCopyStructure.test.ts packages/bim/core/src/interaction/PieceMoveCopySessionHierarchy.test.ts packages/bim/core/src/interaction/CadCopyControllerPieces.test.ts packages/bim/core/src/interaction/CadCommandInputCopy.test.ts",
