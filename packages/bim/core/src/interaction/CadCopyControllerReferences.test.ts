@@ -37,9 +37,9 @@ describe("COPYBASE for an imported DWG/DXF block", () => {
         setStatus,
         options: {
           beforeStart,
-          pointSelection: { setEnabled: setEnabledPoints },
-          lineSelection: { setEnabled: setEnabledLines },
-          designSelection: { setEnabled: setEnabledDesign },
+          pointSelection: { setEnabled: setEnabledPoints, getSelectedIds: () => [] },
+          lineSelection: { setEnabled: setEnabledLines, getSelectedIds: () => [] },
+          designSelection: { setEnabled: setEnabledDesign, getSelectedIds: () => [] },
           clearGeometryQueryCache: clearCache,
         },
       },
