@@ -1,4 +1,7 @@
 import { installTransformPointerLifecycle } from "./TransformGizmoReliability";
+import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
+import type { CadReferenceBlockController } from "../import/CadReferenceBlockController";
+import type { CadSelectionState } from "./CadUnifiedSelectionController";
 import * as THREE from "three";
 
 import {
@@ -178,6 +181,63 @@ export class CadMixedMoveController {
   private armedPivot =
     false;
 
+  private armedCopy = false;
+  private ctrlAtStart = false;
+  private draggingCopy = false;
+  private readonly handleCopyPointerDown = (event: PointerEvent): void => {
+    // Window capture runs BEFORE the native Three.js gizmo listener. Read Ctrl
+    // before TransformControls emits mouseDown; otherwise Ctrl+axis can move.
+    const target = event.target;
+    if (this.active && event.button === 0 && (
+      !target || target === this.domElement
+      || (target instanceof Node && this.domElement.contains(target))
+    )) this.ctrlAtStart = event.ctrlKey;
+  };
+  private copySelectionAtOffset: ((offset: THREE.Vector3) => number) | null = null;
+  private referenceController: CadReferenceBlockController | null = null;
+  private referenceNames: readonly string[] = [];
+
+  setMixedCopyHandler(handler: (delta: THREE.Vector3) => number): void {
+    this.copySelectionAtOffset = handler;
+  }
+
+  private combinedState(): CadSelectionState {
+    const base = this.selection.getState();
+    if (!this.referenceNames.length) return base;
+    const layerIds = new Set(this.designModel.layers.getAll()
+      .filter(layer => this.referenceNames.some(
+        name => layer.name.startsWith(`CAD ${name} · `),
+      )).map(layer => layer.id));
+    const lines = new Set(base.lineIds);
+    const points = new Set(base.pointIds);
+    for (const line of this.designModel.cadLines.getAll()) {
+      if (layerIds.has(line.layerId)) lines.add(line.id);
+    }
+    for (const point of this.designModel.cadPoints.getAll()) {
+      if (layerIds.has(point.layerId)) points.add(point.id);
+    }
+    return {
+      ...base,
+      lineIds: [...lines],
+      pointIds: [...points],
+      items: [
+        ...base.items,
+        ...[...lines].filter(id => !base.lineIds.includes(id))
+          .map(id => ({ type: "LINE" as const, id })),
+        ...[...points].filter(id => !base.pointIds.includes(id))
+          .map(id => ({ type: "POINT" as const, id })),
+      ],
+      selectedTypeCount: base.selectedTypeCount + Number(this.referenceNames.length > 0),
+    };
+  }
+
+  private isReferenceLayer(layerId: string): boolean {
+    const layer = this.designModel.layers.get(layerId);
+    return Boolean(layer && this.referenceNames.some(
+      name => layer.name.startsWith(`CAD ${name} · `),
+    ));
+  }
+
 
   private armedPointerDownX =
     0;
@@ -344,6 +404,7 @@ export class CadMixedMoveController {
     );
 
 
+    window.addEventListener("pointerdown", this.handleCopyPointerDown, true);
     this.controls.addEventListener(
       "mouseDown",
       this.handleMoveStart,
@@ -362,7 +423,7 @@ export class CadMixedMoveController {
     );
 
 
-    this.domElement.addEventListener(
+    window.addEventListener(
       "pointerdown",
       this.handleArmedPointerDown,
       true,
@@ -419,10 +480,17 @@ export class CadMixedMoveController {
   activate():
     boolean {
 
+    const reference = getActiveCadReferenceBlockController();
+    const names = reference?.getSelectedReferenceNames() ?? [];
+    const base = this.selection.getState();
+    const sources = Number(base.pieceIds.length > 0)
+      + Number(base.pointIds.length > 0)
+      + Number(base.lineIds.length > 0)
+      + Number(names.length > 0);
+    this.referenceNames = [...names];
     if (
       this.disposed
-      || !this.selection.hasSelection
-      || !this.selection.isMixed
+      || sources < 1
       || !this.canMoveSelection()
     ) {
 
@@ -435,7 +503,10 @@ export class CadMixedMoveController {
 
     this.active =
       true;
-
+    this.referenceController = names.length ? reference : null;
+    this.referenceController?.setInteractionEnabled(false);
+    this.armedCopy = false;
+    this.draggingCopy = false;
 
     this.armedMoveAxis =
       null;
@@ -480,7 +551,12 @@ export class CadMixedMoveController {
 
     this.active =
       false;
-
+    this.referenceController?.setInteractionEnabled(true);
+    this.referenceController = null;
+    this.referenceNames = [];
+    this.armedCopy = false;
+    this.draggingCopy = false;
+    this.ctrlAtStart = false;
 
     this.dragStart =
       null;
@@ -657,8 +733,7 @@ export class CadMixedMoveController {
     boolean {
 
     const state =
-      this.selection
-        .getState();
+      this.combinedState();
 
 
     for (
@@ -733,10 +808,8 @@ export class CadMixedMoveController {
           );
 
 
-      if (
-        layer?.visible === false
-        || layer?.locked === true
-      ) {
+      if ((layer?.visible === false || layer?.locked === true)
+          && !this.isReferenceLayer(point.layerId)) {
 
         return false;
 
@@ -775,10 +848,8 @@ export class CadMixedMoveController {
           );
 
 
-      if (
-        layer?.visible === false
-        || layer?.locked === true
-      ) {
+      if ((layer?.visible === false || layer?.locked === true)
+          && !this.isReferenceLayer(line.layerId)) {
 
         return false;
 
@@ -796,8 +867,7 @@ export class CadMixedMoveController {
     void {
 
     const state =
-      this.selection
-        .getState();
+      this.combinedState();
 
 
     const center =
@@ -992,7 +1062,10 @@ export class CadMixedMoveController {
 
       this.armedMoveAxis =
         null;
-
+      this.armedCopy = false;
+      this.draggingCopy = this.ctrlAtStart
+        && this.controls.axis !== "XYZ"
+        && Boolean(this.copySelectionAtOffset);
 
       this.armedPivot =
         false;
@@ -1098,10 +1171,7 @@ export class CadMixedMoveController {
       }
 
 
-      this.applyDelta(
-        delta,
-      );
-
+      if (!this.draggingCopy) this.applyDelta(delta);
 
       this.previousPivot.copy(
         this.pivot.position,
@@ -1177,6 +1247,8 @@ export class CadMixedMoveController {
 
         this.armedMoveAxis =
           axis as MoveNumericAxis;
+        this.armedCopy = this.draggingCopy;
+        this.draggingCopy = false;
 
 
         this.armedPivot =
@@ -1225,6 +1297,17 @@ export class CadMixedMoveController {
       }
 
 
+      if (before && this.draggingCopy && movedDistance > 1e-9 && axis !== "XYZ") {
+        try { this.copySelectionAtOffset?.(this.pivot.position.clone().sub(this.dragStartPivot)); }
+        catch (error) { console.error("COPY MIXED:", error); }
+        this.pivot.position.copy(this.dragStartPivot);
+        this.pivot.updateMatrixWorld(true);
+        this.previousPivot.copy(this.dragStartPivot);
+        this.draggingCopy = false;
+        this.clearArmedSnap();
+        return;
+      }
+      this.draggingCopy = false;
       this.clearArmedSnap();
 
 
@@ -1266,6 +1349,9 @@ export class CadMixedMoveController {
       }
 
 
+      const target = event.target;
+      if (target && target !== this.domElement
+        && !(target instanceof Node && this.domElement.contains(target))) return;
       this.armedPointerDownX =
         event.clientX;
 
@@ -1276,6 +1362,8 @@ export class CadMixedMoveController {
 
       this.armedPointerDownActive =
         true;
+      event.preventDefault();
+      event.stopImmediatePropagation();
 
   };
 
@@ -1398,6 +1486,12 @@ export class CadMixedMoveController {
           axis,
           snap.point,
         );
+      if (this.armedCopy && correction.lengthSq() > 1e-18) {
+        try { this.copySelectionAtOffset?.(correction); }
+        catch (error) { console.error("COPY MIXED at SNAP:", error); }
+        // Repeated copies retain the original selection and pivot.
+        return;
+      }
 
 
       if (
@@ -1527,6 +1621,7 @@ export class CadMixedMoveController {
 
     this.armedMoveAxis =
       null;
+    this.armedCopy = false;
 
 
     this.armedPivot =
@@ -1549,8 +1644,7 @@ export class CadMixedMoveController {
     void {
 
     const state =
-      this.selection
-        .getState();
+      this.combinedState();
 
 
     for (
@@ -1732,8 +1826,7 @@ export class CadMixedMoveController {
     MixedMoveSnapshot {
 
     const state =
-      this.selection
-        .getState();
+      this.combinedState();
 
 
     const pieces =
@@ -2245,7 +2338,7 @@ export class CadMixedMoveController {
     );
 
 
-    this.domElement.removeEventListener(
+    window.removeEventListener(
       "pointerdown",
       this.handleArmedPointerDown,
       true,
@@ -2273,6 +2366,7 @@ export class CadMixedMoveController {
 
 
     this.releasePointerLifecycle();
+    window.removeEventListener("pointerdown", this.handleCopyPointerDown, true);
     this.controls.dispose();
 
   }

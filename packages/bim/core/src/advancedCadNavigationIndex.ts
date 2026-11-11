@@ -139,6 +139,8 @@ export async function createBimCore(
         core.designModel,
       lineScene:
         core.cadLineScene,
+      pointScene:
+        core.cadPointScene,
       polylines:
         core.cadPolylines,
       lineSelection:
@@ -166,6 +168,12 @@ export async function createBimCore(
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
     });
+
+  // Ctrl+axis in the unified mixed MOVE gizmo uses exactly the same
+  // atomic copying semantics as COPYBASE for the same selection.
+  core.cadMixedMove.setMixedCopyHandler(
+    delta => cadCopy.copyCurrentSelectionAtOffset(delta),
+  );
 
   core.instanceTree.setCopySelectionMode(
     () => cadCopy.isAwaitingSelection,

@@ -36,6 +36,8 @@ import type {
 
 import type { DesignSceneController } from "../design/DesignSceneController";
 import { PieceMoveCopySession } from "./PieceMoveCopySession";
+import { copyUnifiedCadSelection } from "./UnifiedCadCopyTransaction";
+import type { CadPointSceneController } from "../design/CadPointSceneController";
 import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
 import type { CadReferenceBlockController } from "../import/CadReferenceBlockController";
 
@@ -51,6 +53,7 @@ export interface CadCopyControllerOptions {
   readonly cameraProvider: () => THREE.Camera;
   readonly designModel: DesignModel;
   readonly lineScene: CadLineSceneController;
+  readonly pointScene: CadPointSceneController;
   readonly polylines: CadPolylineRegistryController;
   readonly lineSelection: CadLineSelectionController;
   readonly pointSelection: CadPointSelectionController;
@@ -126,6 +129,8 @@ export class CadCopyController {
   private sourceAssemblyIds: string[] = [];
   private sourceReferenceNames: string[] = [];
   private copyingReferences: CadReferenceBlockController | null = null;
+  private sourcePointIds: string[] = [];
+  private unifiedCopy = false;
   private basePoint: THREE.Vector3 | null = null;
 
   constructor(
@@ -177,9 +182,34 @@ export class CadCopyController {
     this.sourceLineIds = [];
     this.sourcePieceIds = [];
     this.sourceAssemblyIds = [];
+    this.sourcePointIds = [];
     this.sourceReferenceNames = referenceNames;
     this.copyingReferences = referenceNames.length ? reference : null;
+    this.unifiedCopy = false;
     this.options.pointSelection.setEnabled(false);
+
+    const pieceIds = this.options.designSelection.getSelectedIds()
+      .filter(id => this.options.designModel.pieceInstances.get(id));
+    const lineIds = this.expandSelection(this.options.lineSelection.getSelectedIds());
+    const pointIds = this.options.pointSelection.getSelectedIds();
+    const types = Number(pieceIds.length > 0) + Number(lineIds.length > 0)
+      + Number(pointIds.length > 0) + Number(referenceNames.length > 0);
+    if (types > 1 || pointIds.length > 0) {
+      this.sourcePieceIds = [...pieceIds];
+      this.sourceAssemblyIds = pieceIds.length ? [...this.options.selectedAssemblyIds()] : [];
+      this.sourceLineIds = lineIds;
+      this.sourcePointIds = [...pointIds];
+      this.unifiedCopy = true;
+      this.copyingReferences?.setInteractionEnabled(false);
+      this.options.pointSelection.setEnabled(false);
+      this.options.lineSelection.setEnabled(false);
+      this.options.designSelection.setEnabled(false);
+      this.stage = "BASE";
+      this.setStatus(
+        `COPYBASE MIXTO · ${pieceIds.length} piezas · ${lineIds.length} líneas · ${pointIds.length} puntos · ${referenceNames.length} DWG · selecciona SNAP base`,
+      );
+      return true;
+    }
 
     if (this.copyingReferences) {
       // The reference picker must not intercept base/destination pointerups.
@@ -213,10 +243,11 @@ export class CadCopyController {
     // No preselection: allow selecting pieces on canvas (or entire assemblies
     // in INSTANCIAS), and CAD lines, then confirm with Enter.
     this.stage = "SELECT";
+    this.options.pointSelection.setEnabled(true);
     this.options.lineSelection.setEnabled(true);
     this.options.designSelection.setEnabled(true);
     this.setStatus(
-      "COPY · selecciona piezas o ensambles (Ctrl añade) · Enter confirmar · Esc cancelar",
+      "COPY · selecciona piezas, CAD y/o DWG (Ctrl añade) · Enter confirmar · Esc cancelar",
     );
     return true;
   }
@@ -249,6 +280,8 @@ export class CadCopyController {
     this.sourceLineIds = [];
     this.sourcePieceIds = [];
     this.sourceAssemblyIds = [];
+    this.sourcePointIds = [];
+    this.unifiedCopy = false;
     this.sourceReferenceNames = [];
     this.copyingReferences?.setInteractionEnabled(true);
     this.copyingReferences = null;
@@ -384,6 +417,29 @@ export class CadCopyController {
   };
 
   private confirmSelection(): void {
+    const pieces = this.options.designSelection.getSelectedIds();
+    const lines = this.expandSelection(this.options.lineSelection.getSelectedIds());
+    const points = this.options.pointSelection.getSelectedIds();
+    const references = getActiveCadReferenceBlockController();
+    const names = [...(references?.getSelectedReferenceNames() ?? [])];
+    const types = Number(pieces.length > 0) + Number(lines.length > 0)
+      + Number(points.length > 0) + Number(names.length > 0);
+    if (types > 1 || points.length > 0 || names.length > 0) {
+      this.sourcePieceIds = [...pieces];
+      this.sourceAssemblyIds = pieces.length ? [...this.options.selectedAssemblyIds()] : [];
+      this.sourceLineIds = lines;
+      this.sourcePointIds = [...points];
+      this.sourceReferenceNames = names;
+      this.copyingReferences = names.length ? references : null;
+      this.unifiedCopy = true;
+      this.copyingReferences?.setInteractionEnabled(false);
+      this.options.pointSelection.setEnabled(false);
+      this.options.lineSelection.setEnabled(false);
+      this.options.designSelection.setEnabled(false);
+      this.stage = "BASE";
+      this.setStatus("COPYBASE MIXTO · selecciona SNAP base para toda la selección");
+      return;
+    }
     if (this.capturePieceSelection()) return;
 
     const expanded = this.expandSelection(
@@ -430,9 +486,58 @@ export class CadCopyController {
     return Array.from(expanded);
   }
 
+  /** Shared COPY used by Ctrl+gizmo on any mixed selection, without
+   * entering the two-point command or changing the original selection. */
+  copyCurrentSelectionAtOffset(delta: THREE.Vector3): number {
+    const reference = getActiveCadReferenceBlockController();
+    return copyUnifiedCadSelection({
+      model: this.options.designModel,
+      designScene: this.options.designScene,
+      lineScene: this.options.lineScene,
+      pointScene: this.options.pointScene,
+      polylines: this.options.polylines,
+      designSelection: this.options.designSelection,
+      history: this.options.history,
+      onCopiedAssemblySelection: this.options.onCopiedAssemblySelection,
+      clearCache: this.options.clearGeometryQueryCache,
+    }, {
+      pieceIds: this.options.designSelection.getSelectedIds(),
+      assemblyIds: this.options.selectedAssemblyIds(),
+      lineIds: this.options.lineSelection.getSelectedIds(),
+      pointIds: this.options.pointSelection.getSelectedIds(),
+      referenceNames: reference?.getSelectedReferenceNames() ?? [],
+    }, delta);
+  }
+
   private commitCopy(
     delta: THREE.Vector3,
   ): void {
+    if (this.unifiedCopy) {
+      try {
+        const total = copyUnifiedCadSelection({
+          model: this.options.designModel,
+          designScene: this.options.designScene,
+          lineScene: this.options.lineScene,
+          pointScene: this.options.pointScene,
+          polylines: this.options.polylines,
+          designSelection: this.options.designSelection,
+          history: this.options.history,
+          onCopiedAssemblySelection: this.options.onCopiedAssemblySelection,
+          clearCache: this.options.clearGeometryQueryCache,
+        }, {
+          pieceIds: this.sourcePieceIds,
+          assemblyIds: this.sourceAssemblyIds,
+          lineIds: this.sourceLineIds,
+          pointIds: this.sourcePointIds,
+          referenceNames: this.sourceReferenceNames,
+        }, delta);
+        this.cancel();
+        this.setStatus(`COPYBASE MIXTO · ${total} elementos copiados en una operación`, 1800);
+      } catch (error) {
+        this.setStatus(`COPYBASE MIXTO · ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return;
+    }
     if (this.sourceReferenceNames.length && this.copyingReferences) {
       const controller = this.copyingReferences;
       try {

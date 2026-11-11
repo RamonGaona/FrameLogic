@@ -5040,37 +5040,29 @@ function startMoveCommand():
       .length;
 
 
+  const reference = getActiveCadReferenceBlockController();
+  const hasReference = (reference?.getSelectedReferenceNames().length ?? 0) > 0;
   const selectedTypeCount =
-    Number(
-      selectedLineCount > 0,
-    )
-    + Number(
-        selectedPointCount > 0,
-      )
-    + Number(
-        selectedPieceCount > 0,
-      );
+    Number(selectedLineCount > 0)
+    + Number(selectedPointCount > 0)
+    + Number(selectedPieceCount > 0)
+    + Number(hasReference);
 
+  // All preselected types must be transformed by one gizmo and one history
+  // entry. Only a reference with no other selected type uses its own tool.
+  if (hasReference && selectedTypeCount === 1) {
+    cadCommandManager.cancelActive();
+    return reference!.activateMove();
+  }
 
   return selectedTypeCount > 1
     ? cadCommandManager
         .start(
           moveMixedSelectionCommand,
         )
-    : selectedLineCount > 0
-      ? cadCommandManager
-          .start(
-            moveCadLineCommand,
-          )
-    : selectedPointCount > 0
-      ? cadCommandManager
-          .start(
-            moveCadPointCommand,
-          )
-      : cadCommandManager
-          .start(
-            moveCommand,
-          );
+    : selectedLineCount > 0 || selectedPointCount > 0
+      ? cadCommandManager.start(moveMixedSelectionCommand)
+      : cadCommandManager.start(moveCommand);
 
 }
 
