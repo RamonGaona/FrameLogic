@@ -63,6 +63,9 @@ export class CadNumericInputController {
   private readonly fields:
     HTMLDivElement;
 
+  private readonly rotateAxes:
+    HTMLDivElement;
+
 
   private readonly applyButton:
     HTMLButtonElement;
@@ -253,6 +256,28 @@ export class CadNumericInputController {
       "6px";
 
 
+    this.rotateAxes = document.createElement("div");
+    this.rotateAxes.dataset["framelogicRotateAxes"] = "true";
+    this.rotateAxes.title = "Doble clic en el aro X, Y o Z del gizmo: giro de +90°";
+    Object.assign(this.rotateAxes.style, {
+      display: "none", alignItems: "center", gap: "4px",
+    });
+    for (const axis of ["X", "Y", "Z"] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = axis;
+      button.dataset["rotateAxis"] = axis;
+      button.title = `Girar alrededor del eje ${axis}`;
+      button.setAttribute("aria-label", `Eje de rotación ${axis}`);
+      Object.assign(button.style, {
+        padding: "5px 9px", borderRadius: "5px",
+        border: "1px solid rgba(255,255,255,0.38)",
+        background: "#324153", color: "white", cursor: "pointer",
+      });
+      button.addEventListener("click", () => this.showRotate(axis, true));
+      this.rotateAxes.append(button);
+    }
+
     this.applyButton =
       document.createElement(
         "button",
@@ -297,6 +322,7 @@ export class CadNumericInputController {
 
     this.root.append(
       this.title,
+      this.rotateAxes,
       this.fields,
       this.applyButton,
     );
@@ -372,6 +398,7 @@ export class CadNumericInputController {
     axis:
       MoveNumericAxis,
   ): void {
+    this.rotateAxes.style.display = "none";
 
     this.mode =
       "MOVE";
@@ -423,6 +450,7 @@ export class CadNumericInputController {
   showRotate(
     axis:
       RotateNumericAxis,
+    focus = true,
   ): void {
 
     this.mode =
@@ -438,29 +466,34 @@ export class CadNumericInputController {
 
 
     this.title.textContent =
-      `ROTATE · ${axis}`;
+      `ROTATE · ${axis} · Ángulo`;
 
+    this.rotateAxes.style.display = "flex";
+    for (const button of this.rotateAxes.querySelectorAll<HTMLButtonElement>("button")) {
+      const selected = button.dataset["rotateAxis"] === axis;
+      button.setAttribute("aria-pressed", String(selected));
+      button.style.background = selected ? "#24668d" : "#324153";
+    }
 
-    this.applyButton.textContent =
-      "Aplicar";
+    this.applyButton.textContent = "Girar";
 
+    this.buildInputs(["Ángulo"], "°");
 
-    this.buildInputs(
-      [axis],
-      "°",
-    );
+    const input = this.fields.querySelector<HTMLInputElement>("input");
+    if (input) {
+      input.value = "90";
+      input.setAttribute("aria-label", `Ángulo exacto en grados alrededor de ${axis}`);
+    }
 
+    this.root.style.display = "flex";
 
-    this.root.style.display =
-      "flex";
-
-
-    this.focusFirstInput();
+    if (focus) this.focusFirstInput();
 
   }
 
 
   showPoint(): void {
+    this.rotateAxes.style.display = "none";
 
     this.mode =
       "POINT";
@@ -502,6 +535,7 @@ export class CadNumericInputController {
 
 
   showLine(): void {
+    this.rotateAxes.style.display = "none";
 
     this.mode =
       "LINE";
@@ -543,6 +577,7 @@ export class CadNumericInputController {
 
 
   showLineDistance(): void {
+    this.rotateAxes.style.display = "none";
 
     this.mode =
       "LINE_DISTANCE";
@@ -582,6 +617,7 @@ export class CadNumericInputController {
 
 
   hide(): void {
+    this.rotateAxes.style.display = "none";
 
     this.mode =
       null;

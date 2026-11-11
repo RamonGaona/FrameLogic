@@ -1,4 +1,5 @@
 import { installTransformPointerLifecycle, completeRotationRings } from "./TransformGizmoReliability";
+import { RotateRingDoubleClick } from "./RotateRingDoubleClick";
 import * as THREE from "three";
 
 import {
@@ -44,6 +45,39 @@ interface RotateStartState {
 
 export class DesignRotateController {
   private readonly releasePointerLifecycle: () => void;
+
+  private readonly ringDoubleClick = new RotateRingDoubleClick();
+  private ringGesture: {
+    pointerId: number; x: number; y: number; axis: RotateNumericAxis | null; dragged: boolean;
+  } | null = null;
+
+  /** Capture pointer positions before TransformControls handles the ring. */
+  private readonly handleRingPointerDown = (event: PointerEvent): void => {
+    if (!this.active || event.button !== 0 || this.centerDragging) return;
+    this.ringGesture = {
+      pointerId: event.pointerId, x: event.clientX, y: event.clientY, axis: null, dragged: false,
+    };
+  };
+
+  private readonly handleRingPointerMove = (event: PointerEvent): void => {
+    const gesture = this.ringGesture;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (Math.hypot(gesture.x - event.clientX, gesture.y - event.clientY) > 5) {
+      gesture.dragged = true;
+    }
+  };
+
+  private readonly handleRingDoubleClick = (event: MouseEvent): void => {
+    if (!this.active || this.disposed || this.centerDragging || event.button !== 0) return;
+    const axis = this.ringDoubleClick.take(event.clientX, event.clientY, Date.now());
+    if (!axis) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    // A confirmed double click is exactly one 90° operation. No asynchronous
+    // timers: the two native clicks have finished before dblclick is dispatched.
+    this.onNumericAxis(axis);
+    this.applyNumericRotation(axis, 90);
+  };
 
   private readonly scene:
     THREE.Scene;
@@ -388,6 +422,10 @@ export class DesignRotateController {
      * interceptamos el gesto antes de que TransformControls
      * intente interpretar el mismo pointerdown.
      */
+    this.domElement.addEventListener("pointerdown", this.handleRingPointerDown, true);
+    this.domElement.addEventListener("dblclick", this.handleRingDoubleClick, true);
+    window.addEventListener("pointermove", this.handleRingPointerMove, true);
+
     this.domElement.addEventListener(
       "pointerdown",
       this.handleCenterPointerDown,
@@ -453,6 +491,8 @@ export class DesignRotateController {
     this.active =
       true;
 
+    this.ringGesture = null;
+    this.ringDoubleClick.reset();
 
     this.resetPivotToSelectionBase();
 
@@ -493,6 +533,8 @@ export class DesignRotateController {
     this.active =
       false;
 
+    this.ringGesture = null;
+    this.ringDoubleClick.reset();
 
     this.centerDragging =
       false;
@@ -594,8 +636,8 @@ export class DesignRotateController {
 
     if (
       !this.active
-      || this.transformedObjects.size
-        < 1
+      || this.transformedObjects.size < 1
+      || !Number.isFinite(degrees)
     ) {
 
       return false;
@@ -1016,6 +1058,8 @@ export class DesignRotateController {
     this.centerHandle.visible =
       true;
 
+    this.ringGesture = null;
+    this.ringDoubleClick.reset();
 
     this.centerArmed =
       false;
@@ -1063,6 +1107,10 @@ export class DesignRotateController {
       const axis =
         this.controls.axis;
 
+      if (this.ringGesture) {
+        this.ringGesture.axis = axis === "X" || axis === "Y" || axis === "Z"
+          ? axis : null;
+      }
 
       if (
         axis === "X"
@@ -1296,6 +1344,16 @@ export class DesignRotateController {
 
       }
 
+
+      const gesture = this.ringGesture;
+      this.ringGesture = null;
+      if (gesture?.axis) {
+        this.ringDoubleClick.record(
+          gesture.axis, gesture.x, gesture.y, Date.now(), gesture.dragged,
+        );
+      } else {
+        this.ringDoubleClick.reset();
+      }
 
       this.commitTransforms();
 
@@ -1987,6 +2045,10 @@ export class DesignRotateController {
       this.handleRotateEnd,
     );
 
+
+    this.domElement.removeEventListener("pointerdown", this.handleRingPointerDown, true);
+    this.domElement.removeEventListener("dblclick", this.handleRingDoubleClick, true);
+    window.removeEventListener("pointermove", this.handleRingPointerMove, true);
 
     this.domElement.removeEventListener(
       "pointerdown",

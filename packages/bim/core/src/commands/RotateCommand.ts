@@ -25,6 +25,9 @@ implements CadCommand {
   private readonly rotate:
     DesignRotateController;
 
+  private readonly onActivated: () => void;
+  private readonly onDeactivated: () => void;
+
 
   constructor(
     selection:
@@ -32,6 +35,8 @@ implements CadCommand {
 
     rotate:
       DesignRotateController,
+    onActivated: () => void = () => {},
+    onDeactivated: () => void = () => {},
   ) {
 
     this.selection =
@@ -40,6 +45,9 @@ implements CadCommand {
 
     this.rotate =
       rotate;
+
+    this.onActivated = onActivated;
+    this.onDeactivated = onDeactivated;
 
   }
 
@@ -83,7 +91,9 @@ implements CadCommand {
       );
 
     }
-
+    else {
+      this.onActivated();
+    }
 
     return started;
 
@@ -93,7 +103,7 @@ implements CadCommand {
   cancel(): void {
 
     this.rotate.deactivate();
-
+    this.onDeactivated();
 
     this.selection.setClearOnEmptyClick(
       true,
