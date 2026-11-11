@@ -43,7 +43,7 @@ function fixture(options: {
       },
       selectedAssemblyIds: () => [],
     },
-  }) as CadCopyController;
+  }) as unknown as CadCopyController;
   return {controller, setStatus, reference};
 }
 describe("COPYBASE captures ALL simultaneously selected types", () => {
