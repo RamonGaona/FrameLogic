@@ -122,7 +122,7 @@ describe("MOVE unified selection with loose CAD + 3D + DWG", () => {
 
   it("Ctrl + X axis + two SNAP destinations requests two independent group copies", () => {
     const f = fixture();
-    const copy = vi.fn(() => 3);
+    const copy = vi.fn((_offset: THREE.Vector3) => 3);
     f.controller.setMixedCopyHandler(copy);
     expect(f.controller.activate()).toBe(true);
     const gizmo = Reflect.get(f.controller, "controls") as {axis: string | null};
