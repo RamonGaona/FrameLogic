@@ -185,7 +185,13 @@ export class CadMixedMoveController {
   private ctrlAtStart = false;
   private draggingCopy = false;
   private readonly handleCopyPointerDown = (event: PointerEvent): void => {
-    if (this.active && event.button === 0) this.ctrlAtStart = event.ctrlKey;
+    // Window capture runs BEFORE the native Three.js gizmo listener. Read Ctrl
+    // before TransformControls emits mouseDown; otherwise Ctrl+axis can move.
+    const target = event.target;
+    if (this.active && event.button === 0 && (
+      !target || target === this.domElement
+      || (target instanceof Node && this.domElement.contains(target))
+    )) this.ctrlAtStart = event.ctrlKey;
   };
   private copySelectionAtOffset: ((offset: THREE.Vector3) => number) | null = null;
   private referenceController: CadReferenceBlockController | null = null;
@@ -398,7 +404,7 @@ export class CadMixedMoveController {
     );
 
 
-    this.domElement.addEventListener("pointerdown", this.handleCopyPointerDown, true);
+    window.addEventListener("pointerdown", this.handleCopyPointerDown, true);
     this.controls.addEventListener(
       "mouseDown",
       this.handleMoveStart,
@@ -2356,7 +2362,7 @@ export class CadMixedMoveController {
 
 
     this.releasePointerLifecycle();
-    this.domElement.removeEventListener("pointerdown", this.handleCopyPointerDown, true);
+    window.removeEventListener("pointerdown", this.handleCopyPointerDown, true);
     this.controls.dispose();
 
   }
