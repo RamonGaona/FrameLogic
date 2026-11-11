@@ -1,4 +1,7 @@
 import * as THREE from "three";
+import type { CadHistoryController } from "../interaction/CadHistoryController";
+import type { RotateNumericAxis } from "../interaction/CadNumericInputController";
+import { RotateRingDoubleClick } from "../interaction/RotateRingDoubleClick";
 
 import {
   TransformControls,
@@ -56,6 +59,9 @@ export interface CadReferenceBlockControllerOptions {
   readonly setCameraEnabled: (enabled: boolean) => void;
   readonly clearGeometryQueryCache: () => void;
   readonly clearOtherSelections?: () => void;
+  readonly history?: CadHistoryController;
+  readonly onRotateAxis?: (axis: RotateNumericAxis) => void;
+  readonly onRotateDeactivated?: () => void;
 }
 
 /**
@@ -77,6 +83,9 @@ export class CadReferenceBlockController {
   private readonly badge: HTMLDivElement;
   private readonly selectedReferenceNames = new Set<string>();
   private transformSnapshot: TransformSnapshot | null = null;
+  private readonly ringClicks = new RotateRingDoubleClick();
+  private ringGesture: { pointerId: number; x: number; y: number;
+    axis: RotateNumericAxis | null; dragged: boolean } | null = null;
   private activeMode: "translate" | "rotate" | null = null;
   private pointerDownX = 0;
   private pointerDownY = 0;
@@ -130,6 +139,8 @@ export class CadReferenceBlockController {
       this.handlePointerUp,
       true,
     );
+    options.domElement.addEventListener("dblclick", this.handleRingDoubleClick, true);
+    window.addEventListener("pointermove", this.handleRingPointerMove, true);
     window.addEventListener(
       "keydown",
       this.handleKeyDown,
@@ -151,6 +162,8 @@ export class CadReferenceBlockController {
       this.handlePointerUp,
       true,
     );
+    this.options.domElement.removeEventListener("dblclick", this.handleRingDoubleClick, true);
+    window.removeEventListener("pointermove", this.handleRingPointerMove, true);
     window.removeEventListener(
       "keydown",
       this.handleKeyDown,
@@ -328,8 +341,75 @@ export class CadReferenceBlockController {
     return this.activateTransform("translate");
   }
 
+  get isRotateActive(): boolean {
+    return this.activeMode === "rotate" && this.selectedReferenceNames.size > 0;
+  }
+
   activateRotate(): boolean {
     return this.activateTransform("rotate");
+  }
+
+  /** Rotate all entities in the selected DWG/DXF reference(s), without
+   * editing or unlocking the reference's internal geometry individually. */
+  applyNumericRotation(axis: RotateNumericAxis, degrees: number): boolean {
+    if (!this.isRotateActive || !Number.isFinite(degrees) || degrees === 0) return false;
+    const before = this.captureSelection();
+    if (!before.lines.length && !before.points.length) return false;
+    const vector = axis === "X" ? new THREE.Vector3(1, 0, 0)
+      : axis === "Y" ? new THREE.Vector3(0, 1, 0)
+      : new THREE.Vector3(0, 0, 1);
+    const delta = new THREE.Quaternion().setFromAxisAngle(
+      vector, THREE.MathUtils.degToRad(degrees),
+    );
+    this.rotateSnapshot(before, before.pivotPosition, delta);
+    this.recordGeometryHistory(before);
+    return true;
+  }
+
+  private rotateSnapshot(
+    snapshot: TransformSnapshot,
+    center: THREE.Vector3,
+    delta: THREE.Quaternion,
+  ): void {
+    for (const line of snapshot.lines) {
+      this.options.designModel.cadLines.updateGeometry(
+        line.id, rotatePoint(line.start, center, delta), rotatePoint(line.end, center, delta),
+      );
+    }
+    for (const point of snapshot.points) {
+      this.options.designModel.cadPoints.updatePosition(
+        point.id, rotatePoint(point.position, center, delta),
+      );
+    }
+    this.syncGeometry();
+    this.refreshSelectionVisual();
+  }
+
+  private applyGeometrySnapshot(snapshot: TransformSnapshot): void {
+    for (const line of snapshot.lines) {
+      if (this.options.designModel.cadLines.get(line.id)) {
+        this.options.designModel.cadLines.updateGeometry(line.id, line.start, line.end);
+      }
+    }
+    for (const point of snapshot.points) {
+      if (this.options.designModel.cadPoints.get(point.id)) {
+        this.options.designModel.cadPoints.updatePosition(point.id, point.position);
+      }
+    }
+    this.syncGeometry();
+    this.refreshSelectionVisual();
+  }
+
+  private recordGeometryHistory(before: TransformSnapshot): void {
+    if (!this.options.history) return;
+    const after = this.captureSelection();
+    if (JSON.stringify({ lines: before.lines, points: before.points })
+      === JSON.stringify({ lines: after.lines, points: after.points })) return;
+    this.options.history.recordOperation(
+      "ROTATE DWG/DXF",
+      () => this.applyGeometrySnapshot(before),
+      () => this.applyGeometrySnapshot(after),
+    );
   }
 
   translateReference(
@@ -456,6 +536,8 @@ export class CadReferenceBlockController {
 
     this.controls.camera = this.options.cameraProvider();
     this.activeMode = mode;
+    this.ringGesture = null;
+    this.ringClicks.reset();
     this.pivot.position.copy(
       bounds.getCenter(new THREE.Vector3()),
     );
@@ -468,12 +550,17 @@ export class CadReferenceBlockController {
     this.controls.showZ = true;
     this.controls.attach(this.pivot);
     this.helper.visible = true;
+    if (mode === "rotate") this.options.onRotateAxis?.("Z");
     return true;
   }
 
   private deactivateTransform(): void {
+    const wasRotating = this.activeMode === "rotate";
     this.transformSnapshot = null;
     this.activeMode = null;
+    this.ringGesture = null;
+    this.ringClicks.reset();
+    if (wasRotating) this.options.onRotateDeactivated?.();
     this.controls.detach();
     this.helper.visible = false;
     this.options.setCameraEnabled(true);
@@ -486,6 +573,13 @@ export class CadReferenceBlockController {
       || this.selectedReferenceNames.size < 1
     ) return;
     this.transformSnapshot = this.captureSelection();
+    if (this.activeMode === "rotate") {
+      const axis = this.controls.axis;
+      if (this.ringGesture) {
+        this.ringGesture.axis = axis === "X" || axis === "Y" || axis === "Z" ? axis : null;
+      }
+      if (axis === "X" || axis === "Y" || axis === "Z") this.options.onRotateAxis?.(axis);
+    }
     this.options.setCameraEnabled(false);
   };
 
@@ -550,6 +644,18 @@ export class CadReferenceBlockController {
   };
 
   private readonly handleTransformEnd = (): void => {
+    if (this.activeMode === "rotate" && this.transformSnapshot) {
+      const gesture = this.ringGesture;
+      this.ringGesture = null;
+      if (gesture?.axis) this.ringClicks.record(
+        gesture.axis, gesture.x, gesture.y, Date.now(), gesture.dragged,
+      );
+      else this.ringClicks.reset();
+      this.recordGeometryHistory(this.transformSnapshot);
+      // ROTATE uses global X/Y/Z; reset only the temporary gizmo orientation.
+      this.pivot.quaternion.identity();
+      this.pivot.updateMatrixWorld(true);
+    }
     this.transformSnapshot = null;
     this.options.setCameraEnabled(true);
     this.syncGeometry();
@@ -591,6 +697,10 @@ export class CadReferenceBlockController {
     event: PointerEvent,
   ): void => {
     if (!this.interactionEnabled || event.button !== 0) return;
+    if (this.activeMode === "rotate") {
+      this.ringGesture = { pointerId: event.pointerId, x: event.clientX,
+        y: event.clientY, axis: null, dragged: false };
+    }
     this.pointerDownX = event.clientX;
     this.pointerDownY = event.clientY;
     this.pointerDownActive = true;
@@ -640,6 +750,24 @@ export class CadReferenceBlockController {
     ) {
       this.clearSelection();
     }
+  };
+
+  private readonly handleRingPointerMove = (event: PointerEvent): void => {
+    const gesture = this.ringGesture;
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 5) {
+      gesture.dragged = true;
+    }
+  };
+
+  private readonly handleRingDoubleClick = (event: MouseEvent): void => {
+    if (!this.isRotateActive || event.button !== 0) return;
+    const axis = this.ringClicks.take(event.clientX, event.clientY, Date.now());
+    if (!axis) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    this.options.onRotateAxis?.(axis);
+    this.applyNumericRotation(axis, 90);
   };
 
   private readonly handleKeyDown = (

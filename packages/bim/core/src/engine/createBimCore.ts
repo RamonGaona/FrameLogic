@@ -68,6 +68,8 @@ import type {
 import {
   DesignRotateController,
 } from "../interaction/DesignRotateController";
+import { CadEntityRotateController } from "../interaction/CadEntityRotateController";
+import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
 
 import {
   CadNumericInputController,
@@ -1657,6 +1659,22 @@ const cadNumericInput =
     container,
   );
 
+const cadEntityRotate = new CadEntityRotateController({
+  scene: world.scene.three,
+  camera: world.camera.three,
+  canvas,
+  model: designModel,
+  lineScene: cadLineScene,
+  pointScene: cadPointScene,
+  lineSelection: cadLineSelection,
+  pointSelection: cadPointSelection,
+  designSelection,
+  history: cadHistory,
+  setCameraEnabled: enabled => { world.camera.controls.enabled = enabled; },
+  onAxis: axis => cadNumericInput.showRotate(axis, false),
+  onDeactivate: () => cadNumericInput.hide(),
+});
+
 
 designTransform.setNumericAxisHandler(
   (
@@ -1795,10 +1813,14 @@ cadNumericInput.setRotateApplyHandler(
     degrees,
   ) => {
 
-    designRotate.applyNumericRotation(
-      axis,
-      degrees,
-    );
+    const reference = getActiveCadReferenceBlockController();
+    if (reference?.isRotateActive) {
+      reference.applyNumericRotation(axis, degrees);
+    } else if (cadEntityRotate.isActive) {
+      cadEntityRotate.applyNumericRotation(axis, degrees);
+    } else {
+      designRotate.applyNumericRotation(axis, degrees);
+    }
 
   },
 );
@@ -1861,6 +1883,12 @@ const rotateCommand =
     () => cadNumericInput.showRotate("Z", false),
     () => cadNumericInput.hide(),
   );
+
+const rotateCadEntityCommand = {
+  id: "ROTATE_CAD_ENTITY",
+  start: () => cadEntityRotate.activate(),
+  cancel: () => cadEntityRotate.deactivate(),
+};
 
 
 const pointCommand =
@@ -2664,29 +2692,20 @@ const handleCadKeyDown =
       cadNumericInput.hide();
 
 
-      if (
-        cadPointSelection
-          .getSelectedIds()
-          .length > 0
-        || cadLineSelection
-          .getSelectedIds()
-          .length > 0
-      ) {
-
+      const hasCadEntitySelection =
+        cadPointSelection.getSelectedIds().length > 0
+        || cadLineSelection.getSelectedIds().length > 0;
+      const hasPieceSelection = designSelection.getSelectedIds().length > 0;
+      if (hasCadEntitySelection && hasPieceSelection) {
         window.alert(
-          "ROTATE actualmente aplica a PieceInstance. Deselecciona puntos y líneas CAD antes de rotar.",
+          "ROTATE: selecciona entidades CAD o piezas 3D, no ambas clases simultáneamente.",
         );
-
-
         return;
-
       }
 
-
-      const started =
-        cadCommandManager.start(
-          rotateCommand,
-        );
+      const started = cadCommandManager.start(
+        hasCadEntitySelection ? rotateCadEntityCommand : rotateCommand,
+      );
 
 
       if (
@@ -2799,6 +2818,7 @@ canvas.addEventListener(
       designRotate.setCamera(
         activeCamera,
       );
+      cadEntityRotate.setCamera(activeCamera);
       cadPointMove.setCamera(activeCamera);
       cadLineMove.setCamera(activeCamera);
       cadMixedMove.setCamera(activeCamera);
@@ -5067,24 +5087,18 @@ function startRotateCommand():
   cadWorkPlaneEdit.cancel();
 
 
-  if (
-    cadPointSelection
-      .getSelectedIds()
-      .length > 0
-    || cadLineSelection
-      .getSelectedIds()
-      .length > 0
-  ) {
-
-    return false;
-
+  const reference = getActiveCadReferenceBlockController();
+  if (reference?.getSelectedReferenceNames().length) {
+    cadCommandManager.cancelActive();
+    return reference.activateRotate();
   }
 
-
-  return cadCommandManager
-    .start(
-      rotateCommand,
-    );
+  const hasCadEntities = cadPointSelection.getSelectedIds().length > 0
+    || cadLineSelection.getSelectedIds().length > 0;
+  if (hasCadEntities && designSelection.getSelectedIds().length > 0) return false;
+  return cadCommandManager.start(
+    hasCadEntities ? rotateCadEntityCommand : rotateCommand,
+  );
 
 }
 
@@ -5310,6 +5324,7 @@ function dispose(): void {
 
   designTransform.dispose();
 
+  cadEntityRotate.dispose();
   designRotate.dispose();
 
 
@@ -5659,6 +5674,13 @@ cadLineMove,
 cadMixedMove,
 
 designRotate,
+
+cadEntityRotate,
+
+showCadRotateInput: (axis: "X" | "Y" | "Z" = "Z") =>
+  cadNumericInput.showRotate(axis, false),
+
+hideCadRotateInput: () => cadNumericInput.hide(),
 
 setDesignTransformMode,
 
