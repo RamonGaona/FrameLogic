@@ -43,8 +43,10 @@ describe("COPYBASE for an imported DWG/DXF block", () => {
           clearGeometryQueryCache: clearCache,
         },
       },
-    ) as CadCopyController & {
+    ) as unknown as {
+      start(): boolean;
       commitCopy(delta: THREE.Vector3): void;
+      readonly isActive: boolean;
     };
     expect(controller.start()).toBe(true);
     expect(beforeStart).toHaveBeenCalledOnce();
@@ -72,7 +74,7 @@ describe("COPYBASE for an imported DWG/DXF block", () => {
         copyingReferences: { copyReferencesByBase },
         setStatus,
       },
-    ) as CadCopyController & {commitCopy(delta: THREE.Vector3): void};
+    ) as unknown as {commitCopy(delta: THREE.Vector3): void; readonly isActive: boolean};
     controller.commitCopy(new THREE.Vector3(10, 0, 0));
     expect(setStatus).toHaveBeenCalledWith(expect.stringContaining("Sin geometría"));
     expect(controller.isActive).toBe(true);
