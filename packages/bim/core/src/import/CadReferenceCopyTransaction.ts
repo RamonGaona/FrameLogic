@@ -35,7 +35,7 @@ function restore(model: DesignModel, snapshot: CadReferenceCopySnapshot): void {
   for (const layer of snapshot.layers) {
     if (!model.layers.get(layer.id)) model.layers.create({
       id: layer.id, name: layer.name, color: layer.color,
-      visible: layer.visible, locked: layer.locked, snapEnabled: layer.snapEnabled,
+      visible: layer.visible, locked: false, snapEnabled: layer.snapEnabled,
     });
   }
   for (const line of snapshot.lines) {
@@ -48,6 +48,10 @@ function restore(model: DesignModel, snapshot: CadReferenceCopySnapshot): void {
     if (!model.cadPoints.get(point.id)) model.registerCadPoint({
       id: point.id, layerId: point.layerId, position: { ...point.position },
     });
+  }
+  // Layer protection must be restored only after its geometry exists.
+  for (const layer of snapshot.layers) {
+    if (layer.locked) model.layers.update(layer.id, { locked: true });
   }
 }
 function remove(model: DesignModel, snapshot: CadReferenceCopySnapshot): void {
@@ -98,9 +102,9 @@ export function copyCadReferenceBlocks(
         const createdLayer = model.layers.create({
           name: `${PREFIX}${newName}${SEPARATOR}${sourceName}`,
           color: original.color, visible: original.visible,
-          locked: original.locked, snapEnabled: original.snapEnabled,
+          locked: false, snapEnabled: original.snapEnabled,
         });
-        layers.push(createdLayer);
+        layers.push({ ...createdLayer, locked: original.locked });
         for (const old of model.cadLines.findByLayerId(original.id)) {
           const created = model.registerCadLine({
             layerId: createdLayer.id,
@@ -118,6 +122,10 @@ export function copyCadReferenceBlocks(
     }
     if (!lines.length && !points.length) {
       throw new Error("La referencia no contiene geometría CAD que pueda copiarse.");
+    }
+    // Add all children before reenabling locked source-layer settings.
+    for (const layer of layers) {
+      if (layer.locked) model.layers.update(layer.id, { locked: true });
     }
     const snapshot: CadReferenceCopySnapshot = {
       layers, lines, points, referenceNames,
