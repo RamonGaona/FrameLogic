@@ -5087,24 +5087,18 @@ function startRotateCommand():
   cadWorkPlaneEdit.cancel();
 
 
-  if (
-    cadPointSelection
-      .getSelectedIds()
-      .length > 0
-    || cadLineSelection
-      .getSelectedIds()
-      .length > 0
-  ) {
-
-    return false;
-
+  const reference = getActiveCadReferenceBlockController();
+  if (reference?.getSelectedReferenceNames().length) {
+    cadCommandManager.cancelActive();
+    return reference.activateRotate();
   }
 
-
-  return cadCommandManager
-    .start(
-      rotateCommand,
-    );
+  const hasCadEntities = cadPointSelection.getSelectedIds().length > 0
+    || cadLineSelection.getSelectedIds().length > 0;
+  if (hasCadEntities && designSelection.getSelectedIds().length > 0) return false;
+  return cadCommandManager.start(
+    hasCadEntities ? rotateCadEntityCommand : rotateCommand,
+  );
 
 }
 
