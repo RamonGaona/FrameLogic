@@ -25,6 +25,11 @@ export class RotateRingDoubleClick {
     }
   }
 
+  /** Readiness for native dblclick OR pointerup fallback, without consuming it. */
+  get pendingAxis(): RotateNumericAxis | null {
+    return this.pending?.axis ?? null;
+  }
+
   take(x: number, y: number, at: number): RotateNumericAxis | null {
     const pending = this.pending;
     this.reset();
