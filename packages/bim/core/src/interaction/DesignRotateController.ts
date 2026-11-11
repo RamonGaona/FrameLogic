@@ -636,8 +636,8 @@ export class DesignRotateController {
 
     if (
       !this.active
-      || this.transformedObjects.size
-        < 1
+      || this.transformedObjects.size < 1
+      || !Number.isFinite(degrees)
     ) {
 
       return false;
