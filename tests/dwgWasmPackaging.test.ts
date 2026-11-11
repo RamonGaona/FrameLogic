@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(import.meta.dirname ?? process.cwd(), "..");
+const root = fileURLToPath(new URL("../", import.meta.url));
 const sourceDir = resolve(root, "node_modules/dwgdxf/dist/wasm");
 const publicDir = resolve(root, "apps/web/public/assets/wasm");
 const files = ["dwgdxf.js", "dwgdxf_bg.wasm"];
