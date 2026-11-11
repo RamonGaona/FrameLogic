@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.113 — 2026-11-10
+
+### MOVE y COPYBASE unificados para selecciones mixtas CAD + 3D
+
+- **MOVE con un único gizmo:** se amplía `CadMixedMoveController` para incluir referencias DWG/DXF completas junto con las piezas 3D, líneas y puntos CAD nativos. Las referencias mantienen su identidad por capas CAD; se capturan todas sus líneas y puntos, incluso en capas ocultas/bloqueadas. El desplazamiento numérico y los gestos de eje+SNAP aplican un único delta y una sola acción Undo/Redo a la selección completa.
+- **COPYBASE mixto:** ya no se da prioridad excluyente a las piezas 3D o referencias DWG. Una selección como línea CAD + pieza 3D (o varias piezas, puntos, polilíneas y referencias DWG) se captura como conjunto; se elige un punto base y otro de destino para crear copias independientes sin alterar los originales.
+- **Una transacción de copia:** `UnifiedCadCopyTransaction` reutiliza la copia jerárquica de piezas/ensambles y la copia de referencias DWG con ID/capas propios, añade líneas, puntos y polilíneas nativas y reúne todo en **una entrada Undo/Redo**. Si algún componente falla, revierte las copias parciales, sin mover los originales.
+- **Ctrl + eje del gizmo mixto:** dos operaciones compartidas con COPYBASE: clic en un eje y luego en SNAP para crear copias sucesivas manteniendo el conjunto original seleccionado, o Ctrl+arrastrar para crear una copia al soltar. Los clics de destino no se entregan a otros selectores mientras espera un SNAP.
+- **Protección de duplicados:** una línea seleccionada a la vez individualmente y como parte de un DWG completo se copia solo dentro del nuevo bloque. Las polilíneas conservan sus segmentos, dirección y cierre.
+- **Selección:** la selección con Ctrl puede combinar piezas, CAD suelto y DWG; los giros ROTATE mixtos y otras herramientas no incluidas en MOVE/COPYBASE conservan su funcionamiento anterior.
+- **Pruebas:** COPY mixto de pieza, línea, punto, DWG, Undo/Redo común, conservación de polilíneas y de originales, fallo con reversión; MOVE numérico mixto con referencia DWG bloqueada y Ctrl+eje+SNAP repetido.
+- **Pendiente:** verificación visual en navegador con un modelo mixto real, Snap en geometrías importadas complejas, y confirmación de Cloudflare Pages tras el merge.
+
+---
+
 ## v0.1.112 — 2026-11-10
 
 ### DWG/DXF — MOVE eje + SNAP, Ctrl+eje copia independiente y COPYBASE por 2 puntos
