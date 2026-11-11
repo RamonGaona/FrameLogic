@@ -490,7 +490,7 @@ export class CadMixedMoveController {
     this.referenceNames = [...names];
     if (
       this.disposed
-      || sources < 2
+      || sources < 1
       || !this.canMoveSelection()
     ) {
 
