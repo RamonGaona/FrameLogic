@@ -423,7 +423,7 @@ export class CadMixedMoveController {
     );
 
 
-    this.domElement.addEventListener(
+    window.addEventListener(
       "pointerdown",
       this.handleArmedPointerDown,
       true,
@@ -1348,6 +1348,9 @@ export class CadMixedMoveController {
       }
 
 
+      const target = event.target;
+      if (target && target !== this.domElement
+        && !(target instanceof Node && this.domElement.contains(target))) return;
       this.armedPointerDownX =
         event.clientX;
 
@@ -2334,7 +2337,7 @@ export class CadMixedMoveController {
     );
 
 
-    this.domElement.removeEventListener(
+    window.removeEventListener(
       "pointerdown",
       this.handleArmedPointerDown,
       true,
