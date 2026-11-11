@@ -1673,7 +1673,6 @@ const cadEntityRotate = new CadEntityRotateController({
   setCameraEnabled: enabled => { world.camera.controls.enabled = enabled; },
   onAxis: axis => cadNumericInput.showRotate(axis, false),
   onDeactivate: () => cadNumericInput.hide(),
-  clearGeometryQueryCache: () => geometryQuery.clearCache(),
 });
 
 
