@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CadCommandInputController } from "./CadCommandInputController";
 afterEach(() => vi.unstubAllGlobals());
 describe("typed COPY / COPIAR routes to the two-point tool", () => {
-  it.each(["COPY","COPIAR","C","CP"])("executes %s through the active command callback", (command) => {
+  it.each(["COPY","COPYBASE","COPIAR","C","CP"])("executes %s through the active command callback", (command) => {
     const runCopy = vi.fn(() => true);
     const alert = vi.fn();
     vi.stubGlobal("window", {
