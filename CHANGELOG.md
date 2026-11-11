@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.108 — 2026-11-10
+
+### ROTATE — entrada de ángulo exacto y doble clic en ejes X/Y/Z
+
+- **Ángulo numérico accesible:** al ejecutar `ROTATE` (tecla R o comando correspondiente), el panel inferior se abre directamente con eje seleccionable X/Y/Z, campo numérico en grados y botón «Girar». El usuario puede introducir valores enteros, decimales y negativos, por ejemplo 22,5°, 90° o -45°. La operación aplica un delta exacto mediante cuaterniones al conjunto seleccionado alrededor del pivote y registra Undo/Redo.
+- **Doble clic sobre el aro del gizmo:** dos clics cortos en el mismo aro X, Y o Z aplican **+90°** sobre ese eje. No se interpretan como giro los dobles clics sobre dos ejes distintos, separados en pantalla, fuera del anillo o precedidos de arrastre.
+- **Interacción segura:** el campo de grados no roba el foco mientras se arrastra el gizmo; el doble clic válido detiene el manejador de doble clic sobre fondo vacío para que ROTATE no se cancele accidentalmente. La selección, el desplazamiento del centro de giro y la lógica de bloqueo se mantienen.
+- **Orientación:** el gizmo ROTATE conserva los ejes globales X/Y/Z actualmente implementados, incluso para piezas con orientación propia; esta versión no introduce un modo ROTATE local diferente al comportamiento ya existente.
+- **Pruebas:** clasificación de doble clic en aro, rechazo por ejes distintos, retardo y arrastre; integración de rotaciones numéricas y de 90° con ensamble seleccionado y Undo/Redo. CI `test:gizmos`.
+- **Por verificar en navegador:** interacción real con el picking de Three.js y control de superposición visual en pantallas pequeñas.
+
+---
+
 ## v0.1.107 — 2026-11-10
 
 ### Corrección de importación DWG en Cloudflare Pages
