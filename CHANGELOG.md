@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.109 — 2026-11-10
+
+### ROTATE CAD — DWG/DXF completos y líneas/puntos
+
+- **DWG/DXF como bloque:** el gizmo ROTATE de una referencia importada ahora dispone del panel numérico X/Y/Z y aplica ángulos exactos al bloque de líneas y puntos, sin editar individualmente sus entidades internas. Dos clics cortos sobre el mismo anillo del gizmo aplican +90°, evitando cambios accidentales de eje y arrastres.
+- **Entidades CAD nativas:** seleccionar una o varias líneas/puntos y pulsar R activa un nuevo gizmo de rotación con el mismo panel en grados. También funciona con la acción programática ROTATE. No requiere seleccionar una PieceInstance 3D.
+- **Geometría y Undo/Redo:** cada transformación CAD rota extremos y puntos sobre un pivote común y registra el antes/después como una operación reversible; también se registran las rotaciones por arrastre de referencias DWG/DXF. No cambia los datos de piezas 3D ni el STEP importado.
+- **Compatibilidad:** una selección mixta de piezas 3D y entidades CAD requiere separar la selección antes de ROTATE. Las referencias DWG se siguen tratando como bloque.
+- **Pruebas:** giros de ±90°, grados decimales, geometría y posición recuperadas con Undo/Redo y rechazo de entradas no finitas para líneas y bloques CAD. Se incorporan al conjunto `test:gizmos`.
+- **Pendiente:** validación manual con interacción del puntero sobre el gizmo en un navegador y conjuntos CAD complejos.
+
+---
+
 ## v0.1.108 — 2026-11-10
 
 ### ROTATE — entrada de ángulo exacto y doble clic en ejes X/Y/Z
