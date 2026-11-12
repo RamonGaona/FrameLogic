@@ -329,7 +329,7 @@ describe("AutoCAD TEXT / MTEXT / ATTRIB inside structural truss blocks", () => {
   it("decodes multiline MTEXT, unicode escape and degree signs without changing label contents", () => {
     const source = dxf(0, "SECTION", 2, "ENTITIES",
       0, "MTEXT", 40, 50, 10, 0, 20, 0,
-      1, String.raw`4S 3000\\PÁngulo \\U+00B0 %%d`,
+      1, String.raw`4S 3000\PÁngulo \U+00B0 %%d`,
       0, "TEXT", 1, "P6 3000", 40, 30, 10, 500, 20, 0,
       0, "ENDSEC", 0, "EOF");
     const parsed = parseCadDxf(source);
