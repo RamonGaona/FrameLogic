@@ -1,3 +1,5 @@
+import type { ProjectionStandard } from "./AutoSheetLayoutPlanner";
+
 export type DrawingUnit =
   | "MM"
   | "CM"
@@ -99,6 +101,7 @@ export interface DrawingProfessionalState {
   activeDimensionStyleId: string;
   activeSnapMode: DrawingSnapMode;
   activeDimensionMode: ProfessionalDimensionMode;
+  projectionStandard: ProjectionStandard;
   readonly dimensionStyles: DimensionStyleState[];
   readonly viewLayouts: DrawingViewLayoutState[];
   readonly sectionDisplay: DrawingSectionDisplayState[];
@@ -135,6 +138,7 @@ export function createDefaultProfessionalState(): DrawingProfessionalState {
     activeDimensionStyleId: "framelogic-iso",
     activeSnapMode: "AUTO",
     activeDimensionMode: "ALIGNED",
+    projectionStandard: "ISO_E",
     dimensionStyles: [
       createDefaultDimensionStyle(),
     ],
@@ -181,6 +185,7 @@ export function cloneProfessionalState(
     activeDimensionMode:
       raw.activeDimensionMode
       ?? defaults.activeDimensionMode,
+    projectionStandard: raw.projectionStandard === "ISO_A" ? "ISO_A" : "ISO_E",
     dimensionStyles:
       dimensionStyles.map(
         (

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { planAutomaticSheetLayout, type ProjectedViewCode } from "./AutoSheetLayoutPlanner";
 
 import {
   OpenCascadeDrawingKernel,
@@ -483,6 +484,33 @@ export class DrawingProfessionalController {
       this.workspace.render();
     });
 
+    const projectionSelect = this.makeSelect([
+      ["ISO_E", "ISO E · 1.er diedro"],
+      ["ISO_A", "ISO A · 3.er diedro"],
+    ]);
+    projectionSelect.title = "Sistema de proyección de vistas automáticas";
+    projectionSelect.value = this.state.projectionStandard;
+    projectionSelect.addEventListener("change", () => {
+      this.state.projectionStandard = projectionSelect.value === "ISO_A" ? "ISO_A" : "ISO_E";
+      const sheet = this.production.getActiveSheet();
+      if (sheet && this.arrangeAutomaticSheet(sheet, true)) {
+        this.workspace.setStatus("Vistas organizadas según " + this.state.projectionStandard
+          + ". Revisa líneas ocultas, escala y referencias antes de fabricación.");
+      }
+      this.workspace.render();
+    });
+    const arrangeButton = this.makeButton("Organizar auto", "Recolocar cuatro vistas automáticas sin alterar la geometría, con espacio para el cajetín");
+    arrangeButton.addEventListener("click", () => {
+      const sheet = this.production.getActiveSheet();
+      if (!sheet || !this.arrangeAutomaticSheet(sheet, true)) {
+        this.workspace.setStatus("ORGANIZAR: crea primero cuatro vistas con «Vistas auto».");
+        return;
+      }
+      this.workspace.render();
+      this.workspace.setStatus("Cuatro vistas automáticas organizadas ("
+        + this.state.projectionStandard + "). Las posiciones manuales existentes se reemplazaron por solicitud expresa.");
+    });
+
     const styleButton = this.makeButton("DIMSTYLE", "Editar estilo de cotas");
     const detailButton = this.makeButton("Detalle", "Crear detalle desde dos puntos");
     const cloudButton = this.makeButton("Nube rev", "Dibujar nube de revisión");
@@ -515,7 +543,7 @@ export class DrawingProfessionalController {
     svgButton.addEventListener("click", () => this.exportSvg());
     dxfButton.addEventListener("click", () => this.exportDxf());
 
-    for (const control of [snapSelect, unitSelect, precisionSelect, styleButton, detailButton, cloudButton, managerButton, hiddenButton, svgButton, dxfButton]) {
+    for (const control of [snapSelect, unitSelect, precisionSelect, projectionSelect, arrangeButton, styleButton, detailButton, cloudButton, managerButton, hiddenButton, svgButton, dxfButton]) {
       toolbar.append(control);
       this.controls.push(control);
     }
@@ -972,6 +1000,7 @@ export class DrawingProfessionalController {
     const font = Math.max(9, style.textHeightMm * 3.78);
     const width = this.workspace.selectedAnnotationId === id ? 2 : 1.05;
     const label = (valueMeters: number, prefix = "") => lost ? "⚠ REFERENCIA PERDIDA" : `${prefix}${formatDrawingMeasurement(valueMeters, style)}`;
+    const quantity = Number(annotation["quantity"] ?? 1);
 
     if (mode === "DIAMETER" || mode === "RADIUS" || mode === "ARC_LENGTH") {
       const radius = aRef.radius ?? Math.hypot(bRef.x - aRef.x, bRef.y - aRef.y);
@@ -979,7 +1008,7 @@ export class DrawingProfessionalController {
       this.workspace.appendSvgLine(a.point.x, a.point.y, leader.x, leader.y, color, width, id);
       const value = mode === "DIAMETER" ? radius * 2 : mode === "ARC_LENGTH" ? 2 * Math.PI * radius : radius;
       const prefix = mode === "DIAMETER" ? "Ø" : mode === "RADIUS" ? "R" : "⌒";
-      this.workspace.appendSvgText(leader.x + 5, leader.y - 3, label(value, prefix), font, color, "start", id);
+      this.workspace.appendSvgText(leader.x + 5, leader.y - 3, lost ? label(value, prefix) : `${Number.isFinite(quantity) && quantity > 1 ? Math.trunc(quantity) + "× " : ""}${label(value, prefix)}`, font, color, "start", id);
       return;
     }
 
@@ -1365,10 +1394,55 @@ export class DrawingProfessionalController {
 
   private syncViewLayouts(): void {
     for (const sheet of this.production.sheets.values()) {
+      // Arrange newly generated automatic projections only once. After that,
+      // users can move/resize viewports without the render loop undoing edits.
+      if (sheet.views.length === 4
+        && sheet.views.every((view) => !this.state.viewLayouts.some((layout) => layout.id === view.id))) {
+        this.arrangeAutomaticSheet(sheet, false);
+      }
       sheet.views.forEach((view, index) => this.ensureViewLayout(view.id, view.sectionId, index));
     }
     const valid = new Set(Array.from(this.production.sheets.values()).flatMap((sheet) => sheet.views.map((view) => view.id)));
     this.state.viewLayouts.splice(0, this.state.viewLayouts.length, ...this.state.viewLayouts.filter((entry) => valid.has(entry.id)));
+  }
+
+  private arrangeAutomaticSheet(sheet: SheetState, force: boolean): boolean {
+    if (sheet.views.length !== 4) return false;
+    const codes: Record<string, ProjectedViewCode> = {
+      "AUTO · Alzado": "FRONT",
+      "AUTO · Planta": "TOP",
+      "AUTO · Lateral": "RIGHT",
+      "AUTO · Isométrica": "ISO",
+    };
+    const available = this.sectionDrawing.getSections();
+    const projected = sheet.views.map((view) => {
+      const section = available.find((entry) => entry.id === view.sectionId);
+      if (!section) return null;
+      const code = codes[section.name];
+      return code ? { id: view.id, code, width: section.width, height: section.height } : null;
+    });
+    if (projected.some((view) => !view)) return false;
+    if (!force && sheet.views.some((view) =>
+      this.state.viewLayouts.some((layout) => layout.id === view.id))) return false;
+    const plans = planAutomaticSheetLayout(
+      projected.filter((view): view is NonNullable<typeof view> => view !== null),
+      this.state.projectionStandard,
+    );
+    if (plans.length !== 4) return false;
+    for (const [index, plan] of plans.entries()) {
+      const source = sheet.views.find((view) => view.id === plan.id);
+      if (!source) continue;
+      const layout = this.ensureViewLayout(source.id, source.sectionId, index);
+      layout.x = plan.x;
+      layout.y = plan.y;
+      layout.width = plan.width;
+      layout.height = plan.height;
+      layout.title = ({
+        FRONT: "ALZADO", TOP: "PLANTA", RIGHT: "LATERAL", ISO: "ISOMÉTRICA",
+      } as const)[plan.code];
+      layout.showHidden = false;
+    }
+    return true;
   }
 
   private ensureViewLayout(viewId: string, sectionId: string, index: number): DrawingViewLayoutState {
