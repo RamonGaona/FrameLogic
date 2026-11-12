@@ -2,6 +2,10 @@ export interface CadCommandInputControllerOptions {
   readonly domElement: HTMLElement;
   readonly hasActiveCommand: () => boolean;
   readonly startLine: () => boolean;
+  readonly getActiveCommandHint?: () => {
+    readonly command: string;
+    readonly detail: string;
+  } | null;
 }
 
 interface FrameLogicCommandWindow extends Window {
@@ -95,6 +99,9 @@ export class CadCommandInputController {
   private readonly domElement: HTMLElement;
   private readonly hasActiveCommand: () => boolean;
   private readonly startLine: () => boolean;
+  private readonly getActiveCommandHint: NonNullable<
+    CadCommandInputControllerOptions["getActiveCommandHint"]
+  >;
 
   private readonly root: HTMLDivElement;
   private readonly valueElement: HTMLDivElement;
@@ -112,6 +119,7 @@ export class CadCommandInputController {
     this.domElement = options.domElement;
     this.hasActiveCommand = options.hasActiveCommand;
     this.startLine = options.startLine;
+    this.getActiveCommandHint = options.getActiveCommandHint ?? (() => null);
 
     this.root = document.createElement("div");
     this.root.dataset["framelogicCommandInput"] = "true";
@@ -180,7 +188,20 @@ export class CadCommandInputController {
 
     if (this.visible) {
       this.position();
+      return;
     }
+
+    // One consistent command HUD follows the cursor during native CAD
+    // commands. It never steals focus from numeric inputs or SNAP picking.
+    const active = this.getActiveCommandHint();
+    if (!active) {
+      this.root.style.display = "none";
+      return;
+    }
+    this.valueElement.textContent = active.command;
+    this.suggestionElement.textContent = active.detail;
+    this.root.style.display = "block";
+    this.position();
   };
 
   private readonly handlePointerDown = (
