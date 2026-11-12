@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
 
 import type {
   DesignModel,
@@ -223,11 +224,13 @@ export class CadLineTemporaryDimensionController {
     }
 
     const selectedIds = this.lineSelection.getSelectedIds();
-    if (selectedIds.length !== 1) {
-      return null;
-    }
+    // A reference block is selected as one object. A click on a member
+    // exposes only its read-only measured length, not an editable CAD line.
+    const referenceLineId = getActiveCadReferenceBlockController()?.getInspectedLineId() ?? null;
+    const lineId = referenceLineId ?? (selectedIds.length === 1 ? selectedIds[0] : null);
+    if (!lineId) return null;
 
-    const line = this.designModel.cadLines.get(selectedIds[0]!);
+    const line = this.designModel.cadLines.get(lineId);
     if (!line) return null;
 
     return {
