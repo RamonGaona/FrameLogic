@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.120 — 2026-11-12
+
+### Corrección de bloqueos al abrir DWG con muchos INSERT y segmentos
+
+- **Causa:** la v0.1.119 podía expandir hasta 600 000 segmentos de bloques anidados y crear un objeto `THREE.Line` por cada segmento, saturando el hilo principal y la GPU. El DWG `CUNAS_MEDIR 1.dwg` (3,3 MB) tardaba minutos y bloqueaba la pestaña.
+- **Importación en segundo plano:** la conversión `DWG→DXF` WASM y el análisis/expansión de bloques ahora se ejecutan dentro de un Web Worker, permitiendo que la interfaz siga respondiendo durante el análisis. La memoria del conversor se libera al terminar el Worker.
+- **Registro progresivo:** las líneas y puntos se registran en lotes de 900, cediendo el control al navegador entre lotes y mostrando un indicador de progreso. No se llaman `scene.sync()` ni se crean objetos WebGL por segmento durante el registro.
+- **Renderizado GPU agrupado:** todas las líneas importadas se mantienen como entidades CAD exactas (selección por referencia, snaps, COPYBASE, MOVE/ROTATE, historial y guardado) pero se dibujan mediante `THREE.LineSegments` **una vez por subcapa CAD**, conservando colores ByLayer/ByBlock. Las líneas CAD nativas editables conservan sus objetos individuales. Se usan coordenadas locales por lote para mantener precisión con coordenadas DWG grandes.
+- **Protección ante explosión combinatoria:** los INSERT/MINSERT anidados dejan de expandirse al alcanzar **80 000 segmentos**, en lugar de crear cientos de miles de objetos y congelar el navegador. Si se alcanza ese límite, el aviso de importación identifica expresamente el dibujo como **parcial**. No se ocultan silenciosamente entidades recortadas.
+- **Pruebas:** 12 000 segmentos importados en dos subcapas producen solo dos draw calls GPU (más entidades nativas), comprobación de colores, selección, visibilidad, actualización de geometría y límites, y test de INSERT 128×128 que se detiene antes de producir cientos de miles de segmentos. Incluidas en `test:dwg-import`.
+
+**Pendiente de comprobación manual:** reimportar `CUNAS_MEDIR 1.dwg` en Firefox con la v0.1.120, revisar que no se bloquee y comparar detalles/colores contra AutoCAD. Si el dibujo supera los 80 000 segmentos, la app mostrará la advertencia de importación parcial.
+
+---
+
 ## v0.1.119 — 2026-11-12
 
 ### Importación de bloques DWG/DXF, colores AutoCAD y unidades correctas
