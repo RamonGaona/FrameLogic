@@ -1255,17 +1255,8 @@ export class CadMixedMoveController {
           false;
 
 
-        this.snap.setExcludedInstanceIds(
-          this.selection
-            .getState()
-            .items
-            .map(
-              (
-                item,
-              ) =>
-                item.id,
-            ),
-        );
+        // Sin arrastre activo, los SNAP de la selección siguen disponibles.
+        this.snap.clearExcludedInstanceIds();
 
 
         return;
@@ -1416,6 +1407,9 @@ export class CadMixedMoveController {
       }
 
 
+      // El segundo clic pertenece a MOVE aunque no se encuentre SNAP.
+      event.preventDefault();
+      event.stopImmediatePropagation();
       const snap =
         this.snap.findSnap(
           event.clientX,
