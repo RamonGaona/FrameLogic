@@ -77,6 +77,29 @@ describe("CIRCLE and PEDIT command menus share Enter acceptance", () => {
     expect(e.preventDefault).toHaveBeenCalledOnce();
   });
 
+  it("CIRCLE second SNAP uses Diameter/2 when the second menu option is highlighted", () => {
+    const controller = Object.create(CadCirclePlacementController.prototype) as CadCirclePlacementController;
+    const canvas = {};
+    const radio = button(), diameter = button();
+    const choices = new CadCommandDefaultChoice([radio, diameter]);
+    choices.select(1);
+    const commitRadius = vi.fn();
+    Reflect.set(controller, "options", { domElement: canvas });
+    Reflect.set(controller, "stage", "SIZE_MODE");
+    Reflect.set(controller, "active", true);
+    Reflect.set(controller, "modeChoices", choices);
+    Reflect.set(controller, "getManualRadius", () => 100);
+    Reflect.set(controller, "commitRadius", commitRadius);
+    const handler = Reflect.get(controller, "processPointerUp") as
+      (this: CadCirclePlacementController, event: unknown) => void;
+    handler.call(controller, {
+      button: 0, target: canvas, clientX: 10, clientY: 15,
+      preventDefault: vi.fn(), stopImmediatePropagation: vi.fn(),
+    });
+    expect(commitRadius).toHaveBeenCalledWith(50);
+    expect(Reflect.get(controller, "sizeMode")).toBe("DIAMETER");
+  });
+
   it("PEDIT first operation is confirmed with Enter and can be changed with ArrowDown", () => {
     vi.stubGlobal("HTMLElement", class HTMLElement {});
     const controller = Object.create(CadPolylineEditController.prototype) as CadPolylineEditController;
