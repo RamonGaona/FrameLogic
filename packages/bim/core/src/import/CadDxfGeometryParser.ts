@@ -209,12 +209,13 @@ function normalizedVertex(pt3: CadDxfPoint3, bulge = 0): Vertex {
 
 export function parseCadDxf(
   text: string,
-  options?: { readonly maxSegments?: number },
+  options?: { readonly maxSegments?: number; readonly omitOptionalGeometry?: boolean },
 ): ParsedCadReference {
   const maxSegments = Number.isFinite(options?.maxSegments)
     ? Math.max(16, Math.min(MAX_RENDERED_SEGMENTS,
       Math.floor(options!.maxSegments!)))
     : MAX_RENDERED_SEGMENTS;
+  const omitOptionalGeometry = options?.omitOptionalGeometry === true;
   const pairs = pairsFromDxf(text);
   const sourceLayers = sourceLayersFrom(pairs);
   const blocks = blockDefinitions(pairs);
@@ -438,6 +439,13 @@ export function parseCadDxf(
       const layer = sourceLayer === "0" && ctx.inheritedLayer
         ? ctx.inheritedLayer : sourceLayer;
       const color = effectiveColor(record, layer, ctx.inheritedColor);
+      // In structural DWG mode, decorative dimensions and hatch outlines
+      // must not use segment budget reserved for actual tubes/frames/lines.
+      // This applies equally inside nested INSERT blocks and text passes.
+      if (omitOptionalGeometry && (record.type === "DIMENSION" || record.type === "HATCH")) {
+        skip(record.type);
+        continue;
+      }
       if (pass === 2
         && record.type !== "INSERT"
         && record.type !== "DIMENSION"
@@ -629,7 +637,7 @@ export function parseCadDxf(
   };
   // Reserve a fair share for every logical entity before expanding any
   // potentially enormous MINSERT/HATCH. Extra budget restores full detail.
-  const fairShare = Math.max(16,
+  const fairShare = Math.max(1,
     Math.min(4096, Math.floor(maxSegments * 0.75 / Math.max(1, roots.length))));
   const pending: Array<{ root: DxfRecord[]; cursor: number }> = [];
   let visitedRoots = 0;

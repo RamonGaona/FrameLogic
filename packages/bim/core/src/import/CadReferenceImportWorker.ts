@@ -32,7 +32,9 @@ worker.onmessage = (event) => {
       if (text.startsWith("AutoCAD Binary DXF")) {
         throw new Error("El DXF es binario; abre el DWG o exporta DXF ASCII.");
       }
-      const parsed = parseCadDxf(text);
+      // Prioritize construction geometry for large DWG imports. TEXT/MTEXT/
+      // ATTRIB remain independent of the segment budget.
+      const parsed = parseCadDxf(text, { omitOptionalGeometry: true });
       worker.postMessage({ ok: true, parsed });
     }
     catch (error) {

@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.124 — 2026-11-12
+
+### DWG grandes: prioridad a perfiles, tubos y textos frente a cotas y sombreados
+
+- **Causa:** el presupuesto de 240.000 segmentos todavía se compartía con gráficos de cotas `DIMENSION` y contornos de `HATCH`; al importar planos cargados de detalles secundarios, algunos perfiles y tubos quedaban simplificados o sin representar. El reparto inicial también reservaba un mínimo de 16 segmentos por raíz, que podía agotar la cuota antes de visitar todas las referencias complejas posteriores.
+- **Importación estructural:** el Web Worker prioriza `LINE`, `INSERT`, polilíneas, arcos y entidades constructivas y excluye del presupuesto los gráficos `DIMENSION` y `HATCH`, también cuando se encuentran dentro de bloques anidados. Se informa de las entidades omitidas en el resumen.
+- **Cobertura de bloques:** la primera pasada reserva desde un segmento por entidad raíz cuando hay muchas referencias y dedica el resto de la capacidad a recuperar detalles en sucesivas pasadas. El límite de seguridad se mantiene en **240.000 segmentos**.
+- **Textos en tubos:** `TEXT`, `MTEXT` y `ATTRIB` conservan su pasada y límite independientes del de la geometría; las etiquetas `4S 3000` y `P6 3000` no se sacrifican para dibujar cotas o sombreados. Persistencia, referencias, SNAP y MOVE/ROTATE no cambian.
+- **Pruebas de regresión:** un plano con `DIMENSION`, `HATCH`, tubos con rótulos y líneas tardías; además, 25 `INSERT` de varios segmentos bajo un límite de prueba que exige representar todos los bloques antes de ampliar su detalle.
+
+**Limitaciones y comprobación pendiente:** las cotas y los sombreados se omiten **intencionadamente** en importaciones DWG/DXF de la interfaz. Los XREF sin contenido embebido siguen sin reconstruirse. Si la geometría constructiva supera los 240.000 segmentos la importación sigue siendo parcial y el aviso debe respetarse; no es un archivo de fabricación verificado. Falta importar y contrastar visualmente `CUNAS_MEDIR 1.dwg` en Firefox y Chrome.
+
+---
+
 ## v0.1.123 — 2026-11-12
 
 ### Etiquetas de texto DWG/DXF en tubos, cerchas y bloques
