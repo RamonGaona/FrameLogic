@@ -85,6 +85,16 @@ export class CadReferenceTextSceneController {
     for (const entry of entries) this.annotations.set(entry.id, { ...entry });
   }
 
+  removeAnnotations(ids: readonly string[]): void {
+    for (const id of ids) this.annotations.delete(id);
+  }
+
+  removeByLayerIds(layerIds: ReadonlySet<string>): void {
+    for (const [id, entry] of this.annotations) {
+      if (layerIds.has(entry.layerId)) this.annotations.delete(id);
+    }
+  }
+
   setAnnotations(entries: readonly CadReferenceTextAnnotation[]): void {
     this.annotations.clear();
     this.addAnnotations(entries);
