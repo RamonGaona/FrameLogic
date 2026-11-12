@@ -1,4 +1,9 @@
 import * as THREE from "three";
+import {
+  allowPerspectiveDistance,
+  allowZoomOutTo,
+  getOrthographicZoomForBounds,
+} from "./ModelSpaceCameraZoomPolicy";
 
 import type {
   LoadedModelInfo,
@@ -18,7 +23,8 @@ import type {
 
 interface CameraControlsLike {
   readonly minDistance: number;
-  readonly minZoom?: number;
+  minZoom?: number;
+  maxDistance?: number;
   setLookAt(
     positionX: number,
     positionY: number,
@@ -59,7 +65,6 @@ export interface ModelSpaceZoomExtentsControllerOptions {
 }
 
 const COMMAND_TIMEOUT_MS = 1800;
-const DEFAULT_MIN_ORTHO_ZOOM = 0.0001;
 
 /**
  * Zoom commands estilo AutoCAD:
@@ -146,6 +151,39 @@ export class ModelSpaceZoomExtentsController {
       sphere.radius,
       50,
     );
+    const camera = this.options.cameraProvider();
+
+    // DWG plans can span 226 000 mm or much more. CameraControls.fitToBox
+    // clamps the result at its fixed minZoom; in a narrow viewport that can
+    // leave geometry off screen. Compute the actual projected size, relax
+    // only the zoom-out bound, and frame the real geometry without guessing
+    // a distance-to-width conversion.
+    if (camera instanceof THREE.OrthographicCamera) {
+      const desiredZoom = getOrthographicZoomForBounds(camera, bounds);
+      allowZoomOutTo(controls, desiredZoom);
+      const center = sphere.center;
+      const forward = camera.getWorldDirection(new THREE.Vector3()).normalize();
+      if (forward.lengthSq() <= 1e-12) forward.set(-1, -1, -1).normalize();
+      const distance = Math.max(radius * 2.5, controls.minDistance * 4, 500);
+      const position = center.clone().addScaledVector(forward, -distance);
+      await controls.setLookAt(
+        position.x, position.y, position.z,
+        center.x, center.y, center.z, false,
+      );
+      await controls.zoomTo(desiredZoom, false);
+      return;
+    }
+
+    // In perspective, allow the camera to back away as far as needed.
+    const verticalFov = camera instanceof THREE.PerspectiveCamera
+      ? THREE.MathUtils.degToRad(camera.fov) : Math.PI / 3;
+    const horizontalFov = camera instanceof THREE.PerspectiveCamera
+      ? 2 * Math.atan(Math.tan(verticalFov / 2) * Math.max(camera.aspect, 1e-6))
+      : verticalFov;
+    allowPerspectiveDistance(
+      controls,
+      radius / Math.sin(Math.max(0.01, Math.min(verticalFov, horizontalFov)) / 2) * 1.4,
+    );
 
     if (typeof controls.fitToBox === "function") {
       const padding = Math.max(
@@ -167,7 +205,6 @@ export class ModelSpaceZoomExtentsController {
     }
 
     const center = sphere.center;
-    const camera = this.options.cameraProvider();
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
     if (forward.lengthSq() <= 1e-12) {
@@ -221,38 +258,6 @@ export class ModelSpaceZoomExtentsController {
       true,
     );
 
-    if (camera instanceof THREE.OrthographicCamera) {
-      const size = bounds.getSize(
-        new THREE.Vector3(),
-      );
-      const boxDiameter = Math.max(
-        size.length(),
-        radius * 2,
-        100,
-      );
-      const availableWidth = Math.max(
-        Math.abs(camera.right - camera.left),
-        0.001,
-      );
-      const availableHeight = Math.max(
-        Math.abs(camera.top - camera.bottom),
-        0.001,
-      );
-      const minZoom =
-        controls.minZoom
-        ?? DEFAULT_MIN_ORTHO_ZOOM;
-      const desiredZoom = Math.max(
-        minZoom,
-        Math.min(
-          availableWidth / (boxDiameter * 1.12),
-          availableHeight / (boxDiameter * 1.12),
-        ),
-      );
-      await controls.zoomTo(
-        desiredZoom,
-        true,
-      );
-    }
   }
 
   private getSelectedBounds(): THREE.Box3 | null {
