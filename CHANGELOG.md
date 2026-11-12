@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.126 — 2026-11-12
+
+### Importación DWG: corregir unidades de AutoCAD que aparecen multiplicadas por 1.000
+
+- **Error reportado:** un dibujo en milímetros (por ejemplo `CUNAS_MEDIR 1.dwg`) aparece con dimensiones próximas a 15 millones de mm frente a ~15.005,75 mm en AutoCAD. En la ruta actual, si el DXF generado por el conversor declara `$INSUNITS=6` (metros), `insUnitsToMillimeters()` multiplica por **1.000**, aunque las coordenadas del DWG original ya puedan estar expresadas en milímetros. El dato exacto que genera el conversor para el DWG binario de referencia sigue pendiente de comprobar.
+- **Confirmación explícita de unidad en DWG:** tras convertir/analizar en el Web Worker y **antes de crear las entidades**, se solicita la unidad real de las coordenadas (mm, cm, m, in o ft), con **mm como opción inicial**. También se admite `auto` para confiar expresamente en el código INSUNITS convertido. La ventana informa el código detectado, el factor inferido y advierte sobre el problema ×1.000. Cancelar no crea geometría ni capas.
+- **DXF ASCII:** conserva la lectura automática de su `$INSUNITS` cuando es válido. Si no hay unidades reconocidas solicita la unidad como anteriormente.
+- **Coherencia CAD:** el único factor seleccionado se aplica de forma uniforme a segmentos, puntos y las tres anclas de cada texto, manteniendo SNAP, MOVE/ROTATE, COPYBASE y .flproject en milímetros. El resumen de importación informa el factor aplicado.
+- **Pruebas:** comprobar importación sin tres ceros adicionales para una cota de 15.005,75 mm, selección intencionada de metros, centímetros, pulgadas, pies, opción automática, DXF con unidades conocidas y cancelación/entrada inválida.
+
+**Limitación:** sin leer y contrastar el encabezado convertido de cada DWG no es seguro deducir si las coordenadas son realmente metros o milímetros. Por eso no se cambia indiscriminadamente el factor de todos los planos. Debe reimportarse el DWG de origen: los proyectos .flproject ya guardados con geometría escalada equivocadamente no se corrigen retroactivamente.
+
+---
+
 ## v0.1.125 — 2026-11-12
 
 ### Recuperación gráfica de DWG con bloques complejos y controles individuales en INSTANCIAS
