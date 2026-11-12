@@ -10,6 +10,7 @@ import type {
   CadPointSceneController,
 } from "../design/CadPointSceneController";
 import { type CadDxfPoint3, type ParsedCadReference, MAX_RENDERED_SEGMENTS } from "./CadDxfGeometryParser";
+import { suspiciousDwgMeterScale } from "./CadImportScaleSafety";
 import {
   CAD_TEXT_ANCHOR_PREFIX,
   type CadReferenceTextAnnotation,
@@ -94,6 +95,23 @@ export class CadReferenceImportController {
     }
 
     const unitScale = this.resolveUnitScale(parsed.insUnits, extension);
+    if (extension === "dwg") {
+      const suspicious = suspiciousDwgMeterScale(parsed, unitScale);
+      if (suspicious) {
+        const raw = suspicious.rawSpan.toLocaleString("es-CO", { maximumFractionDigits: 2 });
+        const converted = suspicious.resultingSpanMm.toLocaleString("es-CO", { maximumFractionDigits: 2 });
+        const accepted = window.confirm(
+          `ATENCIÓN: posible error de escala DWG ×${unitScale}.\n\n`
+          + `El dibujo ocupa aproximadamente ${raw} unidades de origen.\n`
+          + `Con el factor elegido ocuparía ${converted} mm.\n\n`
+          + "Si en AutoCAD esa longitud está en milímetros, pulsa Cancelar y vuelve a importar usando «mm» (factor ×1).\n"
+          + "Pulsa Aceptar SOLO si confirmaste que el dibujo realmente está en metros.",
+        );
+        if (!accepted) throw new Error(
+          "Importación cancelada para evitar multiplicar el DWG ×1.000. Importa otra vez y selecciona «mm» si las coordenadas ya están en milímetros.",
+        );
+      }
+    }
     report(`DWG/DXF · Unidad origen confirmada · factor ${unitScale} hacia mm…`);
     const layerIds = new Map<string, string>();
     const referenceName = uniqueReferenceName(
