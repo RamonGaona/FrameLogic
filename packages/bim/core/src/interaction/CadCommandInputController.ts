@@ -14,6 +14,9 @@ interface FrameLogicCommandWindow extends Window {
   __frameLogicCanStartRectangleTextCommand?:
     () => boolean;
   __frameLogicStartCopyBaseCommand?: () => boolean;
+  __frameLogicStartCircleCommand?: () => boolean;
+  __frameLogicStartPointTextCommand?: () => boolean;
+  __frameLogicStartTrimTextCommand?: () => boolean;
   __frameLogicCopyBaseCommandActive?: () => boolean;
 }
 
@@ -77,7 +80,9 @@ function normalizeCommand(
 /**
  * Entrada textual CAD junto al cursor.
  *
- * - C / COPY / COPIAR + Enter: copia 3D o CAD por punto base y destino.
+ * - C / CIRCULO / CIRCLE + Enter: círculo.
+ * - COPY / COPYBASE / COPIAR + Enter: copia por punto base y destino.
+ * - P / POINT / PUNTO + Enter: punto, T / TRIM + Enter: recorte.
  * - L / LINE + Enter: línea.
  * - LL / LINEA PARALELA + Enter: línea paralela.
  * - REC / RECTANGULO + Enter: rectángulo.
@@ -205,16 +210,16 @@ export class CadCommandInputController {
     if (!this.visible) {
       const key =
         event.key.toLowerCase();
-      const startsLineFamily =
-        key === "l";
-      const startsCopy = key === "c";
-      const startsRectangle =
-        key === "r"
-        && canStartRectangleTextCommand();
+      const startsLineFamily = key === "l";
+      const startsCircleOrCopy = key === "c";
+      const startsPoint = key === "p";
+      const startsTrim = key === "t";
+      const startsRectangle = key === "r" && canStartRectangleTextCommand();
 
       if (
-        (!startsLineFamily && !startsRectangle && !startsCopy)
-        || (this.hasActiveCommand() && !startsCopy)
+        (!startsLineFamily && !startsRectangle && !startsCircleOrCopy
+          && !startsPoint && !startsTrim)
+        || this.hasActiveCommand()
         || hasExternalCadCommand()
       ) {
         return;
@@ -222,8 +227,7 @@ export class CadCommandInputController {
 
       event.preventDefault();
       event.stopImmediatePropagation();
-      this.command =
-        startsRectangle ? "R" : startsCopy ? "C" : "L";
+      this.command = event.key.toUpperCase();
       this.show();
       return;
     }
@@ -259,9 +263,14 @@ export class CadCommandInputController {
       event.preventDefault();
       event.stopImmediatePropagation();
       const value = normalizeCommand(this.command);
-      this.command = value.startsWith("R")
+      this.command = value.startsWith("REC") || value === "R"
         ? "RECTANGULO"
-        : value.startsWith("C") ? "COPY" : "LINE";
+        : value.startsWith("COP") || value === "CP"
+          ? "COPYBASE"
+          : value.startsWith("C") ? "CIRCULO"
+            : value.startsWith("LL") ? "LINEAPARALELA"
+              : value.startsWith("P") ? "PUNTO"
+                : value.startsWith("T") ? "TRIM" : "LINE";
       this.render();
       return;
     }
@@ -301,7 +310,28 @@ export class CadCommandInputController {
         this.command,
       );
 
-    if (command === "C" || command === "COPY" || command === "COPYBASE"
+    if (command === "C" || command === "CIRCLE" || command === "CIRCULO") {
+      const started = commandRuntime().__frameLogicStartCircleCommand?.();
+      this.hide();
+      if (!started) window.alert("No se pudo iniciar CÍRCULO. Revisa la capa activa.");
+      return;
+    }
+
+    if (command === "P" || command === "POINT" || command === "PUNTO") {
+      const started = commandRuntime().__frameLogicStartPointTextCommand?.();
+      this.hide();
+      if (!started) window.alert("No se pudo iniciar PUNTO.");
+      return;
+    }
+
+    if (command === "T" || command === "TRIM" || command === "RECORTAR") {
+      const started = commandRuntime().__frameLogicStartTrimTextCommand?.();
+      this.hide();
+      if (!started) window.alert("No se pudo iniciar RECORTAR.");
+      return;
+    }
+
+    if (command === "COPY" || command === "COPYBASE"
       || command === "COPIAR" || command === "CP") {
       const started = commandRuntime().__frameLogicStartCopyBaseCommand?.();
       this.hide();
@@ -379,12 +409,27 @@ export class CadCommandInputController {
         this.command,
       );
 
-    if (normalized === "C"
-      || "COPY".startsWith(normalized)
-      || "COPYBASE".startsWith(normalized)
+    if (normalized === "C" || "CIRCULO".startsWith(normalized)
+      || "CIRCLE".startsWith(normalized)) {
+      this.suggestionElement.textContent =
+        "C / CÍRCULO · Enter para ejecutar · Radio predeterminado";
+      return;
+    }
+    if (normalized === "CP" || normalized.startsWith("COP")
+      || "COPY".startsWith(normalized) || "COPYBASE".startsWith(normalized)
       || "COPIAR".startsWith(normalized)) {
       this.suggestionElement.textContent =
-        "COPY / COPYBASE · piezas, ensambles, referencias DWG/DXF y líneas CAD · punto base y destino";
+        "COPY / COPYBASE · Enter · punto base y destino (C es CÍRCULO)";
+      return;
+    }
+    if (normalized === "P" || "POINT".startsWith(normalized)
+      || "PUNTO".startsWith(normalized)) {
+      this.suggestionElement.textContent = "P / PUNTO · Enter para ejecutar";
+      return;
+    }
+    if (normalized === "T" || "TRIM".startsWith(normalized)
+      || "RECORTAR".startsWith(normalized)) {
+      this.suggestionElement.textContent = "T / TRIM · Enter para ejecutar";
       return;
     }
 
