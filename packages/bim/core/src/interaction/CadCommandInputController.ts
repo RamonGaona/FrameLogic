@@ -21,6 +21,7 @@ interface FrameLogicCommandWindow extends Window {
   __frameLogicStartCircleCommand?: () => boolean;
   __frameLogicStartPointTextCommand?: () => boolean;
   __frameLogicStartTrimTextCommand?: () => boolean;
+  __frameLogicStartPolylineEditCommand?: () => boolean;
   __frameLogicCopyBaseCommandActive?: () => boolean;
 }
 
@@ -90,6 +91,7 @@ function normalizeCommand(
  * - L / LINE + Enter: línea.
  * - LL / LINEA PARALELA + Enter: línea paralela.
  * - REC / RECTANGULO + Enter: rectángulo.
+ * - E / PEDIT / EDITAR POLILINEA + Enter: edición de polilínea con menú de opciones.
  *
  * R sólo abre el buffer de RECTÁNGULO cuando el runtime indica que no existe
  * una selección susceptible de ROTATE. Con selección se conserva el atajo R
@@ -235,11 +237,12 @@ export class CadCommandInputController {
       const startsCircleOrCopy = key === "c";
       const startsPoint = key === "p";
       const startsTrim = key === "t";
+      const startsPolylineEdit = key === "e";
       const startsRectangle = key === "r" && canStartRectangleTextCommand();
 
       if (
         (!startsLineFamily && !startsRectangle && !startsCircleOrCopy
-          && !startsPoint && !startsTrim)
+          && !startsPoint && !startsTrim && !startsPolylineEdit)
         || this.hasActiveCommand()
         || hasExternalCadCommand()
       ) {
@@ -290,7 +293,9 @@ export class CadCommandInputController {
           ? "COPYBASE"
           : value.startsWith("C") ? "CIRCULO"
             : value.startsWith("LL") ? "LINEAPARALELA"
-              : value.startsWith("P") ? "PUNTO"
+              : value.startsWith("PE") ? "PEDIT"
+                : value.startsWith("P") ? "PUNTO"
+                : value.startsWith("E") ? "PEDIT"
                 : value.startsWith("T") ? "TRIM" : "LINE";
       this.render();
       return;
@@ -335,6 +340,14 @@ export class CadCommandInputController {
       const started = commandRuntime().__frameLogicStartCircleCommand?.();
       this.hide();
       if (!started) window.alert("No se pudo iniciar CÍRCULO. Revisa la capa activa.");
+      return;
+    }
+
+    if (command === "E" || command === "PEDIT"
+      || command === "EDITARPOLILINEA" || command === "EDITPOLYLINE") {
+      const started = commandRuntime().__frameLogicStartPolylineEditCommand?.();
+      this.hide();
+      if (!started) window.alert("No se pudo iniciar PEDIT. Selecciona una polilínea.");
       return;
     }
 
@@ -441,6 +454,12 @@ export class CadCommandInputController {
       || "COPIAR".startsWith(normalized)) {
       this.suggestionElement.textContent =
         "COPY / COPYBASE · Enter · punto base y destino (C es CÍRCULO)";
+      return;
+    }
+    if (normalized === "E" || "PEDIT".startsWith(normalized)
+      || "EDITARPOLILINEA".startsWith(normalized)) {
+      this.suggestionElement.textContent =
+        "E / PEDIT · Enter inicia · primera opción Mover vértice preseleccionada";
       return;
     }
     if (normalized === "P" || "POINT".startsWith(normalized)
