@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.119 — 2026-11-12
+
+### Importación de bloques DWG/DXF, colores AutoCAD y unidades correctas
+
+- **Bloques INSERT:** el importador DXF (también utilizado después de convertir DWG por WASM) ahora lee definiciones de la sección BLOCKS y expande INSERT anidados en la sección ENTITIES, aplicando correctamente punto base, traslación, rotación, escalas X/Y/Z y arrays de bloques MINSERT. Evita recursión circular y profundidad excesiva. DIMENSION expande también los bloques anónimos de representación gráfica si están presentes.
+- **Colores originales:** lectura de tabla de capas LAYER, color ACI 62, RGB truecolor 420, propiedades ByLayer (256), ByBlock (0), y visibilidad de capas. Las líneas del mismo bloque con distinto color se guardan en subcapas CAD separadas, manteniendo el bloque de referencia seleccionado como una unidad. El renderizador CAD deja de imponer blanco/gris fijo para líneas y puntos.
+- **Geometría adicional:** reconstrucción de bulges de LWPOLYLINE, contornos SOLID/TRACE/3DFACE, aproximación de SPLINE por puntos disponibles y contornos de HATCH polilínea. Los bloques no se eliminan silenciosamente: el resumen de importación indica cuántos INSERT/DIMENSION fueron expandidos y desglosa tipos aún sin representación.
+- **Unidades críticas:** la escala de INSERT y toda la geometría de DWG/DXF se almacena en milímetros, que son las unidades canónicas de FrameLogic. Antes se convertían a metros (1/1000), lo que alteraba tanto medidas como escala aparente. No se altera retroactivamente la geometría de proyectos existentes: para recuperar la escala original, reimportar el DWG en esta versión.
+- **Limitaciones conocidas:** geometría de bloque se conserva visualmente dentro de una referencia global (no como ensambles jerárquicos CAD editables). TEXT/MTEXT, atributos de texto, rellenos de HATCH, geometría avanzada de ACAD_PROXY_ENTITY, imágenes y precisión NURBS aún no tienen equivalencia completa de renderizado; se notifican en el resumen de entidades omitidas. Los colores por índice ACI 10–255 tienen conversión aproximada.
+- **Pruebas:** DXF con bloques anidados, dimensiones anónimas, base+rotación+escala, MINSERT, colores ByLayer/ByBlock/truecolor, renderización de líneas, bucles HATCH, bulges, ciclos de bloques y unidad 226 000 mm. Se incorpora `npm run test:dwg-import` a CI.
+
+---
+
 ## v0.1.118 — 2026-11-12
 
 ### Zoom de cámara para DWG de gran tamaño y Zoom Extents exacto
