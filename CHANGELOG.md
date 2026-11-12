@@ -12,6 +12,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.117 — 2026-11-12
+
+### Primera opción preseleccionada y Enter en comandos CAD de varias opciones
+
+- **Regla común:** los menús CAD que piden elegir entre varias acciones muestran visualmente la primera opción habilitada como selección predeterminada. Enter acepta esa opción sin otro clic, las flechas y Tab/Shift+Tab cambian la opción destacada sin ejecutarla, y el clic sobre otro botón sigue funcionando. Las opciones deshabilitadas no se seleccionan.
+- **CÍRCULO:** al indicar el centro, Radio aparece resaltado de forma visible; Enter confirma Radio y abre su entrada de valor, sin escribir R ni hacer clic en el menú. D selecciona Diámetro. Si se hace clic directamente en el segundo SNAP, se usa el tamaño seleccionado: radio si está seleccionado Radio, mitad de la distancia si está seleccionado Diámetro. La visualización y los puntos SNAP/WorkPlane se conservan.
+- **PEDIT:** al abrir el menú de operaciones de edición de polilíneas, **Mover vértice** es la primera acción preseleccionada y Enter la inicia. Flechas o Tab alternan entre Añadir vértice, Eliminar vértice, Abrir/Cerrar, Invertir, Separar tramo y Salir, respetando el orden visible. Cada vez que vuelve el menú se restablece la primera acción.
+- **Activación textual:** E/PEDIT/EDITAR POLILÍNEA se ejecuta solo cuando se presiona Enter en el buffer de comandos, como C/CÍRCULO y L/LINE. El botón PEDIT existente sigue iniciando directamente. Los menús de ejes cuyo valor ya fue elegido por el usuario (por ejemplo ROTATE X/Y/Z) conservan esa elección, sin forzar el primer eje.
+- **Pruebas:** selección predeterminada visible, Enter, flechas, Tab/Shift+Tab, bloqueo de opciones deshabilitadas, CÍRCULO, PEDIT y comandos escritos. Incluidas en la suite `test:gizmos`.
+
+---
+
 ## v0.1.116 — 2026-11-12
 
 ### Recuperación de proyectos DWG, comandos CAD, círculo avanzado y edición numérica

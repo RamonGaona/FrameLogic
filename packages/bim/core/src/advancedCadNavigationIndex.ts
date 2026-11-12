@@ -184,13 +184,17 @@ export async function createBimCore(
   const commandWindow = window as Window & {
     __frameLogicStartCopyBaseCommand?: () => boolean;
     __frameLogicCopyBaseCommandActive?: () => boolean;
+    __frameLogicStartPolylineEditCommand?: () => boolean;
   };
   const previousStartCopy = commandWindow.__frameLogicStartCopyBaseCommand;
   const previousActiveCopy = commandWindow.__frameLogicCopyBaseCommandActive;
+  const previousStartPedit = commandWindow.__frameLogicStartPolylineEditCommand;
   const startTypedCopy = (): boolean => cadCopy.start();
   const isCopyActive = (): boolean => cadCopy.isActive;
   commandWindow.__frameLogicStartCopyBaseCommand = startTypedCopy;
   commandWindow.__frameLogicCopyBaseCommandActive = isCopyActive;
+  const startTypedPedit = (): boolean => cadPolylineEdit.start();
+  commandWindow.__frameLogicStartPolylineEditCommand = startTypedPedit;
 
   cadStretch =
     new CadStretchController({
@@ -465,6 +469,9 @@ export async function createBimCore(
 
     if (commandWindow.__frameLogicStartCopyBaseCommand === startTypedCopy) {
       commandWindow.__frameLogicStartCopyBaseCommand = previousStartCopy;
+    }
+    if (commandWindow.__frameLogicStartPolylineEditCommand === startTypedPedit) {
+      commandWindow.__frameLogicStartPolylineEditCommand = previousStartPedit;
     }
     if (commandWindow.__frameLogicCopyBaseCommandActive === isCopyActive) {
       commandWindow.__frameLogicCopyBaseCommandActive = previousActiveCopy;

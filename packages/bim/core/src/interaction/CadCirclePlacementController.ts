@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { CadCommandDefaultChoice } from "./CadCommandDefaultChoice";
 
 import type {
   DesignModel,
@@ -127,6 +128,7 @@ export class CadCirclePlacementController {
 
   private readonly modeMenu:
     HTMLDivElement;
+  private readonly modeChoices: CadCommandDefaultChoice;
 
   private readonly numericShell:
     HTMLDivElement;
@@ -178,6 +180,9 @@ export class CadCirclePlacementController {
 
     this.modeMenu =
       this.createModeMenu();
+    this.modeChoices = new CadCommandDefaultChoice(
+      Array.from(this.modeMenu.querySelectorAll<HTMLButtonElement>("button")),
+    );
     this.numericShell =
       this.createNumericShell();
     this.numericLabel =
@@ -355,7 +360,9 @@ export class CadCirclePlacementController {
       );
 
     if (radius !== null) {
-      this.updatePreview(radius);
+      const isDiameterChoice = this.stage === "SIZE_MODE"
+        && this.modeChoices?.currentIndex === 1;
+      this.updatePreview(isDiameterChoice ? radius / 2 : radius);
     }
   };
 
@@ -406,6 +413,7 @@ export class CadCirclePlacementController {
             yAxis: state.yAxis.clone().normalize(), normal: state.normal.clone().normalize() }
         : { xAxis, yAxis, normal: new THREE.Vector3().crossVectors(xAxis, yAxis).normalize() };
       this.stage = "SIZE_MODE";
+      this.sizeMode = "RADIUS";
       this.preview.visible = false;
       this.showModeMenu();
       return;
@@ -416,8 +424,9 @@ export class CadCirclePlacementController {
     if (this.stage === "SIZE_MODE") {
       const radius = this.getManualRadius(event.clientX, event.clientY);
       if (radius !== null && radius > 1e-9) {
-        this.sizeMode = "RADIUS";
-        this.commitRadius(radius);
+        const selection = this.modeChoices?.currentIndex ?? 0;
+        this.sizeMode = selection === 1 ? "DIAMETER" : "RADIUS";
+        this.commitRadius(selection === 1 ? radius / 2 : radius);
       }
       return;
     }
@@ -485,7 +494,7 @@ export class CadCirclePlacementController {
       ) {
         const key =
           event.key.toLowerCase();
-        if (key === "r" || event.key === "Enter") {
+        if (key === "r") {
           event.preventDefault();
           event.stopImmediatePropagation();
           this.chooseSizeMode("RADIUS");
@@ -495,6 +504,16 @@ export class CadCirclePlacementController {
           event.preventDefault();
           event.stopImmediatePropagation();
           this.chooseSizeMode("DIAMETER");
+          return;
+        }
+        if (this.modeChoices?.handleKey(event.key, event.shiftKey)
+          || (event.key === "Enter" && !this.modeChoices
+            && (this.chooseSizeMode("RADIUS"), true))) {
+          if (this.stage === "SIZE_MODE" && this.modeChoices) {
+            this.sizeMode = this.modeChoices.currentIndex === 1 ? "DIAMETER" : "RADIUS";
+          }
+          event.preventDefault();
+          event.stopImmediatePropagation();
           return;
         }
       }
@@ -652,6 +671,7 @@ export class CadCirclePlacementController {
     }
 
     this.sizeMode = mode;
+    this.modeChoices?.select(mode === "RADIUS" ? 0 : 1);
     this.stage = "SIZE";
     this.manualOnly = false;
     this.modeMenu.style.display = "none";
@@ -1104,10 +1124,12 @@ export class CadCirclePlacementController {
 
   private showModeMenu(): void {
     this.numericShell.style.display = "none";
+    this.modeChoices?.reset();
+    this.sizeMode = "RADIUS";
     this.modeMenu.style.display = "flex";
     this.positionFloatingUi();
     this.showHint(
-      "CÍRCULO · Radio (predeterminado ↵) / Diámetro (D) · clic SNAP = radio",
+      "CÍRCULO · Radio preseleccionado · Enter confirma · D diámetro · ↑↓ cambia opción · clic SNAP = tamaño",
     );
   }
 

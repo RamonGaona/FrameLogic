@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { CadCommandDefaultChoice } from "./CadCommandDefaultChoice";
 
 import type {
   CadLine,
@@ -134,6 +135,7 @@ export class CadPolylineEditController {
     CadPolylineEditControllerOptions;
   private readonly status: HTMLDivElement;
   private readonly menu: HTMLDivElement;
+  private readonly operationChoices: CadCommandDefaultChoice;
   private readonly toolbarButton: HTMLButtonElement;
   private readonly observer: MutationObserver;
 
@@ -152,6 +154,9 @@ export class CadPolylineEditController {
     this.options = options;
     this.status = this.createStatus();
     this.menu = this.createMenu();
+    this.operationChoices = new CadCommandDefaultChoice(
+      Array.from(this.menu.querySelectorAll<HTMLButtonElement>("button")),
+    );
     this.toolbarButton = this.createToolbarButton();
     this.observer = new MutationObserver(
       () => this.ensureToolbarButton(),
@@ -267,9 +272,11 @@ export class CadPolylineEditController {
     this.start();
   };
 
-  private readonly handleKeyDown = (
-    event: KeyboardEvent,
-  ): void => {
+  private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    this.processKeyDown(event);
+  };
+
+  private processKeyDown(event: KeyboardEvent): void {
     if (
       this.disposed
       || isEditableTarget(event.target)
@@ -280,11 +287,15 @@ export class CadPolylineEditController {
       return;
     }
 
-    if (!this.active) {
-      if (event.key.toLowerCase() !== "e") return;
+    // Text commands are entered in the shared CAD command buffer and
+    // activate only on Enter. The PEDIT toolbar button starts directly.
+    if (!this.active) return;
+
+    if (this.stage === "MENU" && this.operationChoices?.handleKey(
+      event.key, event.shiftKey,
+    )) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      this.start();
       return;
     }
 
@@ -301,7 +312,7 @@ export class CadPolylineEditController {
         this.cancel();
       }
     }
-  };
+  }
 
   private readonly handlePointerMove = (
     event: PointerEvent,
@@ -494,11 +505,12 @@ export class CadPolylineEditController {
     if (!this.active || !this.polylineId) return;
     this.stage = "MENU";
     this.selectedVertexIndex = null;
+    this.operationChoices?.reset();
     this.menu.style.display = "flex";
     this.positionMenu();
     this.setStatus(
       message
-      ?? "PEDIT · elija una operación",
+      ?? "PEDIT · Mover vértice preseleccionado · Enter confirma · ↑↓/Tab cambia",
     );
   }
 
