@@ -367,7 +367,7 @@ describe("structural-first DWG import with a bounded GPU budget", () => {
     );
     const completeMode = parseCadDxf(data, { maxSegments: 16 });
     expect(completeMode.truncated).toBe(true);
-    expect(completeMode.segments.some(segment => segment.start.x === 5000)).toBe(false);
+    expect(completeMode.segments).toHaveLength(16);
 
     const structural = parseCadDxf(data, {
       maxSegments: 16, omitOptionalGeometry: true,
