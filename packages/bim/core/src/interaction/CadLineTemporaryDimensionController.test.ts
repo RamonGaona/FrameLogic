@@ -16,10 +16,11 @@ describe("automatic dimensions for read-only DWG line members", () => {
   function setup() {
     const model = new DesignModel();
     const layer = model.layers.create({
-      name: "CAD Plano · 0", locked: true, visible: true, snapEnabled: true,
+      name: "CAD Plano · 0", locked: false, visible: true, snapEnabled: true,
     });
     const line = model.registerCadLine({ layerId: layer.id,
       start: { x: 2, y: 3, z: 4 }, end: { x: 5, y: 7, z: 4 } });
+    model.layers.update(layer.id, { locked: true });
     const selection = { isEnabled: true, getSelectedIds: vi.fn((): string[] => []) };
     const dimension = Object.create(CadLineTemporaryDimensionController.prototype) as CadLineTemporaryDimensionController;
     Reflect.set(dimension, "isLinePlacementActive", () => false);
