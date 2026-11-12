@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.118 — 2026-11-12
+
+### Zoom de cámara para DWG de gran tamaño y Zoom Extents exacto
+
+- **DWG de 226 000 mm o más:** corregido el tope de zoom-out en Model Space. El zoom ortográfico mínimo deja de limitarse a `0.0001` y ahora permite alejarse hasta `1e-8` sin modificar la escala de inicio de 5 000 mm ni afectar el zoom cercano.
+- **Zoom Extents (Z → E):** la cámara calcula el tamaño proyectado real del rectángulo envolvente de la geometría visible en la orientación actual y la relación ancho/alto del viewport. Ajusta automáticamente los límites de alejamiento cuando el dibujo los supera; centra el modelo y encuadra todos los extremos con margen sin depender del `fitToBox` limitado por un zoom mínimo fijo.
+- **Vista perspectiva:** si el visor tiene un `maxDistance` finito, se amplía únicamente cuando el volumen de geometría necesita más distancia para caber.
+- **Compatibilidad:** conserva el punto de inspección y la orientación del usuario, la navegación CAD y las distancias en milímetros; se siguen respetando los límites de clipping dinámicos de la cámara.
+- **Pruebas:** casos automatizados de un segmento DWG de 226 000 mm, viewport estrecho, dibujo lejos del origen, vista inclinada 3D, navegación cercana y distancia perspectiva. Incorporados a `npm run test:camera`.
+
+**Archivo de reproducción:** `CUNAS_MEDIR 1.dwg` (AutoCAD DWG 2010/2011/2012, aprox. 3,2 MB). La geometría se validó con un fixture de 226 000 mm; no se ha automatizado la importación completa del DWG binario original en el navegador.
+
+---
+
 ## v0.1.117 — 2026-11-12
 
 ### Primera opción preseleccionada y Enter en comandos CAD de varias opciones
