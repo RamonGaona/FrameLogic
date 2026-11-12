@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.125 — 2026-11-12
+
+### Recuperación gráfica de DWG con bloques complejos y controles individuales en INSTANCIAS
+
+- **Problema reportado:** al importar `CUNAS_MEDIR 1.dwg`, la carga ya es rápida pero todavía faltan varios elementos visibles en AutoCAD. Los bloques pueden contener `ATTRIB`/textos, gráficos anónimos de `DIMENSION`, entidades no soportadas o referencias ausentes. La causa concreta de cada pieza faltante no puede concluirse sin una comparación de la conversión binaria y el dibujo original.
+- **Geometría priorizada:** el parser continúa descomponiendo lógicamente `INSERT` y bloques anidados como geometría CAD, sin crear miles de subobjetos seleccionables. Los segmentos estructurales y los textos tienen prioridad; cuando sobra capacidad se rescatan hasta **24.000 segmentos gráficos secundarios** provenientes de bloques anónimos de `DIMENSION`, incluso dentro de otros `INSERT`. Esto corrige la omisión absoluta introducida por el modo estructural de v0.1.124, sin permitir que esos gráficos desplacen tubos, cerchas o rótulos. Se omiten `HATCH` y XREF que no tengan contenido local.
+- **Textos y atributos:** `TEXT`, `MTEXT` y `ATTRIB` conservan sus posiciones, transformaciones anidadas y pasada independiente. La recuperación gráfica secundaria no los duplica.
+- **INSTANCIAS:** cada referencia DWG/DXF muestra un triángulo para contraer o desplegar sus capas, inicialmente contraídas, y mantiene esta elección durante las reconstrucciones del árbol. Cada referencia tiene **un ojo propio** para ocultarla/mostrarla sin afectar a las demás. Al volver a mostrar, se restauran las visibilidades individuales de sus capas. El ojo general de REFERENCIAS CAD permanece.
+- **Actualización visual:** al cambiar visibilidad se sincronizan líneas, puntos, textos y caché SNAP; ocultar un DWG seleccionado cancela su gizmo para que no quede visible sin geometría.
+- **Pruebas:** nuevas regresiones de referencias con capas mixtas, aislamiento entre DWG, bloques anidados `DIMENSION`, textos `4S 3000`, `ATTRIB` `P6 3000` y conservación de un perfil estructural posterior con presupuesto limitado. Integradas en `npm run test:dwg-import`.
+
+**Pendiente de validación manual:** contrastar visualmente el archivo binario aportado `CUNAS_MEDIR 1.dwg` con AutoCAD en Firefox/Chrome. Los elementos `ACAD_PROXY_ENTITY`, sólidos no convertidos o XREF externos pueden seguir ausentes; el límite total de 240.000 segmentos permanece. No se afirma que todas las piezas se recuperan solo por pasar pruebas DXF sintéticas. La prueba del clic MOVE por eje + SNAP sigue siendo un desarrollo independiente.
+
+---
+
 ## v0.1.124 — 2026-11-12
 
 ### DWG grandes: prioridad a perfiles, tubos y textos frente a cotas y sombreados
