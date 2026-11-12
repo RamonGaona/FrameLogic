@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { DesignModel } from "@framelogic/domain";
 import { CadLineSceneController } from "../design/CadLineSceneController";
-import { parseCadDxf } from "./CadDxfGeometryParser";
+import { parseCadDxf, MAX_RENDERED_SEGMENTS } from "./CadDxfGeometryParser";
 import { insUnitsToMillimeters } from "./CadReferenceImportController";
 
 function dxf(...records: Array<string | number>): string {
@@ -162,5 +162,32 @@ describe("DWG/DXF nested INSERT and original AutoCAD colour import", () => {
     const parsed = parseCadDxf(source);
     const s = insUnitsToMillimeters(parsed.insUnits)!;
     expect(parsed.segments[0]!.end.x * s).toBe(226000);
+  });
+});
+
+
+describe("safe bounds for deeply repeated imported DWG blocks", () => {
+  it("stops expanding at the 80k segment limit, reports a partial drawing and never runs to 600k", () => {
+    const dxf = [
+      0, "SECTION", 2, "BLOCKS",
+      0, "BLOCK", 2, "TRUSS", 10, 0, 20, 0,
+      ...Array.from({ length: 12 }, (_, i) => [
+        0, "LINE", 8, "0", 10, i, 20, 0, 11, i + 1, 21, 1,
+      ]).flat(),
+      0, "ENDBLK", 0, "ENDSEC",
+      0, "SECTION", 2, "ENTITIES",
+      0, "INSERT", 2, "TRUSS", 10, 0, 20, 0,
+      70, 128, 71, 128, 44, 100, 45, 100,
+      0, "ENDSEC", 0, "EOF",
+    ];
+    const text = dxf.map(String).join("\n") + "\n";
+    const start = Date.now();
+    const parsed = parseCadDxf(text);
+    expect(parsed.segments).toHaveLength(MAX_RENDERED_SEGMENTS);
+    expect(parsed.truncated).toBe(true);
+    expect(parsed.skippedTypes.get("LIMITE_SEGMENTOS")).toBe(1);
+    // A truly bounded parser stops expansion rather than continuing through
+    // all 196608 members, which used to freeze the main browser thread.
+    expect(Date.now() - start).toBeLessThan(20_000);
   });
 });
