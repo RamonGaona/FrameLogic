@@ -1480,7 +1480,8 @@ export class CadMixedMoveController {
           axis,
           snap.point,
         );
-      if (this.armedCopy && correction.lengthSq() > 1e-18) {
+      if (this.armedCopy) {
+        if (correction.lengthSq() <= 1e-18) return;
         try { this.copySelectionAtOffset?.(correction); }
         catch (error) { console.error("COPY MIXED at SNAP:", error); }
         // Repeated copies retain the original selection and pivot.
