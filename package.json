@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.128",
+  "version": "0.1.129",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -36,6 +36,6 @@
     "automation:demo": "node --import tsx apps/mcp/src/demo.ts",
     "mcp:start": "node --import tsx apps/mcp/src/main.ts",
     "mcp:deploy": "npx wrangler@4.158.0 deploy --config apps/mcp/wrangler.jsonc",
-    "test:dwg-recovery": "vitest run packages/bim/core/src/import/CadDwgRecoveryDecision.test.ts"
+    "test:dwg-recovery": "vitest run packages/bim/core/src/import/CadDwgRecoveryDecision.test.ts packages/bim/core/src/import/CadImportScaleSafety.test.ts tests/dwgRecoveryBuildConfig.test.ts"
   }
 }
