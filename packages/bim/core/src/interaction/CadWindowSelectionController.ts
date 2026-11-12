@@ -472,6 +472,14 @@ export class CadWindowSelectionController {
 
 
       /*
+       * Imported DWG geometry lives on locked CAD layers, so the native
+       * line selector returns null. It is still a hit on the full reference:
+       * do NOT start a window behind the DWG and cancel its selection.
+       */
+      const cadReferenceHit = getActiveCadReferenceBlockController()
+        ?.getReferenceNameAt?.(event.clientX, event.clientY);
+
+      /*
        * La primera esquina solo puede empezar
        * desde espacio vacío.
        */
@@ -479,6 +487,7 @@ export class CadWindowSelectionController {
         pieceId
         || pointId
         || lineId
+        || cadReferenceHit
       ) {
 
         return;
