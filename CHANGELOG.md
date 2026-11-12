@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.122 — 2026-11-12
+
+### Recuperar bloques DWG ausentes y corregir posiciones de cotas sin bloquear Firefox
+
+- **Causa:** el límite de 80 000 segmentos de la v0.1.120/121 detenía por completo la lectura de ENTITIES en cuanto un INSERT/MINSERT inicial consumía la capacidad. El resultado podía mostrar una pequeña porción del plano y omitir cerchas, diagonales y bloques posteriores.
+- **Presupuesto de geometría distribuido:** la primera pasada reserva una cuota de segmentos para CADA entidad lógica principal del DXF; la segunda vuelve a expandir únicamente el detalle restante de los bloques que excedan su cuota. Las polilíneas antiguas `POLYLINE/VERTEX/SEQEND` se agrupan para mantener sus puntos. Así no desaparecen los bloques posteriores por el orden del archivo. El límite total seguro aumenta de 80 000 a **240 000 segmentos**.
+- **Importación parcial identificada:** si incluso ese límite resulta insuficiente, el aviso indica expresamente cuántas entidades principales conservan detalles sin incorporar. Es una representación parcial y **no debe emplearse como plano completo de fabricación**.
+- **Referencias externas XREF:** se interpretan los indicadores de bloque DXF (flags 4/8, ruta 1). Cuando falta el contenido de una referencia externa, el informe muestra la ruta/nombre del DWG requerido. También se indican referencias INSERT sin definición de BLOCK. Las referencias externas no embebidas requieren importar o aportar los archivos de origen, no pueden recrearse sin ellos.
+- **Cotas DIMENSION:** corregida la transformación de los bloques anónimos de cotas. DXF grupo 10 es el punto de definición, no su traslación: se usa grupo 12 cuando existe; de lo contrario la geometría del bloque se mantiene en sus coordenadas. Evita piezas de cotas separadas artificialmente del resto del plano.
+- **Puntos CAD:** los marcadores de POINT dentro de referencias DWG usan 3 px en lugar de cuadrados de 8 px en vista general; los puntos siguen siendo referencias SNAP y se resaltan al seleccionarlos.
+- **Rendimiento:** se registran 1 800 segmentos por lote, sin bloquear la interfaz; el árbol INSTANCIAS deja de recorrer cientos de miles de líneas cada 250 ms gracias a un caché por revisión y suspende su actualización durante importación. Se conservan GPU batches y SNAP espacial de la v0.1.121.
+- **Pruebas:** MINSERT que excede la capacidad antes de otras referencias; verifica cobertura de bloques tardíos, integridad de geometría, detección de XREF y definiciones BLOCK ausentes, DIMENSION sin desplazamiento erróneo y límites de segmentos configurables solo para tests.
+
+**Verificación pendiente:** importar `CUNAS_MEDIR 1.dwg` original en Firefox para confirmar visualmente todos los perfiles. El conversor DWG binario está en el navegador/WASM; las pruebas automatizadas de este PR operan sobre DXF reproducibles. Textos, rellenos complejos y entidades proxy siguen sin reproducción completa.
+
+---
+
 ## v0.1.121 — 2026-11-12
 
 ### Importación de DWG grandes: árbol de instancias compacto y SNAP espacial
