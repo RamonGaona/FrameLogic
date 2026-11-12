@@ -88,6 +88,9 @@ export class ModelSpaceInstanceTreeBridgeController {
   private readonly timer: number;
   private readonly unsubscribeLines: () => void;
   private readonly unsubscribePoints: () => void;
+  private readonly unsubscribeLayers: () => void;
+  private cachedLineRevision = -1;
+  private cachedStandaloneLines: ReturnType<DesignModel["cadLines"]["getAll"]> = [];
   private lastSignature = "";
   private contextMenu: HTMLDivElement | null = null;
   private disposed = false;
@@ -103,6 +106,10 @@ export class ModelSpaceInstanceTreeBridgeController {
     this.unsubscribePoints = options.pointSelection.subscribe(
       () => this.invalidate(),
     );
+    this.unsubscribeLayers = options.designModel.layers.subscribe(() => {
+      this.cachedLineRevision = -1;
+      this.invalidate();
+    });
 
     this.timer = window.setInterval(
       () => this.decorate(),
@@ -122,6 +129,7 @@ export class ModelSpaceInstanceTreeBridgeController {
     window.clearInterval(this.timer);
     this.unsubscribeLines();
     this.unsubscribePoints();
+    this.unsubscribeLayers();
     window.removeEventListener(
       "pointerdown",
       this.handleGlobalPointerDown,
@@ -154,10 +162,24 @@ export class ModelSpaceInstanceTreeBridgeController {
     if (this.disposed) return;
     const body = findInstanceTreeBody(this.options.container);
     if (!body) return;
+    // During CAD import even a filtered getAll() creates a 240k-item array
+    // every 250ms. Defer the tree until the reference is fully imported.
+    if (typeof document !== "undefined"
+      && document.body?.dataset["framelogicCadImporting"] === "true") return;
 
-    // Never serialize/render reference-member lines in INSTANCIAS. The
-    // reference block already appears once under REFERENCIAS CAD.
-    const { lines, points } = getStandaloneCadEntities(this.options.designModel);
+    const model = this.options.designModel;
+    if (this.cachedLineRevision !== model.cadLines.revision) {
+      this.cachedStandaloneLines = model.cadLines.getAll().filter((line) => {
+        const layer = model.layers.get(line.layerId);
+        return !layer || parseCadReferenceLayerName(layer) === null;
+      });
+      this.cachedLineRevision = model.cadLines.revision;
+    }
+    const lines = this.cachedStandaloneLines;
+    const points = model.cadPoints.getAll().filter((point) => {
+      const layer = model.layers.get(point.layerId);
+      return !layer || parseCadReferenceLayerName(layer) === null;
+    });
     const pdfEntries = this.getOrderedPdfEntries();
 
     const signature = JSON.stringify({
