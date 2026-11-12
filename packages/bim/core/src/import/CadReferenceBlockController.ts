@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { CadHistoryController } from "../interaction/CadHistoryController";
 import type { RotateNumericAxis } from "../interaction/CadNumericInputController";
 import { RotateRingDoubleClick } from "../interaction/RotateRingDoubleClick";
-import { installTransformPointerLifecycle, completeRotationRings } from "../interaction/TransformGizmoReliability";
+import { installTransformPointerLifecycle, completeRotationRings, pickTranslationGizmoAxis, type TranslationGizmoAxis } from "../interaction/TransformGizmoReliability";
 import { CadReferencePivotHandle } from "./CadReferencePivotHandle";
 import { copyCadReferenceBlocks, type CadReferenceCopyResult } from "./CadReferenceCopyTransaction";
 
@@ -108,6 +108,8 @@ export class CadReferenceBlockController {
   private copyDrag = false;
   private moveDragAxis: "X" | "Y" | "Z" | "XY" | "XZ" | "YZ" | null = null;
   private destinationDown = false;
+  private moveGizmoPointer: { pointerId: number; x: number; y: number;
+    axis: TranslationGizmoAxis; copy: boolean } | null = null;
   private readonly transformStartPivot = new THREE.Vector3();
   private pivotOnlyDrag = false;
   private disposed = false;
@@ -595,6 +597,7 @@ export class CadReferenceBlockController {
     this.copyDrag = false;
     this.moveDragAxis = null;
     this.destinationDown = false;
+    this.moveGizmoPointer = null;
     this.pivotOnlyDrag = false;
     this.ringGesture = null;
     this.ringClicks.reset();
@@ -632,6 +635,7 @@ export class CadReferenceBlockController {
     this.copyDrag = false;
     this.moveDragAxis = null;
     this.destinationDown = false;
+    this.moveGizmoPointer = null;
     this.pivotOnlyDrag = false;
     this.ringGesture = null;
     this.ringClicks.reset();
@@ -864,6 +868,16 @@ export class CadReferenceBlockController {
     }
     if (this.activeMode === "translate") {
       this.ctrlCopyGesture = event.ctrlKey;
+      // Record the actual native picker hit before any mouseDown/mouseUp
+      // ordering differences. A short click can arm SNAP even if Three.js
+      // never dispatches its transform-start event in this browser.
+      this.moveGizmoPointer = !this.armedPivot && !this.armedMoveAxis
+        ? (() => {
+          const axis = this.pickMoveAxis(event.clientX, event.clientY);
+          return axis ? { pointerId: event.pointerId, x: event.clientX,
+            y: event.clientY, axis, copy: event.ctrlKey } : null;
+        })()
+        : null;
     }
     if (this.armedPivot || (this.activeMode === "translate" && this.armedMoveAxis)) {
       // A prior gizmo click can still have a stale transform pointer flag
@@ -901,6 +915,43 @@ export class CadReferenceBlockController {
     }
     this.pointerDownActive = false;
 
+    // Window capture precedes both native canvas pointerup and geometry
+    // selectors. Finish the native transform here, then consume ONLY the
+    // pointer that started on an actual MOVE picker. This prevents the CAD
+    // window selector from starting a selection behind the gizmo.
+    const moveClick = this.moveGizmoPointer;
+    if (moveClick?.pointerId === event.pointerId && this.activeMode === "translate") {
+      this.moveGizmoPointer = null;
+      const shortClick = Math.hypot(
+        event.clientX - moveClick.x, event.clientY - moveClick.y,
+      ) <= 5;
+      if (shortClick && this.transformSnapshot) {
+        // A tiny pointer wobble (< 5px) is a click, not a real transform.
+        // Roll it back before native mouseUp records history.
+        if (!this.copyDrag && !this.pivotOnlyDrag) {
+          this.applyGeometrySnapshot(this.transformSnapshot);
+        }
+        this.pivot.position.copy(this.transformStartPivot);
+        this.pivot.updateMatrixWorld(true);
+      }
+      if (this.controls.dragging) this.controls.pointerUp(null);
+      if (shortClick) {
+        // Fallback when a native mouseDown/mouseUp was lost or retargeted.
+        if (!this.armedMoveAxis) {
+          this.armedMoveAxis = moveClick.axis;
+          this.armedCopyMove = moveClick.copy;
+          this.armedPivot = false;
+        }
+        this.badge.textContent = this.armedCopyMove
+          ? `COPY DWG · Ctrl + eje ${this.armedMoveAxis} · SNAP de destino (Esc termina)`
+          : `MOVE DWG · Eje ${this.armedMoveAxis} seleccionado · Indica punto SNAP de destino`;
+      }
+      this.transformPointerActive = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+
     if (this.activeMode === "rotate" && this.ringGesture?.pointerId === event.pointerId) {
       if (Math.hypot(event.clientX - this.ringGesture.x, event.clientY - this.ringGesture.y) > 5) {
         this.ringGesture.dragged = true;
@@ -919,10 +970,12 @@ export class CadReferenceBlockController {
       && (this.armedPivot || (this.activeMode === "translate" && this.armedMoveAxis))) {
       this.destinationDown = false;
       if (Math.hypot(event.clientX - this.pointerDownX, event.clientY - this.pointerDownY) > 5) return;
-      const snap = this.options.findSnapPoint?.(event.clientX, event.clientY);
-      if (!snap || ![snap.x, snap.y, snap.z].every(Number.isFinite)) return;
+      // Even without a valid SNAP, this click belongs to MOVE/PIVOT and
+      // must not fall through to model-space selection or camera handlers.
       event.preventDefault();
       event.stopImmediatePropagation();
+      const snap = this.options.findSnapPoint?.(event.clientX, event.clientY);
+      if (!snap || ![snap.x, snap.y, snap.z].every(Number.isFinite)) return;
       if (this.armedPivot) {
         this.pivot.position.copy(snap); // Pivot only: no model modification.
       } else if (this.armedMoveAxis) {
@@ -1055,6 +1108,13 @@ export class CadReferenceBlockController {
     // when an invisible native picker could not be raycast in this Three.js version.
     const axis = this.controls.axis;
     return axis === "X" || axis === "Y" || axis === "Z" ? axis : null;
+  }
+
+  private pickMoveAxis(clientX: number, clientY: number): TranslationGizmoAxis | null {
+    return pickTranslationGizmoAxis(
+      this.helper, this.options.cameraProvider(), this.options.domElement,
+      clientX, clientY,
+    );
   }
 
   private constrainMoveCorrection(
