@@ -34,7 +34,7 @@ worker.onmessage = (event) => {
       }
       // Prioritize construction geometry for large DWG imports. TEXT/MTEXT/
       // ATTRIB remain independent of the segment budget.
-      const parsed = parseCadDxf(text, { omitOptionalGeometry: true });
+      const parsed = parseCadDxf(text, { omitOptionalGeometry: true, recoverDimensionGraphics: true });
       worker.postMessage({ ok: true, parsed });
     }
     catch (error) {
