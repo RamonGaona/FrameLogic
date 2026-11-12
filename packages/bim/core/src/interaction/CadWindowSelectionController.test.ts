@@ -199,10 +199,11 @@ describe("DWG reference as a single entity in crossing/window selection", () => 
   function referenceWindow(startX: number, currentX: number, visible = true) {
     const model = new DesignModel();
     const layer = model.layers.create({
-      name: "CAD Planta · 0", visible, locked: true, snapEnabled: true,
+      name: "CAD Planta · 0", visible, locked: false, snapEnabled: true,
     });
     model.registerCadLine({ layerId: layer.id,
       start: { x: 0, y: 0, z: 0 }, end: { x: 10, y: 0, z: 0 } });
+    model.layers.update(layer.id, { locked: true });
     const camera = new THREE.OrthographicCamera(-20, 20, 20, -20, 0.1, 100);
     camera.position.set(0, 0, 20);
     camera.lookAt(0, 0, 0);
