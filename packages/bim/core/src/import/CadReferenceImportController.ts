@@ -52,6 +52,10 @@ export class CadReferenceImportController {
     }
     this.importing = true;
     this.button.disabled = true;
+    // Pause pointer-driven SNAP until the last registered CAD segment is
+    // available; otherwise every 900-line import chunk invalidates the
+    // spatial index while the user moves the pointer.
+    document.body.dataset["framelogicCadImporting"] = "true";
     const status = document.createElement("div");
     status.dataset["framelogicCadImportProgress"] = "true";
     status.setAttribute("role", "status");
@@ -160,6 +164,7 @@ export class CadReferenceImportController {
       status.remove();
       this.button.disabled = false;
       this.importing = false;
+      delete document.body.dataset["framelogicCadImporting"];
     }
   }
 
