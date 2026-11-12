@@ -21,7 +21,7 @@ function createFixture() {
       hiddenReferenceLayerStates: new Map<string, Map<string, boolean>>(),
       selectedReferenceNames: new Set<string>(),
     },
-  ) as CadReferenceBlockController;
+  ) as unknown as CadReferenceBlockController;
   return { model, firstA, firstB, second, controller, syncLine, syncPoint, syncText, clearCache };
 }
 
