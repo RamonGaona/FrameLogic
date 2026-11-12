@@ -17,6 +17,7 @@ import type {
 import {
   CadCirclePlacementController,
 } from "./interaction/CadCirclePlacementController";
+import { CadCircleModelSpaceController } from "./interaction/CadCircleModelSpaceController";
 
 import {
   CadRectanglePlacementController,
@@ -116,6 +117,7 @@ export type PrecisionBimCoreInstance =
 
     readonly cadCirclePlacement:
       CadCirclePlacementController;
+    readonly cadCircleModelSpace: CadCircleModelSpaceController;
 
     readonly cadRectanglePlacement:
       CadRectanglePlacementController;
@@ -285,6 +287,27 @@ export async function createBimCore(
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
     });
+
+  // Native CAD circles participate in the shared SNAP engine and can be
+  // selected/measured/edited directly with 4 draggable cardinal grips.
+  const cadCircleModelSpace = new CadCircleModelSpaceController({
+    domElement: renderer.three.domElement,
+    cameraProvider: () => core.world.camera.three,
+    designModel: core.designModel,
+    circles: cadCircleScene,
+    workPlane: core.cadWorkPlane,
+    history: core.cadHistory,
+    isToolBusy: () => cadCirclePlacement.isActive
+      || cadRectanglePlacement.isActive || cadParallelLine.isActive
+      || core.cadLinePlacement.isActive || core.cadPointPlacement.isActive
+      || core.cadCommandManager.hasActiveCommand
+      || core.cadWindowSelection.isActive,
+    findSnapPoint: (x, y) => core.snapEngine.findSnap(x, y)?.point.clone() ?? null,
+    clearGeometryQueryCache: () => core.geometryQuery.clearCache(),
+  });
+  const removeCircleSnapProvider = core.designSnap.addExternalSnapProvider(
+    (x, y) => cadCircleModelSpace.findSnap(x, y),
+  );
 
   const toolbarOrganizer =
     new ModelSpaceToolbarOrganizerController({
@@ -651,6 +674,8 @@ export async function createBimCore(
       commandWindow.__frameLogicStartCircleCommand = previousStartCircle;
       commandWindow.__frameLogicStartPointTextCommand = previousStartPointText;
       commandWindow.__frameLogicStartTrimTextCommand = previousStartTrimText;
+      removeCircleSnapProvider();
+      cadCircleModelSpace.dispose();
       unsubscribeLayers();
       toolbarOrganizer.dispose();
       cadParallelLine.dispose();
@@ -664,6 +689,7 @@ export async function createBimCore(
     ...core,
     cadCircleScene,
     cadCirclePlacement,
+    cadCircleModelSpace,
     cadRectanglePlacement,
     cadParallelLine,
     startCircleCommand,
