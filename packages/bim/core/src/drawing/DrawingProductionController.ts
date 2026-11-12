@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { planAutomaticDimensions, planAutomaticViews, type AutomaticDimensionPoint } from "./AutoDrawingPlanner";
+import { planAutomaticViews, type AutomaticDimensionPoint } from "./AutoDrawingPlanner";
+import { planEngineeringAutomaticDimensions, type AutodimScope, type AutodimArrangement, type AutodimDetail } from "./EngineeringAutoDimensionPlanner";
 
 import type {
   DesignLayer,
@@ -208,6 +209,10 @@ export interface SheetState {
   orientation: SheetOrientation;
   scaleDenominator: number | null;
   hatch: boolean;
+  /** Technical dimension preferences persist with the project documentation snapshot. */
+  autoDimensionScope?: AutodimScope;
+  autoDimensionArrangement?: AutodimArrangement;
+  autoDimensionDetail?: AutodimDetail;
   readonly views: SheetViewState[];
   readonly titleBlock: TitleBlockState;
   readonly revisions: RevisionState[];
@@ -463,7 +468,31 @@ export class DrawingProductionController {
     const hatchButton = this.makeButton("Hatch", "Activar/desactivar hachurado de corte");
     const addViewButton = this.makeButton("+ Vista", "Agregar otra sección a esta hoja");
     const automaticViewsButton = this.makeButton("Vistas auto", "Generar alzado, planta, lateral e isométrica del modelo actual");
-    const automaticDimensionsButton = this.makeButton("Cotas auto", "Acotar vértices y círculos exactos B-Rep de la vista activa; revisar antes de fabricar");
+    const automaticDimensionsButton = this.makeButton("Cotas auto", "Acotar geometría STEP B-Rep exacta por conjunto o por pieza, en cadena o desde una línea base");
+    const scopeSelect = this.makeSelect([
+      ["ASSEMBLY", "Cotas · conjunto"],
+      ["PIECES", "Cotas · por pieza"],
+    ]);
+    scopeSelect.title = "Alcance de acotación automática";
+    const arrangementSelect = this.makeSelect([
+      ["BASELINE", "Cotas · desde base"],
+      ["CHAIN", "Cotas · en cadena"],
+    ]);
+    arrangementSelect.title = "Distribución de cotas automáticas";
+    const detailSelect = this.makeSelect([
+      ["ALL", "Cotas · detalles"],
+      ["OVERALL", "Cotas · generales"],
+    ]);
+    detailSelect.title = "Nivel de detalle de cotas automáticas";
+    const setDimensionPreference = (): void => {
+      const sheet = this.ensureActiveSheet();
+      if (!sheet) return;
+      sheet.autoDimensionScope = scopeSelect.value as AutodimScope;
+      sheet.autoDimensionArrangement = arrangementSelect.value as AutodimArrangement;
+      sheet.autoDimensionDetail = detailSelect.value as AutodimDetail;
+    };
+    for (const select of [scopeSelect, arrangementSelect, detailSelect])
+      select.addEventListener("change", setDimensionPreference);
     const titleBlockButton = this.makeButton("Cajetín", "Editar cajetín");
     const revisionButton = this.makeButton("Revisión", "Crear revisión del plano");
 
@@ -474,6 +503,9 @@ export class DrawingProductionController {
       orientationSelect.value = sheet.orientation;
       scaleSelect.value = sheet.scaleDenominator === null ? "AUTO" : String(sheet.scaleDenominator);
       hatchButton.style.background = sheet.hatch ? "#3b6d87" : "#27343c";
+      scopeSelect.value = sheet.autoDimensionScope ?? "ASSEMBLY";
+      arrangementSelect.value = sheet.autoDimensionArrangement ?? "BASELINE";
+      detailSelect.value = sheet.autoDimensionDetail ?? "ALL";
     };
 
     sizeSelect.addEventListener("change", () => {
@@ -508,7 +540,7 @@ export class DrawingProductionController {
     revisionButton.addEventListener("click", () => this.addRevision());
 
     const marker = toolbar.querySelector("button:last-of-type");
-    const controls = [dimensionSelect, sizeSelect, orientationSelect, scaleSelect, hatchButton, addViewButton, automaticViewsButton, automaticDimensionsButton, titleBlockButton, revisionButton];
+    const controls = [dimensionSelect, sizeSelect, orientationSelect, scaleSelect, hatchButton, addViewButton, automaticViewsButton, scopeSelect, arrangementSelect, detailSelect, automaticDimensionsButton, titleBlockButton, revisionButton];
     for (const control of controls) {
       if (marker) marker.before(control);
       else toolbar.append(control);
@@ -552,6 +584,9 @@ export class DrawingProductionController {
       orientation: "LANDSCAPE",
       scaleDenominator: null,
       hatch: true,
+      autoDimensionScope: "ASSEMBLY",
+      autoDimensionArrangement: "BASELINE",
+      autoDimensionDetail: "ALL",
       views: [{ id: crypto.randomUUID(), sectionId: section.id }],
       titleBlock: {
         project: "FrameLogic",
@@ -1082,7 +1117,13 @@ export class DrawingProductionController {
           edge.circle.radius * document.modelScale * scale);
       }
     }
-    const planned = planAutomaticDimensions(features);
+    const sheet = this.getActiveSheet();
+    const preferences = {
+      scope: sheet?.autoDimensionScope ?? "ASSEMBLY",
+      arrangement: sheet?.autoDimensionArrangement ?? "BASELINE",
+      detail: sheet?.autoDimensionDetail ?? "ALL",
+    } as const;
+    const planned = planEngineeringAutomaticDimensions(features, preferences);
     if (!planned.length) {
       this.workspace.setStatus("COTAS AUTO: no hay vértices STEP B-Rep exactos en esta sección. No se acotará desde una malla.");
       return;
@@ -1110,6 +1151,7 @@ export class DrawingProductionController {
       offsetX: plan.offsetX,
       offsetY: plan.offsetY,
       dimensionMode: plan.mode,
+      quantity: plan.quantity,
       autoSource: "FRAMELOGIC_AUTODIM_V1",
     }));
     documentState.annotations.splice(0, documentState.annotations.length, ...manual, ...auto);
@@ -1117,7 +1159,10 @@ export class DrawingProductionController {
     this.workspace.setTool("SELECT");
     this.workspace.render();
     this.workspace.setStatus("COTAS AUTO: " + auto.length
-      + " cotas desde topología STEP exacta. Los extremos curvos no se infieren de las mallas; revisa la documentación antes de fabricar.");
+      + " cotas asociativas " + (preferences.scope === "PIECES" ? "por pieza" : "del conjunto")
+      + ", " + (preferences.arrangement === "CHAIN" ? "en cadena" : "desde base")
+      + ". Agrupación de Ø repetidos: " + auto.filter((a) => (a.quantity ?? 1) > 1).length
+      + ". Solo topología STEP B-Rep; revisa el plano antes de fabricar.");
   }
 
   private addView(): void {
