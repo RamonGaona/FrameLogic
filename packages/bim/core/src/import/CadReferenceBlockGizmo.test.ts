@@ -370,7 +370,7 @@ describe("DWG MOVE: secuencia real de pointerdown/pointerup antes del SNAP", () 
 
 
 describe("DWG reference snap and inspected member", () => {
-  it("LINE receives both pointer events over the DWG, preserving the exact SNAP start point", () => {
+  it("DWG does not steal LINE pointer events; LINE resolves an exact endpoint SNAP", () => {
     const f = fixture();
     Reflect.set(f.controller, "activeMode", null);
     Reflect.set(f.options, "isPlacementActive", () => true);
@@ -378,22 +378,25 @@ describe("DWG reference snap and inspected member", () => {
     const pickReference = vi.spyOn(f.controller as any, "getReferenceAt");
     const start = new THREE.Vector3(10, 0, 0);
     const linePlacement = Object.create(CadLinePlacementController.prototype) as CadLinePlacementController;
-    Reflect.set(linePlacement, "active", true);
-    Reflect.set(linePlacement, "acquirePointerPoint", vi.fn(() => start.clone()));
-    const accepted = vi.fn();
-    Reflect.set(linePlacement, "acceptPoint", accepted);
+    Reflect.set(linePlacement, "snap", { findSnap: vi.fn(() => ({ point: start.clone(), type: "ENDPOINT" })) });
+    Reflect.set(linePlacement, "startPoint", null);
+    Reflect.set(linePlacement, "lastDirection", null);
+    Reflect.set(linePlacement, "preview", { visible: false });
+    Reflect.set(linePlacement, "requestDistanceInput", vi.fn());
+    Reflect.set(linePlacement, "refreshPreviewFromLastPointer", vi.fn());
     const down = f.pointerEvent();
     f.handler("pointerDownInternal")(down);
-    (Reflect.get(linePlacement, "handlePointerDown") as (e: unknown) => void)(down);
     expect(Reflect.get(f.controller, "pointerDownActive")).toBe(false);
     const up = f.pointerEvent();
     f.handler("pointerUpInternal")(up);
-    (Reflect.get(linePlacement, "handlePointerUp") as (e: unknown) => void)(up);
     expect(referenceSelect).not.toHaveBeenCalled();
     expect(pickReference).not.toHaveBeenCalled();
-    expect(accepted).toHaveBeenCalledOnce();
-    expect((accepted.mock.calls[0] as THREE.Vector3[])[0]?.toArray()).toEqual([10, 0, 0]);
-    expect(up.stopPropagation).toHaveBeenCalled();
+    const snapPoint = (Reflect.get(linePlacement, "acquirePointerPoint") as
+      (x: number, y: number) => THREE.Vector3 | null).call(linePlacement, 120, 80);
+    expect(snapPoint?.toArray()).toEqual([10, 0, 0]);
+    expect((Reflect.get(linePlacement, "acceptPoint") as
+      (point: THREE.Vector3) => boolean).call(linePlacement, snapPoint!)).toBe(true);
+    expect((Reflect.get(linePlacement, "startPoint") as THREE.Vector3).toArray()).toEqual([10, 0, 0]);
     vi.restoreAllMocks();
   });
 
