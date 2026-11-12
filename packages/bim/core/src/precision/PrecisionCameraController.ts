@@ -2,7 +2,7 @@ import * as THREE from "three";
 
 
 const DEFAULT_MIN_ORTHO_ZOOM =
-  0.0001;
+  1e-8;
 const DEFAULT_ORTHO_CAMERA_DISTANCE_MM =
   5000;
 const ORTHO_CAMERA_DISTANCE_FACTOR =
