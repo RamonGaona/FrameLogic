@@ -15,7 +15,7 @@ DWG con bloques, perfiles o textos faltantes, utiliza **Recuperar DWG**.
 4. Se comparan segmentos estructurales y textos, bloques sin resolver,
    geometría truncada, dimensiones generales y metadatos INSUNITS.
 5. El lector alternativo solo reemplaza el resultado si hay ganancia de
-   cobertura sin cambios incompatibles de escala/unidades.
+   cobertura sin cambios incompatibles de escala. Si los lectores discrepan en INSUNITS, se advierte y se confirma la unidad real del DWG.
 6. El usuario confirma la unidad *real* del DWG antes de crear entidades;
    mm permanece como opción inicial para evitar errores ×1.000.
 
