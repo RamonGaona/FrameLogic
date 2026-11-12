@@ -529,6 +529,7 @@ export function parseCadDxf(text: string): ParsedCadReference {
     iteration < 6 && remaining.length && segments.length < MAX_RENDERED_SEGMENTS;
     iteration++) {
     const next: typeof pending = [];
+    let emittedThisPass = 0;
     for (let i = 0; i < remaining.length; i++) {
       const item = remaining[i]!;
       const capacity = MAX_RENDERED_SEGMENTS - segments.length;
@@ -536,11 +537,11 @@ export function parseCadDxf(text: string): ParsedCadReference {
       const quota = Math.max(1, Math.floor(capacity / (remaining.length - i)));
       const result = runRoot(item.root, quota, item.cursor);
       item.cursor += result.used;
+      emittedThisPass += result.used;
       if (result.limited) next.push(item);
     }
     // If no progress can be made, stop rather than loop forever.
-    if (next.length === remaining.length && next.every((x, i) =>
-      x.cursor === remaining[i]?.cursor && x.root === remaining[i]?.root)) {
+    if (emittedThisPass === 0) {
       remaining = next;
       break;
     }
