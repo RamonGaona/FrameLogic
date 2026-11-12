@@ -1,0 +1,488 @@
+import * as THREE from "three";
+
+interface DxfPair { readonly code: number; readonly value: string }
+interface DxfRecord { readonly type: string; readonly pairs: readonly DxfPair[] }
+export interface CadDxfPoint3 { readonly x: number; readonly y: number; readonly z: number }
+export interface ImportedCadSegment {
+  readonly layer: string;
+  readonly color: string;
+  readonly start: CadDxfPoint3;
+  readonly end: CadDxfPoint3;
+}
+export interface ImportedCadPoint {
+  readonly layer: string;
+  readonly color: string;
+  readonly point: CadDxfPoint3;
+}
+export interface DxfLayerAppearance { readonly color: string; readonly visible: boolean }
+export interface ParsedCadReference {
+  readonly segments: readonly ImportedCadSegment[];
+  readonly points: readonly ImportedCadPoint[];
+  readonly insUnits: number;
+  readonly skippedEntities: number;
+  readonly skippedTypes: ReadonlyMap<string, number>;
+  readonly expandedBlocks: number;
+  readonly sourceLayers: ReadonlyMap<string, DxfLayerAppearance>;
+}
+interface DxfBlock {
+  readonly base: CadDxfPoint3;
+  readonly entities: readonly DxfRecord[];
+}
+interface Vertex extends CadDxfPoint3 { readonly bulge: number }
+interface ExpandContext {
+  readonly matrix: THREE.Matrix4;
+  readonly inheritedLayer: string | null;
+  readonly inheritedColor: string | null;
+  readonly depth: number;
+  readonly path: ReadonlySet<string>;
+}
+
+const MAX_BLOCK_DEPTH = 24;
+const MAX_RENDERED_SEGMENTS = 600_000;
+const IDENTITY = new THREE.Matrix4();
+const WHITE = "#ffffff";
+
+function pairsFromDxf(text: string): DxfPair[] {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const pairs: DxfPair[] = [];
+  for (let i = 0; i + 1 < lines.length; i += 2) {
+    const code = Number.parseInt(lines[i]!.trim(), 10);
+    if (Number.isFinite(code)) pairs.push({ code, value: lines[i + 1]!.trim() });
+  }
+  return pairs;
+}
+
+function recordsInSection(pairs: readonly DxfPair[], name: string): DxfRecord[] {
+  const out: DxfRecord[] = [];
+  let active = false;
+  for (let i = 0; i < pairs.length;) {
+    const pair = pairs[i]!;
+    if (pair.code === 0 && pair.value.toUpperCase() === "SECTION"
+      && pairs[i + 1]?.code === 2) {
+      active = pairs[i + 1]?.value.toUpperCase() === name;
+      i += 2;
+      continue;
+    }
+    if (pair.code === 0 && pair.value.toUpperCase() === "ENDSEC") {
+      active = false; i++; continue;
+    }
+    if (!active || pair.code !== 0) { i++; continue; }
+    const type = pair.value.toUpperCase();
+    i++;
+    const record: DxfPair[] = [];
+    while (i < pairs.length && pairs[i]?.code !== 0) record.push(pairs[i++]!);
+    out.push({ type, pairs: record });
+  }
+  return out;
+}
+
+function str(record: DxfRecord, code: number, fallback = ""): string {
+  return record.pairs.find(p => p.code === code)?.value ?? fallback;
+}
+function num(record: DxfRecord, code: number, fallback = 0): number {
+  const value = record.pairs.find(p => p.code === code)?.value;
+  if (value === undefined) return fallback;
+  const result = Number(value);
+  return Number.isFinite(result) ? result : fallback;
+}
+function pt(record: DxfRecord, x: number, y: number, z: number): CadDxfPoint3 {
+  return { x: num(record, x), y: num(record, y), z: num(record, z) };
+}
+function toVector(point: CadDxfPoint3): THREE.Vector3 {
+  return new THREE.Vector3(point.x, point.y, point.z);
+}
+function coords(point: THREE.Vector3): CadDxfPoint3 {
+  return { x: point.x, y: point.y, z: point.z };
+}
+function hexFromRgbNumber(rgb: number): string {
+  return "#" + (rgb & 0xffffff).toString(16).padStart(6, "0");
+}
+function aciColor(index: number): string {
+  const base = [
+    WHITE, "#ff0000", "#ffff00", "#00ff00", "#00ffff",
+    "#0000ff", "#ff00ff", WHITE, "#808080", "#c0c0c0",
+  ];
+  if (index >= 1 && index <= 9) return base[index]!;
+  if (index <= 0 || index > 255) return WHITE;
+  // AutoCAD ACI 10-249: 24 hues × 10 brightness/saturation variants.
+  const hue = Math.floor((index - 10) / 10) / 24;
+  const variant = (index - 10) % 10;
+  const saturation = variant % 2 === 0 ? 1 : 0.45;
+  const brightness = [1, 1, 0.8, 0.8, 0.6, 0.6, 0.5, 0.5, 0.3, 0.3][variant]!;
+  const color = new THREE.Color().setHSL(hue, saturation,
+    brightness === 1 ? 0.5 : Math.max(0.08, brightness * 0.44));
+  return "#" + color.getHexString();
+}
+function sourceLayersFrom(pairs: readonly DxfPair[]): Map<string, DxfLayerAppearance> {
+  const layers = new Map<string, DxfLayerAppearance>();
+  layers.set("0", { color: WHITE, visible: true });
+  for (const record of recordsInSection(pairs, "TABLES")) {
+    if (record.type !== "LAYER") continue;
+    const name = str(record, 2, "0");
+    const aci = num(record, 62, 7);
+    const rgb = record.pairs.find(p => p.code === 420);
+    const color = rgb ? hexFromRgbNumber(Number(rgb.value)) : aciColor(Math.abs(aci));
+    const flags = num(record, 70);
+    layers.set(name.toLowerCase(), {
+      color,
+      visible: aci >= 0 && (flags & (1 | 2)) === 0,
+    });
+  }
+  return layers;
+}
+function blockDefinitions(pairs: readonly DxfPair[]): Map<string, DxfBlock> {
+  const definitions = new Map<string, DxfBlock>();
+  let current: { name: string; base: CadDxfPoint3; entities: DxfRecord[] } | null = null;
+  for (const record of recordsInSection(pairs, "BLOCKS")) {
+    if (record.type === "BLOCK") {
+      if (current) definitions.set(current.name.toUpperCase(),
+        { base: current.base, entities: current.entities });
+      current = { name: str(record, 2, str(record, 3)), base: pt(record, 10, 20, 30), entities: [] };
+      continue;
+    }
+    if (record.type === "ENDBLK") {
+      if (current) definitions.set(current.name.toUpperCase(),
+        { base: current.base, entities: current.entities });
+      current = null;
+      continue;
+    }
+    if (current) current.entities.push(record);
+  }
+  return definitions;
+}
+function insUnits(pairs: readonly DxfPair[]): number {
+  for (let i = 0; i < pairs.length; i++) {
+    if (pairs[i]?.code !== 9 || pairs[i]?.value !== "$INSUNITS") continue;
+    for (let j = i + 1; j <= i + 4 && j < pairs.length; j++) {
+      if (pairs[j]?.code === 70) return Number.parseInt(pairs[j]!.value, 10) || 0;
+    }
+  }
+  return 0;
+}
+function lwVertices(record: DxfRecord): Vertex[] {
+  const result: Vertex[] = [];
+  const elevation = num(record, 38, 0);
+  let x: number | null = null, y = 0, z = elevation, bulge = 0;
+  const flush = () => {
+    if (x !== null) result.push({ x, y, z, bulge });
+  };
+  for (const pair of record.pairs) {
+    if (pair.code === 10) {
+      flush(); x = Number(pair.value); y = 0; z = elevation; bulge = 0;
+    } else if (pair.code === 20) y = Number(pair.value);
+    else if (pair.code === 30) z = Number(pair.value);
+    else if (pair.code === 42) bulge = Number(pair.value);
+  }
+  flush();
+  return result;
+}
+function normalizedVertex(pt3: CadDxfPoint3, bulge = 0): Vertex {
+  return { ...pt3, bulge };
+}
+
+export function parseCadDxf(text: string): ParsedCadReference {
+  const pairs = pairsFromDxf(text);
+  const sourceLayers = sourceLayersFrom(pairs);
+  const blocks = blockDefinitions(pairs);
+  const segments: ImportedCadSegment[] = [];
+  const points: ImportedCadPoint[] = [];
+  const skippedTypes = new Map<string, number>();
+  let expandedBlocks = 0;
+
+  const skip = (type: string): void => {
+    skippedTypes.set(type, (skippedTypes.get(type) ?? 0) + 1);
+  };
+  const appearanceForLayer = (layer: string): DxfLayerAppearance =>
+    sourceLayers.get(layer.toLowerCase()) ?? { color: WHITE, visible: true };
+  const effectiveColor = (
+    record: DxfRecord, layer: string, inherited: string | null,
+  ): string => {
+    const trueColor = record.pairs.find(p => p.code === 420);
+    if (trueColor && Number.isFinite(Number(trueColor.value))) {
+      return hexFromRgbNumber(Number(trueColor.value));
+    }
+    const aci = num(record, 62, 256);
+    if (aci === 0) return inherited ?? appearanceForLayer(layer).color;
+    if (aci !== 256 && aci > 0 && aci <= 255) return aciColor(aci);
+    return appearanceForLayer(layer).color;
+  };
+  const line = (
+    layer: string, color: string, context: ExpandContext,
+    start: CadDxfPoint3, end: CadDxfPoint3,
+  ): void => {
+    if (segments.length >= MAX_RENDERED_SEGMENTS) return;
+    const a = toVector(start).applyMatrix4(context.matrix);
+    const b = toVector(end).applyMatrix4(context.matrix);
+    if (!a.toArray().every(Number.isFinite) || !b.toArray().every(Number.isFinite)
+      || a.distanceToSquared(b) <= 1e-20) return;
+    segments.push({ layer, color, start: coords(a), end: coords(b) });
+  };
+  const polyline = (layer: string, color: string, context: ExpandContext,
+    vertices: readonly Vertex[], closed: boolean): void => {
+    const count = closed ? vertices.length : vertices.length - 1;
+    for (let i = 0; i < count; i++) {
+      const a = vertices[i]!, b = vertices[(i + 1) % vertices.length]!;
+      const bulge = a.bulge;
+      if (Math.abs(bulge) < 1e-9) { line(layer, color, context, a, b); continue; }
+      const chord = Math.hypot(b.x - a.x, b.y - a.y);
+      if (chord <= 1e-12) continue;
+      const theta = 4 * Math.atan(bulge);
+      const radius = Math.abs(chord / (2 * Math.sin(theta / 2)));
+      const middleX = (a.x + b.x) / 2, middleY = (a.y + b.y) / 2;
+      const centerOffset = chord / (2 * Math.tan(theta / 2));
+      const centerX = middleX - (b.y - a.y) / chord * centerOffset;
+      const centerY = middleY + (b.x - a.x) / chord * centerOffset;
+      const startAngle = Math.atan2(a.y - centerY, a.x - centerX);
+      const steps = Math.min(128, Math.max(8, Math.ceil(Math.abs(theta) / (Math.PI / 18))));
+      let previous: CadDxfPoint3 = a;
+      for (let j = 1; j <= steps; j++) {
+        const angle = startAngle + theta * j / steps;
+        const next: CadDxfPoint3 = j === steps ? b : {
+          x: centerX + radius * Math.cos(angle),
+          y: centerY + radius * Math.sin(angle),
+          z: a.z + (b.z - a.z) * j / steps,
+        };
+        line(layer, color, context, previous, next);
+        previous = next;
+      }
+    }
+  };
+  const sampleArc = (layer: string, color: string, ctx: ExpandContext,
+    center: CadDxfPoint3, radius: number, start: number, sweep: number): void => {
+    if (!(radius > 0) || !Number.isFinite(radius)) return;
+    const steps = Math.max(12, Math.ceil(Math.abs(sweep) / (Math.PI / 36)));
+    let previous = { x: center.x + radius * Math.cos(start),
+      y: center.y + radius * Math.sin(start), z: center.z };
+    for (let i = 1; i <= steps; i++) {
+      const angle = start + sweep * i / steps;
+      const next = { x: center.x + radius * Math.cos(angle),
+        y: center.y + radius * Math.sin(angle), z: center.z };
+      line(layer, color, ctx, previous, next);
+      previous = next;
+    }
+  };
+  const sampleEllipse = (layer: string, color: string, ctx: ExpandContext,
+    center: CadDxfPoint3, major: CadDxfPoint3, ratio: number,
+    start: number, sweep: number): void => {
+    const majorLength = Math.hypot(major.x, major.y);
+    if (majorLength < 1e-12 || ratio <= 0) return;
+    const ux = major.x / majorLength, uy = major.y / majorLength;
+    const at = (t: number): CadDxfPoint3 => ({
+      x: center.x + ux * majorLength * Math.cos(t) - uy * majorLength * ratio * Math.sin(t),
+      y: center.y + uy * majorLength * Math.cos(t) + ux * majorLength * ratio * Math.sin(t),
+      z: center.z,
+    });
+    const steps = Math.max(20, Math.ceil(Math.abs(sweep) / (Math.PI / 48)));
+    let previous = at(start);
+    for (let i = 1; i <= steps; i++) {
+      const next = at(start + sweep * i / steps);
+      line(layer, color, ctx, previous, next);
+      previous = next;
+    }
+  };
+
+  const expand = (records: readonly DxfRecord[], ctx: ExpandContext): void => {
+    let legacy: { layer: string; color: string; vertices: Vertex[]; closed: boolean } | null = null;
+    const finish = (): void => {
+      if (!legacy) return;
+      polyline(legacy.layer, legacy.color, ctx, legacy.vertices, legacy.closed);
+      legacy = null;
+    };
+    for (const record of records) {
+      const sourceLayer = str(record, 8, "0");
+      const layer = sourceLayer === "0" && ctx.inheritedLayer
+        ? ctx.inheritedLayer : sourceLayer;
+      const color = effectiveColor(record, layer, ctx.inheritedColor);
+      if (record.type === "POLYLINE") {
+        finish();
+        legacy = { layer, color, vertices: [], closed: (num(record, 70) & 1) !== 0 };
+        continue;
+      }
+      if (record.type === "VERTEX" && legacy) {
+        legacy.vertices.push(normalizedVertex(pt(record, 10, 20, 30), num(record, 42)));
+        continue;
+      }
+      if (record.type === "SEQEND" && legacy) { finish(); continue; }
+      finish();
+      switch (record.type) {
+        case "INSERT":
+        case "DIMENSION": {
+          const name = str(record, 2).toUpperCase();
+          const block = blocks.get(name);
+          if (!block || ctx.depth >= MAX_BLOCK_DEPTH || ctx.path.has(name)) {
+            skip(record.type); break;
+          }
+          expandedBlocks++;
+          const countX = record.type === "INSERT" ? Math.max(1, Math.min(128, num(record, 70, 1))) : 1;
+          const countY = record.type === "INSERT" ? Math.max(1, Math.min(128, num(record, 71, 1))) : 1;
+          const rotation = num(record, 50) * Math.PI / 180;
+          const translation = pt(record, 10, 20, 30);
+          const parent = ctx.matrix.clone()
+            .multiply(new THREE.Matrix4().makeTranslation(translation.x, translation.y, translation.z))
+            .multiply(new THREE.Matrix4().makeRotationZ(rotation))
+            .multiply(new THREE.Matrix4().makeScale(
+              num(record, 41, 1), num(record, 42, 1), num(record, 43, 1),
+            ));
+          const path = new Set(ctx.path);
+          path.add(name);
+          for (let row = 0; row < countY; row++) for (let col = 0; col < countX; col++) {
+            const matrix = parent.clone().multiply(new THREE.Matrix4().makeTranslation(
+              col * num(record, 44) - block.base.x,
+              row * num(record, 45) - block.base.y,
+              -block.base.z,
+            ));
+            expand(block.entities, {
+              matrix, inheritedLayer: layer, inheritedColor: color,
+              depth: ctx.depth + 1, path,
+            });
+          }
+          break;
+        }
+        case "LINE":
+          line(layer, color, ctx, pt(record, 10, 20, 30), pt(record, 11, 21, 31));
+          break;
+        case "POINT": {
+          const position = toVector(pt(record, 10, 20, 30)).applyMatrix4(ctx.matrix);
+          if (position.toArray().every(Number.isFinite)) {
+            points.push({ layer, color, point: coords(position) });
+          }
+          break;
+        }
+        case "LWPOLYLINE":
+          polyline(layer, color, ctx, lwVertices(record), (num(record, 70) & 1) !== 0);
+          break;
+        case "CIRCLE":
+          sampleArc(layer, color, ctx, pt(record, 10, 20, 30),
+            Math.abs(num(record, 40)), 0, Math.PI * 2);
+          break;
+        case "ARC": {
+          let sweep = (num(record, 51) - num(record, 50)) * Math.PI / 180;
+          while (sweep <= 0) sweep += 2 * Math.PI;
+          sampleArc(layer, color, ctx, pt(record, 10, 20, 30),
+            Math.abs(num(record, 40)), num(record, 50) * Math.PI / 180, sweep);
+          break;
+        }
+        case "ELLIPSE": {
+          const start = num(record, 41), end = num(record, 42, Math.PI * 2);
+          const sweep = ((end - start) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2)
+            || Math.PI * 2;
+          sampleEllipse(layer, color, ctx, pt(record, 10, 20, 30),
+            pt(record, 11, 21, 31), Math.abs(num(record, 40, 1)), start, sweep);
+          break;
+        }
+        case "TRACE":
+        case "SOLID":
+        case "3DFACE": {
+          const a = pt(record, 10, 20, 30), b = pt(record, 11, 21, 31);
+          const c = pt(record, 12, 22, 32), d = pt(record, 13, 23, 33);
+          const corners = record.type === "3DFACE"
+            ? [a, b, c, d] : [a, b, d, c];
+          const edgeFlags = record.type === "3DFACE" ? num(record, 70) : 0;
+          for (let i = 0; i < 4; i++) {
+            if (edgeFlags & (1 << i)) continue;
+            const previous = corners[i]!, next = corners[(i + 1) % 4]!;
+            line(layer, color, ctx, previous, next);
+          }
+          break;
+        }
+        case "SPLINE": {
+          const fit = triples(record, 11, 21, 31);
+          const control = triples(record, 10, 20, 30);
+          const vertices = fit.length > 1 ? fit : control;
+          if (vertices.length < 2) { skip("SPLINE"); break; }
+          // Exact NURBS/fit-point reconstruction is a separate CAD feature;
+          // preserve the available control/fit geometry as connected segments.
+          polyline(layer, color, ctx, vertices.map(v => normalizedVertex(v)),
+            (num(record, 70) & 1) !== 0);
+          break;
+        }
+        case "HATCH": {
+          // Boundary polyline loops are stored as DXF 92/93/10/20 sequences.
+          // Render their outlines; patterned/solid fill is not yet supported.
+          const loops = hatchPolylineLoops(record);
+          if (!loops.length) { skip("HATCH"); break; }
+          for (const loop of loops) polyline(layer, color, ctx, loop, true);
+          break;
+        }
+        case "ATTRIB":
+        case "ATTDEF":
+        case "TEXT":
+        case "MTEXT":
+        case "MLEADER":
+        case "MULTILEADER":
+        case "LEADER":
+        case "IMAGE":
+        case "OLE2FRAME":
+        case "WIPEOUT":
+        case "ACAD_PROXY_ENTITY":
+          skip(record.type);
+          break;
+        case "SEQEND":
+        case "ENDBLK":
+          break;
+        default:
+          if (record.type) skip(record.type);
+      }
+    }
+    finish();
+  };
+  expand(recordsInSection(pairs, "ENTITIES"), {
+    matrix: IDENTITY,
+    inheritedLayer: null,
+    inheritedColor: null,
+    depth: 0,
+    path: new Set(),
+  });
+  return {
+    segments, points, insUnits: insUnits(pairs), expandedBlocks, sourceLayers,
+    skippedTypes,
+    skippedEntities: [...skippedTypes.values()].reduce((a, b) => a + b, 0),
+  };
+}
+
+function triples(record: DxfRecord, xc: number, yc: number, zc: number): CadDxfPoint3[] {
+  const points: CadDxfPoint3[] = [];
+  let current: { x: number; y: number; z: number } | null = null;
+  for (const p of record.pairs) {
+    if (p.code === xc) {
+      if (current) points.push(current);
+      current = { x: Number(p.value), y: 0, z: 0 };
+    }
+    else if (p.code === yc && current) current.y = Number(p.value);
+    else if (p.code === zc && current) current.z = Number(p.value);
+  }
+  if (current) points.push(current);
+  return points.filter(p => [p.x, p.y, p.z].every(Number.isFinite));
+}
+
+function hatchPolylineLoops(record: DxfRecord): Vertex[][] {
+  const loops: Vertex[][] = [];
+  const pairs = record.pairs;
+  for (let i = 0; i < pairs.length; i++) {
+    if (pairs[i]?.code !== 92) continue;
+    const flags = Number(pairs[i]?.value) || 0;
+    if ((flags & 2) === 0) continue;
+    let count = 0, closed = true;
+    let j = i + 1;
+    for (; j < pairs.length && pairs[j]?.code !== 92; j++) {
+      if (pairs[j]?.code === 73) closed = pairs[j]?.value !== "0";
+      if (pairs[j]?.code === 93) { count = Number(pairs[j]?.value) || 0; j++; break; }
+    }
+    if (!closed || count < 2 || count > 100_000) continue;
+    const vertices: Vertex[] = [];
+    let current: { x: number; y: number; z: number; bulge: number } | null = null;
+    for (; j < pairs.length && vertices.length < count; j++) {
+      const p = pairs[j]!;
+      if (p.code === 10) {
+        if (current) vertices.push(current);
+        current = { x: Number(p.value), y: 0, z: 0, bulge: 0 };
+      } else if (p.code === 20 && current) current.y = Number(p.value);
+      else if (p.code === 42 && current) current.bulge = Number(p.value);
+      else if (p.code === 92 || p.code === 97) break;
+    }
+    if (current) vertices.push(current);
+    if (vertices.length >= 2) loops.push(vertices);
+    i = Math.max(i, j - 1);
+  }
+  return loops;
+}
