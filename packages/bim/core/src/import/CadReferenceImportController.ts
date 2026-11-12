@@ -10,12 +10,18 @@ import type {
   CadPointSceneController,
 } from "../design/CadPointSceneController";
 import { type CadDxfPoint3, type ParsedCadReference, MAX_RENDERED_SEGMENTS } from "./CadDxfGeometryParser";
+import {
+  CAD_TEXT_ANCHOR_PREFIX,
+  type CadReferenceTextAnnotation,
+  type CadReferenceTextSceneController,
+} from "../design/CadReferenceTextSceneController";
 
 export interface CadReferenceImportControllerOptions {
   readonly container: HTMLElement;
   readonly designModel: DesignModel;
   readonly cadLineScene: CadLineSceneController;
   readonly cadPointScene: CadPointSceneController;
+  readonly cadTextScene?: CadReferenceTextSceneController;
   readonly clearGeometryQueryCache: () => void;
   readonly onImported?: () => void | Promise<void>;
 }
@@ -143,6 +149,39 @@ export class CadReferenceImportController {
       report(`DWG/DXF · Registrando ${Math.min(i + CHUNK, parsed.points.length)} / ${parsed.points.length} puntos…`);
       await yieldFrame();
     }
+    // Text annotations use hidden CAD point anchors. They follow the same
+    // DWG reference transform, history and project persistence as its lines.
+    const annotations: CadReferenceTextAnnotation[] = [];
+    for (let i = 0; i < parsed.texts.length; i += CHUNK) {
+      for (const label of parsed.texts.slice(i, i + CHUNK)) {
+        const layerId = getLayerId(label.layer, label.color);
+        const id = crypto.randomUUID();
+        const originPointId = `${CAD_TEXT_ANCHOR_PREFIX}${id}:origin`;
+        const axisXPointId = `${CAD_TEXT_ANCHOR_PREFIX}${id}:x`;
+        const axisYPointId = `${CAD_TEXT_ANCHOR_PREFIX}${id}:y`;
+        this.options.designModel.cadPoints.register({
+          id: originPointId, layerId,
+          position: scaledPoint(label.position, unitScale),
+        });
+        this.options.designModel.cadPoints.register({
+          id: axisXPointId, layerId,
+          position: scaledPoint(label.axisX, unitScale),
+        });
+        this.options.designModel.cadPoints.register({
+          id: axisYPointId, layerId,
+          position: scaledPoint(label.axisY, unitScale),
+        });
+        annotations.push({
+          id, text: label.text, kind: label.kind, layerId,
+          originPointId, axisXPointId, axisYPointId,
+          horizontalAlign: label.horizontalAlign,
+          verticalAlign: label.verticalAlign,
+        });
+      }
+      report(`DWG/DXF · Preparando textos ${Math.min(i + CHUNK, parsed.texts.length).toLocaleString()} / ${parsed.texts.length.toLocaleString()}…`);
+      await yieldFrame();
+    }
+    this.options.cadTextScene?.addAnnotations(annotations);
     report("DWG/DXF · Preparando geometría agrupada para la GPU…");
     await yieldFrame();
     this.options.cadLineScene.sync();
@@ -168,7 +207,7 @@ export class CadReferenceImportController {
       ? `\nDefiniciones BLOCK ausentes: ${parsed.unresolvedBlocks.slice(0, 8).join(", ")}.`
       : "";
     window.alert(
-      `Plano CAD "${referenceName}" importado como bloque de referencia.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos${skipped}.${truncation}${xrefs}${missingBlocks}\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
+      `Plano CAD "${referenceName}" importado como bloque de referencia.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.texts.length} textos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos${skipped}.${truncation}${xrefs}${missingBlocks}\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
     );
     } finally {
       status.remove();

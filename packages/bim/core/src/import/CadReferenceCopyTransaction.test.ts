@@ -2,6 +2,10 @@ import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { DesignModel } from "@framelogic/domain";
 import { copyCadReferenceBlocks } from "./CadReferenceCopyTransaction";
+import {
+  CAD_TEXT_ANCHOR_PREFIX,
+  CadReferenceTextSceneController,
+} from "../design/CadReferenceTextSceneController";
 
 function fixture() {
   const model = new DesignModel();
@@ -86,6 +90,46 @@ describe("COPY DWG/DXF full-reference transaction", () => {
     expect(f.model.cadLines.get(second.lineIds[0]!)).toBeUndefined();
     f.redoActions[1]!();
     expect(f.model.cadLines.get(second.lineIds[0]!)?.start.x).toBe(32);
+  });
+
+  it("copies tube labels and all three hidden anchors, preserving them through Undo/Redo", () => {
+    const f = fixture();
+    const textScene = new CadReferenceTextSceneController(new THREE.Scene(), f.model);
+    const id = "text-4s-3000";
+    const anchors = ["origin", "x", "y"].map((kind, i) =>
+      f.model.registerCadPoint({
+        id: `${CAD_TEXT_ANCHOR_PREFIX}${id}:${kind}`,
+        layerId: f.one.id,
+        position: { x: 200 + (i === 1 ? 100 : 0),
+          y: 300 + (i === 2 ? 100 : 0), z: 0 },
+      }).id
+    );
+    textScene.addAnnotations([{
+      id, text: "4S 3000", kind: "ATTRIB", layerId: f.one.id,
+      originPointId: anchors[0]!, axisXPointId: anchors[1]!, axisYPointId: anchors[2]!,
+      horizontalAlign: "center", verticalAlign: "baseline",
+    }]);
+    const result = copyCadReferenceBlocks(
+      f.model, f.history as never, ["Planta"], new THREE.Vector3(100, 0, 0),
+      f.sync, textScene,
+    );
+    expect(result.pointIds).toHaveLength(4);
+    const texts = textScene.getAnnotations();
+    expect(texts).toHaveLength(2);
+    const cloned = texts.find(x => x.id !== id)!;
+    expect(cloned.text).toBe("4S 3000");
+    expect(cloned.originPointId).not.toBe(anchors[0]);
+    expect(cloned.originPointId.startsWith(CAD_TEXT_ANCHOR_PREFIX)).toBe(true);
+    expect(f.model.cadPoints.get(cloned.originPointId)?.position)
+      .toEqual({ x: 300, y: 300, z: 0 });
+    f.undoActions[0]!();
+    expect(textScene.getAnnotations()).toHaveLength(1);
+    expect(f.model.cadPoints.get(cloned.originPointId)).toBeUndefined();
+    f.redoActions[0]!();
+    expect(textScene.getAnnotations()).toHaveLength(2);
+    expect(f.model.cadPoints.get(cloned.originPointId)?.position)
+      .toEqual({ x: 300, y: 300, z: 0 });
+    textScene.dispose();
   });
 
   it("fails closed without creating anything for invalid displacement or missing reference", () => {

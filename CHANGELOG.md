@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.123 — 2026-11-12
+
+### Etiquetas de texto DWG/DXF en tubos, cerchas y bloques
+
+- **TEXT / MTEXT / ATTRIB:** importar y mostrar los textos originales de AutoCAD, incluidos los atributos asociados a bloques INSERT y los rótulos de piezas dentro de tubos y cerchas (por ejemplo **4S 3000** y **P6 3000**), sin necesidad de XREF, cotas, rellenos de HATCH o entidades proxy.
+- **Transformaciones y estilos:** conservar texto, color ByLayer/ByBlock, capa, altura DXF grupo 40, rotación 50 o vector director de MTEXT, alineación horizontal y vertical y transformaciones de INSERT anidados. Decodificar escapes AutoCAD, saltos de línea MTEXT y símbolos frecuentes.
+- **Importación en pase independiente:** el presupuesto de 240.000 segmentos de geometría no elimina las etiquetas: los textos se procesan por separado en el Web Worker (tope de seguridad 15.000 etiquetas). Los ATTRIB invisibles y ATTDEF variables no se duplican visualmente; solo ATTDEF constantes pueden representarse sin valor de instancia.
+- **Renderizado eficiente:** cada cadena idéntica reutiliza una textura de Canvas y se representa con `THREE.InstancedMesh` por capa, evitando convertir miles de letras en líneas o crear un WebGL draw call por carácter. Los puntos auxiliares de transformación de textos quedan ocultos y excluidos de SNAP/selección.
+- **Persistencia y edición:** `.flproject` almacena el texto y los IDs de tres puntos de referencia CAD por rótulo, manteniendo la compatibilidad con proyectos anteriores. MOVE/ROTATE de la referencia, COPYBASE y Ctrl+copiar trasladan también sus textos; Undo/Redo de copias los restaura y eliminar la referencia elimina sus etiquetas.
+- **Pruebas:** bloques anidados con TEXT, MTEXT y ATTRIB, rotación y escala, codificación y multilinea, presupuesto independiente de la geometría, texturas instanciadas, movimiento de anclajes, visibilidad por capa y restauración.
+
+**Limitación:** el visor usa tipografía sans-serif estándar; SHX, fuentes personalizadas y formato enriquecido MTEXT no se reproducen de forma idéntica a AutoCAD. XREF, DIMENSION, HATCH complejo y proxies quedan fuera de este alcance. La prueba visual con `CUNAS_MEDIR 1.dwg` en Firefox sigue pendiente.
+
+---
+
 ## v0.1.122 — 2026-11-12
 
 ### Recuperar bloques DWG ausentes y corregir posiciones de cotas sin bloquear Firefox

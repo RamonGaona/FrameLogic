@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { isCadTextAnchorId } from "../design/CadReferenceTextSceneController";
 import { getNearbyCadLines } from "../precision/CadScreenSpatialIndex";
 
 import {
@@ -1107,6 +1108,7 @@ export class DesignSnapController {
         .cadPoints
         .getAll()
     ) {
+      if (isCadTextAnchorId(cadPoint.id)) continue;
 
       if (
         this.excludedInstanceIds.has(

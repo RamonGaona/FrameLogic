@@ -34,6 +34,10 @@ import type {
 import type {
   CadLineSceneController,
 } from "../design/CadLineSceneController";
+import type {
+  CadReferenceTextAnnotation,
+  CadReferenceTextSceneController,
+} from "../design/CadReferenceTextSceneController";
 
 import type {
   FrameLogicDocumentationSnapshot,
@@ -85,6 +89,7 @@ export interface FrameLogicProjectPackageV1 {
   readonly assemblies: readonly Assembly[];
   readonly cadPoints: readonly CadPoint[];
   readonly cadLines: readonly CadLine[];
+  readonly cadReferenceTexts?: readonly CadReferenceTextAnnotation[];
   readonly geometrySources: readonly ProjectGeometrySource[];
   readonly referenceSources: readonly ProjectReferenceSource[];
   readonly engineering: FrameLogicEngineeringSnapshot;
@@ -101,6 +106,7 @@ export interface FrameLogicProjectPackageControllerOptions {
   readonly designScene: DesignSceneController;
   readonly cadPointScene: CadPointSceneController;
   readonly cadLineScene: CadLineSceneController;
+  readonly cadTextScene?: CadReferenceTextSceneController;
   readonly piecePackage: PieceFrameLogicPackageController;
   readonly createEngineeringSnapshot: () => FrameLogicEngineeringSnapshot;
   readonly restoreEngineeringSnapshot: (snapshot: FrameLogicEngineeringSnapshot) => void;
@@ -254,6 +260,7 @@ export class FrameLogicProjectPackageController {
         cloneJson(
           this.options.designModel.cadLines.getAll(),
         ),
+      cadReferenceTexts: this.options.cadTextScene?.getAnnotations() ?? [],
       geometrySources,
       referenceSources:
         this.references.map(
@@ -375,6 +382,7 @@ export class FrameLogicProjectPackageController {
     this.options.designScene.clearInstances();
     this.options.designScene.clearAssetPrototypes();
     this.options.designModel.clear();
+    this.options.cadTextScene?.clear();
     this.options.cadPointScene.sync();
     this.options.cadLineScene.sync();
     this.pieceRuntime.sources.clear();
@@ -522,6 +530,7 @@ export class FrameLogicProjectPackageController {
         this.options.designModel.layers.update(id, { locked: true });
       }
     }
+    this.options.cadTextScene?.setAnnotations(packageValue.cadReferenceTexts ?? []);
     this.options.cadPointScene.sync();
     this.options.cadLineScene.sync();
 

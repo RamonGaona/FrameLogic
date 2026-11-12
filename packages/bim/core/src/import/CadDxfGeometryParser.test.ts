@@ -264,3 +264,78 @@ describe("large DXF block completeness and missing external references", () => {
     expect(parsed.skippedTypes.get("XREF")).toBe(1);
   });
 });
+
+describe("AutoCAD TEXT / MTEXT / ATTRIB inside structural truss blocks", () => {
+  it("recovers 4S 3000 and P6 3000 at the original block rotation and scale", () => {
+    const source = dxf(
+      ...HEADER, ...LAYERS,
+      0, "SECTION", 2, "BLOCKS",
+      0, "BLOCK", 2, "TUBE", 10, 0, 20, 0,
+      0, "LINE", 8, "0", 10, 0, 20, 0, 11, 3000, 21, 0,
+      0, "TEXT", 8, "0", 1, "4S 3000", 40, 120,
+      10, 1000, 20, 80, 50, 0,
+      0, "MTEXT", 8, "0", 1, "P6 3000", 40, 110,
+      10, 1700, 20, 80, 71, 5,
+      0, "ATTDEF", 8, "0", 1, "PLACEHOLDER", 40, 100,
+      10, 2200, 20, 80, 70, 0,
+      0, "ENDBLK", 0, "ENDSEC",
+      0, "SECTION", 2, "ENTITIES",
+      0, "INSERT", 2, "TUBE", 8, "YELLOW",
+      10, 5000, 20, 2000, 41, 2, 42, 2, 50, 90,
+      0, "ATTRIB", 8, "YELLOW", 1, "4S 6000", 40, 150,
+      10, 4500, 20, 4000, 50, 90, 70, 0,
+      0, "SEQEND",
+      0, "ENDSEC", 0, "EOF",
+    );
+    const parsed = parseCadDxf(source);
+    expect(parsed.segments).toHaveLength(1);
+    expect(parsed.texts.map(x => x.text)).toEqual(["4S 3000", "P6 3000", "4S 6000"]);
+    const first = parsed.texts[0]!;
+    expect(first.position.x).toBeCloseTo(4840);
+    expect(first.position.y).toBeCloseTo(4000);
+    expect(first.axisX.x).toBeCloseTo(4840);
+    expect(first.axisX.y).toBeCloseTo(4240);
+    expect(first.layer).toBe("YELLOW");
+    expect(first.color).toBe("#ffff00");
+    const mtext = parsed.texts[1]!;
+    expect(mtext.horizontalAlign).toBe("center");
+    expect(mtext.verticalAlign).toBe("middle");
+    const attrib = parsed.texts[2]!;
+    expect(attrib.kind).toBe("ATTRIB");
+    expect(attrib.position.x).toBe(4500);
+    expect(parsed.skippedTypes.get("TEXT")).toBeUndefined();
+    expect(parsed.skippedTypes.get("MTEXT")).toBeUndefined();
+    expect(parsed.skippedTypes.get("ATTRIB")).toBeUndefined();
+  });
+
+  it("preserves texts even when a massive earlier block exhausts line budget", () => {
+    const source = dxf(
+      0, "SECTION", 2, "BLOCKS",
+      0, "BLOCK", 2, "FRAME", 10, 0, 20, 0,
+      0, "LINE", 8, "0", 10, 0, 20, 0, 11, 100, 21, 10,
+      0, "TEXT", 8, "0", 1, "4S 3000", 10, 50, 20, 0, 40, 20,
+      0, "ENDBLK", 0, "ENDSEC",
+      0, "SECTION", 2, "ENTITIES",
+      0, "INSERT", 2, "FRAME", 10, 0, 20, 0, 70, 128, 71, 128, 44, 100, 45, 100,
+      0, "TEXT", 1, "P6 3000", 40, 100, 10, 226000, 20, 0,
+      0, "ENDSEC", 0, "EOF",
+    );
+    const parsed = parseCadDxf(source, { maxSegments: 96 });
+    expect(parsed.segments).toHaveLength(96);
+    expect(parsed.truncated).toBe(true);
+    expect(parsed.texts.some(x => x.text === "P6 3000")).toBe(true);
+    expect(parsed.texts.some(x => x.text === "4S 3000")).toBe(true);
+  });
+
+  it("decodes multiline MTEXT, unicode escape and degree signs without changing label contents", () => {
+    const source = dxf(0, "SECTION", 2, "ENTITIES",
+      0, "MTEXT", 40, 50, 10, 0, 20, 0,
+      1, String.raw`4S 3000\PÁngulo \U+00B0 %%d`,
+      0, "TEXT", 1, "P6 3000", 40, 30, 10, 500, 20, 0,
+      0, "ENDSEC", 0, "EOF");
+    const parsed = parseCadDxf(source);
+    expect(parsed.texts[0]?.text).toContain("4S 3000\nÁngulo");
+    expect(parsed.texts[0]?.text).toContain("°");
+    expect(parsed.texts[1]?.text).toBe("P6 3000");
+  });
+});

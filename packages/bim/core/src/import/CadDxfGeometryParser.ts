@@ -9,6 +9,19 @@ export interface ImportedCadSegment {
   readonly start: CadDxfPoint3;
   readonly end: CadDxfPoint3;
 }
+export interface ImportedCadText {
+  readonly layer: string;
+  readonly color: string;
+  readonly kind: "TEXT" | "MTEXT" | "ATTRIB" | "ATTDEF";
+  readonly text: string;
+  readonly position: CadDxfPoint3;
+  /** Endpoints of one-height local text axes, already in world coordinates. */
+  readonly axisX: CadDxfPoint3;
+  readonly axisY: CadDxfPoint3;
+  readonly horizontalAlign: "left" | "center" | "right";
+  readonly verticalAlign: "baseline" | "middle" | "top";
+}
+
 export interface ImportedCadPoint {
   readonly layer: string;
   readonly color: string;
@@ -18,6 +31,7 @@ export interface DxfLayerAppearance { readonly color: string; readonly visible: 
 export interface ParsedCadReference {
   readonly segments: readonly ImportedCadSegment[];
   readonly points: readonly ImportedCadPoint[];
+  readonly texts: readonly ImportedCadText[];
   readonly insUnits: number;
   readonly skippedEntities: number;
   readonly skippedTypes: ReadonlyMap<string, number>;
@@ -206,6 +220,7 @@ export function parseCadDxf(
   const blocks = blockDefinitions(pairs);
   const segments: ImportedCadSegment[] = [];
   const points: ImportedCadPoint[] = [];
+  const texts: ImportedCadText[] = [];
   const skippedTypes = new Map<string, number>();
   let expandedBlocks = 0;
   let truncated = false;
@@ -223,6 +238,10 @@ export function parseCadDxf(
   let rootSeen = 0;
   let rootLimited = false;
   let pass = 0;
+  let textQuota = Number.POSITIVE_INFINITY;
+  let textReplaySkip = 0;
+  let textSeen = 0;
+  let textEmitted = 0;
 
   const skip = (type: string): void => {
     // Replaying a root to fill its remaining quota must not count the same
@@ -244,6 +263,86 @@ export function parseCadDxf(
     if (aci !== 256 && aci > 0 && aci <= 255) return aciColor(aci);
     return appearanceForLayer(layer).color;
   };
+  /** DXF AutoCAD escape codes are literal strings, not geometry. */
+  const textContent = (record: DxfRecord): string => {
+    const raw = record.type === "MTEXT"
+      ? record.pairs.filter((p) => p.code === 3).map((p) => p.value).join("")
+        + str(record, 1)
+      : str(record, 1);
+    return raw
+      .replace(/\\P/g, "\n")
+      .replace(/\\~/g, " ")
+      .replace(/\\U\+([0-9A-Fa-f]{4})/g, (_, hex: string) =>
+        String.fromCharCode(Number.parseInt(hex, 16)))
+      .replace(/%%[dD]/g, "°")
+      .replace(/%%[pP]/g, "±")
+      .replace(/%%[cC]/g, "⌀")
+      .replace(/\\[LlOoKk]/g, "")
+      .replace(/\\[HhWwFfCcAaTtQq][^;]*;/g, "")
+      .replace(/\\S([^;]*);/g, (_, fraction: string) =>
+        fraction.replace(/[\\^#]/g, "/"))
+      .replace(/[{}]/g, "")
+      .trim();
+  };
+  const addText = (
+    record: DxfRecord, layer: string, color: string,
+    context: ExpandContext,
+  ): void => {
+    const flags = num(record, 70);
+    if (record.type === "ATTDEF" && !(flags & 2)) return;
+    if (record.type === "ATTRIB" && (flags & 1)) return;
+    const value = textContent(record);
+    if (!value) return;
+    textSeen++;
+    if (textSeen <= textReplaySkip) return;
+    if (textEmitted >= textQuota || texts.length >= 15_000) {
+      rootLimited = true;
+      return;
+    }
+    const height = Math.abs(num(record, 40, 2.5));
+    if (!Number.isFinite(height) || height <= 1e-8) return;
+    const alignH = num(record, 72);
+    const alignV = num(record, 73);
+    const isMtext = record.type === "MTEXT";
+    const attachment = isMtext ? num(record, 71, 1) : 0;
+    const useAlignmentPoint = !isMtext && (alignH !== 0 || alignV !== 0)
+      && record.pairs.some((p) => p.code === 11);
+    const location = useAlignmentPoint
+      ? pt(record, 11, 21, 31) : pt(record, 10, 20, 30);
+    const angleDeg = num(record, 50);
+    const textDir = isMtext && record.pairs.some((p) => p.code === 11)
+      ? pt(record, 11, 21, 31) : null;
+    const direction = textDir && Math.hypot(textDir.x, textDir.y) > 1e-9
+      ? Math.atan2(textDir.y, textDir.x)
+      : angleDeg * Math.PI / 180;
+    const scaleX = !isMtext ? num(record, 41, 1) : 1;
+    const dx = Math.cos(direction) * height * scaleX;
+    const dy = Math.sin(direction) * height * scaleX;
+    const ux = -Math.sin(direction) * height;
+    const uy = Math.cos(direction) * height;
+    const o = toVector(location).applyMatrix4(context.matrix);
+    const x = toVector({ x: location.x + dx, y: location.y + dy, z: location.z })
+      .applyMatrix4(context.matrix);
+    const y = toVector({ x: location.x + ux, y: location.y + uy, z: location.z })
+      .applyMatrix4(context.matrix);
+    if (!o.toArray().every(Number.isFinite) ||
+      !x.toArray().every(Number.isFinite) ||
+      !y.toArray().every(Number.isFinite)) return;
+    const horizontalAlign: ImportedCadText["horizontalAlign"] = isMtext
+      ? attachment % 3 === 2 ? "center" : attachment % 3 === 0 ? "right" : "left"
+      : alignH === 1 || alignH === 4 ? "center" : alignH === 2 ? "right" : "left";
+    const verticalAlign: ImportedCadText["verticalAlign"] = isMtext
+      ? attachment <= 3 ? "top" : attachment <= 6 ? "middle" : "baseline"
+      : alignV === 3 ? "top" : alignV === 2 ? "middle" : "baseline";
+    texts.push({
+      kind: record.type as ImportedCadText["kind"],
+      layer, color, text: value, position: coords(o),
+      axisX: coords(x), axisY: coords(y),
+      horizontalAlign, verticalAlign,
+    });
+    textEmitted++;
+  };
+
   const line = (
     layer: string, color: string, context: ExpandContext,
     start: CadDxfPoint3, end: CadDxfPoint3,
@@ -339,6 +438,13 @@ export function parseCadDxf(
       const layer = sourceLayer === "0" && ctx.inheritedLayer
         ? ctx.inheritedLayer : sourceLayer;
       const color = effectiveColor(record, layer, ctx.inheritedColor);
+      if (pass === 2
+        && record.type !== "INSERT"
+        && record.type !== "DIMENSION"
+        && record.type !== "TEXT"
+        && record.type !== "MTEXT"
+        && record.type !== "ATTRIB"
+        && record.type !== "ATTDEF") continue;
       if (record.type === "POLYLINE") {
         finish();
         legacy = { layer, color, vertices: [], closed: (num(record, 70) & 1) !== 0 };
@@ -469,6 +575,8 @@ export function parseCadDxf(
         case "ATTDEF":
         case "TEXT":
         case "MTEXT":
+          if (pass === 2) addText(record, layer, color, ctx);
+          break;
         case "MLEADER":
         case "MULTILEADER":
         case "LEADER":
@@ -563,8 +671,53 @@ export function parseCadDxf(
   truncated = incompleteRootEntities > 0;
   if (truncated) skip("LIMITE_SEGMENTOS");
 
+  // Text uses its OWN fair budget, independent of line segments. A large
+  // MINSERT in the first record must never erase a later tube label.
+  pass = 2;
+  const runTextRoot = (root: DxfRecord[], quota: number, replaySkip = 0): {
+    readonly emitted: number; readonly limited: boolean;
+  } => {
+    textQuota = quota;
+    textReplaySkip = replaySkip;
+    textSeen = 0;
+    textEmitted = 0;
+    rootLimited = false;
+    expand(root, context);
+    return { emitted: textEmitted, limited: rootLimited };
+  };
+  const fairTextShare = Math.max(1,
+    Math.floor(15_000 * 0.75 / Math.max(1, roots.length)));
+  const textPending: Array<{ root: DxfRecord[]; cursor: number }> = [];
+  for (const root of roots) {
+    if (texts.length >= 15_000) break;
+    const result = runTextRoot(root, Math.min(fairTextShare, 15_000 - texts.length));
+    if (result.limited) textPending.push({ root, cursor: result.emitted });
+  }
+  let remainingText = textPending;
+  for (let iteration = 0;
+    iteration < 6 && remainingText.length && texts.length < 15_000;
+    iteration++) {
+    const next: typeof textPending = [];
+    let added = 0;
+    for (let i = 0; i < remainingText.length; i++) {
+      const item = remainingText[i]!;
+      const capacity = 15_000 - texts.length;
+      if (capacity <= 0) { next.push(item); continue; }
+      const quota = Math.max(1, Math.floor(capacity / (remainingText.length - i)));
+      const result = runTextRoot(item.root, quota, item.cursor);
+      item.cursor += result.emitted;
+      added += result.emitted;
+      if (result.limited) next.push(item);
+    }
+    remainingText = next;
+    if (added === 0) break;
+  }
+  if (remainingText.length || texts.length >= 15_000) {
+    skippedTypes.set("LIMITE_TEXTOS", remainingText.length || 1);
+  }
+
   return {
-    segments, points, insUnits: insUnits(pairs), expandedBlocks, sourceLayers,
+    segments, points, texts, insUnits: insUnits(pairs), expandedBlocks, sourceLayers,
     truncated, incompleteRootEntities,
     unresolvedExternalReferences: [...externalReferences],
     unresolvedBlocks: [...unresolvedBlocks],

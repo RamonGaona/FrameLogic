@@ -1,5 +1,6 @@
 import { getPieceDetailGeometry } from "../design/PieceVisualGeometry";
 import * as THREE from "three";
+import { isCadTextAnchorId } from "../design/CadReferenceTextSceneController";
 import { getNearbyCadLines } from "./CadScreenSpatialIndex";
 
 import type {
@@ -395,6 +396,7 @@ export class GeometryQueryEngine {
     excludedSourceIds: ReadonlySet<string>,
   ): void {
     for (const cadPoint of this.designModel.cadPoints.getAll()) {
+      if (isCadTextAnchorId(cadPoint.id)) continue;
       if (excludedSourceIds.has(cadPoint.id)) {
         continue;
       }

@@ -21,6 +21,7 @@ export class CadLineSceneController {
   private readonly designModel: DesignModel;
   private readonly lineObjects = new Map<string, THREE.Line>();
   private readonly referenceBatches = new Map<string, THREE.LineSegments>();
+  private readonly afterSyncListeners = new Set<() => void>();
   private readonly selectedIds = new Set<string>();
   private readonly hiddenIds = new Set<string>();
 
@@ -52,6 +53,12 @@ export class CadLineSceneController {
 
   getReferenceBatchCount(): number {
     return this.referenceBatches.size;
+  }
+
+  /** CAD reference labels track MOVE/ROTATE/Undo through existing point anchors. */
+  onSync(callback: () => void): () => void {
+    this.afterSyncListeners.add(callback);
+    return () => { this.afterSyncListeners.delete(callback); };
   }
 
   isHidden(id: string): boolean {
@@ -173,6 +180,7 @@ export class CadLineSceneController {
       this.referenceBatches.delete(layerId);
     }
     this.updateSelectionAppearance();
+    for (const listener of this.afterSyncListeners) listener();
   }
 
   private applyVisibility(id: string): void {
@@ -216,6 +224,7 @@ export class CadLineSceneController {
     }
     this.lineObjects.clear();
     this.referenceBatches.clear();
+    this.afterSyncListeners.clear();
     this.hiddenIds.clear();
   }
 }

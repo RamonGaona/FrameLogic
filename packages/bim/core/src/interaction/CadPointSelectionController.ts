@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { isCadTextAnchorId } from "../design/CadReferenceTextSceneController";
 
 import type {
   DesignModel,
@@ -501,6 +502,7 @@ export class CadPointSelectionController {
         .cadPoints
         .getAll()
     ) {
+      if (isCadTextAnchorId(point.id)) continue;
 
       if (
         !this.isPointSelectable(

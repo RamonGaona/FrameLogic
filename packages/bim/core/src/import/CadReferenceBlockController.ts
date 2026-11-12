@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { CadReferenceTextSceneController } from "../design/CadReferenceTextSceneController";
 import { getActiveCadCircleModelController } from "../interaction/CadCircleModelSpaceController";
 import type { CadHistoryController } from "../interaction/CadHistoryController";
 import type { RotateNumericAxis } from "../interaction/CadNumericInputController";
@@ -60,6 +61,7 @@ export interface CadReferenceBlockControllerOptions {
   readonly designModel: DesignModel;
   readonly cadLineScene: CadLineSceneController;
   readonly cadPointScene: CadPointSceneController;
+  readonly cadTextScene?: CadReferenceTextSceneController;
   readonly setCameraEnabled: (enabled: boolean) => void;
   readonly clearGeometryQueryCache: () => void;
   readonly clearOtherSelections?: () => void;
@@ -409,6 +411,7 @@ export class CadReferenceBlockController {
     const result = copyCadReferenceBlocks(
       this.options.designModel, this.options.history, names, delta,
       () => this.syncGeometry(),
+      this.options.cadTextScene,
     );
     this.refreshSelectionVisual();
     return result;
@@ -593,6 +596,7 @@ export class CadReferenceBlockController {
           this.options.designModel.cadPoints.remove(point.id);
         }
       }
+      this.options.cadTextScene?.removeByLayerIds(layerIds);
       for (const layerId of layerIds) {
         this.options.designModel.layers.remove(layerId);
       }

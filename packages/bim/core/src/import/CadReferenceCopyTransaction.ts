@@ -1,4 +1,10 @@
 import * as THREE from "three";
+import {
+  CAD_TEXT_ANCHOR_PREFIX,
+  isCadTextAnchorId,
+  type CadReferenceTextAnnotation,
+  type CadReferenceTextSceneController,
+} from "../design/CadReferenceTextSceneController";
 import type { CadLine, CadPoint, DesignLayer, DesignModel } from "@framelogic/domain";
 import type { CadHistoryController } from "../interaction/CadHistoryController";
 
@@ -71,6 +77,7 @@ export function copyCadReferenceBlocks(
   selectedNames: readonly string[],
   delta: THREE.Vector3,
   sync: () => void,
+  textScene?: CadReferenceTextSceneController,
 ): CadReferenceCopyResult {
   if (![delta.x, delta.y, delta.z].every(Number.isFinite))
     throw new Error("El desplazamiento COPY DWG/DXF no es válido.");
@@ -84,6 +91,9 @@ export function copyCadReferenceBlocks(
   const lines: CadLine[] = [];
   const points: CadPoint[] = [];
   const referenceNames: string[] = [];
+  const layerIdMap = new Map<string, string>();
+  const pointIdMap = new Map<string, string>();
+  const createdTexts: CadReferenceTextAnnotation[] = [];
   const selected = [...new Set(selectedNames)];
   if (!selected.length) throw new Error("Selecciona un DWG/DXF antes de COPY.");
   try {
@@ -105,6 +115,7 @@ export function copyCadReferenceBlocks(
           locked: false, snapEnabled: original.snapEnabled,
         });
         layers.push({ ...createdLayer, locked: original.locked });
+        layerIdMap.set(original.id, createdLayer.id);
         for (const old of model.cadLines.findByLayerId(original.id)) {
           const created = model.registerCadLine({
             layerId: createdLayer.id,
@@ -114,15 +125,33 @@ export function copyCadReferenceBlocks(
         }
         for (const old of model.cadPoints.findByLayerId(original.id)) {
           const created = model.registerCadPoint({
+            id: isCadTextAnchorId(old.id)
+              ? `${CAD_TEXT_ANCHOR_PREFIX}${crypto.randomUUID()}` : undefined,
             layerId: createdLayer.id, position: moved(old.position, delta),
           });
           points.push(created);
+          pointIdMap.set(old.id, created.id);
         }
       }
     }
     if (!lines.length && !points.length) {
       throw new Error("La referencia no contiene geometría CAD que pueda copiarse.");
     }
+    // Copy glyph annotations together with their three transformable CAD
+    // anchors; COPYBASE, repeated Ctrl+MOVE and Undo/Redo preserve labels.
+    for (const source of textScene?.getAnnotations() ?? []) {
+      const layerId = layerIdMap.get(source.layerId);
+      const originPointId = pointIdMap.get(source.originPointId);
+      const axisXPointId = pointIdMap.get(source.axisXPointId);
+      const axisYPointId = pointIdMap.get(source.axisYPointId);
+      if (layerId && originPointId && axisXPointId && axisYPointId) {
+        createdTexts.push({
+          ...source, id: crypto.randomUUID(), layerId,
+          originPointId, axisXPointId, axisYPointId,
+        });
+      }
+    }
+    textScene?.addAnnotations(createdTexts);
     // Add all children before reenabling locked source-layer settings.
     for (const layer of layers) {
       if (layer.locked) model.layers.update(layer.id, { locked: true });
@@ -132,11 +161,19 @@ export function copyCadReferenceBlocks(
     };
     sync();
     history.recordOperation("COPY DWG/DXF",
-      () => { remove(model, snapshot); sync(); },
-      () => { restore(model, snapshot); sync(); },
+      () => {
+        textScene?.removeAnnotations(createdTexts.map(x => x.id));
+        remove(model, snapshot); sync();
+      },
+      () => {
+        restore(model, snapshot);
+        textScene?.addAnnotations(createdTexts);
+        sync();
+      },
     );
     return { referenceNames, lineIds: lines.map(x => x.id), pointIds: points.map(x => x.id) };
   } catch (error) {
+    textScene?.removeAnnotations(createdTexts.map(x => x.id));
     remove(model, { layers, lines, points, referenceNames });
     sync();
     throw error;

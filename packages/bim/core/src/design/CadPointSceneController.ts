@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { isCadTextAnchorId } from "./CadReferenceTextSceneController";
 
 import type {
   DesignModel,
@@ -116,7 +117,8 @@ export class CadPointSceneController {
     const points =
       this.designModel
         .cadPoints
-        .getAll();
+        .getAll()
+        .filter((point) => !isCadTextAnchorId(point.id));
 
 
     const activeIds =
