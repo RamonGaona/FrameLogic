@@ -41,3 +41,26 @@ describe("typed C / CIRCULO / CIRCLE routes to native CAD circles on Enter", () 
     expect(hide).toHaveBeenCalledOnce();
   });
 });
+
+describe("typed E / PEDIT routes to the polyline edit choice menu", () => {
+  it.each(["E", "PEDIT", "EDITAR POLILINEA"])("accepts %s after Enter", (command) => {
+    const startPedit = vi.fn(() => true);
+    const startCircle = vi.fn(() => true);
+    const alert = vi.fn();
+    vi.stubGlobal("window", {
+      __frameLogicStartPolylineEditCommand: startPedit,
+      __frameLogicStartCircleCommand: startCircle,
+      alert,
+    });
+    const hide = vi.fn();
+    const controller = Object.assign(
+      Object.create(CadCommandInputController.prototype) as object,
+      { command, hide },
+    ) as unknown as { execute(): void };
+    controller.execute();
+    expect(startPedit).toHaveBeenCalledOnce();
+    expect(startCircle).not.toHaveBeenCalled();
+    expect(hide).toHaveBeenCalledOnce();
+    expect(alert).not.toHaveBeenCalled();
+  });
+});
