@@ -60,10 +60,10 @@ describe("real binary DWG recovery reader", () => {
     const doc = new CadDocument(ACadVersion.AC1032);
     const tube = new BlockRecord("TUBE_STAGE1");
     tube.entities.add(new Line(new XYZ(0, 0, 0), new XYZ(3000, 0, 0)));
-    doc.blockRecords.add(tube);
+    doc.blockRecords!.add(tube);
     const insert = new Insert(tube);
     insert.insertPoint = new XYZ(120, 340, 0);
-    doc.entities.add(insert);
+    doc.entities!.add(insert);
 
     // Real binary DWG, not a text mock: exercise CAD writer, alternate reader,
     // DXF serialization and FrameLogic's recursive INSERT geometry parser.
