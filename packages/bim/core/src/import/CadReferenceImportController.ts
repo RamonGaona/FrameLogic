@@ -9,7 +9,7 @@ import type {
 import type {
   CadPointSceneController,
 } from "../design/CadPointSceneController";
-import { parseCadDxf, type CadDxfPoint3 } from "./CadDxfGeometryParser";
+import { type CadDxfPoint3, type ParsedCadReference, MAX_RENDERED_SEGMENTS } from "./CadDxfGeometryParser";
 
 export interface CadReferenceImportControllerOptions {
   readonly container: HTMLElement;
@@ -29,6 +29,7 @@ export class CadReferenceImportController {
   private readonly button: HTMLButtonElement;
   private readonly input: HTMLInputElement;
   private disposed = false;
+  private importing = false;
 
   constructor(
     options: CadReferenceImportControllerOptions,
@@ -46,24 +47,33 @@ export class CadReferenceImportController {
   }
 
   async importFile(file: File): Promise<void> {
-    const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
-    let text: string;
+    if (this.importing) {
+      throw new Error("Ya se está importando un DWG/DXF.");
+    }
+    this.importing = true;
+    this.button.disabled = true;
+    const status = document.createElement("div");
+    status.dataset["framelogicCadImportProgress"] = "true";
+    status.setAttribute("role", "status");
+    Object.assign(status.style, {
+      position: "fixed", top: "72px", left: "50%",
+      transform: "translateX(-50%)", zIndex: "2147483100",
+      color: "#f0f9ff", background: "rgba(12,27,42,0.96)",
+      border: "1px solid #60a5fa", borderRadius: "6px",
+      padding: "12px 18px", font: "13px system-ui, sans-serif",
+      maxWidth: "min(600px, 90vw)", pointerEvents: "none",
+    });
+    document.body.append(status);
+    const report = (message: string) => { status.textContent = message; };
+    const yieldFrame = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-    if (extension === "dwg") {
-      text = await this.convertDwgToDxfText(file);
-    }
-    else if (extension === "dxf") {
-      text = await file.text();
-    }
-    else {
-      throw new Error("Selecciona un archivo .DWG o .DXF.");
-    }
-
-    if (text.startsWith("AutoCAD Binary DXF")) {
-      throw new Error("El DXF es binario. Guárdalo como DXF ASCII o abre el DWG original.");
-    }
-
-    const parsed = parseCadDxf(text);
+    try {
+      const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
+      if (extension !== "dwg" && extension !== "dxf") {
+        throw new Error("Selecciona un archivo .DWG o .DXF.");
+      }
+      report(`DWG/DXF · Convirtiendo y analizando ${file.name} fuera del navegador principal…`);
+      const parsed = await this.parseInWorker(file, extension);
     if (parsed.segments.length < 1 && parsed.points.length < 1) {
       throw new Error("No se encontraron entidades 2D compatibles en el archivo CAD.");
     }
@@ -100,24 +110,38 @@ export class CadReferenceImportController {
       return layer.id;
     };
 
-    for (const segment of parsed.segments) {
-      this.options.designModel.registerCadLine({
-        layerId: getLayerId(segment.layer, segment.color),
-        start: scaledPoint(segment.start, unitScale),
-        end: scaledPoint(segment.end, unitScale),
-      });
+    // Process data in short chunks. The UI can repaint and receive pointer
+    // events while lines are registered; only one GPU batch per layer is
+    // assembled at the end, avoiding a draw call for every imported line.
+    const CHUNK = 900;
+    for (let i = 0; i < parsed.segments.length; i += CHUNK) {
+      for (const segment of parsed.segments.slice(i, i + CHUNK)) {
+        this.options.designModel.registerCadLine({
+          layerId: getLayerId(segment.layer, segment.color),
+          start: scaledPoint(segment.start, unitScale),
+          end: scaledPoint(segment.end, unitScale),
+        });
+      }
+      report(`DWG/DXF · Registrando geometría ${Math.min(i + CHUNK, parsed.segments.length).toLocaleString()} / ${parsed.segments.length.toLocaleString()} segmentos…`);
+      await yieldFrame();
     }
-
-    for (const entry of parsed.points) {
-      this.options.designModel.registerCadPoint({
-        layerId: getLayerId(entry.layer, entry.color),
-        position: scaledPoint(entry.point, unitScale),
-      });
+    for (let i = 0; i < parsed.points.length; i += CHUNK) {
+      for (const entry of parsed.points.slice(i, i + CHUNK)) {
+        this.options.designModel.registerCadPoint({
+          layerId: getLayerId(entry.layer, entry.color),
+          position: scaledPoint(entry.point, unitScale),
+        });
+      }
+      report(`DWG/DXF · Registrando ${Math.min(i + CHUNK, parsed.points.length)} / ${parsed.points.length} puntos…`);
+      await yieldFrame();
     }
-
+    report("DWG/DXF · Preparando geometría agrupada para la GPU…");
+    await yieldFrame();
     this.options.cadLineScene.sync();
     this.options.cadPointScene.sync();
     this.options.clearGeometryQueryCache();
+    report("DWG/DXF · Actualizando referencias, SNAP y encuadre…");
+    await yieldFrame();
     await this.options.onImported?.();
 
     const skipped = parsed.skippedEntities > 0
@@ -126,9 +150,17 @@ export class CadReferenceImportController {
       ].sort((a, b) => b[1] - a[1]).slice(0, 6)
         .map(([kind, count]) => `${kind} ${count}`).join(", ")}`
       : "";
+    const truncation = parsed.truncated
+      ? `\nATENCIÓN: dibujo parcial. Se alcanzó el límite de ${MAX_RENDERED_SEGMENTS.toLocaleString()} segmentos para proteger el navegador. Se necesita simplificar los bloques/sombreados o usar el DXF optimizado.`
+      : "";
     window.alert(
-      `Plano CAD "${referenceName}" importado como bloque de referencia.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos${skipped}.\nLos colores ByLayer/ByBlock y la escala original se conservan en los elementos compatibles.`,
+      `Plano CAD "${referenceName}" importado como bloque de referencia.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos${skipped}.${truncation}\nLos colores ByLayer/ByBlock y la escala original se conservan en los elementos compatibles.`,
     );
+    } finally {
+      status.remove();
+      this.button.disabled = false;
+      this.importing = false;
+    }
   }
 
   private createButton(container: HTMLElement): HTMLButtonElement {
@@ -191,26 +223,42 @@ export class CadReferenceImportController {
     return input;
   }
 
-  private async convertDwgToDxfText(file: File): Promise<string> {
-    const module = await import("dwgdxf");
-    // dwgdxf dynamically imports its WASM glue from <wasmBase>/dwgdxf.js.
-    // Vite does not bundle this runtime-computed import automatically, so
-    // predev/prebuild publish both glue and binary under /assets/wasm.
-    const wasmBase = new URL("/assets/wasm/", window.location.origin).href;
-    try {
-      await module.init({ wasmBase });
-    } catch (error) {
+  private async parseInWorker(
+    file: File,
+    extension: "dwg" | "dxf",
+  ): Promise<ParsedCadReference> {
+    if (typeof Worker === "undefined") {
       throw new Error(
-        "No se pudo cargar el convertidor DWG local de FrameLogic. "
-        + "Comprueba la conexión y recarga la página (Ctrl+F5). "
-        + `Recurso: ${wasmBase}dwgdxf.js. `
-        + (error instanceof Error ? error.message : String(error)),
+        "Este navegador no admite Web Workers. Actualiza Firefox o Chrome para importar archivos DWG grandes sin bloquear la página.",
       );
     }
-    const converted = await module.convertDwgToDxf(
-      new Uint8Array(await file.arrayBuffer()),
-    );
-    return new TextDecoder().decode(converted);
+    const bytes = await file.arrayBuffer();
+    return new Promise<ParsedCadReference>((resolve, reject) => {
+      const worker = new Worker(
+        new URL("./CadReferenceImportWorker.ts", import.meta.url),
+        { type: "module" },
+      );
+      let settled = false;
+      const stop = () => {
+        if (settled) return false;
+        settled = true;
+        worker.terminate();
+        return true;
+      };
+      worker.onmessage = (event: MessageEvent<
+        { ok: true; parsed: ParsedCadReference }
+        | { ok: false; error: string }
+      >) => {
+        if (!stop()) return;
+        if (event.data.ok) resolve(event.data.parsed);
+        else reject(new Error("No se pudo convertir o analizar el DWG/DXF: " + event.data.error));
+      };
+      worker.onerror = (error) => {
+        if (!stop()) return;
+        reject(new Error("Error en el procesador DWG/DXF: " + error.message));
+      };
+      worker.postMessage({ extension, buffer: bytes }, [bytes]);
+    });
   }
 
   private resolveUnitScale(insUnits: number): number {
