@@ -265,6 +265,13 @@ export class CadLayerColorController {
           : layerColor(layer?.color),
       );
     }
+    // Imported references use ONE batched LineSegments per CAD sublayer.
+    // Recolour the batches directly; their members are never independently
+    // selected or turned into thousands of THREE.Line objects.
+    for (const [layerId, object] of this.options.lineScene.getReferenceBatchEntries()) {
+      const layer = this.options.designModel.layers.get(layerId);
+      this.setLineMaterialColor(object.material, layerColor(layer?.color));
+    }
   }
 
 
