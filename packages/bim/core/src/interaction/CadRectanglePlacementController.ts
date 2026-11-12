@@ -577,6 +577,9 @@ export class CadRectanglePlacementController {
     this.preview.computeLineDistances();
     this.preview.geometry.computeBoundingSphere();
     this.preview.visible = true;
+    if (this.active && this.stage === "SECOND_CORNER") {
+      this.showHint(`RECTÁNGULO · X ${Math.abs(x).toFixed(2)} mm · Y ${Math.abs(y).toFixed(2)} mm · Tab alterna`);
+    }
   }
 
   private commitRectangle(
