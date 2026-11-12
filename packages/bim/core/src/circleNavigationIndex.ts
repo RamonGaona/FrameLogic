@@ -88,6 +88,9 @@ interface FrameLogicCommandWindow extends Window {
     () => boolean;
   __frameLogicCanStartRectangleTextCommand?:
     () => boolean;
+  __frameLogicStartCircleCommand?: () => boolean;
+  __frameLogicStartPointTextCommand?: () => boolean;
+  __frameLogicStartTrimTextCommand?: () => boolean;
 }
 
 
@@ -301,6 +304,9 @@ export async function createBimCore(
   const previousExternalCommandPredicate =
     commandWindow
       .__frameLogicExternalCadCommandActive;
+  const previousStartCircle = commandWindow.__frameLogicStartCircleCommand;
+  const previousStartPointText = commandWindow.__frameLogicStartPointTextCommand;
+  const previousStartTrimText = commandWindow.__frameLogicStartTrimTextCommand;
   const previousStartParallel =
     commandWindow
       .__frameLogicStartParallelLineCommand;
@@ -350,6 +356,19 @@ export async function createBimCore(
           .length === 0;
     };
 
+  commandWindow.__frameLogicStartCircleCommand = () => cadCirclePlacement.start();
+  commandWindow.__frameLogicStartPointTextCommand = () => {
+    cadCirclePlacement.cancel();
+    cadRectanglePlacement.cancel();
+    cadParallelLine.cancel();
+    return core.startPointCommand();
+  };
+  commandWindow.__frameLogicStartTrimTextCommand = () => {
+    cadCirclePlacement.cancel();
+    cadRectanglePlacement.cancel();
+    cadParallelLine.cancel();
+    return core.startTrimCommand();
+  };
   commandWindow
     .__frameLogicExternalCadCommandActive =
       externalCommandPredicate;
@@ -629,6 +648,9 @@ export async function createBimCore(
             previousCanStartRectangle;
       }
 
+      commandWindow.__frameLogicStartCircleCommand = previousStartCircle;
+      commandWindow.__frameLogicStartPointTextCommand = previousStartPointText;
+      commandWindow.__frameLogicStartTrimTextCommand = previousStartTrimText;
       unsubscribeLayers();
       toolbarOrganizer.dispose();
       cadParallelLine.dispose();
