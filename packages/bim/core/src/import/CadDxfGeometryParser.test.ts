@@ -268,6 +268,7 @@ describe("large DXF block completeness and missing external references", () => {
 describe("AutoCAD TEXT / MTEXT / ATTRIB inside structural truss blocks", () => {
   it("recovers 4S 3000 and P6 3000 at the original block rotation and scale", () => {
     const source = dxf(
+      ...HEADER, ...LAYERS,
       0, "SECTION", 2, "BLOCKS",
       0, "BLOCK", 2, "TUBE", 10, 0, 20, 0,
       0, "LINE", 8, "0", 10, 0, 20, 0, 11, 3000, 21, 0,
@@ -290,10 +291,6 @@ describe("AutoCAD TEXT / MTEXT / ATTRIB inside structural truss blocks", () => {
     expect(parsed.segments).toHaveLength(1);
     expect(parsed.texts.map(x => x.text)).toEqual(["4S 3000", "P6 3000", "4S 6000"]);
     const first = parsed.texts[0]!;
-    console.info("DXF TEXT COLOR DEBUG", JSON.stringify({
-      layer: first.layer, color: first.color,
-      yellow: parsed.sourceLayers.get("yellow"), entities: parsed.texts.map(x => x.layer + ":" + x.color),
-    }));
     expect(first.position.x).toBeCloseTo(4840);
     expect(first.position.y).toBeCloseTo(4000);
     expect(first.axisX.x).toBeCloseTo(4840);
