@@ -54,14 +54,18 @@ export function decideDwgImport(
   const moreLabels = labelsB > labelsA && b >= a * 0.90;
   const resolvesBlocks = principal.unresolvedBlocks.length > alternativo.unresolvedBlocks.length
     && b >= a && labelsB >= labelsA;
-  const choseAlternate = sameScale && sameUnits && noWorseTruncation
+  const choseAlternate = sameScale && noWorseTruncation
     && (moreStructure || moreLabels || resolvesBlocks);
   const selected = choseAlternate ? alternativo : principal;
   const details = "Principal: " + a + " segmentos, " + labelsA
     + " textos; alternativo: " + b + " segmentos, " + labelsB + " textos.";
-  const warning = !sameScale || !sameUnits
-    ? " Escala o INSUNITS distintos: no se reemplazó automáticamente el dibujo."
-    : "";
+  const warning = !sameScale
+    ? " Escala geométrica incompatible: no se reemplazó automáticamente el dibujo."
+    : !sameUnits
+      ? " INSUNITS distintos (principal " + principal.insUnits +
+        ", alternativo " + alternativo.insUnits +
+        "): confirma la unidad real antes de importar; la geometría tiene escala comparable."
+      : "";
   return {
     parsed: selected,
     source: choseAlternate ? "alternativo" : "principal",
