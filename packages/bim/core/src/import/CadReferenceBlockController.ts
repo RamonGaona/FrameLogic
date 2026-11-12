@@ -243,6 +243,11 @@ export class CadReferenceBlockController {
     return Array.from(this.selectedReferenceNames);
   }
 
+  /** Read-only picking for window selection: a DWG hit is not empty canvas. */
+  getReferenceNameAt(clientX: number, clientY: number): string | null {
+    return this.getReferenceAt(clientX, clientY)?.referenceName ?? null;
+  }
+
   getInspectedLineId(): string | null {
     if (!this.inspectedLineId || this.activeMode) return null;
     const line = this.options.designModel.cadLines.get(this.inspectedLineId);
