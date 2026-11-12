@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { DesignModel } from "@framelogic/domain";
 import { CadLineSceneController } from "../design/CadLineSceneController";
 import { parseCadDxf, MAX_RENDERED_SEGMENTS } from "./CadDxfGeometryParser";
-import { insUnitsToMillimeters } from "./CadReferenceImportController";
+import { insUnitsToMillimeters, resolveCadImportUnitScale } from "./CadReferenceImportController";
 
 function dxf(...records: Array<string | number>): string {
   if (records.length % 2 !== 0) throw new Error("Invalid DXF fixture");
@@ -476,5 +476,48 @@ describe("recovery of nested anonymous DIMENSION graphics after structural DWG g
     )).toBe(true);
     expect(parsed.recoveredDimensionSegments).toBeGreaterThan(0);
     expect(parsed.segments.length).toBeLessThanOrEqual(16);
+  });
+});
+
+describe("DWG source units: millimetres must not gain three zeros", () => {
+  it("defaults DWG coordinates to millimetres even if converted DXF reports metres", () => {
+    const prompts: Array<{ message: string; defaultValue: string }> = [];
+    const scale = resolveCadImportUnitScale("dwg", 6, (message, defaultValue) => {
+      prompts.push({ message, defaultValue });
+      return defaultValue;
+    });
+    expect(scale).toBe(1);
+    expect(prompts[0]?.defaultValue).toBe("mm");
+    expect(prompts[0]?.message).toContain("×1000");
+    // CUNAS_MEDIR: 15005.75 AutoCAD millimetres should remain 15005.75.
+    expect(15005.75 * scale).toBe(15005.75);
+    expect(15005.75 * insUnitsToMillimeters(6)!).toBe(15005750);
+  });
+
+  it("allows intentional DWG metres, centimetres, inches or automatic INSUNITS", () => {
+    expect(resolveCadImportUnitScale("dwg", 6, () => "m")).toBe(1000);
+    expect(resolveCadImportUnitScale("dwg", 6, () => "cm")).toBe(10);
+    expect(resolveCadImportUnitScale("dwg", 6, () => "in")).toBe(25.4);
+    expect(resolveCadImportUnitScale("dwg", 6, () => "ft")).toBe(304.8);
+    expect(resolveCadImportUnitScale("dwg", 6, () => "auto")).toBe(1000);
+    expect(resolveCadImportUnitScale("dwg", 4, () => "auto")).toBe(1);
+  });
+
+  it("preserves DXF declared INSUNITS without asking and prompts only unknown units", () => {
+    const callback = vi.fn(() => "mm");
+    expect(resolveCadImportUnitScale("dxf", 6, callback)).toBe(1000);
+    expect(resolveCadImportUnitScale("dxf", 4, callback)).toBe(1);
+    expect(callback).not.toHaveBeenCalled();
+    expect(resolveCadImportUnitScale("dxf", 0, callback)).toBe(1);
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not register incorrectly scaled geometry when the user cancels or gives an invalid unit", () => {
+    expect(() => resolveCadImportUnitScale("dwg", 6, () => null))
+      .toThrow("Importación cancelada");
+    expect(() => resolveCadImportUnitScale("dwg", 6, () => "km"))
+      .toThrow("no reconocida");
+    expect(() => resolveCadImportUnitScale("dwg", 0, () => "auto"))
+      .toThrow("no declara unidades válidas");
   });
 });
