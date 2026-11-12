@@ -41,6 +41,8 @@ export interface ParsedCadReference {
   readonly unresolvedExternalReferences: readonly string[];
   readonly unresolvedBlocks: readonly string[];
   readonly incompleteRootEntities: number;
+  /** Secondary dimension graphics recovered only after structural linework. */
+  readonly recoveredDimensionSegments: number;
 }
 interface DxfBlock {
   readonly base: CadDxfPoint3;
@@ -55,6 +57,7 @@ interface ExpandContext {
   readonly inheritedColor: string | null;
   readonly depth: number;
   readonly path: ReadonlySet<string>;
+  readonly dimensionGraphics?: boolean;
 }
 
 const MAX_BLOCK_DEPTH = 24;
@@ -209,13 +212,14 @@ function normalizedVertex(pt3: CadDxfPoint3, bulge = 0): Vertex {
 
 export function parseCadDxf(
   text: string,
-  options?: { readonly maxSegments?: number; readonly omitOptionalGeometry?: boolean },
+  options?: { readonly maxSegments?: number; readonly omitOptionalGeometry?: boolean; readonly recoverDimensionGraphics?: boolean },
 ): ParsedCadReference {
   const maxSegments = Number.isFinite(options?.maxSegments)
     ? Math.max(16, Math.min(MAX_RENDERED_SEGMENTS,
       Math.floor(options!.maxSegments!)))
     : MAX_RENDERED_SEGMENTS;
   const omitOptionalGeometry = options?.omitOptionalGeometry === true;
+  const recoverDimensionGraphics = omitOptionalGeometry && options?.recoverDimensionGraphics === true;
   const pairs = pairsFromDxf(text);
   const sourceLayers = sourceLayersFrom(pairs);
   const blocks = blockDefinitions(pairs);
@@ -239,6 +243,7 @@ export function parseCadDxf(
   let rootSeen = 0;
   let rootLimited = false;
   let pass = 0;
+  let recoveredDimensionSegments = 0;
   let textQuota = Number.POSITIVE_INFINITY;
   let textReplaySkip = 0;
   let textSeen = 0;
@@ -442,10 +447,19 @@ export function parseCadDxf(
       // In structural DWG mode, decorative dimensions and hatch outlines
       // must not use segment budget reserved for actual tubes/frames/lines.
       // This applies equally inside nested INSERT blocks and text passes.
-      if (omitOptionalGeometry && (record.type === "DIMENSION" || record.type === "HATCH")) {
+      if (omitOptionalGeometry && record.type === "HATCH") {
         skip(record.type);
         continue;
       }
+      if (omitOptionalGeometry && record.type === "DIMENSION" && pass !== 3) {
+        if (!recoverDimensionGraphics) skip(record.type);
+        continue;
+      }
+      // Pass 3 searches only DIMENSION's anonymous graphic BLOCK content.
+      // Nested INSERTs are traversed as references, but normal tube geometry
+      // is never replayed: it has already been emitted during pass 0/1.
+      if (pass === 3 && !ctx.dimensionGraphics
+        && record.type !== "INSERT" && record.type !== "DIMENSION") continue;
       if (pass === 2
         && record.type !== "INSERT"
         && record.type !== "DIMENSION"
@@ -508,6 +522,7 @@ export function parseCadDxf(
             expand(block.entities, {
               matrix, inheritedLayer: layer, inheritedColor: color,
               depth: ctx.depth + 1, path,
+              dimensionGraphics: ctx.dimensionGraphics || record.type === "DIMENSION",
             });
           }
           break;
@@ -724,9 +739,25 @@ export function parseCadDxf(
     skippedTypes.set("LIMITE_TEXTOS", remainingText.length || 1);
   }
 
+  // A DIMENSION's anonymous drawing can contain actual construction lines
+  // when the DWG converter flattens complex blocks. v0.1.124 discarded that
+  // entire graphic. Try it only AFTER all structural roots, using spare
+  // budget capped at 24k segments so large annotation sets cannot evict tubes.
+  if (recoverDimensionGraphics) {
+    pass = 3;
+    let optionalRemaining = Math.min(24_000, maxSegments - segments.length);
+    const fairOptional = Math.max(1, Math.floor(optionalRemaining / Math.max(1, roots.length)));
+    for (const root of roots) {
+      if (optionalRemaining <= 0) break;
+      const result = runRoot(root, Math.min(fairOptional, optionalRemaining));
+      optionalRemaining -= result.used;
+      recoveredDimensionSegments += result.used;
+    }
+  }
+
   return {
     segments, points, texts, insUnits: insUnits(pairs), expandedBlocks, sourceLayers,
-    truncated, incompleteRootEntities,
+    truncated, incompleteRootEntities, recoveredDimensionSegments,
     unresolvedExternalReferences: [...externalReferences],
     unresolvedBlocks: [...unresolvedBlocks],
     skippedTypes,
