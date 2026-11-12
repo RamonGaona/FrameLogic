@@ -96,6 +96,8 @@ export class CadReferenceBlockController {
   private readonly ringPointer = new THREE.Vector2();
   private pendingDoubleClickTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly selectedReferenceNames = new Set<string>();
+  // Preserve per-layer visibility while an entire DWG reference is hidden.
+  private readonly hiddenReferenceLayerStates = new Map<string, Map<string, boolean>>();
   /** Last inspected member: read-only measurement, never an editable selection. */
   private inspectedLineId: string | null = null;
   private transformSnapshot: TransformSnapshot | null = null;
@@ -288,6 +290,46 @@ export class CadReferenceBlockController {
       if (parsed) result.add(parsed.referenceName);
     }
     return Array.from(result);
+  }
+
+  /** Visibility for one imported DWG/DXF, independent from the global eye. */
+  isReferenceVisible(referenceName: string): boolean {
+    return this.options.designModel.layers.getAll().some((layer) =>
+      parseCadLayerName(layer)?.referenceName === referenceName && layer.visible,
+    );
+  }
+
+  /**
+   * Toggle a whole reference without detaching its text or geometries.
+   * Restores each layer's previous visible state when shown again.
+   */
+  setReferenceVisible(referenceName: string, visible: boolean): boolean {
+    const layers = this.options.designModel.layers.getAll().filter((layer) =>
+      parseCadLayerName(layer)?.referenceName === referenceName,
+    );
+    if (!layers.length) return false;
+    if (!visible) {
+      if (!this.hiddenReferenceLayerStates.has(referenceName)) {
+        this.hiddenReferenceLayerStates.set(referenceName, new Map(
+          layers.map((layer) => [layer.id, layer.visible]),
+        ));
+      }
+      if (this.selectedReferenceNames.delete(referenceName)) {
+        this.deactivateTransform();
+        this.refreshSelectionVisual();
+      }
+    }
+    const previous = this.hiddenReferenceLayerStates.get(referenceName);
+    for (const layer of layers) {
+      const target = visible ? (previous?.get(layer.id) ?? true) : false;
+      if (layer.visible !== target) {
+        this.options.designModel.layers.update(layer.id, { visible: target });
+      }
+    }
+    if (visible) this.hiddenReferenceLayerStates.delete(referenceName);
+    this.syncGeometry();
+    this.options.cadTextScene?.sync();
+    return true;
   }
 
   getReferenceBounds(
