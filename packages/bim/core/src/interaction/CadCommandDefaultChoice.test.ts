@@ -60,8 +60,7 @@ describe("CAD shared default option selection", () => {
 
 describe("CIRCLE and PEDIT command menus share Enter acceptance", () => {
   it("in Circle SIZE_MODE, Enter confirms the visible first option RADIUS", () => {
-    const controller = Object.create(CadCirclePlacementController.prototype)
-      as CadCirclePlacementController;
+    const controller = Object.create(CadCirclePlacementController.prototype) as CadCirclePlacementController;
     const radio = button(), diameter = button();
     const choices = new CadCommandDefaultChoice([radio, diameter]);
     Reflect.set(controller, "active", true);
@@ -80,8 +79,7 @@ describe("CIRCLE and PEDIT command menus share Enter acceptance", () => {
 
   it("PEDIT first operation is confirmed with Enter and can be changed with ArrowDown", () => {
     vi.stubGlobal("HTMLElement", class HTMLElement {});
-    const controller = Object.create(CadPolylineEditController.prototype)
-      as CadPolylineEditController;
+    const controller = Object.create(CadPolylineEditController.prototype) as CadPolylineEditController;
     const move = button(), add = button();
     const choices = new CadCommandDefaultChoice([move, add]);
     Reflect.set(controller, "active", true);
