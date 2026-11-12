@@ -30,6 +30,10 @@ export class CadLineRegistry {
       string,
       CadLine
     >();
+  private changeRevision = 0;
+
+  /** Incremented on every geometry mutation for reusable spatial SNAP caches. */
+  get revision(): number { return this.changeRevision; }
 
 
   register(
@@ -91,7 +95,7 @@ export class CadLineRegistry {
       id,
       line,
     );
-
+    this.changeRevision++;
 
     return line;
 
@@ -175,7 +179,7 @@ export class CadLineRegistry {
       id,
       updated,
     );
-
+    this.changeRevision++;
 
     return updated;
 
@@ -237,7 +241,7 @@ export class CadLineRegistry {
       id,
       updated,
     );
-
+    this.changeRevision++;
 
     return updated;
 
@@ -249,9 +253,9 @@ export class CadLineRegistry {
   ):
     boolean {
 
-    return this.lines.delete(
-      id,
-    );
+    const removed = this.lines.delete(id);
+    if (removed) this.changeRevision++;
+    return removed;
 
   }
 
@@ -260,6 +264,7 @@ export class CadLineRegistry {
     void {
 
     this.lines.clear();
+    this.changeRevision++;
 
   }
 
