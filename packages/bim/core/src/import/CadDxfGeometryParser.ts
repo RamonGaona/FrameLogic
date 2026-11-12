@@ -238,6 +238,10 @@ export function parseCadDxf(
   let rootSeen = 0;
   let rootLimited = false;
   let pass = 0;
+  let textQuota = Number.POSITIVE_INFINITY;
+  let textReplaySkip = 0;
+  let textSeen = 0;
+  let textEmitted = 0;
 
   const skip = (type: string): void => {
     // Replaying a root to fill its remaining quota must not count the same
@@ -284,15 +288,17 @@ export function parseCadDxf(
     record: DxfRecord, layer: string, color: string,
     context: ExpandContext,
   ): void => {
-    if (texts.length >= 15_000) {
-      rootLimited = true;
-      return;
-    }
     const flags = num(record, 70);
     if (record.type === "ATTDEF" && !(flags & 2)) return;
     if (record.type === "ATTRIB" && (flags & 1)) return;
     const value = textContent(record);
     if (!value) return;
+    textSeen++;
+    if (textSeen <= textReplaySkip) return;
+    if (textEmitted >= textQuota || texts.length >= 15_000) {
+      rootLimited = true;
+      return;
+    }
     const height = Math.abs(num(record, 40, 2.5));
     if (!Number.isFinite(height) || height <= 1e-8) return;
     const alignH = num(record, 72);
@@ -334,6 +340,7 @@ export function parseCadDxf(
       axisX: coords(x), axisY: coords(y),
       horizontalAlign, verticalAlign,
     });
+    textEmitted++;
   };
 
   const line = (
@@ -664,19 +671,50 @@ export function parseCadDxf(
   truncated = incompleteRootEntities > 0;
   if (truncated) skip("LIMITE_SEGMENTOS");
 
-  // Text has its own independent pass so a large early MINSERT cannot use
-  // the geometric segment budget and erase later part labels.
+  // Text uses its OWN fair budget, independent of line segments. A large
+  // MINSERT in the first record must never erase a later tube label.
   pass = 2;
-  for (const root of roots) {
-    if (texts.length >= 15_000) break;
-    rootQuota = Number.POSITIVE_INFINITY;
-    rootEmitted = 0;
-    rootReplaySkip = 0;
-    rootSeen = 0;
+  const runTextRoot = (root: DxfRecord[], quota: number, replaySkip = 0): {
+    readonly emitted: number; readonly limited: boolean;
+  } => {
+    textQuota = quota;
+    textReplaySkip = replaySkip;
+    textSeen = 0;
+    textEmitted = 0;
     rootLimited = false;
     expand(root, context);
+    return { emitted: textEmitted, limited: rootLimited };
+  };
+  const fairTextShare = Math.max(1,
+    Math.floor(15_000 * 0.75 / Math.max(1, roots.length)));
+  const textPending: Array<{ root: DxfRecord[]; cursor: number }> = [];
+  for (const root of roots) {
+    if (texts.length >= 15_000) break;
+    const result = runTextRoot(root, Math.min(fairTextShare, 15_000 - texts.length));
+    if (result.limited) textPending.push({ root, cursor: result.emitted });
   }
-  if (texts.length >= 15_000) skip("LIMITE_TEXTOS");
+  let remainingText = textPending;
+  for (let iteration = 0;
+    iteration < 6 && remainingText.length && texts.length < 15_000;
+    iteration++) {
+    const next: typeof textPending = [];
+    let added = 0;
+    for (let i = 0; i < remainingText.length; i++) {
+      const item = remainingText[i]!;
+      const capacity = 15_000 - texts.length;
+      if (capacity <= 0) { next.push(item); continue; }
+      const quota = Math.max(1, Math.floor(capacity / (remainingText.length - i)));
+      const result = runTextRoot(item.root, quota, item.cursor);
+      item.cursor += result.emitted;
+      added += result.emitted;
+      if (result.limited) next.push(item);
+    }
+    remainingText = next;
+    if (added === 0) break;
+  }
+  if (remainingText.length || texts.length >= 15_000) {
+    skippedTypes.set("LIMITE_TEXTOS", remainingText.length || 1);
+  }
 
   return {
     segments, points, texts, insUnits: insUnits(pairs), expandedBlocks, sourceLayers,
