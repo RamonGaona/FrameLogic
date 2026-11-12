@@ -41,6 +41,7 @@ function fixture() {
   Reflect.set(controller, "ringGesture", null);
   Reflect.set(controller, "controls", controls);
   Reflect.set(controller, "badge", badge);
+  Reflect.set(controller, "pickMoveAxis", vi.fn(() => null));
   Reflect.set(controller, "interactionEnabled", true);
   Reflect.set(controller, "pendingDoubleClickTimer", null);
   Reflect.set(controller, "syncGeometry", vi.fn());
@@ -243,5 +244,125 @@ describe("DWG gizmo events: don't reselect imported CAD through rotate ring", ()
     f.release();
     expect(Reflect.get(f.controller, "armedCopyMove")).toBe(true);
     expect(f.model.layers.getAll().filter(l => l.name.includes("copia"))).toHaveLength(0);
+  });
+});
+
+describe("DWG MOVE: secuencia real de pointerdown/pointerup antes del SNAP", () => {
+  for (const [axis, displacement] of [
+    ["X", [20, 0, 0]],
+    ["Y", [0, 35, 0]],
+    ["Z", [0, 0, 45]],
+    ["XY", [20, 35, 0]],
+    ["XZ", [20, 0, 45]],
+    ["YZ", [0, 35, 45]],
+  ] as const) {
+    it(`un clic corto sobre ${axis} reserva el eje y solo el SNAP desplaza DWG`, () => {
+      const f = fixture();
+      Reflect.set(f.controller, "pickMoveAxis", vi.fn(() => axis));
+      const initiallySelected = [...f.names];
+      f.snap.set(25, 35, 45);
+      f.handler("pointerDownInternal")(f.pointerEvent());
+      const axisRelease = f.release();
+      expect(axisRelease.stopImmediatePropagation).toHaveBeenCalledOnce();
+      expect(Reflect.get(f.controller, "armedMoveAxis")).toBe(axis);
+      expect(f.badge.textContent).toContain("SNAP de destino");
+      expect(f.model.cadLines.get(f.line.id)?.start.x).toBe(0);
+      expect(f.history.recordOperation).not.toHaveBeenCalled();
+      expect([...f.names]).toEqual(initiallySelected);
+      // The next down/up is delivered to SNAP, never a fresh selection.
+      f.handler("pointerDownInternal")(f.pointerEvent(210, 90));
+      const destinationRelease = f.release(210, 90);
+      expect(destinationRelease.stopImmediatePropagation).toHaveBeenCalledOnce();
+      const line = f.model.cadLines.get(f.line.id)!;
+      expect(line.start.x).toBeCloseTo(displacement[0]);
+      expect(line.start.y).toBeCloseTo(displacement[1]);
+      expect(line.start.z).toBeCloseTo(displacement[2]);
+      expect(f.pivot.position.toArray()).toEqual([
+        5 + displacement[0], displacement[1], displacement[2],
+      ]);
+      expect(f.history.recordOperation).toHaveBeenCalledOnce();
+      f.undo();
+      expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(0);
+      f.redo();
+      expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(displacement[0]);
+    });
+  }
+
+  it("retiene el eje y consume el evento sin SNAP; ESC no ha sido pulsado", () => {
+    const f = fixture();
+    Reflect.set(f.controller, "pickMoveAxis", vi.fn(() => "Y"));
+    f.handler("pointerDownInternal")(f.pointerEvent());
+    f.release();
+    f.options.findSnapPoint.mockReturnValueOnce(null as never);
+    f.handler("pointerDownInternal")(f.pointerEvent());
+    const noSnapRelease = f.release();
+    expect(noSnapRelease.stopImmediatePropagation).toHaveBeenCalledOnce();
+    expect(Reflect.get(f.controller, "armedMoveAxis")).toBe("Y");
+    expect(f.model.cadLines.get(f.line.id)?.start.y).toBe(0);
+    expect(f.history.recordOperation).not.toHaveBeenCalled();
+  });
+
+  it("un clic Ctrl+X crea copias sucesivas por SNAP sin modificar el original", () => {
+    const f = fixture();
+    Reflect.set(f.controller, "pickMoveAxis", vi.fn(() => "X"));
+    f.handler("pointerDownInternal")({ ...f.pointerEvent(), ctrlKey: true });
+    f.release();
+    expect(Reflect.get(f.controller, "armedCopyMove")).toBe(true);
+    f.snap.set(25, 0, 0);
+    f.handler("pointerDownInternal")(f.pointerEvent());
+    f.release();
+    f.snap.set(35, 0, 0);
+    f.handler("pointerDownInternal")(f.pointerEvent());
+    f.release();
+    const copies = f.model.layers.getAll().filter(l => l.name.includes("copia"));
+    expect(copies).toHaveLength(2);
+    expect(f.model.cadLines.findByLayerId(copies[0].id)[0]?.start.x).toBe(20);
+    expect(f.model.cadLines.findByLayerId(copies[1].id)[0]?.start.x).toBe(30);
+    expect(f.model.cadLines.get(f.line.id)?.start.x).toBe(0);
+    expect(f.pivot.position.x).toBe(5);
+    expect(Reflect.get(f.controller, "armedCopyMove")).toBe(true);
+  });
+
+  it("captura pointerdown/up en orden y no deja que un selector posterior reciba el clic", () => {
+    const f = fixture();
+    Reflect.set(f.controller, "pickMoveAxis", vi.fn(() => "X"));
+    const canvas = new EventTarget();
+    Reflect.set(f.controller, "options", { ...f.options, domElement: canvas });
+    const pickedBackground = vi.fn();
+    canvas.addEventListener("pointerdown", e => f.handler("pointerDownInternal")(e));
+    canvas.addEventListener("pointerup", e => f.handler("pointerUpInternal")(e));
+    canvas.addEventListener("pointerup", pickedBackground);
+    const event = (type: string, x = 120) => Object.assign(
+      new Event(type, { bubbles: true, cancelable: true }),
+      { button: 0, pointerId: 7, clientX: x, clientY: 80, ctrlKey: false },
+    );
+    canvas.dispatchEvent(event("pointerdown"));
+    canvas.dispatchEvent(event("pointerup"));
+    expect(pickedBackground).not.toHaveBeenCalled();
+    expect(Reflect.get(f.controller, "armedMoveAxis")).toBe("X");
+    canvas.dispatchEvent(event("pointerdown", 160));
+    canvas.dispatchEvent(event("pointerup", 160));
+    expect(pickedBackground).not.toHaveBeenCalled();
+    expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(-3);
+  });
+
+  it("completa mouseUp nativo exactamente una vez y protege el clic breve", () => {
+    const f = fixture();
+    Reflect.set(f.controller, "pickMoveAxis", vi.fn(() => "Z"));
+    f.handler("pointerDownInternal")(f.pointerEvent());
+    Reflect.set(f.controller, "transformSnapshot", f.handler("captureSelection")());
+    Reflect.set(f.controller, "transformStartPivot", f.pivot.position.clone());
+    const pointerUp = vi.fn(() => {
+      f.controls.dragging = false;
+      f.handler("transformEndInternal")();
+    });
+    Reflect.set(f.controls, "pointerUp", pointerUp);
+    f.controls.dragging = true;
+    const result = f.release(122, 82);
+    expect(result.stopImmediatePropagation).toHaveBeenCalledOnce();
+    expect(pointerUp).toHaveBeenCalledOnce();
+    expect(Reflect.get(f.controller, "armedMoveAxis")).toBe("Z");
+    expect(f.model.cadLines.get(f.line.id)?.start.x).toBe(0);
+    expect(f.history.recordOperation).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { completeRotationRings, installTransformPointerLifecycle, PointerFocusGate } from "./TransformGizmoReliability";
+import { completeRotationRings, installTransformPointerLifecycle, pickTranslationGizmoAxis, PointerFocusGate } from "./TransformGizmoReliability";
 
 function pointer(type: string, overrides: Record<string, unknown> = {}): PointerEvent {
   const event = new Event(type, { cancelable: true });
@@ -212,5 +212,44 @@ describe("complete native rotation rings", () => {
       }
     }
     controls.dispose();
+  });
+});
+
+describe("picking MOVE axes at the physical pointer location", () => {
+  const fixture = () => {
+    const helper = new THREE.Group();
+    const gizmo = new THREE.Group();
+    Reflect.set(gizmo, "type", "TransformControlsGizmo");
+    const translate = new THREE.Group();
+    const x = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshBasicMaterial());
+    x.name = "X";
+    translate.add(x);
+    Object.assign(gizmo, { picker: { translate } });
+    gizmo.add(translate);
+    helper.add(gizmo);
+    const element = {
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
+    } as unknown as HTMLElement;
+    return { helper, element };
+  };
+
+  it("usa raycast de picker y no un eje hover obsoleto", () => {
+    const { helper, element } = fixture();
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+    camera.position.set(0, 0, 8);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    expect(pickTranslationGizmoAxis(helper, camera, element, 50, 50)).toBe("X");
+    expect(pickTranslationGizmoAxis(helper, camera, element, 300, 300)).toBeNull();
+  });
+
+  it("funciona con cámara ortográfica inclinada y geometría en plano 3D", () => {
+    const { helper, element } = fixture();
+    const camera = new THREE.OrthographicCamera(-5, 5, 5, -5, 0.1, 100);
+    camera.position.set(8, 8, 8);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    helper.rotateX(Math.PI / 3);
+    expect(pickTranslationGizmoAxis(helper, camera, element, 50, 50)).toBe("X");
   });
 });

@@ -1,5 +1,50 @@
 import * as THREE from "three";
 
+
+export type TranslationGizmoAxis = "X" | "Y" | "Z" | "XY" | "XZ" | "YZ";
+
+/**
+ * Read the native TransformControls translation picker on pointerdown, before
+ * another canvas controller can replace the selection on pointerup.
+ * Unlike controls.axis (hover state), this is tied to the actual click.
+ */
+export function pickTranslationGizmoAxis(
+  helper: THREE.Object3D,
+  camera: THREE.Camera,
+  element: Pick<HTMLElement, "getBoundingClientRect">,
+  clientX: number,
+  clientY: number,
+): TranslationGizmoAxis | null {
+  const rect = element.getBoundingClientRect();
+  if (!(rect.width > 0 && rect.height > 0)) return null;
+  const point = new THREE.Vector2(
+    (clientX - rect.left) / rect.width * 2 - 1,
+    -(clientY - rect.top) / rect.height * 2 + 1,
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(point, camera);
+  helper.updateMatrixWorld(true);
+  let picker: THREE.Object3D | null = null;
+  helper.traverse((child) => {
+    const gizmo = child as THREE.Object3D & { picker?: { translate?: THREE.Object3D } };
+    if (child.type === "TransformControlsGizmo" && gizmo.picker?.translate) {
+      picker = gizmo.picker.translate;
+    }
+  });
+  if (!picker) return null;
+  const matches = raycaster.intersectObjects((picker as THREE.Object3D).children, true);
+  for (const hit of matches) {
+    let node: THREE.Object3D | null = hit.object;
+    while (node && node !== picker) {
+      const name = node.name;
+      if (name === "X" || name === "Y" || name === "Z"
+        || name === "XY" || name === "XZ" || name === "YZ") return name;
+      node = node.parent;
+    }
+  }
+  return null;
+}
+
 interface PointerControls {
   dragging: boolean;
   axis: string | null;

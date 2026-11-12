@@ -1,3 +1,4 @@
+import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
 import * as THREE from "three";
 
 import type {
@@ -330,12 +331,24 @@ export class CadWindowSelectionController {
   }
 
 
+  private referenceTransformOwnsCanvas(): boolean {
+    // El gizmo de la referencia DWG/DXF tiene prioridad sobre la selección.
+    const reference = getActiveCadReferenceBlockController();
+    return Boolean(reference?.isMoveActive || reference?.isRotateActive);
+  }
+
   private readonly handlePointerDown =
     (
       event:
         PointerEvent,
     ): void => {
 
+      if (this.referenceTransformOwnsCanvas()) {
+        if (this.active) this.cancel();
+        this.candidatePointerId = null;
+        this.candidateDragged = false;
+        return;
+      }
       if (
         this.disposed
         || event.button !== 0
@@ -599,6 +612,13 @@ export class CadWindowSelectionController {
         PointerEvent,
     ): void => {
 
+      // Evitar activar una ventana sobre un gizmo DWG, incluso si
+      // el candidato nació antes de activar MOVE.
+      if (this.referenceTransformOwnsCanvas()) {
+        this.candidatePointerId = null;
+        this.candidateDragged = false;
+        return;
+      }
       // Tanto la inserción básica como la inteligente poseen sus clics.
       if (this.insertionOwnsPointer()) {
         this.candidatePointerId = null;
