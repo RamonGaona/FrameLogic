@@ -339,3 +339,72 @@ describe("AutoCAD TEXT / MTEXT / ATTRIB inside structural truss blocks", () => {
     expect(parsed.texts[1]?.text).toBe("P6 3000");
   });
 });
+
+
+describe("structural-first DWG import with a bounded GPU budget", () => {
+  it("preserves tube geometry and TEXT labels while omitting optional DIMENSION/HATCH", () => {
+    const data = dxf(
+      0, "SECTION", 2, "BLOCKS",
+      0, "BLOCK", 2, "TUBE", 10, 0, 20, 0,
+      0, "LINE", 8, "0", 10, 0, 20, 0, 11, 100, 21, 0,
+      0, "TEXT", 8, "0", 1, "4S 3000", 10, 25, 20, 0, 40, 3,
+      0, "MTEXT", 8, "0", 1, "P6 3000", 10, 30, 20, 0, 40, 3,
+      0, "ENDBLK",
+      0, "BLOCK", 2, "*D12", 10, 0, 20, 0,
+      0, "CIRCLE", 8, "0", 10, 0, 20, 0, 40, 100,
+      0, "ENDBLK", 0, "ENDSEC",
+      0, "SECTION", 2, "ENTITIES",
+      // A long dimension previously exhausted a small segment budget before
+      // reaching the real structural parts later in ENTITIES.
+      0, "DIMENSION", 2, "*D12", 10, 300, 20, 0,
+      0, "HATCH", 8, "0", 91, 1,
+      92, 2, 72, 0, 73, 1, 93, 3,
+      10, 0, 20, 0, 10, 100, 20, 0, 10, 0, 20, 100, 97, 0,
+      0, "INSERT", 2, "TUBE", 10, 1000, 20, 0,
+      0, "INSERT", 2, "TUBE", 10, 2000, 20, 0,
+      0, "LINE", 10, 5000, 20, 0, 11, 5100, 21, 0,
+      0, "ENDSEC", 0, "EOF",
+    );
+    const completeMode = parseCadDxf(data, { maxSegments: 16 });
+    expect(completeMode.truncated).toBe(true);
+    expect(completeMode.segments.some(segment => segment.start.x === 5000)).toBe(false);
+
+    const structural = parseCadDxf(data, {
+      maxSegments: 16, omitOptionalGeometry: true,
+    });
+    expect(structural.segments).toHaveLength(3);
+    expect(structural.segments.some(segment => segment.start.x === 5000)).toBe(true);
+    expect(structural.truncated).toBe(false);
+    expect(structural.skippedTypes.get("DIMENSION")).toBe(1);
+    expect(structural.skippedTypes.get("HATCH")).toBe(1);
+    expect(structural.texts.map(text => text.text)).toEqual([
+      "4S 3000", "P6 3000", "4S 3000", "P6 3000",
+    ]);
+    expect(structural.texts[0]?.position.x).toBe(1025);
+    expect(structural.texts[2]?.position.x).toBe(2025);
+  });
+
+  it("reserves at least one segment across many multi-segment roots instead of hiding later blocks", () => {
+    const inserts = Array.from({ length: 25 }, (_, index) => [
+      0, "INSERT", 2, "TWO_LINES", 10, index * 100, 20, 0,
+    ]).flat();
+    const data = dxf(
+      0, "SECTION", 2, "BLOCKS",
+      0, "BLOCK", 2, "TWO_LINES", 10, 0, 20, 0,
+      0, "LINE", 10, 0, 20, 0, 11, 10, 21, 0,
+      0, "LINE", 10, 0, 20, 10, 11, 10, 21, 10,
+      0, "ENDBLK", 0, "ENDSEC",
+      0, "SECTION", 2, "ENTITIES",
+      ...inserts,
+      0, "ENDSEC", 0, "EOF",
+    );
+    const parsed = parseCadDxf(data, { maxSegments: 32 });
+    expect(parsed.segments).toHaveLength(32);
+    expect(parsed.truncated).toBe(true);
+    for (let index = 0; index < 25; index++) {
+      expect(parsed.segments.some(segment =>
+        segment.start.x === index * 100 && segment.start.y === 0,
+      )).toBe(true);
+    }
+  });
+});
