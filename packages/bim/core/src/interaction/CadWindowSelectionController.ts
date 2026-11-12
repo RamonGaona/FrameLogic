@@ -1,4 +1,5 @@
 import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
+import { parseCadReferenceLayerName } from "../import/CadReferenceBlockController";
 import * as THREE from "three";
 
 import type {
@@ -782,6 +783,22 @@ export class CadWindowSelectionController {
       this.domElement
         .getBoundingClientRect();
 
+    // DWG/DXF segments are members of a single, locked reference. Track
+    // screen-space segment hits before applying any native CAD selection.
+    const cadReference = getActiveCadReferenceBlockController();
+    const referenceHits = new Map<string, {
+      containsAll: boolean;
+      touches: boolean;
+      count: number;
+    }>();
+    const referenceHit = (name: string, contained: boolean, touched: boolean): void => {
+      const state = referenceHits.get(name) ?? { containsAll: true, touches: false, count: 0 };
+      state.containsAll = state.containsAll && contained;
+      state.touches = state.touches || touched;
+      state.count += 1;
+      referenceHits.set(name, state);
+    };
+
 
     const pieceIds:
       string[] =
@@ -867,10 +884,12 @@ export class CadWindowSelectionController {
             point.layerId,
           );
 
+      const imported = layer ? parseCadReferenceLayerName(layer) : null;
+
 
       if (
         layer?.visible === false
-        || layer?.locked === true
+        || (layer?.locked === true && !imported)
       ) {
 
         continue;
@@ -889,6 +908,14 @@ export class CadWindowSelectionController {
           viewportRect,
         );
 
+
+      if (imported) {
+        const contained = Boolean(screenPoint && this.containsPoint(
+          selectionRect, screenPoint.x, screenPoint.y,
+        ));
+        referenceHit(imported.referenceName, contained, contained);
+        continue;
+      }
 
       if (
         !screenPoint
@@ -935,10 +962,12 @@ export class CadWindowSelectionController {
             line.layerId,
           );
 
+      const imported = layer ? parseCadReferenceLayerName(layer) : null;
+
 
       if (
         layer?.visible === false
-        || layer?.locked === true
+        || (layer?.locked === true && !imported)
       ) {
 
         continue;
@@ -969,6 +998,18 @@ export class CadWindowSelectionController {
           viewportRect,
         );
 
+
+      if (imported) {
+        const bothVisible = Boolean(start && end);
+        const contained = Boolean(bothVisible
+          && this.containsPoint(selectionRect, start!.x, start!.y)
+          && this.containsPoint(selectionRect, end!.x, end!.y));
+        const touched = Boolean(bothVisible && this.segmentIntersectsRect(
+          selectionRect, start!.x, start!.y, end!.x, end!.y,
+        ));
+        referenceHit(imported.referenceName, contained, touched);
+        continue;
+      }
 
       if (
         !start
@@ -1015,6 +1056,14 @@ export class CadWindowSelectionController {
 
     }
 
+
+    const matchedReferences = [...referenceHits.entries()]
+      .filter(([, value]) => value.count > 0
+        && (direction === "WINDOW" ? value.containsAll : value.touches))
+      .map(([name]) => name);
+    const finalReferences = cadReference
+      ? this.applySelectionOperation(cadReference.getSelectedReferenceNames(), matchedReferences)
+      : [];
 
     const currentPieceIds =
       this.designSelection
@@ -1070,6 +1119,10 @@ export class CadWindowSelectionController {
         finalLineIds,
         true,
       );
+
+    // Native selection never takes ownership of locked DWG members.
+    // REPLACE/ADD/REMOVE applies to entire imported references.
+    cadReference?.setSelection(finalReferences, true);
 
   }
 

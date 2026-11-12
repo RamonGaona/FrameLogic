@@ -395,6 +395,7 @@ export async function createBimCore(
         core.geometryQuery.clearCache(),
       history: core.cadHistory,
       findSnapPoint: (x, y) => core.snapEngine.findSnap(x, y)?.point.clone() ?? null,
+      isPlacementActive: () => core.cadLinePlacement.isActive,
       onRotateAxis: axis => core.showCadRotateInput(axis),
       onRotateDeactivated: () => core.hideCadRotateInput(),
       clearOtherSelections: () => {

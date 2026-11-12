@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DesignModel } from "@framelogic/domain";
 import { CadReferenceBlockController } from "./CadReferenceBlockController";
 import { RotateRingDoubleClick } from "../interaction/RotateRingDoubleClick";
+import { CadLinePlacementController } from "../interaction/CadLinePlacementController";
 
 function fixture() {
   const model = new DesignModel();
@@ -364,5 +365,53 @@ describe("DWG MOVE: secuencia real de pointerdown/pointerup antes del SNAP", () 
     expect(Reflect.get(f.controller, "armedMoveAxis")).toBe("Z");
     expect(f.model.cadLines.get(f.line.id)?.start.x).toBe(0);
     expect(f.history.recordOperation).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("DWG reference snap and inspected member", () => {
+  it("DWG does not steal LINE pointer events; LINE resolves an exact endpoint SNAP", () => {
+    const f = fixture();
+    Reflect.set(f.controller, "activeMode", null);
+    Reflect.set(f.options, "isPlacementActive", () => true);
+    const referenceSelect = vi.spyOn(f.controller, "selectReference");
+    const pickReference = vi.spyOn(f.controller as any, "getReferenceAt");
+    const start = new THREE.Vector3(10, 0, 0);
+    const linePlacement = Object.create(CadLinePlacementController.prototype) as CadLinePlacementController;
+    Reflect.set(linePlacement, "snap", { findSnap: vi.fn(() => ({ point: start.clone(), type: "ENDPOINT" })) });
+    Reflect.set(linePlacement, "startPoint", null);
+    Reflect.set(linePlacement, "lastDirection", null);
+    Reflect.set(linePlacement, "preview", { visible: false });
+    Reflect.set(linePlacement, "requestDistanceInput", vi.fn());
+    Reflect.set(linePlacement, "refreshPreviewFromLastPointer", vi.fn());
+    const down = f.pointerEvent();
+    f.handler("pointerDownInternal")(down);
+    expect(Reflect.get(f.controller, "pointerDownActive")).toBe(false);
+    const up = f.pointerEvent();
+    f.handler("pointerUpInternal")(up);
+    expect(referenceSelect).not.toHaveBeenCalled();
+    expect(pickReference).not.toHaveBeenCalled();
+    const snapPoint = (Reflect.get(linePlacement, "acquirePointerPoint") as
+      (x: number, y: number) => THREE.Vector3 | null).call(linePlacement, 120, 80);
+    expect(snapPoint?.toArray()).toEqual([10, 0, 0]);
+    expect((Reflect.get(linePlacement, "acceptPoint") as
+      (point: THREE.Vector3) => boolean).call(linePlacement, snapPoint!)).toBe(true);
+    expect((Reflect.get(linePlacement, "startPoint") as THREE.Vector3).toArray()).toEqual([10, 0, 0]);
+    vi.restoreAllMocks();
+  });
+
+  it("clicking a DWG line selects its block and exposes that line only for measurement", () => {
+    const f = fixture();
+    Reflect.set(f.controller, "activeMode", null);
+    Reflect.set(f.controller, "getReferenceAt", () => ({ referenceName: "Obra", lineId: f.line.id }));
+    vi.spyOn(f.controller, "selectReference").mockImplementation(() => {});
+    Reflect.set(f.controller, "pointerDownActive", true);
+    const event = f.release();
+    expect(event.stopImmediatePropagation).toHaveBeenCalledOnce();
+    expect(f.controller.getInspectedLineId()).toBe(f.line.id);
+    // MOVE/ROTATE must not present a stale measurement while transforming.
+    Reflect.set(f.controller, "activeMode", "rotate");
+    expect(f.controller.getInspectedLineId()).toBeNull();
+    vi.restoreAllMocks();
   });
 });

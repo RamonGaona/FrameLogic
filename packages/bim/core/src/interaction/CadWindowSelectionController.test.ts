@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
+import { DesignModel } from "@framelogic/domain";
 import { CadWindowSelectionController } from "./CadWindowSelectionController";
 import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
 
@@ -190,5 +191,67 @@ describe("CAD window selection and gizmo ownership", () => {
     s.target.dispatchEvent(pointer("pointerup"));
     expect(s.controller.isActive).toBe(false);
     s.controller.dispose();
+  });
+});
+
+
+describe("DWG reference as a single entity in crossing/window selection", () => {
+  function referenceWindow(startX: number, currentX: number, visible = true) {
+    const model = new DesignModel();
+    const layer = model.layers.create({
+      name: "CAD Planta · 0", visible, locked: false, snapEnabled: true,
+    });
+    model.registerCadLine({ layerId: layer.id,
+      start: { x: 0, y: 0, z: 0 }, end: { x: 10, y: 0, z: 0 } });
+    model.layers.update(layer.id, { locked: true });
+    const camera = new THREE.OrthographicCamera(-20, 20, 20, -20, 0.1, 100);
+    camera.position.set(0, 0, 20);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+    const refSelect = { getSelectedReferenceNames: vi.fn(() => []),
+      setSelection: vi.fn(), isMoveActive: false, isRotateActive: false };
+    vi.mocked(getActiveCadReferenceBlockController).mockReturnValue(
+      refSelect as unknown as ReturnType<typeof getActiveCadReferenceBlockController>);
+    const controller = Object.create(CadWindowSelectionController.prototype) as CadWindowSelectionController;
+    const selected = () => ({ getSelectedIds: vi.fn(() => []), setSelection: vi.fn() });
+    const pieces = selected(), points = selected(), lines = selected();
+    Reflect.set(controller, "startX", startX);
+    Reflect.set(controller, "currentX", currentX);
+    Reflect.set(controller, "startY", 450);
+    Reflect.set(controller, "currentY", 550);
+    Reflect.set(controller, "domElement", { getBoundingClientRect: () =>
+      ({ left: 0, top: 0, width: 1000, height: 1000 }) });
+    Reflect.set(controller, "cameraProvider", () => camera);
+    Reflect.set(controller, "designModel", model);
+    Reflect.set(controller, "designScene", { getInstanceEntries: () => [] });
+    Reflect.set(controller, "designSelection", pieces);
+    Reflect.set(controller, "pointSelection", points);
+    Reflect.set(controller, "lineSelection", lines);
+    Reflect.set(controller, "selectionOperation", "REPLACE");
+    const run = () => (Reflect.get(controller, "applySelection") as () => void).call(controller);
+    return { run, refSelect, pieces, points, lines };
+  }
+
+  it("crossing over just one interior DWG segment selects the ENTIRE locked block", () => {
+    const f = referenceWindow(650, 600);
+    f.run();
+    expect(f.refSelect.setSelection).toHaveBeenCalledWith(["Planta"], true);
+    expect(f.lines.setSelection).toHaveBeenCalledWith([], true);
+  });
+
+  it("window must enclose all DWG members, not only cross a segment", () => {
+    const all = referenceWindow(450, 800);
+    all.run();
+    expect(all.refSelect.setSelection).toHaveBeenCalledWith(["Planta"], true);
+    const partial = referenceWindow(550, 650);
+    partial.run();
+    expect(partial.refSelect.setSelection).toHaveBeenCalledWith([], true);
+  });
+
+  it("a hidden imported DWG is not selectable by crossing window", () => {
+    const f = referenceWindow(650, 600, false);
+    f.run();
+    expect(f.refSelect.setSelection).toHaveBeenCalledWith([], true);
   });
 });

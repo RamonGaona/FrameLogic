@@ -66,6 +66,8 @@ export interface CadReferenceBlockControllerOptions {
   readonly onRotateAxis?: (axis: RotateNumericAxis) => void;
   readonly onRotateDeactivated?: () => void;
   readonly findSnapPoint?: (clientX: number, clientY: number) => THREE.Vector3 | null;
+  /** The LINE tool owns clicks on DWG geometry when it is drawing. */
+  readonly isPlacementActive?: () => boolean;
 }
 
 /**
@@ -91,6 +93,8 @@ export class CadReferenceBlockController {
   private readonly ringPointer = new THREE.Vector2();
   private pendingDoubleClickTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly selectedReferenceNames = new Set<string>();
+  /** Last inspected member: read-only measurement, never an editable selection. */
+  private inspectedLineId: string | null = null;
   private transformSnapshot: TransformSnapshot | null = null;
   private readonly ringClicks = new RotateRingDoubleClick();
   private ringGesture: { pointerId: number; x: number; y: number;
@@ -239,6 +243,16 @@ export class CadReferenceBlockController {
     return Array.from(this.selectedReferenceNames);
   }
 
+  getInspectedLineId(): string | null {
+    if (!this.inspectedLineId || this.activeMode) return null;
+    const line = this.options.designModel.cadLines.get(this.inspectedLineId);
+    const layer = line ? this.options.designModel.layers.get(line.layerId) : null;
+    const reference = layer ? parseCadLayerName(layer) : null;
+    return line && layer?.visible && reference
+      && this.selectedReferenceNames.has(reference.referenceName)
+      ? line.id : null;
+  }
+
   getSelectedBounds(): THREE.Box3 | null {
     const bounds = new THREE.Box3();
     let hasBounds = false;
@@ -316,6 +330,7 @@ export class CadReferenceBlockController {
     referenceNames: readonly string[],
     preserveOtherSelections = false,
   ): void {
+    this.inspectedLineId = null;
     this.deactivateTransform();
     this.selectedReferenceNames.clear();
     for (const referenceName of referenceNames) {
@@ -336,6 +351,7 @@ export class CadReferenceBlockController {
     referenceName: string | null,
     additive = false,
   ): void {
+    this.inspectedLineId = null;
     if (!referenceName) {
       if (!additive) this.clearSelection();
       return;
@@ -358,6 +374,7 @@ export class CadReferenceBlockController {
   }
 
   clearSelection(): void {
+    this.inspectedLineId = null;
     if (this.selectedReferenceNames.size < 1) return;
     this.deactivateTransform();
     this.selectedReferenceNames.clear();
@@ -858,6 +875,10 @@ export class CadReferenceBlockController {
 
   private pointerDownInternal(event: PointerEvent): void {
     if (!this.interactionEnabled || event.button !== 0) return;
+    if (!this.activeMode && this.options.isPlacementActive?.()) {
+      this.pointerDownActive = false;
+      return;
+    }
     const target = event.target;
     if (target && target !== this.options.domElement
       && !(target instanceof Node && this.options.domElement.contains(target))) return;
@@ -901,6 +922,10 @@ export class CadReferenceBlockController {
   };
 
   private pointerUpInternal(event: PointerEvent): void {
+    if (!this.activeMode && this.options.isPlacementActive?.()) {
+      this.pointerDownActive = false;
+      return;
+    }
     // Pointer releases on the independent HTML pivot marker are never canvas
     // selection clicks; its own handler finalizes them.
     const target = event.target;
@@ -1031,18 +1056,23 @@ export class CadReferenceBlockController {
     // Retain the same block and its two-click gesture state.
     if (this.activeMode) return;
 
-    const referenceName = this.getReferenceAt(
+    const hit = this.getReferenceAt(
       event.clientX,
       event.clientY,
     );
-    if (referenceName) {
+    if (hit) {
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
       this.selectReference(
-        referenceName,
+        hit.referenceName,
         event.ctrlKey || event.metaKey,
       );
+      // Selecting a member of a locked DWG reference only creates an
+      // informational dimension. Its geometry remains owned by the block.
+      if (this.selectedReferenceNames.has(hit.referenceName)) {
+        this.inspectedLineId = hit.lineId;
+      }
       return;
     }
 
@@ -1225,11 +1255,12 @@ export class CadReferenceBlockController {
   private getReferenceAt(
     clientX: number,
     clientY: number,
-  ): string | null {
+  ): { referenceName: string; lineId: string | null } | null {
     const rect = this.options.domElement.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
     const camera = this.options.cameraProvider();
     let bestReference: string | null = null;
+    let bestLineId: string | null = null;
     let bestDistance = PICK_TOLERANCE_PX;
 
     for (const line of this.options.designModel.cadLines.getAll()) {
@@ -1250,6 +1281,7 @@ export class CadReferenceBlockController {
       if (distance < bestDistance) {
         bestDistance = distance;
         bestReference = parsed.referenceName;
+        bestLineId = line.id;
       }
     }
 
@@ -1266,9 +1298,10 @@ export class CadReferenceBlockController {
       if (distance < bestDistance) {
         bestDistance = distance;
         bestReference = parsed.referenceName;
+        bestLineId = null;
       }
     }
-    return bestReference;
+    return bestReference ? { referenceName: bestReference, lineId: bestLineId } : null;
   }
 
   private getReferenceLayerIds(

@@ -12,6 +12,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.115 — 2026-11-11
+
+### LINE desde SNAP DWG, cotas automáticas de líneas internas y selección por ventana de referencias
+
+- **LINE desde DWG/DXF:** el bloque de referencia deja de capturar `pointerdown/pointerup` durante el comando LINE. Así el capturador del trazado recibe el clic y puede iniciar o continuar una línea desde el SNAP geométrico exacto (extremo, punto medio, intersección) de la referencia bloqueada.
+- **Cotas informativas automáticas:** un clic sobre una línea de un bloque DWG/DXF selecciona la referencia completa, recuerda el miembro señalado y muestra su longitud real mediante el sistema existente de cotas temporales. La geometría interna sigue bloqueada y la cota se oculta durante MOVE/ROTATE y cuando se pierde la selección.
+- **Selección rectangular:** ventana izquierda→derecha selecciona la referencia entera si contiene toda su geometría visible; captura derecha→izquierda selecciona la referencia entera si cruza al menos un segmento o incluye uno de sus puntos. Las capas CAD de referencia bloqueadas siguen participando en la detección geométrica sin que sus líneas se conviertan en seleccionables individualmente.
+- **Compatibilidad:** respetar visibilidad de capas, selección REPLACE/ADD/REMOVE, piezas y CAD nativo. No alterar MOVE, ROTATE, COPYBASE, snaps del bloque ni su integridad.
+- **Pruebas:** secuencias de eventos LINE sobre referencia, selección por ventana/crossing de bloques bloqueados y ocultos, medida temporal de la línea inspeccionada y regresiones de gizmos.
+
+---
+
 ## v0.1.114 — 2026-11-11
 
 ### MOVE DWG/DXF: clic corto en eje y elección de SNAP sin reselección
