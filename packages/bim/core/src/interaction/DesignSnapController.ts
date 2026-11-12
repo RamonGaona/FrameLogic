@@ -84,6 +84,17 @@ interface CachedGeometrySnaps {
 
 
 export class DesignSnapController {
+  /** Extension SNAP providers for native CAD shapes (circles/arcs, etc.). */
+  private readonly externalSnapProviders = new Set<
+    (clientX: number, clientY: number) => DesignSnapResult | null
+  >();
+
+  addExternalSnapProvider(
+    provider: (clientX: number, clientY: number) => DesignSnapResult | null,
+  ): () => void {
+    this.externalSnapProviders.add(provider);
+    return () => { this.externalSnapProviders.delete(provider); };
+  }
 
   private readonly domElement:
     HTMLElement;
@@ -501,6 +512,13 @@ export class DesignSnapController {
 
     }
 
+
+    // Independent CAD circles provide CENTER and four QUADRANT-like reference
+    // SNAPs without exploding into 128 editable tessellation segments.
+    for (const provider of this.externalSnapProviders) {
+      const result = provider(clientX, clientY);
+      if (result) return result;
+    }
 
     const cadLineIntersectionSnap =
       this.findCadLineIntersectionSnap(
