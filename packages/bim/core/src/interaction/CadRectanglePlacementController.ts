@@ -394,9 +394,11 @@ export class CadRectanglePlacementController {
     }
   };
 
-  private readonly handleNumericKeyDown = (
-    event: KeyboardEvent,
-  ): void => {
+  private readonly handleNumericKeyDown = (event: KeyboardEvent): void => {
+    this.processNumericKeyDown(event);
+  };
+
+  private processNumericKeyDown(event: KeyboardEvent): void {
     if (event.key === "Tab" && this.active && this.stage === "SECOND_CORNER") {
       // Cycle only between the two active rectangle dimensions, never
       // send focus to the model toolbar / unrelated DOM controls.
@@ -464,7 +466,7 @@ export class CadRectanglePlacementController {
       delta.x,
       delta.y,
     );
-  };
+  }
 
   private pickPoint(
     clientX: number,
