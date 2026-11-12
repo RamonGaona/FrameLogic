@@ -218,6 +218,9 @@ export function parseCadDxf(text: string): ParsedCadReference {
   let pass = 0;
 
   const skip = (type: string): void => {
+    // Replaying a root to fill its remaining quota must not count the same
+    // unsupported entity again.
+    if (pass > 0 && type !== "LIMITE_SEGMENTOS") return;
     skippedTypes.set(type, (skippedTypes.get(type) ?? 0) + 1);
   };
   const appearanceForLayer = (layer: string): DxfLayerAppearance =>
@@ -514,10 +517,12 @@ export function parseCadDxf(text: string): ParsedCadReference {
   const fairShare = Math.max(16,
     Math.min(4096, Math.floor(MAX_RENDERED_SEGMENTS * 0.75 / Math.max(1, roots.length))));
   const pending: Array<{ root: DxfRecord[]; cursor: number }> = [];
+  let visitedRoots = 0;
   for (const root of roots) {
     const result = runRoot(root, Math.min(fairShare,
       MAX_RENDERED_SEGMENTS - segments.length));
     if (result.limited) pending.push({ root, cursor: result.used });
+    visitedRoots++;
     if (segments.length >= MAX_RENDERED_SEGMENTS) break;
   }
   // Preserve geometry detail by replaying only the un-emitted suffix. Passes
@@ -547,9 +552,8 @@ export function parseCadDxf(text: string): ParsedCadReference {
     }
     remaining = next;
   }
-  incompleteRootEntities = remaining.length;
-  truncated = incompleteRootEntities > 0
-    || segments.length >= MAX_RENDERED_SEGMENTS && pending.length > 0;
+  incompleteRootEntities = remaining.length + (roots.length - visitedRoots);
+  truncated = incompleteRootEntities > 0;
   if (truncated) skip("LIMITE_SEGMENTOS");
 
   return {
