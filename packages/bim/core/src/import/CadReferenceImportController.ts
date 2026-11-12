@@ -88,7 +88,8 @@ export class CadReferenceImportController {
       throw new Error("No se encontraron entidades 2D compatibles en el archivo CAD.");
     }
 
-    const unitScale = this.resolveUnitScale(parsed.insUnits);
+    const unitScale = this.resolveUnitScale(parsed.insUnits, extension);
+    report(`DWG/DXF · Unidad origen confirmada · factor ${unitScale} hacia mm…`);
     const layerIds = new Map<string, string>();
     const referenceName = uniqueReferenceName(
       this.options.designModel,
@@ -207,7 +208,7 @@ export class CadReferenceImportController {
       ? `\nDefiniciones BLOCK ausentes: ${parsed.unresolvedBlocks.slice(0, 8).join(", ")}.`
       : "";
     window.alert(
-      `Plano CAD "${referenceName}" importado como bloque de referencia.\nSe priorizaron perfiles, tubos, bloques y textos. Los sombreados HATCH se omiten; se rescata solo la geometría gráfica de DIMENSION que cabe después de la estructura.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.texts.length} textos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos · ${parsed.recoveredDimensionSegments} segmentos gráficos secundarios${skipped}.${truncation}${xrefs}${missingBlocks}\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
+      `Plano CAD "${referenceName}" importado como bloque de referencia.\nSe priorizaron perfiles, tubos, bloques y textos. Los sombreados HATCH se omiten; se rescata solo la geometría gráfica de DIMENSION que cabe después de la estructura.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.texts.length} textos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos · ${parsed.recoveredDimensionSegments} segmentos gráficos secundarios${skipped}.${truncation}${xrefs}${missingBlocks}\nUnidades de origen: ${unitScale === 1 ? "1 unidad = 1 mm" : `1 unidad = ${unitScale} mm`}. Factor aplicado: ×${unitScale}.\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
     );
     } finally {
       status.remove();
@@ -315,29 +316,57 @@ export class CadReferenceImportController {
     });
   }
 
-  private resolveUnitScale(insUnits: number): number {
-    const known = insUnitsToMillimeters(insUnits);
-    if (known !== null) return known;
+  private resolveUnitScale(insUnits: number, extension: "dwg" | "dxf"): number {
+    return resolveCadImportUnitScale(
+      extension, insUnits,
+      (message, initialValue) => window.prompt(message, initialValue),
+    );
+  }
+}
 
-    const answer = window.prompt(
-      "El plano no declara unidades. Escribe mm, cm, m, in o ft:",
-      "mm",
-    )?.trim().toLowerCase();
-    if (answer === null || answer === undefined) {
-      throw new Error("Importación cancelada: faltan las unidades del plano.");
-    }
-    switch (answer) {
-      case "mm": return 1;
-      case "cm": return 10;
-      case "m": return 1000;
-      case "in":
-      case "inch":
-      case "inches": return 25.4;
-      case "ft":
-      case "feet": return 304.8;
-      default:
-        throw new Error(`Unidad "${answer}" no reconocida.`);
-    }
+/**
+ * Binary DWG -> DXF converters may not preserve the drawing's insertion-unit
+ * metadata consistently. Confirm the source coordinate unit BEFORE any CAD
+ * geometry or TEXT transform anchors are registered. Never silently apply an
+ * inferred x1000 factor to a DWG that was authored in millimetres.
+ *
+ * DXF ASCII keeps the existing automatic INSUNITS behavior. DWG defaults to
+ * "mm" but explicitly allows users with metre-based drawings to choose "m"
+ * or "auto" (trust the converted DXF's INSUNITS metadata).
+ */
+export function resolveCadImportUnitScale(
+  extension: "dwg" | "dxf",
+  insUnits: number,
+  promptForUnits: (message: string, initialValue: string) => string | null,
+): number {
+  const declaredScale = insUnitsToMillimeters(insUnits);
+  if (extension === "dxf" && declaredScale !== null) return declaredScale;
+
+  const description = declaredScale === null
+    ? "sin unidades reconocidas"
+    : `código ${insUnits} (factor automático ×${declaredScale} hacia mm)`;
+  const message = extension === "dwg"
+    ? `DWG convertido a DXF: ${description}.\n\nIndica la unidad REAL de las coordenadas del dibujo en AutoCAD: mm, cm, m, in o ft.\nSi AutoCAD muestra milímetros (como CUNAS_MEDIR), usa mm y NO se multiplicará por 1000.\nEscribe auto solo si deseas confiar en las unidades del DXF convertido.\nCancelar = no importar.`
+    : "El plano no declara unidades. Escribe mm, cm, m, in o ft:";
+  const raw = promptForUnits(message, "mm");
+  if (raw === null) {
+    throw new Error("Importación cancelada: no se confirmó la unidad de origen.");
+  }
+  const answer = raw.trim().toLowerCase();
+  switch (answer) {
+    case "mm": return 1;
+    case "cm": return 10;
+    case "m": return 1000;
+    case "in":
+    case "inch":
+    case "inches": return 25.4;
+    case "ft":
+    case "feet": return 304.8;
+    case "auto":
+      if (declaredScale !== null) return declaredScale;
+      throw new Error("El DWG/DXF no declara unidades válidas para la opción auto.");
+    default:
+      throw new Error(`Unidad "${answer}" no reconocida. Usa mm, cm, m, in, ft o auto.`);
   }
 }
 
