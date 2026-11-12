@@ -81,6 +81,9 @@ jobs:
       - name: DWG block/color import and millimetre regression
         run: npm run test:dwg-import
 
+      - name: Dual DWG reader recovery regression
+        run: npm run test:dwg-recovery
+
       - name: DWG runtime asset copy regression
         run: npm run test:dwg
 
