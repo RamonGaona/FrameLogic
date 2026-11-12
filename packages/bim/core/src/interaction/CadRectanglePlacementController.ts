@@ -397,6 +397,17 @@ export class CadRectanglePlacementController {
   private readonly handleNumericKeyDown = (
     event: KeyboardEvent,
   ): void => {
+    if (event.key === "Tab" && this.active && this.stage === "SECOND_CORNER") {
+      // Cycle only between the two active rectangle dimensions, never
+      // send focus to the model toolbar / unrelated DOM controls.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const next = event.target === this.widthInput
+        ? this.heightInput : this.widthInput;
+      next.focus();
+      next.select();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
