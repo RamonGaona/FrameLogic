@@ -266,16 +266,16 @@ export function parseCadDxf(
         + str(record, 1)
       : str(record, 1);
     return raw
-      .replace(/\\\\P/g, "\n")
-      .replace(/\\\\~/g, " ")
-      .replace(/\\\\U\\+([0-9A-Fa-f]{4})/g, (_, hex: string) =>
+      .replace(/\\P/g, "\n")
+      .replace(/\\~/g, " ")
+      .replace(/\\U\+([0-9A-Fa-f]{4})/g, (_, hex: string) =>
         String.fromCharCode(Number.parseInt(hex, 16)))
       .replace(/%%[dD]/g, "°")
       .replace(/%%[pP]/g, "±")
       .replace(/%%[cC]/g, "⌀")
-      .replace(/\\\\[LlOoKk]/g, "")
-      .replace(/\\\\[HhWwFfCcAaTtQq][^;]*;/g, "")
-      .replace(/\\\\S([^;]*);/g, (_, fraction: string) =>
+      .replace(/\\[LlOoKk]/g, "")
+      .replace(/\\[HhWwFfCcAaTtQq][^;]*;/g, "")
+      .replace(/\\S([^;]*);/g, (_, fraction: string) =>
         fraction.replace(/[\\^#]/g, "/"))
       .replace(/[{}]/g, "")
       .trim();
