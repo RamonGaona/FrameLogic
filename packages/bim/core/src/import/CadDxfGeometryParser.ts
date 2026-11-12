@@ -42,7 +42,7 @@ export interface ParsedCadReference {
   readonly unresolvedBlocks: readonly string[];
   readonly incompleteRootEntities: number;
   /** Secondary dimension graphics recovered only after structural linework. */
-  readonly recoveredDimensionSegments: number;
+  readonly recoveredDimensionSegments?: number;
 }
 interface DxfBlock {
   readonly base: CadDxfPoint3;
