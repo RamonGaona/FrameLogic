@@ -408,3 +408,73 @@ describe("structural-first DWG import with a bounded GPU budget", () => {
     }
   });
 });
+
+
+describe("recovery of nested anonymous DIMENSION graphics after structural DWG geometry", () => {
+  it("explodes nested graphic blocks with attached ATTRIB and keeps tube TEXT", () => {
+    const source = dxf(
+      0, "SECTION", 2, "BLOCKS",
+      0, "BLOCK", 2, "*D42", 10, 0, 20, 0,
+      // A graphics-only source can contain vital reference outlines here.
+      0, "LINE", 10, 0, 20, 0, 11, 100, 21, 0,
+      0, "LINE", 10, 0, 20, 20, 11, 100, 21, 20,
+      0, "ENDBLK",
+      0, "BLOCK", 2, "TUBE", 10, 0, 20, 0,
+      0, "LINE", 10, 0, 20, 0, 11, 200, 21, 0,
+      0, "TEXT", 1, "4S 3000", 10, 60, 20, 0, 40, 4,
+      0, "DIMENSION", 2, "*D42", 12, 0, 22, 30,
+      0, "ENDBLK", 0, "ENDSEC",
+      0, "SECTION", 2, "ENTITIES",
+      0, "INSERT", 2, "TUBE", 10, 1000, 20, 0, 66, 1,
+      0, "ATTRIB", 1, "P6 3000", 10, 1100, 20, 5, 40, 3,
+      0, "SEQEND",
+      0, "INSERT", 2, "TUBE", 10, 2000, 20, 0,
+      0, "ENDSEC", 0, "EOF",
+    );
+    const withoutFallback = parseCadDxf(source, {
+      maxSegments: 32, omitOptionalGeometry: true,
+    });
+    expect(withoutFallback.segments).toHaveLength(2);
+    expect(withoutFallback.texts.map(x => x.text)).toEqual([
+      "4S 3000", "P6 3000", "4S 3000",
+    ]);
+    const withFallback = parseCadDxf(source, {
+      maxSegments: 32, omitOptionalGeometry: true,
+      recoverDimensionGraphics: true,
+    });
+    expect(withFallback.segments.length).toBeGreaterThan(withoutFallback.segments.length);
+    expect(withFallback.recoveredDimensionSegments).toBeGreaterThanOrEqual(2);
+    expect(withFallback.segments.some(x =>
+      x.start.x === 1000 && x.start.y === 30 && x.end.x === 1100,
+    )).toBe(true);
+    expect(withFallback.segments.some(x =>
+      x.start.x === 2000 && x.start.y === 30 && x.end.x === 2100,
+    )).toBe(true);
+    expect(withFallback.texts.map(x => x.text)).toEqual(withoutFallback.texts.map(x => x.text));
+  });
+
+  it("does not sacrifice a late structural INSERT when anonymous dimension graphics are long", () => {
+    const source = dxf(
+      0, "SECTION", 2, "BLOCKS",
+      0, "BLOCK", 2, "*D12", 10, 0, 20, 0,
+      0, "CIRCLE", 10, 0, 20, 0, 40, 100,
+      0, "ENDBLK",
+      0, "BLOCK", 2, "LATE_BEAM", 10, 0, 20, 0,
+      0, "LINE", 10, 0, 20, 0, 11, 500, 21, 0,
+      0, "ENDBLK", 0, "ENDSEC",
+      0, "SECTION", 2, "ENTITIES",
+      0, "DIMENSION", 2, "*D12",
+      0, "INSERT", 2, "LATE_BEAM", 10, 3000, 20, 0,
+      0, "ENDSEC", 0, "EOF",
+    );
+    const parsed = parseCadDxf(source, {
+      maxSegments: 16, omitOptionalGeometry: true,
+      recoverDimensionGraphics: true,
+    });
+    expect(parsed.segments.some(x =>
+      x.start.x === 3000 && x.end.x === 3500,
+    )).toBe(true);
+    expect(parsed.recoveredDimensionSegments).toBeGreaterThan(0);
+    expect(parsed.segments.length).toBeLessThanOrEqual(16);
+  });
+});

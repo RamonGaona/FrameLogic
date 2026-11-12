@@ -64,6 +64,8 @@ export class InstanceTreeController {
   // Selecting an assembly in the tree is NOT equivalent to selecting its
   // component pieces in the viewport. Keep the explicit identity separately.
   private readonly selectedAssemblyIds = new Set<string>();
+  // Expand only the requested DWG, and keep that choice across tree rebuilds.
+  private readonly expandedCadReferences = new Set<string>();
   private copySelecting = () => false;
   private updatingTreeSelection = false;
   private contextMenu: HTMLDivElement | null = null;
@@ -332,6 +334,8 @@ export class InstanceTreeController {
         this.options.cadReferenceBlocks.getSelectedReferenceNames(),
       );
       for (const entry of cadEntries) {
+        const visible = this.options.cadReferenceBlocks.isReferenceVisible(entry.referenceName);
+        const expanded = this.expandedCadReferences.has(entry.referenceName);
         const row = this.createSelectableRow(
           `▧ ${entry.referenceName}`,
           `${entry.layers.length} capa${entry.layers.length === 1 ? "" : "s"}`,
@@ -346,9 +350,54 @@ export class InstanceTreeController {
             this.render();
           },
         );
-        cadGroup.content.append(row);
+        row.dataset["framelogicCadReferenceRow"] = entry.referenceName;
+        row.style.gridTemplateColumns = "20px minmax(0, 1fr) auto 24px";
         const children = document.createElement("div");
+        children.dataset["framelogicCadReferenceChildren"] = entry.referenceName;
         children.style.paddingLeft = "16px";
+        children.hidden = !expanded;
+
+        const expandButton = document.createElement("button");
+        expandButton.type = "button";
+        expandButton.dataset["framelogicCadReferenceExpand"] = entry.referenceName;
+        expandButton.textContent = expanded ? "▾" : "▸";
+        expandButton.setAttribute("aria-expanded", String(expanded));
+        expandButton.title = expanded ? "Contraer capas de referencia CAD" : "Expandir capas de referencia CAD";
+        expandButton.style.cssText = "background:transparent;border:0;color:#d5e8f1;cursor:pointer;padding:0;";
+        expandButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (this.expandedCadReferences.has(entry.referenceName)) {
+            this.expandedCadReferences.delete(entry.referenceName);
+          } else {
+            this.expandedCadReferences.add(entry.referenceName);
+          }
+          const open = this.expandedCadReferences.has(entry.referenceName);
+          children.hidden = !open;
+          expandButton.textContent = open ? "▾" : "▸";
+          expandButton.setAttribute("aria-expanded", String(open));
+        });
+        row.prepend(expandButton);
+
+        const eye = document.createElement("button");
+        eye.type = "button";
+        eye.dataset["framelogicCadReferenceEye"] = entry.referenceName;
+        eye.textContent = visible ? "👁" : "◯";
+        eye.setAttribute("aria-label", visible
+          ? `Ocultar referencia CAD ${entry.referenceName}`
+          : `Mostrar referencia CAD ${entry.referenceName}`);
+        eye.title = visible ? "Ocultar DWG/DXF" : "Mostrar DWG/DXF";
+        eye.style.cssText = "background:transparent;border:0;color:#cfe8f3;cursor:pointer;padding:0;";
+        eye.addEventListener("pointerdown", (event) => event.stopPropagation());
+        eye.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.options.cadReferenceBlocks.setReferenceVisible(entry.referenceName, !visible);
+          this.render();
+        });
+        row.append(eye);
+        cadGroup.content.append(row);
+
         for (const layer of entry.layers) {
           const child = document.createElement("div");
           child.textContent = `${layer.visible ? "●" : "○"} ${layer.sourceLayerName}`;
