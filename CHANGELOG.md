@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.127 — 2026-11-12
+
+### Etapa 1 · Recuperación de DWG con un segundo lector (Cota / acad-ts)
+
+- **Ruta rápida conservada:** el botón "Abrir DWG/DXF" sigue usando el conversor WASM actual. Cuando este falla o no genera geometría, se intenta automáticamente el lector alternativo.
+- **Nuevo botón "Recuperar DWG":** permite comparar ambos lectores para un DWG problemático, en Web Worker y sin bloquear las interacciones de la página. El segundo lector usa \`@node-projects/acad-ts\` 3.6.0 (MIT), siguiendo el enfoque de Cota (Apache-2.0).
+- **Diagnóstico de recuperación:** compara cantidad de segmentos estructurales (sin contar gráficos secundarios de cotas), textos recuperados, bloques sin resolver, escala, metadatos INSUNITS y truncamiento. Selecciona conservadoramente el mejor resultado; no mezcla piezas de dos lectores.
+- **Bloques y atributos:** el segundo lector conserva la ruta DWG→DXF para INSERT, TEXT, MTEXT y ATTRIB; repara referencias de propiedad de campos anidados antes de escribir DXF e incorpora representaciones de cotas de arco con bloque gráfico.
+- **Unidad y fiabilidad:** sigue siendo obligatoria la elección/confirmación de unidad para DWG (mm inicial), sin multiplicar inadvertidamente ×1.000. El aviso final incluye la comparación o los errores del lector alternativo.
+- **Pruebas:** \`npm run test:dwg-recovery\` comprueba selección por aumento de geometría, conservación de textos, rechazo de escalas ×1.000, diferencias de INSUNITS y no sustitución de importaciones completas por truncadas.
+
+**Limitaciones:** no se reconstruyen XREF externos, ni se promete soporte completo de proxies y sólidos ACIS. Pendiente comparar \`CUNAS_MEDIR 1.dwg\` real con AutoCAD y ejecutar validaciones de navegador Firefox/Chrome. No se considera un plano verificado para fabricación sin esta comparación.
+
+---
+
 ## v0.1.126 — 2026-11-12
 
 ### Importación DWG: corregir unidades de AutoCAD que aparecen multiplicadas por 1.000

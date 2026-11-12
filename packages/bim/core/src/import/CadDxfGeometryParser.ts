@@ -29,6 +29,8 @@ export interface ImportedCadPoint {
 }
 export interface DxfLayerAppearance { readonly color: string; readonly visible: boolean }
 export interface ParsedCadReference {
+  /** Comparison info from the independent DWG recovery reader. */
+  readonly importDiagnostics?: string;
   readonly segments: readonly ImportedCadSegment[];
   readonly points: readonly ImportedCadPoint[];
   readonly texts: readonly ImportedCadText[];
