@@ -1,5 +1,6 @@
 import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
 import { parseCadReferenceLayerName } from "../import/CadReferenceBlockController";
+import { getActiveCadCircleModelController } from "./CadCircleModelSpaceController";
 import * as THREE from "three";
 
 import type {
@@ -478,6 +479,8 @@ export class CadWindowSelectionController {
        */
       const cadReferenceHit = getActiveCadReferenceBlockController()
         ?.getReferenceNameAt?.(event.clientX, event.clientY);
+      const circleHit = getActiveCadCircleModelController()
+        ?.getCircleIdAt(event.clientX, event.clientY);
 
       /*
        * La primera esquina solo puede empezar
@@ -488,6 +491,7 @@ export class CadWindowSelectionController {
         || pointId
         || lineId
         || cadReferenceHit
+        || circleHit
       ) {
 
         return;
