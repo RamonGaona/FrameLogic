@@ -12,6 +12,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.129 — 2026-11-12
+
+### DWG · Corrección del lector alternativo en producción y protección contra escala ×1.000
+
+- **Fallo reproducido por el usuario:** `ARCHIVO → Recuperar DWG` emitía `na is not a DXF subclass` en el navegador para `CUNAS_MEDIR 1.dwg`. Al no poder convertir el DWG alternativo, volvía al lector principal y seguía con 240.000 segmentos, 4.855 textos y 143 entidades con detalle pendiente.
+- **Causa del fallo:** `@node-projects/acad-ts` identifica clases CAD mediante `constructor.name`. Vite 8/Rolldown minificaba esos nombres en producción, incluido el Web Worker. Se configura `build.rolldownOptions.output.keepNames = true` y **también** `worker.rolldownOptions.output.keepNames = true`, de acuerdo con la solución comprobada por Cota (Apache-2.0, v2.10.4). No se cambia el lector principal.
+- **Control de escala:** si el usuario elige m/auto en un DWG cuyas coordenadas ya se extienden miles de unidades, se presenta una confirmación adicional con el tamaño de origen y el tamaño resultante en mm. Cancelar detiene la importación sin crear entidades. La opción `mm` sigue aplicando ×1.
+- **Pruebas de regresión:** `npm run test:dwg-recovery` verifica explícitamente los nombres de clase en el paquete principal y el trabajador, casos de 15.005,75 unidades ×1.000, selección conservadora del lector y conversión binaria DWG de muestra.
+- **Límite de seguridad conservado:** no se aumenta automáticamente el máximo de 240.000 segmentos, que protege el rendimiento y el consumo de memoria en Firefox/Chrome. Un DWG que lo supera debe seguir indicándose **parcial**. La mejora permite ejecutar el segundo lector; no asegura recuperar todo un dibujo grande.
+
+**Pendiente de validación:** reimportar el DWG binario original `CUNAS_MEDIR 1.dwg` en la web publicada y comparar contra AutoCAD. La conservación de nombres en producción evita el error de subclase, pero la cobertura total depende de las entidades reales del archivo.
+
 ## v0.1.128 — 2026-11-12
 
 ### Etapa 3 · Planos técnicos y acotación automática (Cota → FrameLogic)
