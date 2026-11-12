@@ -33,7 +33,9 @@ export interface CadReferenceImportControllerOptions {
 export class CadReferenceImportController {
   private readonly options: CadReferenceImportControllerOptions;
   private readonly button: HTMLButtonElement;
+  private readonly recoveryButton: HTMLButtonElement;
   private readonly input: HTMLInputElement;
+  private recoverNextDwg = false;
   private disposed = false;
   private importing = false;
 
@@ -43,21 +45,24 @@ export class CadReferenceImportController {
     this.options = options;
     this.button = this.createButton(options.container);
     this.input = this.createInput(options.container);
+    this.recoveryButton = this.createRecoveryButton(options.container);
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.button.remove();
+    this.recoveryButton.remove();
     this.input.remove();
   }
 
-  async importFile(file: File): Promise<void> {
+  async importFile(file: File, recoverDwg = false): Promise<void> {
     if (this.importing) {
       throw new Error("Ya se está importando un DWG/DXF.");
     }
     this.importing = true;
     this.button.disabled = true;
+    this.recoveryButton.disabled = true;
     // Pause pointer-driven SNAP until the last registered CAD segment is
     // available; otherwise every 900-line import chunk invalidates the
     // spatial index while the user moves the pointer.
@@ -83,7 +88,7 @@ export class CadReferenceImportController {
         throw new Error("Selecciona un archivo .DWG o .DXF.");
       }
       report(`DWG/DXF · Convirtiendo y analizando ${file.name} fuera del navegador principal…`);
-      const parsed = await this.parseInWorker(file, extension);
+      const parsed = await this.parseInWorker(file, extension, recoverDwg);
     if (parsed.segments.length < 1 && parsed.points.length < 1) {
       throw new Error("No se encontraron entidades 2D compatibles en el archivo CAD.");
     }
@@ -208,11 +213,12 @@ export class CadReferenceImportController {
       ? `\nDefiniciones BLOCK ausentes: ${parsed.unresolvedBlocks.slice(0, 8).join(", ")}.`
       : "";
     window.alert(
-      `Plano CAD "${referenceName}" importado como bloque de referencia.\nSe priorizaron perfiles, tubos, bloques y textos. Los sombreados HATCH se omiten; se rescata solo la geometría gráfica de DIMENSION que cabe después de la estructura.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.texts.length} textos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos · ${parsed.recoveredDimensionSegments} segmentos gráficos secundarios${skipped}.${truncation}${xrefs}${missingBlocks}\nUnidades de origen: ${unitScale === 1 ? "1 unidad = 1 mm" : `1 unidad = ${unitScale} mm`}. Factor aplicado: ×${unitScale}.\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
+      `Plano CAD "${referenceName}" importado como bloque de referencia.\nSe priorizaron perfiles, tubos, bloques y textos. Los sombreados HATCH se omiten; se rescata solo la geometría gráfica de DIMENSION que cabe después de la estructura.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.texts.length} textos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos · ${parsed.recoveredDimensionSegments} segmentos gráficos secundarios${skipped}.${truncation}${xrefs}${missingBlocks}${parsed.importDiagnostics ?? ""}\nUnidades de origen: ${unitScale === 1 ? "1 unidad = 1 mm" : `1 unidad = ${unitScale} mm`}. Factor aplicado: ×${unitScale}.\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
     );
     } finally {
       status.remove();
       this.button.disabled = false;
+      this.recoveryButton.disabled = false;
       this.importing = false;
       delete document.body.dataset["framelogicCadImporting"];
     }
@@ -242,12 +248,45 @@ export class CadReferenceImportController {
       cursor: "pointer",
       font: "12px system-ui, sans-serif",
     });
-    button.addEventListener("click", () => this.input.click());
+    button.addEventListener("click", () => {
+      this.recoverNextDwg = false;
+      this.input.accept = ".dwg,.dxf";
+      this.input.click();
+    });
 
     if (projectBar) projectBar.append(button);
     else {
       button.style.position = "absolute";
       button.style.left = "16px";
+      button.style.top = "52px";
+      button.style.zIndex = "124";
+      container.append(button);
+    }
+    return button;
+  }
+
+  private createRecoveryButton(container: HTMLElement): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Recuperar DWG";
+    button.dataset["framelogicFileCommand"] = "recover-cad";
+    button.title = "Comparar el importador normal con el lector alternativo DWG. Puede tardar más; no reconstruye XREF.";
+    Object.assign(button.style, {
+      padding: "5px 8px",
+      border: "1px solid rgba(255,255,255,0.16)",
+      borderRadius: "4px", background: "#304654", color: "#f3f7f9",
+      cursor: "pointer", font: "12px system-ui, sans-serif",
+    });
+    button.addEventListener("click", () => {
+      this.recoverNextDwg = true;
+      this.input.accept = ".dwg";
+      this.input.click();
+    });
+    const bar = container.querySelector<HTMLElement>('[data-framelogic-project-toolbar="true"]');
+    if (bar) bar.append(button);
+    else {
+      button.style.position = "absolute";
+      button.style.left = "130px";
       button.style.top = "52px";
       button.style.zIndex = "124";
       container.append(button);
@@ -262,8 +301,11 @@ export class CadReferenceImportController {
     input.hidden = true;
     input.addEventListener("change", () => {
       const file = input.files?.[0];
+      const recoverDwg = this.recoverNextDwg;
+      this.recoverNextDwg = false;
+      input.accept = ".dwg,.dxf";
       if (!file) return;
-      void this.importFile(file)
+      void this.importFile(file, recoverDwg)
         .catch((error) => {
           console.error("Error importing DWG/DXF reference:", error);
           window.alert(
@@ -281,6 +323,7 @@ export class CadReferenceImportController {
   private async parseInWorker(
     file: File,
     extension: "dwg" | "dxf",
+    recoverDwg = false,
   ): Promise<ParsedCadReference> {
     if (typeof Worker === "undefined") {
       throw new Error(
@@ -312,7 +355,7 @@ export class CadReferenceImportController {
         if (!stop()) return;
         reject(new Error("Error en el procesador DWG/DXF: " + error.message));
       };
-      worker.postMessage({ extension, buffer: bytes }, [bytes]);
+      worker.postMessage({ extension, buffer: bytes, recoverDwg }, [bytes]);
     });
   }
 
