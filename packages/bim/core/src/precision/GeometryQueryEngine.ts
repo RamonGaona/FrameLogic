@@ -1,5 +1,6 @@
 import { getPieceDetailGeometry } from "../design/PieceVisualGeometry";
 import * as THREE from "three";
+import { getNearbyCadLines } from "./CadScreenSpatialIndex";
 
 import type {
   DesignModel,
@@ -167,6 +168,10 @@ export class GeometryQueryEngine {
     clientY: number,
     options?: GeometryQueryOptions,
   ): GeometryQueryResult[] {
+    if (typeof document !== "undefined"
+      && document.body?.dataset["framelogicCadImporting"] === "true") {
+      return [];
+    }
     const rect = this.domElement.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) {
       return [];
@@ -423,7 +428,13 @@ export class GeometryQueryEngine {
 
     const nearbyLines: NearbyCadLine[] = [];
 
-    for (const line of this.designModel.cadLines.getAll()) {
+    // Only nearby on-screen segments can produce exact CAD snaps or
+    // intersections at the pointer. This avoids O(N²) across DWG blocks.
+    const localLines = getNearbyCadLines(
+      this.designModel, camera, rect, clientX, clientY,
+      pixelTolerance * 2, 96,
+    );
+    for (const line of localLines) {
       if (excludedSourceIds.has(line.id)) {
         continue;
       }

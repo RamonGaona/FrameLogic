@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getNearbyCadLines } from "../precision/CadScreenSpatialIndex";
 
 import {
   DEFAULT_DESIGN_LAYER_IDS,
@@ -424,6 +425,10 @@ export class DesignSnapController {
   ):
     DesignSnapResult
     | null {
+    // During a large DWG import, geometry is registering in chunks.
+    // Do not rebuild spatial SNAP indexes for every intermediate revision.
+    if (typeof document !== "undefined"
+      && document.body?.dataset["framelogicCadImporting"] === "true") return null;
 
     if (
       !this.enabled
@@ -1245,43 +1250,17 @@ export class DesignSnapController {
     }
 
 
-    const lines =
-      this.designModel
-        .cadLines
-        .getAll()
-        .filter(
-          (
-            line,
-          ) => {
-
-            if (
-              this.excludedInstanceIds.has(
-                line.id,
-              )
-            ) {
-
-              return false;
-
-            }
-
-
-            const layer =
-              this.designModel
-                ?.layers
-                .get(
-                  line.layerId,
-                );
-
-
-            return (
-              layer?.visible
-              !== false
-              && layer?.snapEnabled
-                !== false
-            );
-
-          },
-        );
+    // The previous loop compared ALL CAD lines in nested pairs (O(N²)).
+    // A DWG with 80,000 segments meant 3.2 BILLION intersections per
+    // pointer event. Compare only the nearest 96 screen-space candidates.
+    const lines = getNearbyCadLines(
+      this.designModel, camera, rect, clientX, clientY,
+      this.pixelTolerance * 2, 96,
+    ).filter((line) => {
+      if (this.excludedInstanceIds.has(line.id)) return false;
+      const layer = this.designModel?.layers.get(line.layerId);
+      return layer?.visible !== false && layer?.snapEnabled !== false;
+    });
 
 
     let best:
@@ -1711,9 +1690,10 @@ export class DesignSnapController {
 
     for (
       const line
-      of this.designModel
-        .cadLines
-        .getAll()
+      of getNearbyCadLines(
+        this.designModel, camera, rect, clientX, clientY,
+        this.pixelTolerance * 2, 96,
+      )
     ) {
 
       if (
