@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.114 — 2026-11-11
+
+### MOVE DWG/DXF: clic corto en eje y elección de SNAP sin reselección
+
+- **Causa del fallo:** la selección por ventana interpretaba un clic del gizmo DWG/DXF como clic en espacio vacío porque su ventana de selección no conocía la propiedad del puntero de la referencia. Además, cuando Three.js no emitía el cierre nativo de `TransformControls`, `CadReferenceBlockController` no armaba el eje, y un destino sin SNAP válido dejaba pasar el evento a los selectores CAD/3D.
+- **Corrección de eventos:** se identifica el eje/plano X/Y/Z/XY/XZ/YZ mediante raycast sobre los pickers originales de `TransformControls` al presionar el puntero. En `pointerup`, el controlador DWG finaliza el gesto nativo si corresponde, consume el evento reservado y habilita el siguiente SNAP, incluso si el navegador no entregó el evento `mouseUp`. Se diferencia el clic corto (hasta 5 px) del arrastre y se revierte un desplazamiento accidental inferior al umbral antes de confirmar historia.
+- **Selección protegida:** `CadWindowSelectionController` deja de iniciar una ventana de selección mientras el gizmo DWG/DXF está activo. Los clics para SNAP inválidos se consumen y conservan armado el eje sin mover geometría.
+- **Compatibilidad:** se conserva el centro/punto base mediante SNAP, ROTATE y su doble clic de 90°, la copia Ctrl+eje, las referencias con planos inclinados y el historial. Para el gizmo de selección mixta, los SNAP de los propios elementos siguen disponibles al esperar destino, y el modo repetido de copia no se cancela por desplazamiento cero.
+- **Pruebas agregadas:** secuencias pointerdown→pointerup→SNAP para los seis ejes/planos, selección conservada, ausencia de movimiento hasta SNAP, Ctrl+copia repetida, Undo/Redo, SNAP inválido, propagación entre controladores y finalización nativa; raycast con cámaras perspectiva y ortográfica inclinada. Se mantienen los comandos de regresión `test:gizmos` y `test:copybase` en CI.
+- **Limitaciones pendientes:** la simulación de eventos y las pruebas automatizadas no sustituyen una prueba manual sobre DWG/DXF real en Firefox y Chrome. Deben verificarse interacciones gráficas con líneas sueltas, ensambles, selección mixta, COPYBASE, proyectos guardados y publicación Cloudflare Pages antes de declarar la mejora visualmente validada.
+
+---
+
 ## v0.1.113 — 2026-11-10
 
 ### MOVE y COPYBASE unificados para selecciones mixtas CAD + 3D
