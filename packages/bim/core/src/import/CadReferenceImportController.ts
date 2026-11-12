@@ -207,7 +207,7 @@ export class CadReferenceImportController {
       ? `\nDefiniciones BLOCK ausentes: ${parsed.unresolvedBlocks.slice(0, 8).join(", ")}.`
       : "";
     window.alert(
-      `Plano CAD "${referenceName}" importado como bloque de referencia.\nSe priorizó geometría constructiva y textos; se omiten cotas DIMENSION y sombreados HATCH.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.texts.length} textos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos${skipped}.${truncation}${xrefs}${missingBlocks}\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
+      `Plano CAD "${referenceName}" importado como bloque de referencia.\nSe priorizaron perfiles, tubos, bloques y textos. Los sombreados HATCH se omiten; se rescata solo la geometría gráfica de DIMENSION que cabe después de la estructura.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.texts.length} textos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos · ${parsed.recoveredDimensionSegments} segmentos gráficos secundarios${skipped}.${truncation}${xrefs}${missingBlocks}\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
     );
     } finally {
       status.remove();
