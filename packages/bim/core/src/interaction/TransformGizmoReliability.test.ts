@@ -221,7 +221,7 @@ describe("picking MOVE axes at the physical pointer location", () => {
     const gizmo = new THREE.Group();
     Reflect.set(gizmo, "type", "TransformControlsGizmo");
     const translate = new THREE.Group();
-    const x = new THREE.Mesh(new THREE.SphereGeometry(0.25), new THREE.MeshBasicMaterial());
+    const x = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshBasicMaterial());
     x.name = "X";
     translate.add(x);
     Object.assign(gizmo, { picker: { translate } });
