@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { CadDocument, ACadVersion, DwgWriter, Line, XYZ, BlockRecord, Insert } from "@node-projects/acad-ts";
+import { convertWithAlternateCadReader } from "./CadAlternateDwgReader";
+import { parseCadDxf } from "./CadDxfGeometryParser";
 import { decideDwgImport } from "./CadDwgRecoveryDecision";
 import type { ParsedCadReference } from "./CadDxfGeometryParser";
 const segment = (n: number, scale = 1) => ({
@@ -48,5 +51,31 @@ describe("alternate DWG reader comparison", () => {
   });
   it("does not prefer a truncated drawing", () => {
     expect(decideDwgImport(parsed(10), { ...parsed(15), truncated: true }).source).toBe("principal");
+  });
+});
+
+
+describe("real binary DWG recovery reader", () => {
+  it("reads DWG bytes and expands a nested line block into FrameLogic geometry", async () => {
+    const doc = new CadDocument(ACadVersion.AC1032);
+    const tube = new BlockRecord("TUBE_STAGE1");
+    tube.entities.add(new Line(new XYZ(0, 0, 0), new XYZ(3000, 0, 0)));
+    doc.blockRecords.add(tube);
+    const insert = new Insert(tube);
+    insert.insertPoint = new XYZ(120, 340, 0);
+    doc.entities.add(insert);
+
+    // Real binary DWG, not a text mock: exercise CAD writer, alternate reader,
+    // DXF serialization and FrameLogic's recursive INSERT geometry parser.
+    const raw = DwgWriter.writeToBuffer(doc);
+    const buffer = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
+    const dxf = await convertWithAlternateCadReader(buffer);
+    const parsed = parseCadDxf(dxf, {
+      omitOptionalGeometry: true, recoverDimensionGraphics: true,
+    });
+    expect(parsed.segments.length).toBeGreaterThan(0);
+    expect(parsed.expandedBlocks).toBeGreaterThan(0);
+    expect(parsed.segments.some((s) =>
+      Math.abs(s.end.x - s.start.x) >= 2999)).toBe(true);
   });
 });
