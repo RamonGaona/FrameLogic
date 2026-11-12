@@ -78,6 +78,9 @@ jobs:
       - name: Piece visualization tests
         run: npm run test:piece-visuals
 
+      - name: DWG block/color import and millimetre regression
+        run: npm run test:dwg-import
+
       - name: DWG runtime asset copy regression
         run: npm run test:dwg
 
