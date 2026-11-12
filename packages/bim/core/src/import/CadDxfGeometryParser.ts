@@ -24,10 +24,15 @@ export interface ParsedCadReference {
   readonly expandedBlocks: number;
   readonly truncated: boolean;
   readonly sourceLayers: ReadonlyMap<string, DxfLayerAppearance>;
+  readonly unresolvedExternalReferences: readonly string[];
+  readonly unresolvedBlocks: readonly string[];
+  readonly incompleteRootEntities: number;
 }
 interface DxfBlock {
   readonly base: CadDxfPoint3;
   readonly entities: readonly DxfRecord[];
+  readonly external: boolean;
+  readonly path: string;
 }
 interface Vertex extends CadDxfPoint3 { readonly bulge: number }
 interface ExpandContext {
@@ -39,9 +44,10 @@ interface ExpandContext {
 }
 
 const MAX_BLOCK_DEPTH = 24;
-// The model preserves each segment for exact snaps and editing. A pathological
-// INSERT/MINSERT expansion must never allocate 600k scene entities in a tab.
-export const MAX_RENDERED_SEGMENTS = 80_000;
+// Keep geometry from ALL regions of a DWG. The old 80k hard stop discarded
+// every subsequent INSERT; with batched GPU rendering and indexed SNAP we can
+// accommodate a larger bounded reference without freezing Firefox.
+export const MAX_RENDERED_SEGMENTS = 240_000;
 const IDENTITY = new THREE.Matrix4();
 const WHITE = "#ffffff";
 
@@ -135,17 +141,21 @@ function sourceLayersFrom(pairs: readonly DxfPair[]): Map<string, DxfLayerAppear
 }
 function blockDefinitions(pairs: readonly DxfPair[]): Map<string, DxfBlock> {
   const definitions = new Map<string, DxfBlock>();
-  let current: { name: string; base: CadDxfPoint3; entities: DxfRecord[] } | null = null;
+  let current: { name: string; base: CadDxfPoint3; entities: DxfRecord[];
+    external: boolean; path: string } | null = null;
   for (const record of recordsInSection(pairs, "BLOCKS")) {
     if (record.type === "BLOCK") {
       if (current) definitions.set(current.name.toUpperCase(),
-        { base: current.base, entities: current.entities });
-      current = { name: str(record, 2, str(record, 3)), base: pt(record, 10, 20, 30), entities: [] };
+        { base: current.base, entities: current.entities,
+          external: current.external, path: current.path });
+      current = { name: str(record, 2, str(record, 3)), base: pt(record, 10, 20, 30),
+        entities: [], external: (num(record, 70) & 12) !== 0, path: str(record, 1) };
       continue;
     }
     if (record.type === "ENDBLK") {
       if (current) definitions.set(current.name.toUpperCase(),
-        { base: current.base, entities: current.entities });
+        { base: current.base, entities: current.entities,
+          external: current.external, path: current.path });
       current = null;
       continue;
     }
@@ -183,7 +193,14 @@ function normalizedVertex(pt3: CadDxfPoint3, bulge = 0): Vertex {
   return { ...pt3, bulge };
 }
 
-export function parseCadDxf(text: string): ParsedCadReference {
+export function parseCadDxf(
+  text: string,
+  options?: { readonly maxSegments?: number },
+): ParsedCadReference {
+  const maxSegments = Number.isFinite(options?.maxSegments)
+    ? Math.max(16, Math.min(MAX_RENDERED_SEGMENTS,
+      Math.floor(options!.maxSegments!)))
+    : MAX_RENDERED_SEGMENTS;
   const pairs = pairsFromDxf(text);
   const sourceLayers = sourceLayersFrom(pairs);
   const blocks = blockDefinitions(pairs);
@@ -192,8 +209,25 @@ export function parseCadDxf(text: string): ParsedCadReference {
   const skippedTypes = new Map<string, number>();
   let expandedBlocks = 0;
   let truncated = false;
+  let incompleteRootEntities = 0;
+  const externalReferences = new Set<string>();
+  const unresolvedBlocks = new Set<string>();
+
+  // A large array INSERT at the start must never consume the entire budget
+  // and silently remove everything after it. The first pass reserves a
+  // bounded share for every top-level entity, then distributes remaining
+  // capacity to the entities that require more detail.
+  let rootQuota = Number.POSITIVE_INFINITY;
+  let rootEmitted = 0;
+  let rootReplaySkip = 0;
+  let rootSeen = 0;
+  let rootLimited = false;
+  let pass = 0;
 
   const skip = (type: string): void => {
+    // Replaying a root to fill its remaining quota must not count the same
+    // unsupported entity again.
+    if (pass > 0 && type !== "LIMITE_SEGMENTOS") return;
     skippedTypes.set(type, (skippedTypes.get(type) ?? 0) + 1);
   };
   const appearanceForLayer = (layer: string): DxfLayerAppearance =>
@@ -214,23 +248,24 @@ export function parseCadDxf(text: string): ParsedCadReference {
     layer: string, color: string, context: ExpandContext,
     start: CadDxfPoint3, end: CadDxfPoint3,
   ): void => {
-    if (segments.length >= MAX_RENDERED_SEGMENTS) {
-      if (!truncated) {
-        truncated = true;
-        skip("LIMITE_SEGMENTOS");
-      }
-      return;
-    }
+    // Validate before counting: only actual visible segments consume quotas.
     const a = toVector(start).applyMatrix4(context.matrix);
     const b = toVector(end).applyMatrix4(context.matrix);
     if (!a.toArray().every(Number.isFinite) || !b.toArray().every(Number.isFinite)
       || a.distanceToSquared(b) <= 1e-20) return;
+    rootSeen++;
+    if (rootSeen <= rootReplaySkip) return;
+    if (rootEmitted >= rootQuota || segments.length >= maxSegments) {
+      rootLimited = true;
+      return;
+    }
     segments.push({ layer, color, start: coords(a), end: coords(b) });
+    rootEmitted++;
   };
   const polyline = (layer: string, color: string, context: ExpandContext,
     vertices: readonly Vertex[], closed: boolean): void => {
     const count = closed ? vertices.length : vertices.length - 1;
-    for (let i = 0; i < count && !truncated; i++) {
+    for (let i = 0; i < count && !rootLimited; i++) {
       const a = vertices[i]!, b = vertices[(i + 1) % vertices.length]!;
       const bulge = a.bulge;
       if (Math.abs(bulge) < 1e-9) { line(layer, color, context, a, b); continue; }
@@ -299,7 +334,7 @@ export function parseCadDxf(text: string): ParsedCadReference {
       legacy = null;
     };
     for (const record of records) {
-      if (truncated) break;
+      if (rootLimited) break;
       const sourceLayer = str(record, 8, "0");
       const layer = sourceLayer === "0" && ctx.inheritedLayer
         ? ctx.inheritedLayer : sourceLayer;
@@ -321,13 +356,26 @@ export function parseCadDxf(text: string): ParsedCadReference {
           const name = str(record, 2).toUpperCase();
           const block = blocks.get(name);
           if (!block || ctx.depth >= MAX_BLOCK_DEPTH || ctx.path.has(name)) {
-            skip(record.type); break;
+            if (!block) unresolvedBlocks.add(name);
+            if (pass === 0) skip(record.type);
+            break;
           }
-          expandedBlocks++;
+          if (block.external && block.entities.length === 0) {
+            externalReferences.add(block.path || name);
+            if (pass === 0) skip("XREF");
+            break;
+          }
+          if (pass === 0) expandedBlocks++;
           const countX = record.type === "INSERT" ? Math.max(1, Math.min(128, num(record, 70, 1))) : 1;
           const countY = record.type === "INSERT" ? Math.max(1, Math.min(128, num(record, 71, 1))) : 1;
           const rotation = num(record, 50) * Math.PI / 180;
-          const translation = pt(record, 10, 20, 30);
+          // DIMENSION group 10 is its definition point, NOT the insertion
+          // of its anonymous graphic block. DXF group 12 is the insert
+          // displacement; without it the dimension graphics are already in
+          // world coordinates (see AutoCAD AcDbDimension / ezdxf).
+          const translation = record.type === "DIMENSION"
+            ? pt(record, 12, 22, 32)
+            : pt(record, 10, 20, 30);
           const parent = ctx.matrix.clone()
             .multiply(new THREE.Matrix4().makeTranslation(translation.x, translation.y, translation.z))
             .multiply(new THREE.Matrix4().makeRotationZ(rotation))
@@ -336,8 +384,8 @@ export function parseCadDxf(text: string): ParsedCadReference {
             ));
           const path = new Set(ctx.path);
           path.add(name);
-          for (let row = 0; row < countY && !truncated; row++)
-            for (let col = 0; col < countX && !truncated; col++) {
+          for (let row = 0; row < countY && !rootLimited; row++)
+            for (let col = 0; col < countX && !rootLimited; col++) {
             const matrix = parent.clone().multiply(new THREE.Matrix4().makeTranslation(
               col * num(record, 44) - block.base.x,
               row * num(record, 45) - block.base.y,
@@ -355,7 +403,8 @@ export function parseCadDxf(text: string): ParsedCadReference {
           break;
         case "POINT": {
           const position = toVector(pt(record, 10, 20, 30)).applyMatrix4(ctx.matrix);
-          if (position.toArray().every(Number.isFinite)) {
+          if (pass === 0 && position.toArray().every(Number.isFinite)
+            && points.length < maxSegments) {
             points.push({ layer, color, point: coords(position) });
           }
           break;
@@ -438,16 +487,87 @@ export function parseCadDxf(text: string): ParsedCadReference {
     }
     finish();
   };
-  expand(recordsInSection(pairs, "ENTITIES"), {
-    matrix: IDENTITY,
-    inheritedLayer: null,
-    inheritedColor: null,
-    depth: 0,
-    path: new Set(),
-  });
+
+  // Preserve POLYLINE/VERTEX/SEQEND as ONE logical root. Treating each VERTEX
+  // as a separate root would erase the original polyline on budgeted imports.
+  const entities = recordsInSection(pairs, "ENTITIES");
+  const roots: DxfRecord[][] = [];
+  for (let i = 0; i < entities.length; i++) {
+    const record = entities[i]!;
+    const group = [record];
+    if (record.type === "POLYLINE") {
+      while (i + 1 < entities.length) {
+        const next = entities[++i]!;
+        group.push(next);
+        if (next.type === "SEQEND") break;
+      }
+    }
+    roots.push(group);
+  }
+  const context: ExpandContext = {
+    matrix: IDENTITY, inheritedLayer: null, inheritedColor: null,
+    depth: 0, path: new Set(),
+  };
+  const runRoot = (root: DxfRecord[], quota: number, replaySkip = 0): {
+    readonly used: number; readonly limited: boolean;
+  } => {
+    rootQuota = Math.max(0, quota);
+    rootEmitted = 0;
+    rootReplaySkip = replaySkip;
+    rootSeen = 0;
+    rootLimited = false;
+    expand(root, context);
+    return { used: rootEmitted, limited: rootLimited };
+  };
+  // Reserve a fair share for every logical entity before expanding any
+  // potentially enormous MINSERT/HATCH. Extra budget restores full detail.
+  const fairShare = Math.max(16,
+    Math.min(4096, Math.floor(maxSegments * 0.75 / Math.max(1, roots.length))));
+  const pending: Array<{ root: DxfRecord[]; cursor: number }> = [];
+  let visitedRoots = 0;
+  for (const root of roots) {
+    const result = runRoot(root, Math.min(fairShare,
+      maxSegments - segments.length));
+    if (result.limited) pending.push({ root, cursor: result.used });
+    visitedRoots++;
+    if (segments.length >= maxSegments) break;
+  }
+  // Preserve geometry detail by replaying only the un-emitted suffix. Passes
+  // are bounded by the shrinking candidate set; all main roots have already
+  // been represented by the first pass.
+  pass = 1;
+  let remaining = pending;
+  for (let iteration = 0;
+    iteration < 6 && remaining.length && segments.length < maxSegments;
+    iteration++) {
+    const next: typeof pending = [];
+    let emittedThisPass = 0;
+    for (let i = 0; i < remaining.length; i++) {
+      const item = remaining[i]!;
+      const capacity = maxSegments - segments.length;
+      if (capacity <= 0) { next.push(item); continue; }
+      const quota = Math.max(1, Math.floor(capacity / (remaining.length - i)));
+      const result = runRoot(item.root, quota, item.cursor);
+      item.cursor += result.used;
+      emittedThisPass += result.used;
+      if (result.limited) next.push(item);
+    }
+    // If no progress can be made, stop rather than loop forever.
+    if (emittedThisPass === 0) {
+      remaining = next;
+      break;
+    }
+    remaining = next;
+  }
+  incompleteRootEntities = remaining.length + (roots.length - visitedRoots);
+  truncated = incompleteRootEntities > 0;
+  if (truncated) skip("LIMITE_SEGMENTOS");
+
   return {
     segments, points, insUnits: insUnits(pairs), expandedBlocks, sourceLayers,
-    truncated,
+    truncated, incompleteRootEntities,
+    unresolvedExternalReferences: [...externalReferences],
+    unresolvedBlocks: [...unresolvedBlocks],
     skippedTypes,
     skippedEntities: [...skippedTypes.values()].reduce((a, b) => a + b, 0),
   };

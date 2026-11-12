@@ -117,10 +117,14 @@ export class CadReferenceImportController {
     // Process data in short chunks. The UI can repaint and receive pointer
     // events while lines are registered; only one GPU batch per layer is
     // assembled at the end, avoiding a draw call for every imported line.
-    const CHUNK = 900;
+    // 1,800 records per frame balances large-model registration throughput
+    // against browser responsiveness; renderer still batches once per layer.
+    const CHUNK = 1800;
     for (let i = 0; i < parsed.segments.length; i += CHUNK) {
       for (const segment of parsed.segments.slice(i, i + CHUNK)) {
-        this.options.designModel.registerCadLine({
+        // The imported layer has just been created and validated unlocked.
+        // Skip the extra layer lookup/error construction per segment.
+        this.options.designModel.cadLines.register({
           layerId: getLayerId(segment.layer, segment.color),
           start: scaledPoint(segment.start, unitScale),
           end: scaledPoint(segment.end, unitScale),
@@ -155,10 +159,16 @@ export class CadReferenceImportController {
         .map(([kind, count]) => `${kind} ${count}`).join(", ")}`
       : "";
     const truncation = parsed.truncated
-      ? `\nATENCIÓN: dibujo parcial. Se alcanzó el límite de ${MAX_RENDERED_SEGMENTS.toLocaleString()} segmentos para proteger el navegador. Se necesita simplificar los bloques/sombreados o usar el DXF optimizado.`
+      ? `\nATENCIÓN: importación parcial. Se alcanzó el límite de ${MAX_RENDERED_SEGMENTS.toLocaleString()} segmentos. El importador reparte la capacidad entre los bloques para mostrar todo el plano, pero ${parsed.incompleteRootEntities} entidades aún tienen detalles sin incorporar. No utilizar este resultado como plano completo de fabricación.`
+      : "";
+    const xrefs = parsed.unresolvedExternalReferences.length
+      ? `\nREFERENCIAS EXTERNAS (XREF) NO DISPONIBLES: ${parsed.unresolvedExternalReferences.join(", ")}. Estas geometrías no están embebidas en el DWG: importa también los archivos DWG referenciados.`
+      : "";
+    const missingBlocks = parsed.unresolvedBlocks.length
+      ? `\nDefiniciones BLOCK ausentes: ${parsed.unresolvedBlocks.slice(0, 8).join(", ")}.`
       : "";
     window.alert(
-      `Plano CAD "${referenceName}" importado como bloque de referencia.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos${skipped}.${truncation}\nLos colores ByLayer/ByBlock y la escala original se conservan en los elementos compatibles.`,
+      `Plano CAD "${referenceName}" importado como bloque de referencia.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos${skipped}.${truncation}${xrefs}${missingBlocks}\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
     );
     } finally {
       status.remove();

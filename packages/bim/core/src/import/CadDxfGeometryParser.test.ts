@@ -49,7 +49,7 @@ const INSERTS = [
   0, "INSERT", 2, "OUTER", 8, "GREEN",
   10, 100, 20, 200, 30, 0, 41, 2, 42, 3, 43, 1, 50, 90,
   0, "DIMENSION", 2, "*D12", 8, "YELLOW",
-  10, 500, 20, 700, 30, 0,
+  10, 500, 20, 700, 30, 0, 12, 500, 22, 700, 32, 0,
   0, "LINE", 8, "GREEN", 420, 16711680,
   10, 0, 20, 0, 11, 0, 21, 10,
   0, "ENDSEC",
@@ -167,7 +167,7 @@ describe("DWG/DXF nested INSERT and original AutoCAD colour import", () => {
 
 
 describe("safe bounds for deeply repeated imported DWG blocks", () => {
-  it("stops expanding at the 80k segment limit, reports a partial drawing and never runs to 600k", () => {
+  it("stops expanding at its protective limit, reports a partial drawing and never explodes arrays", () => {
     const dxf = [
       0, "SECTION", 2, "BLOCKS",
       0, "BLOCK", 2, "TRUSS", 10, 0, 20, 0,
@@ -182,12 +182,85 @@ describe("safe bounds for deeply repeated imported DWG blocks", () => {
     ];
     const text = dxf.map(String).join("\n") + "\n";
     const start = Date.now();
-    const parsed = parseCadDxf(text);
-    expect(parsed.segments).toHaveLength(MAX_RENDERED_SEGMENTS);
+    const cap = 512;
+    const parsed = parseCadDxf(text, { maxSegments: cap });
+    expect(MAX_RENDERED_SEGMENTS).toBeGreaterThan(80_000);
+    expect(parsed.segments).toHaveLength(cap);
     expect(parsed.truncated).toBe(true);
     expect(parsed.skippedTypes.get("LIMITE_SEGMENTOS")).toBe(1);
-    // A truly bounded parser stops expansion rather than continuing through
-    // all 196608 members, which used to freeze the main browser thread.
+    // A bounded test budget stops expansion rather than materializing all
+    // 196608 segments. Production allows a larger, fair source-wide budget.
     expect(Date.now() - start).toBeLessThan(20_000);
+  });
+});
+
+
+describe("large DXF block completeness and missing external references", () => {
+  it("keeps later structural blocks when an early repeated INSERT exceeds the budget", () => {
+    const data = dxf(
+      0, "SECTION", 2, "BLOCKS",
+      0, "BLOCK", 2, "TRUSS", 10, 0, 20, 0,
+      0, "LINE", 8, "0", 10, 0, 20, 0, 11, 10, 21, 1,
+      0, "ENDBLK",
+      0, "BLOCK", 2, "END_FRAME", 10, 0, 20, 0,
+      0, "LINE", 8, "0", 10, 0, 20, 0, 11, 150, 21, 0,
+      0, "ENDBLK", 0, "ENDSEC",
+      0, "SECTION", 2, "ENTITIES",
+      // This single early MINSERT could previously remove ALL later blocks.
+      0, "INSERT", 2, "TRUSS", 8, "0", 10, 0, 20, 0,
+      70, 100, 71, 100, 44, 10, 45, 10,
+      0, "INSERT", 2, "END_FRAME", 8, "0", 10, 226000, 20, 0,
+      0, "LINE", 8, "0", 10, -500, 20, 0, 11, -400, 21, 0,
+      0, "ENDSEC", 0, "EOF",
+    );
+    const parsed = parseCadDxf(data, { maxSegments: 256 });
+    expect(parsed.segments).toHaveLength(256);
+    expect(parsed.truncated).toBe(true);
+    expect(parsed.incompleteRootEntities).toBeGreaterThan(0);
+    // Every main entity gets at least its first segment; block position is
+    // correct, not truncated away because the earlier TRUSS expanded first.
+    expect(parsed.segments.some(x =>
+      Math.abs(x.start.x - 226000) < 1e-5 &&
+      Math.abs(x.end.x - 226150) < 1e-5)).toBe(true);
+    expect(parsed.segments.some(x => x.start.x === -500)).toBe(true);
+  });
+
+  it("uses DIMENSION group 12 for anonymous block translation, never group 10 definition point", () => {
+    const prefix = [
+      0, "SECTION", 2, "BLOCKS",
+      0, "BLOCK", 2, "*D10", 10, 0, 20, 0,
+      0, "LINE", 8, "0", 10, 10, 20, 10, 11, 110, 21, 10,
+      0, "ENDBLK", 0, "ENDSEC",
+    ];
+    const noInsert = parseCadDxf(dxf(...prefix,
+      0, "SECTION", 2, "ENTITIES",
+      0, "DIMENSION", 2, "*D10", 10, 90000, 20, 80000,
+      0, "ENDSEC", 0, "EOF",
+    ));
+    expect(noInsert.segments[0]?.start).toEqual({ x: 10, y: 10, z: 0 });
+    const actualInsert = parseCadDxf(dxf(...prefix,
+      0, "SECTION", 2, "ENTITIES",
+      0, "DIMENSION", 2, "*D10", 10, 90000, 20, 80000,
+      12, 200, 22, 300, 32, 0,
+      0, "ENDSEC", 0, "EOF",
+    ));
+    expect(actualInsert.segments[0]?.start).toEqual({ x: 210, y: 310, z: 0 });
+  });
+
+  it("reports missing XREF paths and absent BLOCK definitions without inventing geometry", () => {
+    const parsed = parseCadDxf(dxf(
+      0, "SECTION", 2, "BLOCKS",
+      0, "BLOCK", 2, "EXTERNAL_TRUSS", 70, 4, 1, "./support/truss.dwg",
+      10, 0, 20, 0,
+      0, "ENDBLK", 0, "ENDSEC",
+      0, "SECTION", 2, "ENTITIES",
+      0, "INSERT", 2, "EXTERNAL_TRUSS", 10, 10, 20, 10,
+      0, "INSERT", 2, "UNKNOWN_PART", 10, 100, 20, 200,
+      0, "ENDSEC", 0, "EOF",
+    ));
+    expect(parsed.segments).toHaveLength(0);
+    expect(parsed.unresolvedExternalReferences).toEqual(["./support/truss.dwg"]);
+    expect(parsed.unresolvedBlocks).toContain("UNKNOWN_PART");
+    expect(parsed.skippedTypes.get("XREF")).toBe(1);
   });
 });

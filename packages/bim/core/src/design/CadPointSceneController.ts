@@ -334,10 +334,14 @@ export class CadPointSceneController {
             this.selectedIds.has(id) ? "#ffc533"
               : layerColor ?? "#e5e7eb",
           );
-          material.size =
-            this.selectedIds.has(id)
-              ? 14
-              : 8;
+          const isReferencePoint = Boolean(
+            point && this.designModel.layers.get(point.layerId)?.name.startsWith("CAD ")
+              && this.designModel.layers.get(point.layerId)?.name.includes(" · "),
+          );
+          // Imported AutoCAD POINT entities should not appear as large white
+          // 8px squares that cover structural details at Zoom Extents.
+          material.size = this.selectedIds.has(id)
+            ? 14 : isReferencePoint ? 3 : 8;
 
           material.needsUpdate =
             true;
