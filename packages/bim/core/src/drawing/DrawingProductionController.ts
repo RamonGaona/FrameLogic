@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { pdfSafeTechnicalText } from "./DrawingPdfText";
 import { planAutomaticViews, type AutomaticDimensionPoint } from "./AutoDrawingPlanner";
 import { planEngineeringAutomaticDimensions, type AutodimScope, type AutodimArrangement, type AutodimDetail } from "./EngineeringAutoDimensionPlanner";
 
@@ -1417,10 +1418,7 @@ export class DrawingProductionController {
   }
 
   private pdfText(value: string): string {
-    return value
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^\x20-\x7E]/g, "")
+    return pdfSafeTechnicalText(value)
       .replace(/\\/g, "\\\\")
       .replace(/\(/g, "\\(")
       .replace(/\)/g, "\\)");
