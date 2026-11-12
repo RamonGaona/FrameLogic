@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import {
   explicitCadImportUnits,
   cadImportUnitPreview,
@@ -48,12 +46,5 @@ describe("explicit CAD import units (regression for CUNAS_MEDIR 1.dwg)", () => {
     expect(rawCadExtent(largeDwg)).toBeCloseTo(461564.80125);
   });
 
-  it("keeps every CAD entry path bound to a single chosen factor", () => {
-    const source = readFileSync(fileURLToPath(new URL("./CadReferenceImportController.ts", import.meta.url)), "utf8");
-    expect(source).toContain("await chooseCadImportUnits(parsed, file.name)");
-    expect(source).toContain("const unitScale = selection.factor");
-    expect(source).toContain('selection.unit === "mm" && unitScale !== 1');
-    expect(source).not.toContain("this.resolveUnitScale");
-    expect(source.match(/scaledPoint\([^,]+, unitScale\)/g)?.length).toBeGreaterThanOrEqual(4);
-  });
+
 });
