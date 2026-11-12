@@ -219,7 +219,7 @@ describe("picking MOVE axes at the physical pointer location", () => {
   const fixture = () => {
     const helper = new THREE.Group();
     const gizmo = new THREE.Group();
-    gizmo.type = "TransformControlsGizmo";
+    Reflect.set(gizmo, "type", "TransformControlsGizmo");
     const translate = new THREE.Group();
     const x = new THREE.Mesh(new THREE.SphereGeometry(0.25), new THREE.MeshBasicMaterial());
     x.name = "X";
