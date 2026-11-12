@@ -23,6 +23,30 @@ No se fusionan dibujos ni se fabrican líneas para cubrir ausencias. El cuadro
 final informa cantidades, lector elegido y errores de conversión. La lectura
 alternativa no ejecuta operaciones sobre servicios externos ni requiere pagos.
 
+## Corrección v0.1.129 — lector alternativo en web
+
+La prueba real con `CUNAS_MEDIR 1.dwg` detectó que la versión publicada del
+lector alternativo fallaba con `na is not a DXF subclass`. El fallo aparece
+únicamente tras la minificación del Web Worker por Vite/Rolldown, que cambia
+`constructor.name` y rompe las tablas de subclases usadas por `acad-ts`.
+Se conservan los nombres de clase tanto en la compilación web como en la del
+Web Worker, siguiendo la solución de Cota v2.10.4.
+
+El resumen anterior de 240.000 segmentos y 143 entidades pendientes **no era
+una recuperación**: provenía del lector principal porque falló el alternativo.
+La siguiente prueba con `Recuperar DWG` debe mostrar el número de segmentos,
+textos y lector seleccionado, o el diagnóstico si ninguno gana cobertura.
+
+**Escala:** no seleccionar `m` ni `auto` solo porque el DXF convertido
+indique metros. Si la longitud que AutoCAD muestra está ya en milímetros,
+seleccionar `mm`: el resumen debe decir `factor ×1`. La detección de una
+longitud final anómala por multiplicación ×1.000 exige confirmación adicional.
+
+**Límite:** se mantienen 240.000 segmentos como máximo por seguridad del
+navegador. Aunque el lector alternativo funcione, un DWG extremadamente
+detallado puede seguir necesitando importar por partes o simplificar
+la geometría. Un resultado parcial no está verificado para fabricación.
+
 ## Comprobación manual con el DWG original
 
 - Confirmar tubos y bloques con ATTRIB y TEXT interiores (p. ej. "4S 3000"
@@ -37,7 +61,7 @@ alternativa no ejecuta operaciones sobre servicios externos ni requiere pagos.
 ## Pruebas técnicas
 
     npm run test:dwg-import
-    npm run test:dwg-recovery
+    npm run test:dwg-recovery  # incluye protección de nombres de clase y escala
     npm run typecheck
     npm run build
 
