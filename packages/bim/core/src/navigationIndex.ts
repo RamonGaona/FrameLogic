@@ -49,7 +49,7 @@ installMillimeterUnitSystem();
 
 const STANDARD_START_DISTANCE_MM = 5000;
 const STANDARD_ORTHO_VISIBLE_HEIGHT_MM = 5000;
-const MODEL_SPACE_MIN_ORTHO_ZOOM = 0.0001;
+const MODEL_SPACE_MIN_ORTHO_ZOOM = 1e-8;
 const STANDARD_GRID_SIZE_MM = 20_000;
 const STANDARD_GRID_STEP_MM = 100;
 
@@ -77,8 +77,8 @@ export async function createBimCore(
    *
    * Ajustamos el zoom ortográfico para que el alto visible inicial sea 5000 mm.
    * Ese zoom inicial ronda 0.01, pero NO debe ser también el límite de zoom-out:
-   * permitimos bajar hasta 0.0001 para poder inspeccionar estructuras mucho
-   * mayores sin bloquear la rueda al encuadrar una geometría de 5 m.
+   * permitimos bajar hasta 1e-8 para inspeccionar DWG de 226 000 mm o
+   * incluso varios kilómetros sin bloquear la rueda artificialmente.
    */
   const cameraControls =
     core.world.camera.controls as
