@@ -93,8 +93,7 @@ describe("Zoom Extents with a real-size DWG line and narrow viewport", () => {
       new THREE.LineBasicMaterial(),
     );
     line.updateWorldMatrix(true, true);
-    const controller = Object.create(ModelSpaceZoomExtentsController.prototype)
-      as ModelSpaceZoomExtentsController;
+    const controller = Object.create(ModelSpaceZoomExtentsController.prototype) as ModelSpaceZoomExtentsController;
     Reflect.set(controller, "options", {
       cameraProvider: () => camera,
       controls,
