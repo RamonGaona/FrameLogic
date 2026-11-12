@@ -9,7 +9,10 @@
 export class CadCommandDefaultChoice {
   private selectedIndex = -1;
 
-  constructor(private readonly buttons: readonly HTMLButtonElement[]) {
+  private readonly buttons: readonly HTMLButtonElement[];
+
+  constructor(buttons: readonly HTMLButtonElement[]) {
+    this.buttons = buttons;
     this.reset();
   }
 
