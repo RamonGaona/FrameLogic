@@ -488,29 +488,41 @@ export class FrameLogicProjectPackageController {
       });
     }
 
-    for (const point of packageValue.cadPoints) {
-      this.options.designModel.registerCadPoint({
-        id: point.id,
-        layerId:
-          this.options.designModel.layers.get(point.layerId)
-            ? point.layerId
-            : undefined,
-        position: { ...point.position },
-      });
+    // A saved DWG/DXF reference is intentionally locked. Registries reject
+    // new members in a locked layer; reconstruction is NOT an edit. Temporarily
+    // suspend locks only while recreating saved CAD geometry, then restore the
+    // exact saved lock state even if registration throws.
+    const lockedLayerIds = packageValue.layers
+      .filter((layer) => layer.locked && this.options.designModel.layers.get(layer.id))
+      .map((layer) => layer.id);
+    for (const id of lockedLayerIds) {
+      this.options.designModel.layers.update(id, { locked: false });
+    }
+    try {
+      for (const point of packageValue.cadPoints) {
+        this.options.designModel.registerCadPoint({
+          id: point.id,
+          layerId: this.options.designModel.layers.get(point.layerId)
+            ? point.layerId : undefined,
+          position: { ...point.position },
+        });
+      }
+      for (const line of packageValue.cadLines) {
+        this.options.designModel.registerCadLine({
+          id: line.id,
+          layerId: this.options.designModel.layers.get(line.layerId)
+            ? line.layerId : undefined,
+          start: { ...line.start },
+          end: { ...line.end },
+        });
+      }
+    }
+    finally {
+      for (const id of lockedLayerIds) {
+        this.options.designModel.layers.update(id, { locked: true });
+      }
     }
     this.options.cadPointScene.sync();
-
-    for (const line of packageValue.cadLines) {
-      this.options.designModel.registerCadLine({
-        id: line.id,
-        layerId:
-          this.options.designModel.layers.get(line.layerId)
-            ? line.layerId
-            : undefined,
-        start: { ...line.start },
-        end: { ...line.end },
-      });
-    }
     this.options.cadLineScene.sync();
 
     for (const assembly of packageValue.assemblies) {
