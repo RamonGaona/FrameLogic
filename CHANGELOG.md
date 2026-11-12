@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.116 — 2026-11-12
+
+### Recuperación de proyectos DWG, comandos CAD, círculo avanzado y edición numérica
+
+- **Corrección crítica de .flproject:** al abrir proyectos con capas DWG/DXF bloqueadas, restaurar primero sus puntos y líneas en un bloque transaccional con desbloqueo temporal y `finally` que repone exactamente los bloqueos. Evita `Cannot create CAD line. Layer "CAD cad1 · 0" is locked`. Prueba con fixture de dos referencias y geometría, basada en el archivo proporcionado por el usuario.
+- **Selección DWG/DXF estable:** el selector rectangular identifica el clic sobre líneas de referencias bloqueadas como clic sobre entidad, no como primera esquina de ventana vacía. Evita que una selección inmediata se convierta en ventana y desaparezca.
+- **Comandos de texto:** `C`/`CÍRCULO`/`CIRCLE` + Enter ejecutan la herramienta de círculo. `COPY`/`COPYBASE`/`COPIAR`/`CP` conservan copia por punto base y destino; `P`/`PUNTO` y `T`/`TRIM` incorporan entrada de comando. Los comandos escritos no se ejecutan hasta Enter; los botones siguen iniciando directamente.
+- **Círculo Radio/Diámetro:** Radio es la opción predeterminada y Enter la confirma sin teclear R; también permite elegir directamente el siguiente SNAP como radio. El tamaño se muestra en vivo junto al cursor. Con WorkPlane activo, los puntos seleccionados deben estar en el plano; con WorkPlane OFF se admite centro 3D y radio SNAP 3D, orientando el plano de la circunferencia.
+- **Círculos como entidades CAD:** detección y selección por clic sobre la circunferencia, SNAP de centro y cuatro cuadrantes cardinales, cuatro grips de radio editables con arrastre, cota temporal de radio/diámetro/perímetro, Undo/Redo y respeto de visibilidad/bloqueo. No se convierte el círculo en 128 líneas CAD independientes.
+- **Interacción y entrada dinámica:** en LINE/PUNTO/TRIM el texto contextual acompaña el puntero; CÍRCULO muestra tamaño y RECTÁNGULO muestra ancho/alto mientras se previsualizan. En la entrada numérica de RECTÁNGULO, Tab y Shift+Tab alternan solo X/Y, sin llevar el foco a botones del Model Space.
+- **Pruebas de regresión:** restauración de .flproject con dos referencias bloqueadas, diferencia CIRCLE/COPY, centro y cuadrantes, plano activo/libre, edición del radio, menú predeterminado y Tab en X/Y. Se incorpora la suite de geometría de círculo al flujo `test:gizmos` y la prueba de proyecto al comando `test:project-locked-dwg`.
+
+---
+
 ## v0.1.115 — 2026-11-11
 
 ### LINE desde SNAP DWG, cotas automáticas de líneas internas y selección por ventana de referencias

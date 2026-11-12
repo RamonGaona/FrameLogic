@@ -323,7 +323,7 @@ export class CadCirclePlacementController {
 
     if (
       !this.active
-      || this.stage !== "SIZE"
+      || (this.stage !== "SIZE" && this.stage !== "SIZE_MODE")
       || !this.center
       || !this.basis
     ) {
@@ -359,9 +359,11 @@ export class CadCirclePlacementController {
     }
   };
 
-  private readonly handlePointerUp = (
-    event: PointerEvent,
-  ): void => {
+  private readonly handlePointerUp = (event: PointerEvent): void => {
+    this.processPointerUp(event);
+  };
+
+  private processPointerUp(event: PointerEvent): void {
     if (
       !this.active
       || event.button !== 0
@@ -393,22 +395,30 @@ export class CadCirclePlacementController {
       const state =
         this.options.workPlane.getState();
 
-      if (!state.enabled) {
-        this.showHint(
-          "CIRCLE · WorkPlane OFF: active un plano para definir la circunferencia",
-        );
-        return;
-      }
-
+      // No active workplane: 3D center with a camera-facing circle plane.
+      const camera = this.options.cameraProvider();
+      camera.updateMatrixWorld();
+      const xAxis = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).normalize();
+      const yAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
       this.center = center;
-      this.basis = {
-        xAxis: state.xAxis.clone().normalize(),
-        yAxis: state.yAxis.clone().normalize(),
-        normal: state.normal.clone().normalize(),
-      };
+      this.basis = state.enabled
+        ? { xAxis: state.xAxis.clone().normalize(),
+            yAxis: state.yAxis.clone().normalize(), normal: state.normal.clone().normalize() }
+        : { xAxis, yAxis, normal: new THREE.Vector3().crossVectors(xAxis, yAxis).normalize() };
       this.stage = "SIZE_MODE";
       this.preview.visible = false;
       this.showModeMenu();
+      return;
+    }
+
+    // First option RADIUS: clicking the next SNAP is sufficient; no need
+    // for a redundant click on the RADIUS button.
+    if (this.stage === "SIZE_MODE") {
+      const radius = this.getManualRadius(event.clientX, event.clientY);
+      if (radius !== null && radius > 1e-9) {
+        this.sizeMode = "RADIUS";
+        this.commitRadius(radius);
+      }
       return;
     }
 
@@ -450,11 +460,13 @@ export class CadCirclePlacementController {
 
       this.commitRadius(radius);
     }
+  }
+
+  private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    this.processKeyDown(event);
   };
 
-  private readonly handleKeyDown = (
-    event: KeyboardEvent,
-  ): void => {
+  private processKeyDown(event: KeyboardEvent): void {
     if (this.disposed) return;
 
     if (this.active) {
@@ -473,7 +485,7 @@ export class CadCirclePlacementController {
       ) {
         const key =
           event.key.toLowerCase();
-        if (key === "r") {
+        if (key === "r" || event.key === "Enter") {
           event.preventDefault();
           event.stopImmediatePropagation();
           this.chooseSizeMode("RADIUS");
@@ -586,7 +598,7 @@ export class CadCirclePlacementController {
     this.commandBuffer = next;
     this.showCommandBuffer();
     this.scheduleCommandBufferReset();
-  };
+  }
 
   private readonly handleNumericKeyDown = (
     event: KeyboardEvent,
@@ -662,8 +674,10 @@ export class CadCirclePlacementController {
 
     window.queueMicrotask(
       () => {
-        this.numericInput.focus();
-        this.numericInput.select();
+        if (this.active && this.stage === "SIZE") {
+          this.numericInput.focus();
+          this.numericInput.select();
+        }
       },
     );
   }
@@ -672,23 +686,35 @@ export class CadCirclePlacementController {
     clientX: number,
     clientY: number,
   ): THREE.Vector3 | null {
-    const snap =
-      this.options.findSnapPoint(
-        clientX,
-        clientY,
-      );
-
-    if (snap) {
+    const state = this.options.workPlane.getState();
+    const snap = this.options.findSnapPoint(clientX, clientY);
+    if (snap && (!state.enabled
+      || Math.abs(snap.clone().sub(state.origin).dot(state.normal)) <= 1e-5)) {
       return snap.clone();
     }
 
-    return this.options.workPlane
-      .intersectPointer(
-        clientX,
-        clientY,
-        this.options.cameraProvider(),
-        this.options.domElement,
+    if (state.enabled) {
+      return this.options.workPlane.intersectPointer(
+        clientX, clientY, this.options.cameraProvider(), this.options.domElement,
       );
+    }
+    // WorkPlane OFF: free 3D SNAP, or a camera-facing plane passing through
+    // the selected center (origin before the first point).
+    const rect = this.options.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const camera = this.options.cameraProvider();
+    camera.updateMatrixWorld();
+    const pointer = new THREE.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -(clientY - rect.top) / rect.height * 2 + 1,
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(pointer, camera);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+      camera.getWorldDirection(new THREE.Vector3()).normalize(),
+      this.center ?? state.origin,
+    );
+    return raycaster.ray.intersectPlane(plane, new THREE.Vector3());
   }
 
   private getManualRadius(
@@ -711,11 +737,24 @@ export class CadCirclePlacementController {
       point
         .clone()
         .sub(this.center);
-    const x =
-      delta.dot(this.basis.xAxis);
-    const y =
-      delta.dot(this.basis.yAxis);
-
+    if (!this.options.workPlane.getState().enabled) {
+      // Orient a free-3D circle so the second SNAP is on its circumference.
+      if (delta.lengthSq() <= 1e-18) return 0;
+      const xAxis = delta.clone().normalize();
+      const view = this.options.cameraProvider().getWorldDirection(new THREE.Vector3());
+      const normal = view.addScaledVector(xAxis, -view.dot(xAxis));
+      if (normal.lengthSq() <= 1e-12) {
+        normal.set(0, 0, 1).addScaledVector(xAxis, -xAxis.z);
+      }
+      if (normal.lengthSq() > 1e-12) {
+        normal.normalize();
+        const yAxis = new THREE.Vector3().crossVectors(normal, xAxis).normalize();
+        this.basis = { xAxis, yAxis, normal };
+      }
+      return delta.length();
+    }
+    const x = delta.dot(this.basis.xAxis);
+    const y = delta.dot(this.basis.yAxis);
     return Math.hypot(x, y);
   }
 
@@ -860,6 +899,10 @@ export class CadCirclePlacementController {
     this.preview.geometry.setFromPoints(points);
     this.preview.geometry.computeBoundingSphere();
     this.preview.visible = true;
+    if (this.active && (this.stage === "SIZE" || this.stage === "SIZE_MODE")) {
+      const value = this.sizeMode === "DIAMETER" ? radius * 2 : radius;
+      this.showHint(`CÍRCULO · ${this.sizeMode === "DIAMETER" ? "Ø" : "R"} ${value.toFixed(2)} mm · Enter / SNAP`);
+    }
   }
 
   private createModeMenu(): HTMLDivElement {
@@ -1064,7 +1107,7 @@ export class CadCirclePlacementController {
     this.modeMenu.style.display = "flex";
     this.positionFloatingUi();
     this.showHint(
-      "CIRCLE · seleccione Radio o Diámetro · R / D",
+      "CÍRCULO · Radio (predeterminado ↵) / Diámetro (D) · clic SNAP = radio",
     );
   }
 

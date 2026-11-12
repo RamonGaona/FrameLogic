@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getActiveCadCircleModelController } from "../interaction/CadCircleModelSpaceController";
 import type { CadHistoryController } from "../interaction/CadHistoryController";
 import type { RotateNumericAxis } from "../interaction/CadNumericInputController";
 import { RotateRingDoubleClick } from "../interaction/RotateRingDoubleClick";
@@ -243,6 +244,11 @@ export class CadReferenceBlockController {
     return Array.from(this.selectedReferenceNames);
   }
 
+  /** Read-only picking for window selection: a DWG hit is not empty canvas. */
+  getReferenceNameAt(clientX: number, clientY: number): string | null {
+    return this.getReferenceAt(clientX, clientY)?.referenceName ?? null;
+  }
+
   getInspectedLineId(): string | null {
     if (!this.inspectedLineId || this.activeMode) return null;
     const line = this.options.designModel.cadLines.get(this.inspectedLineId);
@@ -352,6 +358,7 @@ export class CadReferenceBlockController {
     additive = false,
   ): void {
     this.inspectedLineId = null;
+    if (referenceName) getActiveCadCircleModelController()?.selectCircle(null);
     if (!referenceName) {
       if (!additive) this.clearSelection();
       return;
@@ -875,6 +882,11 @@ export class CadReferenceBlockController {
 
   private pointerDownInternal(event: PointerEvent): void {
     if (!this.interactionEnabled || event.button !== 0) return;
+    if (!this.activeMode && getActiveCadCircleModelController()
+      ?.getCircleIdAt(event.clientX, event.clientY)) {
+      this.pointerDownActive = false;
+      return;
+    }
     if (!this.activeMode && this.options.isPlacementActive?.()) {
       this.pointerDownActive = false;
       return;
@@ -922,6 +934,11 @@ export class CadReferenceBlockController {
   };
 
   private pointerUpInternal(event: PointerEvent): void {
+    if (!this.activeMode && getActiveCadCircleModelController()
+      ?.getCircleIdAt(event.clientX, event.clientY)) {
+      this.pointerDownActive = false;
+      return;
+    }
     if (!this.activeMode && this.options.isPlacementActive?.()) {
       this.pointerDownActive = false;
       return;

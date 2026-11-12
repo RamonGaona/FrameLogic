@@ -255,6 +255,21 @@ export async function createBimCore(
             core.cadCommandManager.hasActiveCommand,
           startLine: () =>
             core.startLineCommand(),
+          getActiveCommandHint: () => {
+            if (core.cadLinePlacement.isActive) return {
+              command: "LINE · SNAP",
+              detail: core.cadLinePlacement.hasStartPoint
+                ? "Segundo punto · SNAP / distancia / Enter · Esc termina"
+                : "Primer punto · selecciona SNAP exacto",
+            };
+            if (core.cadPointPlacement.isActive) return {
+              command: "PUNTO", detail: "Selecciona SNAP / coordenadas",
+            };
+            if (core.cadTrim.isActive) return {
+              command: "TRIM", detail: "Selecciona segmento para recortar",
+            };
+            return null;
+          },
         })
       : null;
 

@@ -48,6 +48,9 @@ jobs:
       - name: Automatic drawing planner tests
         run: npm run test:drawings
 
+      - name: Locked DWG/DXF .flproject restore regression
+        run: npm run test:project-locked-dwg
+
       - name: Gizmo interaction tests
         run: npm run test:gizmos
 

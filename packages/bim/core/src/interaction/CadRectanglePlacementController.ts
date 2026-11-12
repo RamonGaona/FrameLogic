@@ -394,9 +394,22 @@ export class CadRectanglePlacementController {
     }
   };
 
-  private readonly handleNumericKeyDown = (
-    event: KeyboardEvent,
-  ): void => {
+  private readonly handleNumericKeyDown = (event: KeyboardEvent): void => {
+    this.processNumericKeyDown(event);
+  };
+
+  private processNumericKeyDown(event: KeyboardEvent): void {
+    if (event.key === "Tab" && this.active && this.stage === "SECOND_CORNER") {
+      // Cycle only between the two active rectangle dimensions, never
+      // send focus to the model toolbar / unrelated DOM controls.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const next = event.target === this.widthInput
+        ? this.heightInput : this.widthInput;
+      next.focus();
+      next.select();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -453,7 +466,7 @@ export class CadRectanglePlacementController {
       delta.x,
       delta.y,
     );
-  };
+  }
 
   private pickPoint(
     clientX: number,
@@ -566,6 +579,9 @@ export class CadRectanglePlacementController {
     this.preview.computeLineDistances();
     this.preview.geometry.computeBoundingSphere();
     this.preview.visible = true;
+    if (this.active && this.stage === "SECOND_CORNER") {
+      this.showHint(`RECTÁNGULO · X ${Math.abs(x).toFixed(2)} mm · Y ${Math.abs(y).toFixed(2)} mm · Tab alterna`);
+    }
   }
 
   private commitRectangle(

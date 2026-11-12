@@ -211,6 +211,17 @@ export class CadCircleSceneController {
     return this.circles.get(id);
   }
 
+  /** Edit a circle in place without changing its ID, layer or plane. */
+  updateRadius(id: string, radius: number): boolean {
+    const current = this.circles.get(id);
+    if (!current || !Number.isFinite(radius) || radius <= 1e-9) return false;
+    const layer = this.designModel.layers.get(current.layerId);
+    if (!layer || layer.locked) return false;
+    this.circles.set(id, { ...current, radius });
+    this.sync();
+    return true;
+  }
+
   getAll(): CadCircle[] {
     return Array.from(
       this.circles.values(),
