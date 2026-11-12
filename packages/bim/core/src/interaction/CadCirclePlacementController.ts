@@ -360,7 +360,9 @@ export class CadCirclePlacementController {
       );
 
     if (radius !== null) {
-      this.updatePreview(radius);
+      const isDiameterChoice = this.stage === "SIZE_MODE"
+        && this.modeChoices?.currentIndex === 1;
+      this.updatePreview(isDiameterChoice ? radius / 2 : radius);
     }
   };
 
@@ -507,6 +509,9 @@ export class CadCirclePlacementController {
         if (this.modeChoices?.handleKey(event.key, event.shiftKey)
           || (event.key === "Enter" && !this.modeChoices
             && (this.chooseSizeMode("RADIUS"), true))) {
+          if (this.stage === "SIZE_MODE" && this.modeChoices) {
+            this.sizeMode = this.modeChoices.currentIndex === 1 ? "DIAMETER" : "RADIUS";
+          }
           event.preventDefault();
           event.stopImmediatePropagation();
           return;
