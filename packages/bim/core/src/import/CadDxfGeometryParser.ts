@@ -193,7 +193,14 @@ function normalizedVertex(pt3: CadDxfPoint3, bulge = 0): Vertex {
   return { ...pt3, bulge };
 }
 
-export function parseCadDxf(text: string): ParsedCadReference {
+export function parseCadDxf(
+  text: string,
+  options?: { readonly maxSegments?: number },
+): ParsedCadReference {
+  const maxSegments = Number.isFinite(options?.maxSegments)
+    ? Math.max(16, Math.min(MAX_RENDERED_SEGMENTS,
+      Math.floor(options!.maxSegments!)))
+    : MAX_RENDERED_SEGMENTS;
   const pairs = pairsFromDxf(text);
   const sourceLayers = sourceLayersFrom(pairs);
   const blocks = blockDefinitions(pairs);
@@ -248,7 +255,7 @@ export function parseCadDxf(text: string): ParsedCadReference {
       || a.distanceToSquared(b) <= 1e-20) return;
     rootSeen++;
     if (rootSeen <= rootReplaySkip) return;
-    if (rootEmitted >= rootQuota || segments.length >= MAX_RENDERED_SEGMENTS) {
+    if (rootEmitted >= rootQuota || segments.length >= maxSegments) {
       rootLimited = true;
       return;
     }
@@ -397,7 +404,7 @@ export function parseCadDxf(text: string): ParsedCadReference {
         case "POINT": {
           const position = toVector(pt(record, 10, 20, 30)).applyMatrix4(ctx.matrix);
           if (pass === 0 && position.toArray().every(Number.isFinite)
-            && points.length < MAX_RENDERED_SEGMENTS) {
+            && points.length < maxSegments) {
             points.push({ layer, color, point: coords(position) });
           }
           break;
@@ -515,15 +522,15 @@ export function parseCadDxf(text: string): ParsedCadReference {
   // Reserve a fair share for every logical entity before expanding any
   // potentially enormous MINSERT/HATCH. Extra budget restores full detail.
   const fairShare = Math.max(16,
-    Math.min(4096, Math.floor(MAX_RENDERED_SEGMENTS * 0.75 / Math.max(1, roots.length))));
+    Math.min(4096, Math.floor(maxSegments * 0.75 / Math.max(1, roots.length))));
   const pending: Array<{ root: DxfRecord[]; cursor: number }> = [];
   let visitedRoots = 0;
   for (const root of roots) {
     const result = runRoot(root, Math.min(fairShare,
-      MAX_RENDERED_SEGMENTS - segments.length));
+      maxSegments - segments.length));
     if (result.limited) pending.push({ root, cursor: result.used });
     visitedRoots++;
-    if (segments.length >= MAX_RENDERED_SEGMENTS) break;
+    if (segments.length >= maxSegments) break;
   }
   // Preserve geometry detail by replaying only the un-emitted suffix. Passes
   // are bounded by the shrinking candidate set; all main roots have already
@@ -531,13 +538,13 @@ export function parseCadDxf(text: string): ParsedCadReference {
   pass = 1;
   let remaining = pending;
   for (let iteration = 0;
-    iteration < 6 && remaining.length && segments.length < MAX_RENDERED_SEGMENTS;
+    iteration < 6 && remaining.length && segments.length < maxSegments;
     iteration++) {
     const next: typeof pending = [];
     let emittedThisPass = 0;
     for (let i = 0; i < remaining.length; i++) {
       const item = remaining[i]!;
-      const capacity = MAX_RENDERED_SEGMENTS - segments.length;
+      const capacity = maxSegments - segments.length;
       if (capacity <= 0) { next.push(item); continue; }
       const quota = Math.max(1, Math.floor(capacity / (remaining.length - i)));
       const result = runRoot(item.root, quota, item.cursor);
