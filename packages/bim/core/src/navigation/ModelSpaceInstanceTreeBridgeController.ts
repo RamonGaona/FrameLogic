@@ -3,6 +3,7 @@ import { findInstanceTreeBody } from "./findInstanceTreeBody";
 import type {
   DesignModel,
 } from "@framelogic/domain";
+import { parseCadReferenceLayerName } from "../import/CadReferenceBlockController";
 
 import type {
   CadLineSceneController,
@@ -49,6 +50,25 @@ interface Options {
   readonly unifiedPdfNavigation: UnifiedPdfNavigationController;
   readonly cancelActiveCommand: () => void;
   readonly deleteCadSelection: () => boolean;
+}
+
+/**
+ * The Instancias tree lists only standalone CAD geometry. Imported DWG/DXF
+ * entities are already represented by one selectable reference block in
+ * InstanceTreeController; repeating 80,000 rows here freezes the DOM.
+ */
+export function getStandaloneCadEntities(model: DesignModel): {
+  lines: ReturnType<DesignModel["cadLines"]["getAll"]>;
+  points: ReturnType<DesignModel["cadPoints"]["getAll"]>;
+} {
+  const isStandalone = (layerId: string): boolean => {
+    const layer = model.layers.get(layerId);
+    return !layer || parseCadReferenceLayerName(layer) === null;
+  };
+  return {
+    lines: model.cadLines.getAll().filter((line) => isStandalone(line.layerId)),
+    points: model.cadPoints.getAll().filter((point) => isStandalone(point.layerId)),
+  };
 }
 
 /**
@@ -135,8 +155,9 @@ export class ModelSpaceInstanceTreeBridgeController {
     const body = findInstanceTreeBody(this.options.container);
     if (!body) return;
 
-    const lines = this.options.designModel.cadLines.getAll();
-    const points = this.options.designModel.cadPoints.getAll();
+    // Never serialize/render reference-member lines in INSTANCIAS. The
+    // reference block already appears once under REFERENCIAS CAD.
+    const { lines, points } = getStandaloneCadEntities(this.options.designModel);
     const pdfEntries = this.getOrderedPdfEntries();
 
     const signature = JSON.stringify({
@@ -182,6 +203,9 @@ export class ModelSpaceInstanceTreeBridgeController {
       null,
     );
 
+    // Keep the standalone CAD group out of the tree entirely when the
+    // drawing contains only imported reference blocks.
+    cadDetails.style.display = lines.length || points.length ? "" : "none";
     if (this.lastSignature === signature) return;
     this.lastSignature = signature;
 
