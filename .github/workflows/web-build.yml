@@ -75,6 +75,9 @@ jobs:
       - name: Piece visualization tests
         run: npm run test:piece-visuals
 
+      - name: Dual DWG reader recovery regression
+        run: npm run test:dwg-recovery
+
       - name: DWG runtime asset copy regression
         run: npm run test:dwg
 
