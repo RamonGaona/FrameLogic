@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.121 — 2026-11-12
+
+### Importación de DWG grandes: árbol de instancias compacto y SNAP espacial
+
+- **Causa del bloqueo posterior a la importación:** el sistema clásico de intersecciones SNAP comparaba cada pareja de líneas CAD: un DWG de 80 000 líneas generaba hasta 3 199 960 000 comparaciones por evento del ratón. El panel INSTANCIAS también serializaba y reconstruía una fila DOM por cada segmento cada 250 ms.
+- **Árbol de instancias:** las líneas y puntos que pertenecen a una referencia DWG/DXF ya no se repiten en ENTIDADES CAD. La referencia completa sigue disponible como una única entrada en REFERENCIAS CAD, con sus capas, visibilidad y selección; ENTIDADES CAD queda reservado para líneas/puntos CAD editables independientes y desaparece si no hay ninguno.
+- **SNAP exacto con índice espacial:** nueva rejilla de segmentos proyectados en pantalla, compartida por el sistema tradicional de SNAP (extremo, medio e intersección) y por GeometryQueryEngine. Se consultan únicamente las líneas próximas al cursor y las intersecciones se limitan a un máximo de 96 candidatos. Las coordenadas de los SNAP siguen siendo las originales del modelo, no aproximaciones gráficas.
+- **Caché de precisión:** el índice se reutiliza entre consultas y se invalida al registrar, modificar, mover, rotar o borrar geometría, cambiar la cámara o modificar el tamaño del viewport.
+- **Protección durante importación:** se suspende temporalmente la búsqueda de SNAP mientras se registran los lotes de 900 segmentos de DWG/DXF, evitando regenerar el índice en cada lote y que el ratón bloquee la página.
+- **Compatibilidad:** SNAP de DWG y CAD nativo, selección del bloque, geometría interna bloqueada, colores, posicionamiento, historial y persistencia permanecen disponibles.
+- **Pruebas:** 40 000 segmentos y dos líneas cercanas, actualización de caché tras cambio de geometría/cámara, SNAP de línea larga atravesando el cursor, y verificación de que 34 200 líneas importadas quedan como un bloque sin 34 200 filas en el árbol. Incluidas en `npm run test:camera`.
+
+**Pendiente de comprobación manual:** velocidad de registro y respuesta de SNAP con `CUNAS_MEDIR 1.dwg` en Firefox; las pruebas automatizadas usan geometría CAD sintética.
+
+---
+
 ## v0.1.120 — 2026-11-12
 
 ### Corrección de bloqueos al abrir DWG con muchos INSERT y segmentos
