@@ -22,6 +22,7 @@ export interface ParsedCadReference {
   readonly skippedEntities: number;
   readonly skippedTypes: ReadonlyMap<string, number>;
   readonly expandedBlocks: number;
+  readonly truncated: boolean;
   readonly sourceLayers: ReadonlyMap<string, DxfLayerAppearance>;
 }
 interface DxfBlock {
@@ -38,7 +39,9 @@ interface ExpandContext {
 }
 
 const MAX_BLOCK_DEPTH = 24;
-const MAX_RENDERED_SEGMENTS = 600_000;
+// The model preserves each segment for exact snaps and editing. A pathological
+// INSERT/MINSERT expansion must never allocate 600k scene entities in a tab.
+export const MAX_RENDERED_SEGMENTS = 80_000;
 const IDENTITY = new THREE.Matrix4();
 const WHITE = "#ffffff";
 
@@ -188,6 +191,7 @@ export function parseCadDxf(text: string): ParsedCadReference {
   const points: ImportedCadPoint[] = [];
   const skippedTypes = new Map<string, number>();
   let expandedBlocks = 0;
+  let truncated = false;
 
   const skip = (type: string): void => {
     skippedTypes.set(type, (skippedTypes.get(type) ?? 0) + 1);
@@ -210,7 +214,13 @@ export function parseCadDxf(text: string): ParsedCadReference {
     layer: string, color: string, context: ExpandContext,
     start: CadDxfPoint3, end: CadDxfPoint3,
   ): void => {
-    if (segments.length >= MAX_RENDERED_SEGMENTS) return;
+    if (segments.length >= MAX_RENDERED_SEGMENTS) {
+      if (!truncated) {
+        truncated = true;
+        skip("LIMITE_SEGMENTOS");
+      }
+      return;
+    }
     const a = toVector(start).applyMatrix4(context.matrix);
     const b = toVector(end).applyMatrix4(context.matrix);
     if (!a.toArray().every(Number.isFinite) || !b.toArray().every(Number.isFinite)
@@ -220,7 +230,7 @@ export function parseCadDxf(text: string): ParsedCadReference {
   const polyline = (layer: string, color: string, context: ExpandContext,
     vertices: readonly Vertex[], closed: boolean): void => {
     const count = closed ? vertices.length : vertices.length - 1;
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < count && !truncated; i++) {
       const a = vertices[i]!, b = vertices[(i + 1) % vertices.length]!;
       const bulge = a.bulge;
       if (Math.abs(bulge) < 1e-9) { line(layer, color, context, a, b); continue; }
@@ -289,6 +299,7 @@ export function parseCadDxf(text: string): ParsedCadReference {
       legacy = null;
     };
     for (const record of records) {
+      if (truncated) break;
       const sourceLayer = str(record, 8, "0");
       const layer = sourceLayer === "0" && ctx.inheritedLayer
         ? ctx.inheritedLayer : sourceLayer;
@@ -325,7 +336,8 @@ export function parseCadDxf(text: string): ParsedCadReference {
             ));
           const path = new Set(ctx.path);
           path.add(name);
-          for (let row = 0; row < countY; row++) for (let col = 0; col < countX; col++) {
+          for (let row = 0; row < countY && !truncated; row++)
+            for (let col = 0; col < countX && !truncated; col++) {
             const matrix = parent.clone().multiply(new THREE.Matrix4().makeTranslation(
               col * num(record, 44) - block.base.x,
               row * num(record, 45) - block.base.y,
@@ -435,6 +447,7 @@ export function parseCadDxf(text: string): ParsedCadReference {
   });
   return {
     segments, points, insUnits: insUnits(pairs), expandedBlocks, sourceLayers,
+    truncated,
     skippedTypes,
     skippedEntities: [...skippedTypes.values()].reduce((a, b) => a + b, 0),
   };
