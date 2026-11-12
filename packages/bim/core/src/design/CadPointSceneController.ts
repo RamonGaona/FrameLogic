@@ -326,10 +326,16 @@ export class CadPointSceneController {
           instanceof THREE.PointsMaterial
         ) {
 
+          const point = this.designModel.cadPoints.get(id);
+          const layerColor = point
+            ? this.designModel.layers.get(point.layerId)?.color
+            : undefined;
+          material.color.set(
+            this.selectedIds.has(id) ? "#ffc533"
+              : layerColor ?? "#e5e7eb",
+          );
           material.size =
-            this.selectedIds.has(
-              id,
-            )
+            this.selectedIds.has(id)
               ? 14
               : 8;
 

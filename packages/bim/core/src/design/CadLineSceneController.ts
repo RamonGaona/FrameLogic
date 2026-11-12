@@ -335,12 +335,16 @@ export class CadLineSceneController {
           instanceof THREE.LineBasicMaterial
         ) {
 
-          material.color.setHex(
-            this.selectedIds.has(
-              id,
-            )
-              ? 0xffc533
-              : 0xe5e7eb,
+          // Imported DWG entities use the resolved BYLAYER/BYBLOCK colour
+          // stored in their CAD sublayer. Selection still highlights yellow.
+          const line = this.designModel.cadLines.get(id);
+          const layerColor = line
+            ? this.designModel.layers.get(line.layerId)?.color
+            : undefined;
+          material.color.set(
+            this.selectedIds.has(id)
+              ? "#ffc533"
+              : layerColor ?? "#e5e7eb",
           );
 
           material.needsUpdate =
