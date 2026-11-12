@@ -83,7 +83,7 @@ describe("circle radius menu and 3D second point", () => {
     Reflect.set(controller, "chooseSizeMode", (mode: string) => { chosen.push(mode); choose(); });
     const event = { key: "Enter", ctrlKey: false, metaKey: false, altKey: false,
       preventDefault() {}, stopImmediatePropagation() {} };
-    (Reflect.get(controller, "processKeyDown") as (e: unknown) => void)(event);
+    (Reflect.get(controller, "processKeyDown") as (this: CadCirclePlacementController, e: unknown) => void).call(controller, event);
     expect(chosen).toEqual(["RADIUS"]);
   });
 
@@ -98,7 +98,7 @@ describe("circle radius menu and 3D second point", () => {
     Reflect.set(controller, "commitRadius", (r: number) => { radius = r; });
     const event = { target: canvas, button: 0, clientX: 120, clientY: 80,
       preventDefault() {}, stopImmediatePropagation() {} };
-    (Reflect.get(controller, "processPointerUp") as (e: unknown) => void)(event);
+    (Reflect.get(controller, "processPointerUp") as (this: CadCirclePlacementController, e: unknown) => void).call(controller, event);
     expect(radius).toBe(75);
     expect(Reflect.get(controller, "sizeMode")).toBe("RADIUS");
   });
@@ -117,7 +117,7 @@ describe("rectangle numeric Tab focus trap", () => {
     const handler = Reflect.get(rect, "processNumericKeyDown") as (event: unknown) => void;
     const key = (target: unknown, shiftKey: boolean) => {
       let prevented = false;
-      handler({ target, key: "Tab", shiftKey, preventDefault: () => { prevented = true; },
+      handler.call(rect, { target, key: "Tab", shiftKey, preventDefault: () => { prevented = true; },
         stopImmediatePropagation() {} });
       return prevented;
     };
