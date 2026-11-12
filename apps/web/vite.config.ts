@@ -18,6 +18,15 @@ const appVersion =
 export default defineConfig({
   plugins: [react()],
 
+  // acad-ts resolves DWG/DXF classes using constructor.name at runtime.
+  // Production minification must preserve class names in BOTH the web bundle
+  // and the separate CAD import Web Worker. Otherwise recovery crashes with
+  // "na is not a DXF subclass" even though dev/tests pass.
+  // Cota established the same fix in its v2.10.4 release (Apache-2.0).
+  // https://github.com/mxchristian17/cota/blob/main/services/web/vite.config.ts
+  build: { rolldownOptions: { output: { keepNames: true } } },
+  worker: { rolldownOptions: { output: { keepNames: true } } },
+
   define: {
     __FRAMELOGIC_VERSION__: JSON.stringify(appVersion),
   },
