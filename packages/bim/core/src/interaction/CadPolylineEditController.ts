@@ -272,9 +272,11 @@ export class CadPolylineEditController {
     this.start();
   };
 
-  private readonly handleKeyDown = (
-    event: KeyboardEvent,
-  ): void => {
+  private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    this.processKeyDown(event);
+  };
+
+  private processKeyDown(event: KeyboardEvent): void {
     if (
       this.disposed
       || isEditableTarget(event.target)
@@ -310,7 +312,7 @@ export class CadPolylineEditController {
         this.cancel();
       }
     }
-  };
+  }
 
   private readonly handlePointerMove = (
     event: PointerEvent,
