@@ -43,8 +43,10 @@ describe("alternate DWG reader comparison", () => {
     expect(decision.source).toBe("principal");
     expect(decision.explanation).toContain("Escala");
   });
-  it("rejects differing INSUNITS", () => {
-    expect(decideDwgImport(parsed(10), parsed(15, 2, 6)).source).toBe("principal");
+  it("warns about differing INSUNITS but permits geometrically compatible recovery", () => {
+    const result = decideDwgImport(parsed(10), parsed(15, 2, 6));
+    expect(result.source).toBe("alternativo");
+    expect(result.explanation).toContain("INSUNITS distintos");
   });
   it("does not trade structural geometry for labels", () => {
     expect(decideDwgImport(parsed(50, 1), parsed(15, 10)).source).toBe("principal");
