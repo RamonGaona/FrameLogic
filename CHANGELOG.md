@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.128 — 2026-11-12
+
+### Etapa 3 · Planos técnicos y acotación automática (Cota → FrameLogic)
+
+- **Vistas proyectadas ISO E / ISO A:** las cuatro vistas automáticas existentes (alzado, planta, lateral e isométrica) se disponen en una hoja usando primer o tercer diedro. La nueva selección de convención se guarda con las preferencias profesionales del dibujo.
+- **Distribución de hoja protegida:** se calcula una escala visual común a las cuatro vistas y se dejan libres las áreas de cajetín y revisiones. Las vistas se organizan automáticamente solo al crearse; los posteriores desplazamientos/redimensionamientos manuales permanecen. El botón `Organizar auto` permite volver a distribuirlas explícitamente.
+- **Cotas automáticas para piezas o conjunto:** junto a `Cotas auto` se puede seleccionar `Conjunto` o `Por pieza`, cotas `desde base` o `en cadena` y `detalladas` o `generales`. Las configuraciones se guardan por hoja en el snapshot de documentación.
+- **Cotas por geometría exacta:** las estaciones de acotación se basan en vértices y centros de círculos STEP B-Rep; no se deducen cotas de mallas de visualización. Se agrupan diámetros iguales de orificios distintos con texto `n× Ø` sin contar dos veces aristas repetidas del mismo centro.
+- **Regeneración segura:** la nueva planificación conserva la edición manual y sigue siendo idempotente al regenerar cotas automáticas. Las etiquetas de diámetros se incorporan a la misma representación SVG utilizada para PDF/DXF/SVG.
+- **Pruebas:** la batería `npm run test:drawings` incluye geometrías de piezas/conjuntos, cotas en cadena/base, duplicados circulares y colocación de cuatro vistas sin intersecciones ni invasión del cajetín.
+
+**Alcance y límites:** la disposición de vistas es una mejora de las secciones vectoriales existentes, no un sistema de proyección de fabricación certificado. Las cotas automáticas requieren STEP B-Rep accesible; geometría DWG importada como referencia, mallas y piezas sin topología B-Rep no generan cotas de diámetro exactas. Las proyecciones, ocultaciones, líneas y anotaciones deben revisarse antes de usar planos para fabricación. Se prioriza el núcleo de dibujo ya implementado y no se añaden licencias de pago.
+
+---
+
 ## v0.1.127 — 2026-11-12
 
 ### Etapa 1 · Recuperación de DWG con un segundo lector (Cota / acad-ts)
