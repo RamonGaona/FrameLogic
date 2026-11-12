@@ -359,9 +359,11 @@ export class CadCirclePlacementController {
     }
   };
 
-  private readonly handlePointerUp = (
-    event: PointerEvent,
-  ): void => {
+  private readonly handlePointerUp = (event: PointerEvent): void => {
+    this.processPointerUp(event);
+  };
+
+  private processPointerUp(event: PointerEvent): void {
     if (
       !this.active
       || event.button !== 0
@@ -458,11 +460,13 @@ export class CadCirclePlacementController {
 
       this.commitRadius(radius);
     }
+  }
+
+  private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    this.processKeyDown(event);
   };
 
-  private readonly handleKeyDown = (
-    event: KeyboardEvent,
-  ): void => {
+  private processKeyDown(event: KeyboardEvent): void {
     if (this.disposed) return;
 
     if (this.active) {
@@ -594,7 +598,7 @@ export class CadCirclePlacementController {
     this.commandBuffer = next;
     this.showCommandBuffer();
     this.scheduleCommandBufferReset();
-  };
+  }
 
   private readonly handleNumericKeyDown = (
     event: KeyboardEvent,
