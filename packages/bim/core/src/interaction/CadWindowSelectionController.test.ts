@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { CadWindowSelectionController } from "./CadWindowSelectionController";
+import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
+
+vi.mock("../import/CadReferenceTransformController", () => ({
+  getActiveCadReferenceBlockController: vi.fn(() => null),
+}));
 
 function pointer(type: string): PointerEvent {
   const event = new Event(type, { cancelable: true });
@@ -34,9 +39,44 @@ function setup(isPlacing: () => boolean = () => false) {
   );
   return { canvas, target, controller, design, point, line, cameraEnabled };
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.mocked(getActiveCadReferenceBlockController).mockReset();
+  vi.mocked(getActiveCadReferenceBlockController).mockReturnValue(null);
+});
 
 describe("CAD window selection and gizmo ownership", () => {
+
+  it("el clic sobre gizmo DWG MOVE no inicia selección por ventana ni cambia selección", () => {
+    vi.mocked(getActiveCadReferenceBlockController).mockReturnValue(
+      { isMoveActive: true, isRotateActive: false } as ReturnType<typeof getActiveCadReferenceBlockController>,
+    );
+    const s = setup();
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(false);
+    expect(s.design.getInstanceIdAt).not.toHaveBeenCalled();
+    expect(s.point.getPointIdAt).not.toHaveBeenCalled();
+    expect(s.line.getLineIdAt).not.toHaveBeenCalled();
+    expect(s.design.isEnabled).toBe(true);
+    expect(s.cameraEnabled).not.toHaveBeenCalled();
+    s.controller.dispose();
+  });
+
+  it("el gizmo DWG ROTATE tampoco inicia ventana y al desactivarse se restaura selección normal", () => {
+    vi.mocked(getActiveCadReferenceBlockController).mockReturnValue(
+      { isMoveActive: false, isRotateActive: true } as ReturnType<typeof getActiveCadReferenceBlockController>,
+    );
+    const s = setup();
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(false);
+    vi.mocked(getActiveCadReferenceBlockController).mockReturnValue(null);
+    s.canvas.dispatchEvent(pointer("pointerdown"));
+    s.target.dispatchEvent(pointer("pointerup"));
+    expect(s.controller.isActive).toBe(true);
+    s.controller.dispose();
+  });
   it("does not start a window for either SmartPieceInsertion click, but restores normal selection", () => {
     let smartActive = false;
     const s = setup();
