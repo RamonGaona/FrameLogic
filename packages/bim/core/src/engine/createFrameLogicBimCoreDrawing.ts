@@ -49,6 +49,9 @@ import {
 import {
   CadReferenceImportController,
 } from "../import/CadReferenceImportController";
+import {
+  CadReferenceTextSceneController,
+} from "../design/CadReferenceTextSceneController";
 
 import {
   CadReferenceLayerPanelController,
@@ -357,6 +360,13 @@ export async function createBimCore(
       drawingFinishing,
     });
 
+  const cadTextScene = new CadReferenceTextSceneController(
+    core.world.scene.three, core.designModel,
+  );
+  const unsubscribeCadTextSync = core.cadLineScene.onSync(
+    () => cadTextScene.sync(),
+  );
+
   const cadReferenceLayers =
     new CadReferenceLayerPanelController({
       container,
@@ -372,6 +382,7 @@ export async function createBimCore(
 
   const cadReferenceTransform =
     new CadReferenceTransformController({
+      cadTextScene,
       container,
       domElement:
         renderer.three.domElement,
@@ -452,6 +463,7 @@ export async function createBimCore(
 
   const projectPackage =
     new FrameLogicProjectPackageController({
+      cadTextScene,
       container,
       designModel:
         core.designModel,
@@ -571,6 +583,7 @@ export async function createBimCore(
 
   const cadReferenceImport =
     new CadReferenceImportController({
+      cadTextScene,
       container,
       designModel:
         core.designModel,
@@ -650,6 +663,8 @@ export async function createBimCore(
       cadTrim.dispose();
       autosave.dispose();
       cadReferenceImport.dispose();
+      unsubscribeCadTextSync();
+      cadTextScene.dispose();
       zoomExtents.dispose();
       cadReferenceTransform.dispose();
       cadReferenceLayers.dispose();
