@@ -55,6 +55,18 @@ function hasExternalCadCommand(): boolean {
   }
 }
 
+function canStartRectangleTextCommand(): boolean {
+  try {
+    return commandRuntime()
+      .__frameLogicCanStartRectangleTextCommand
+      ?.()
+      ?? false;
+  }
+  catch {
+    return false;
+  }
+}
+
 function normalizeCommand(
   value: string,
 ): string {
@@ -227,7 +239,7 @@ export class CadCommandInputController {
       const startsPoint = key === "p";
       const startsTrim = key === "t";
       const startsPolylineEdit = key === "e";
-      const startsRotateOrRectangle = key === "r";
+      const startsRotateOrRectangle = key === "r" && canStartRectangleTextCommand();
 
       if (
         (!startsLineFamily && !startsRotateOrRectangle && !startsCircleOrCopy
