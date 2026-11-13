@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.137 — 2026-11-13
+
+### LINE: longitud numérica después de navegar la cámara
+
+- **Corrección del foco:** después de girar la cámara con el botón central o desplazarse con el derecho, el campo `LINE · LONGITUD` recupera el foco, conserva el valor parcial y permite continuar digitando en lugar de obligar a un segundo punto manual.
+- **Teclado de respaldo:** si el campo quedó desenfocado por navegación, el primer número (incluidos decimales, signo menos y retroceso) se dirige a la longitud en curso; Enter confirma esa distancia sin interrumpir LINE. Otros campos editables y accesos Ctrl/Alt se respetan.
+- **Dirección estable:** el movimiento del puntero con botones de navegación de cámara no cambia la dirección de la línea provisional ni la longitud numérica posterior.
+- **Precisión:** acepta coma o punto decimal y mantiene borradores intermedios como `12.` sin vaciarlos; conserva las cotas temporales y el historial/Undo existentes.
+- **Pruebas:** restauración del foco después de navegación derecha/central, ingreso desde canvas tras perder el foco, Enter y señal de distancia, borradores numéricos y prevención de movimientos del dibujo durante la navegación.
+
+**Comprobación manual recomendada:** LINE, primer punto, orientar la línea, navegar con botones central/derecho y escribir una distancia, tanto sobre CAD como sobre DWG/DXF; verificar también en Firefox.
+
+---
+
 ## v0.1.136 — 2026-11-13
 
 ### SNAP INTERSECCIÓN sobre la trayectoria provisional de LINE

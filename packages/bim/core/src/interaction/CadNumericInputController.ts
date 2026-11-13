@@ -1,4 +1,33 @@
 import { PointerFocusGate } from "./TransformGizmoReliability";
+
+/** Preserve a numeric draft after panning/orbiting blurs the LINE input. */
+export function nextLineDistanceDraft(value: string, key: string): string | null {
+  if (key === "Backspace") return value.slice(0, -1);
+  if (key === "-" || key === "Subtract")
+    return value.startsWith("-") ? value.slice(1) : "-" + value;
+  if (key === "." || key === "," || key === "Decimal") {
+    if (value.includes(".")) return value;
+    return (value === "" || value === "-") ? value + "0." : value + ".";
+  }
+  if (/^[0-9]$/.test(key)) {
+    if (value === "0") return key;
+    if (value === "-0") return "-" + key;
+    return value + key;
+  }
+  return null;
+}
+
+/** Do not steal modifier shortcuts or other tool keystrokes. */
+export function canResumeLineDistanceKey(
+  mode: string | null,
+  key: string,
+  modifiers: { ctrlKey: boolean; metaKey: boolean; altKey: boolean },
+): boolean {
+  if (mode !== "LINE_DISTANCE" || modifiers.ctrlKey || modifiers.metaKey || modifiers.altKey)
+    return false;
+  return key === "Enter" || nextLineDistanceDraft("0", key) !== null;
+}
+
 export type MoveNumericAxis =
   | "X"
   | "Y"
@@ -47,6 +76,7 @@ export interface CadLineDistanceApplyDetail {
 
 export class CadNumericInputController {
   private readonly focusGate = new PointerFocusGate();
+  private cameraNavigationPointer: number | null = null;
 
   private readonly container:
     HTMLElement;
@@ -306,6 +336,13 @@ export class CadNumericInputController {
       "keydown",
       this.handleKeyDown,
     );
+
+    // LINE remains active after middle/right-button camera navigation:
+    // recover the field focus and capture the first typed digit if blurred.
+    window.addEventListener("keydown", this.handleLineDistanceGlobalKeyDown, true);
+    window.addEventListener("pointerdown", this.handleCameraNavigationDown, true);
+    window.addEventListener("pointerup", this.handleCameraNavigationUp, true);
+    window.addEventListener("pointercancel", this.handleCameraNavigationCancel, true);
 
 
     document.addEventListener(
@@ -610,6 +647,13 @@ export class CadNumericInputController {
     this.root.style.display =
       "flex";
 
+    const field = this.fields.querySelector<HTMLInputElement>("input");
+    if (field) {
+      field.type = "text";
+      field.inputMode = "decimal";
+      field.autocomplete = "off";
+      field.setAttribute("aria-label", "Longitud exacta de LINE");
+    }
 
     this.focusFirstInput();
 
@@ -617,6 +661,7 @@ export class CadNumericInputController {
 
 
   hide(): void {
+    this.cameraNavigationPointer = null;
     this.rotateAxes.style.display = "none";
 
     this.mode =
@@ -874,7 +919,7 @@ export class CadNumericInputController {
             input,
           ) =>
             Number(
-              input.value,
+              input.value.trim() === "" ? Number.NaN : input.value.trim().replace(",", "."),
             ),
         );
 
@@ -985,6 +1030,61 @@ export class CadNumericInputController {
     };
 
 
+  private isExternalTextEditor(target: EventTarget | null): boolean {
+    if (!(target instanceof Element)) return false;
+    return target.closest("input, textarea, select, [contenteditable]") !== null;
+  }
+
+  private readonly handleLineDistanceGlobalKeyDown = (event: KeyboardEvent): void => {
+    if (!canResumeLineDistanceKey(this.mode, event.key, event)
+      || this.root.style.display === "none" || event.isComposing
+      || this.isExternalTextEditor(event.target)) return;
+
+    const input = this.fields.querySelector<HTMLInputElement>("input");
+    if (!input?.isConnected || document.activeElement === input
+      || this.isExternalTextEditor(document.activeElement)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.key === "Enter") {
+      this.handleApply();
+      return;
+    }
+    const next = nextLineDistanceDraft(input.value, event.key);
+    if (next === null) return;
+    input.value = next;
+    input.focus({ preventScroll: true });
+    // type=text retains intermediate drafts such as "12." and "-0."
+    input.setSelectionRange(next.length, next.length);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+
+  private readonly handleCameraNavigationDown = (event: PointerEvent): void => {
+    if (this.mode !== "LINE_DISTANCE" || (event.button !== 1 && event.button !== 2))
+      return;
+    if (event.target instanceof Node && this.container.contains(event.target))
+      this.cameraNavigationPointer = event.pointerId;
+  };
+
+  private readonly handleCameraNavigationUp = (event: PointerEvent): void => {
+    if (event.pointerId !== this.cameraNavigationPointer) return;
+    this.cameraNavigationPointer = null;
+    // Do not focus while native camera controls still own the gesture.
+    window.setTimeout(() => {
+      if (this.mode !== "LINE_DISTANCE" || this.root.style.display === "none"
+        || this.isExternalTextEditor(document.activeElement)) return;
+      const input = this.fields.querySelector<HTMLInputElement>("input");
+      if (!input?.isConnected) return;
+      input.focus({ preventScroll: true });
+      if (input.value === "0") input.select();
+      else input.setSelectionRange(input.value.length, input.value.length);
+    }, 0);
+  };
+
+  private readonly handleCameraNavigationCancel = (event: PointerEvent): void => {
+    if (this.cameraNavigationPointer === event.pointerId)
+      this.cameraNavigationPointer = null;
+  };
+
   private readonly handleKeyDown =
     (
       event:
@@ -1009,6 +1109,10 @@ export class CadNumericInputController {
 
 
   dispose(): void {
+    window.removeEventListener("keydown", this.handleLineDistanceGlobalKeyDown, true);
+    window.removeEventListener("pointerdown", this.handleCameraNavigationDown, true);
+    window.removeEventListener("pointerup", this.handleCameraNavigationUp, true);
+    window.removeEventListener("pointercancel", this.handleCameraNavigationCancel, true);
     this.focusGate.dispose();
 
     this.applyButton.removeEventListener(

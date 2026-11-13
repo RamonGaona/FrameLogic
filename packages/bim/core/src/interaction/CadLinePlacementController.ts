@@ -1,4 +1,10 @@
 import * as THREE from "three";
+
+/** Ignore mouse movements owned by middle-button orbit or right-button pan. */
+export function isCameraNavigationPointerMove(buttons: number): boolean {
+  return (buttons & (2 | 4)) !== 0;
+}
+
 import { findFirstCadTrajectoryIntersection } from "./CadLineTrajectoryIntersection";
 
 import type {
@@ -355,7 +361,9 @@ export class CadLinePlacementController {
   private readonly handlePointerMove = (
     event: PointerEvent,
   ): void => {
-    if (!this.active) {
+    // Camera navigation must not replace the user's LINE bearing. In
+    // particular, a subsequent exact numeric distance uses lastDirection.
+    if (!this.active || isCameraNavigationPointerMove(event.buttons ?? 0)) {
       return;
     }
 
