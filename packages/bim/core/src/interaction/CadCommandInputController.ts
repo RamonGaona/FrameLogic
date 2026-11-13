@@ -18,6 +18,7 @@ interface FrameLogicCommandWindow extends Window {
   __frameLogicCanStartRectangleTextCommand?:
     () => boolean;
   __frameLogicStartCopyBaseCommand?: () => boolean;
+  __frameLogicStartRotateReferenceCommand?: () => boolean;
   __frameLogicStartCircleCommand?: () => boolean;
   __frameLogicStartPointTextCommand?: () => boolean;
   __frameLogicStartTrimTextCommand?: () => boolean;
@@ -48,18 +49,6 @@ function hasExternalCadCommand(): boolean {
       commandRuntime().__frameLogicExternalCadCommandActive?.()
       || commandRuntime().__frameLogicCopyBaseCommandActive?.()
     );
-  }
-  catch {
-    return false;
-  }
-}
-
-function canStartRectangleTextCommand(): boolean {
-  try {
-    return commandRuntime()
-      .__frameLogicCanStartRectangleTextCommand
-      ?.()
-      ?? false;
   }
   catch {
     return false;
@@ -238,10 +227,10 @@ export class CadCommandInputController {
       const startsPoint = key === "p";
       const startsTrim = key === "t";
       const startsPolylineEdit = key === "e";
-      const startsRectangle = key === "r" && canStartRectangleTextCommand();
+      const startsRotateOrRectangle = key === "r";
 
       if (
-        (!startsLineFamily && !startsRectangle && !startsCircleOrCopy
+        (!startsLineFamily && !startsRotateOrRectangle && !startsCircleOrCopy
           && !startsPoint && !startsTrim && !startsPolylineEdit)
         || this.hasActiveCommand()
         || hasExternalCadCommand()
@@ -287,8 +276,10 @@ export class CadCommandInputController {
       event.preventDefault();
       event.stopImmediatePropagation();
       const value = normalizeCommand(this.command);
-      this.command = value.startsWith("REC") || value === "R"
+      this.command = value.startsWith("REC")
         ? "RECTANGULO"
+        : value === "R" || value.startsWith("ROT")
+          ? "ROTATE"
         : value.startsWith("COP") || value === "CP"
           ? "COPYBASE"
           : value.startsWith("C") ? "CIRCULO"
@@ -355,6 +346,13 @@ export class CadCommandInputController {
       const started = commandRuntime().__frameLogicStartPointTextCommand?.();
       this.hide();
       if (!started) window.alert("No se pudo iniciar PUNTO.");
+      return;
+    }
+
+    if (command === "R" || command === "ROTATE" || command === "ROTAR") {
+      const started = commandRuntime().__frameLogicStartRotateReferenceCommand?.();
+      this.hide();
+      if (!started) window.alert("Selecciona una referencia DWG/DXF para ROTATE.");
       return;
     }
 
@@ -473,6 +471,11 @@ export class CadCommandInputController {
       return;
     }
 
+    if (normalized === "R" || (normalized.startsWith("RO")
+      && ("ROTATE".startsWith(normalized) || "ROTAR".startsWith(normalized)))) {
+      this.suggestionElement.textContent = "R / ROTATE · Enter · elegir eje, centro SNAP y ángulo";
+      return;
+    }
     if (normalized === "L") {
       this.suggestionElement.textContent =
         "L (LINE) · LL (LÍNEA PARALELA) · Enter para confirmar";
