@@ -425,6 +425,7 @@ export async function createBimCore(
   const zoomExtents =
     new ModelSpaceZoomExtentsController({
       container,
+      domElement: renderer.three.domElement,
       scene:
         core.world.scene.three,
       cameraProvider: () =>
