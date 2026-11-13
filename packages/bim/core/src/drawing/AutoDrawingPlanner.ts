@@ -73,6 +73,49 @@ export function planAutomaticViews(bounds: DrawingBounds3): AutomaticDrawingView
   });
 }
 
+/**
+ * Select only views that add useful independent information to an assembly.
+ * Stage 1 uses world-axis envelopes, not an inferred machining datum or PCA.
+ * Neither these envelopes nor projected mesh edges are exact fabrication dimensions.
+ */
+export function planSmartAssemblyViews(
+  bounds: DrawingBounds3,
+  pieceCount = 1,
+): AutomaticDrawingView[] {
+  const candidates = planAutomaticViews(bounds);
+  if (!candidates.length) return [];
+  const spans = [
+    bounds.max.x - bounds.min.x,
+    bounds.max.y - bounds.min.y,
+    bounds.max.z - bounds.min.z,
+  ];
+  const dominant = spans.indexOf(Math.max(...spans));
+  let primary: AutomaticViewCode;
+  let end: AutomaticViewCode;
+  let optional: AutomaticViewCode;
+  if (dominant === 0) {
+    primary = spans[2]! >= spans[1]! ? "FRONT" : "TOP";
+    end = "RIGHT";
+    optional = primary === "FRONT" ? "TOP" : "FRONT";
+  } else if (dominant === 1) {
+    primary = spans[2]! >= spans[0]! ? "RIGHT" : "TOP";
+    end = "FRONT";
+    optional = primary === "RIGHT" ? "TOP" : "RIGHT";
+  } else {
+    primary = spans[0]! >= spans[1]! ? "FRONT" : "RIGHT";
+    end = "TOP";
+    optional = primary === "FRONT" ? "RIGHT" : "FRONT";
+  }
+  const extent = Math.max(...spans);
+  const volumetric = Math.min(...spans) / extent >= 0.45;
+  const codes: AutomaticViewCode[] = [primary, end];
+  // Complex, non-slender assemblies need the third principal projection.
+  if (pieceCount >= 3 && volumetric) codes.push(optional);
+  // An isometric view aids interpretation, but is not a dimensioning source.
+  if (pieceCount >= 2) codes.push("ISO");
+  return codes.map((code) => candidates.find((v) => v.code === code)!);
+}
+
 export interface AutomaticDimensionPoint {
   readonly instanceId: string;
   readonly topologyId: string;
