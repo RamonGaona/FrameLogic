@@ -336,7 +336,6 @@ export class CadReferenceBlockController {
     }
     if (visible) this.hiddenReferenceLayerStates.delete(referenceName);
     this.syncGeometry();
-    this.options.cadTextScene?.sync();
     return true;
   }
 
