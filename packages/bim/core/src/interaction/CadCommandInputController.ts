@@ -1,3 +1,16 @@
+/**
+ * The temporary command HUD is helpful for picking LINE's first point, but
+ * must disappear for the rest of the polyline chain. Its length/angle labels
+ * and the exact numeric-distance input are separate controls.
+ */
+export function getLineCommandHint(
+  hasStartPoint: boolean,
+): { readonly command: string; readonly detail: string } | null {
+  return hasStartPoint
+    ? null
+    : { command: "LINE · SNAP", detail: "Primer punto · selecciona SNAP exacto" };
+}
+
 export interface CadCommandInputControllerOptions {
   readonly domElement: HTMLElement;
   readonly hasActiveCommand: () => boolean;
@@ -181,6 +194,15 @@ export class CadCommandInputController {
       this.handlePointerDown,
       true,
     );
+    // CadLinePlacementController confirms its point on pointerup.
+    // Its capture listener was registered first and stops propagation;
+    // another capture listener on the same canvas still runs afterward.
+    // Hide the hint immediately, without waiting for the next pointermove.
+    this.domElement.addEventListener(
+      "pointerup",
+      this.handlePointerUp,
+      true,
+    );
   }
 
   private readonly handlePointerMove = (
@@ -194,8 +216,12 @@ export class CadCommandInputController {
       return;
     }
 
-    // One consistent command HUD follows the cursor during native CAD
-    // commands. It never steals focus from numeric inputs or SNAP picking.
+    // Only show native CAD prompts while the command requests one.
+    this.syncActiveCommandHint();
+  };
+
+  private syncActiveCommandHint(): void {
+    if (this.visible) return; // Keep an explicitly typed command intact.
     const active = this.getActiveCommandHint();
     if (!active) {
       this.root.style.display = "none";
@@ -205,6 +231,14 @@ export class CadCommandInputController {
     this.suggestionElement.textContent = active.detail;
     this.root.style.display = "block";
     this.position();
+  }
+
+  private readonly handlePointerUp = (
+    event: PointerEvent,
+  ): void => {
+    this.pointerX = event.clientX;
+    this.pointerY = event.clientY;
+    this.syncActiveCommandHint();
   };
 
   private readonly handlePointerDown = (
@@ -571,6 +605,11 @@ export class CadCommandInputController {
     this.domElement.removeEventListener(
       "pointerdown",
       this.handlePointerDown,
+      true,
+    );
+    this.domElement.removeEventListener(
+      "pointerup",
+      this.handlePointerUp,
       true,
     );
 
