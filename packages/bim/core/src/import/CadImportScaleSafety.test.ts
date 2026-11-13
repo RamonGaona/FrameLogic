@@ -8,6 +8,11 @@ const example = (width: number) => ({
 });
 
 describe("DWG origin-unit safety", () => {
+  it("retains the suspicious ×1000 confirmation from worker-only extent metadata", () => {
+    expect(suspiciousDwgMeterScale({ segments: [], points: [], rawExtent: 15005.75 }, 1000))
+      .toEqual({ rawSpan: 15005.75, resultingSpanMm: 15005750 });
+  });
+
   it("warns before accidentally converting 15,005.75 mm into 15 km", () => {
     expect(suspiciousDwgMeterScale(example(15005.75), 1000)).toEqual({
       rawSpan: 15005.75,
