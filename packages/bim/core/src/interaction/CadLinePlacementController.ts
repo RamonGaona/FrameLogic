@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { findFirstCadTrajectoryIntersection } from "./CadLineTrajectoryIntersection";
 
 import type {
   DesignModel,
@@ -66,6 +67,7 @@ export class CadLinePlacementController {
   private readonly pointSelection: CadPointSelectionController;
   private readonly lineSelection: CadLineSelectionController;
   private readonly preview: THREE.Line;
+  private readonly intersectionMarker: THREE.Points;
 
   private readonly pointerRaycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2();
@@ -82,6 +84,7 @@ export class CadLinePlacementController {
   private lastPointerX = 0;
   private lastPointerY = 0;
   private hasPointerPosition = false;
+  private lastPointerAlt = false;
 
   private active = false;
   private disposed = false;
@@ -138,6 +141,21 @@ export class CadLinePlacementController {
     this.preview.visible = false;
     this.preview.renderOrder = 1000;
     this.scene.add(this.preview);
+
+    // Constant-size cyan point at the exact trajectory/geometry crossing,
+    // distinct from the ordinary ENDPOINT/MIDPOINT pointer SNAP indicator.
+    const markerGeometry = new THREE.BufferGeometry();
+    markerGeometry.setAttribute("position",
+      new THREE.Float32BufferAttribute([0, 0, 0], 3));
+    this.intersectionMarker = new THREE.Points(markerGeometry,
+      new THREE.PointsMaterial({
+        color: "#00eaff", size: 11, sizeAttenuation: false,
+        depthTest: false, depthWrite: false,
+      }));
+    this.intersectionMarker.name = "FrameLogicLineTrajectoryIntersection";
+    this.intersectionMarker.renderOrder = 1002;
+    this.intersectionMarker.visible = false;
+    this.scene.add(this.intersectionMarker);
 
     this.domElement.addEventListener(
       "pointerdown",
@@ -198,6 +216,7 @@ export class CadLinePlacementController {
     this.pointerDownActive = false;
     this.hasPointerPosition = false;
     this.preview.visible = false;
+    this.intersectionMarker.visible = false;
 
     this.designSelection.setEnabled(false);
     this.pointSelection.setEnabled(false);
@@ -213,6 +232,7 @@ export class CadLinePlacementController {
     this.pointerDownActive = false;
     this.hasPointerPosition = false;
     this.preview.visible = false;
+    this.intersectionMarker.visible = false;
 
     this.designSelection.setEnabled(true);
     this.pointSelection.setEnabled(true);
@@ -306,7 +326,7 @@ export class CadLinePlacementController {
     }
 
     this.pointerDownActive = false;
-    this.rememberPointer(event.clientX, event.clientY);
+    this.rememberPointer(event.clientX, event.clientY, event.altKey ?? false);
 
     const movement = Math.hypot(
       event.clientX - this.pointerDownX,
@@ -320,6 +340,7 @@ export class CadLinePlacementController {
     const point = this.acquirePointerPoint(
       event.clientX,
       event.clientY,
+      event.altKey ?? false,
     );
 
     if (!point) {
@@ -338,20 +359,23 @@ export class CadLinePlacementController {
       return;
     }
 
-    this.rememberPointer(event.clientX, event.clientY);
+    this.rememberPointer(event.clientX, event.clientY, event.altKey ?? false);
 
     if (!this.startPoint) {
       this.preview.visible = false;
+      this.intersectionMarker.visible = false;
       return;
     }
 
     const end = this.acquirePointerPoint(
       event.clientX,
       event.clientY,
+      event.altKey ?? false,
     );
 
     if (!end) {
       this.preview.visible = false;
+      this.intersectionMarker.visible = false;
       return;
     }
 
@@ -364,9 +388,11 @@ export class CadLinePlacementController {
   private rememberPointer(
     clientX: number,
     clientY: number,
+    alt = false,
   ): void {
     this.lastPointerX = clientX;
     this.lastPointerY = clientY;
+    this.lastPointerAlt = alt;
     this.hasPointerPosition = true;
   }
 
@@ -382,10 +408,12 @@ export class CadLinePlacementController {
     const end = this.acquirePointerPoint(
       this.lastPointerX,
       this.lastPointerY,
+      this.lastPointerAlt,
     );
 
     if (!end) {
       this.preview.visible = false;
+      this.intersectionMarker.visible = false;
       this.lastDirection = null;
       return;
     }
@@ -399,6 +427,7 @@ export class CadLinePlacementController {
   private acquirePointerPoint(
     clientX: number,
     clientY: number,
+    ignoreIntersections = false,
   ): THREE.Vector3 | null {
     /*
      * El primer punto siempre se conserva exactamente donde fue elegido,
@@ -422,9 +451,9 @@ export class CadLinePlacementController {
     );
 
     if (snap) {
-      return this.resolveCandidate(
-        snap.point,
-        this.startPoint,
+      return this.snapToLineTrajectory(
+        this.resolveCandidate(snap.point, this.startPoint),
+        ignoreIntersections,
       );
     }
 
@@ -451,10 +480,36 @@ export class CadLinePlacementController {
       return null;
     }
 
-    return this.resolveCandidate(
-      candidate,
-      this.startPoint,
+    return this.snapToLineTrajectory(
+      this.resolveCandidate(candidate, this.startPoint),
+      ignoreIntersections,
     );
+  }
+
+  /**
+   * While LINE previews a segment, use the first actual 3D intersection
+   * along its trajectory as the endpoint (CAD or DWG/DXF packed references).
+   * Alt temporarily bypasses interception when a line must cross through.
+   * Numeric input remains authoritative and never passes through here.
+   */
+  private snapToLineTrajectory(
+    candidate: THREE.Vector3,
+    ignoreIntersections = false,
+  ): THREE.Vector3 {
+    if (this.intersectionMarker) this.intersectionMarker.visible = false;
+    if (!this.startPoint || ignoreIntersections) return candidate;
+    if (typeof document !== "undefined"
+      && document.body?.dataset["framelogicCadImporting"] === "true") return candidate;
+    const hit = findFirstCadTrajectoryIntersection(
+      this.designModel, this.cameraProvider(),
+      this.domElement.getBoundingClientRect(), this.startPoint, candidate,
+    );
+    if (!hit) return candidate;
+    if (this.intersectionMarker) {
+      this.intersectionMarker.position.copy(hit.point);
+      this.intersectionMarker.visible = true;
+    }
+    return hit.point.clone();
   }
 
   private resolveCandidate(
@@ -642,6 +697,7 @@ export class CadLinePlacementController {
 
     this.startPoint = end;
     this.preview.visible = false;
+    this.intersectionMarker.visible = false;
     this.requestDistanceInput();
     this.refreshPreviewFromLastPointer();
     return true;
@@ -804,6 +860,14 @@ export class CadLinePlacementController {
 
     this.scene.remove(this.preview);
     this.preview.geometry.dispose();
+    this.scene.remove(this.intersectionMarker);
+    this.intersectionMarker.geometry.dispose();
+    const intersectionMaterial = this.intersectionMarker.material;
+    if (Array.isArray(intersectionMaterial)) {
+      for (const material of intersectionMaterial) material.dispose();
+    } else {
+      intersectionMaterial.dispose();
+    }
 
     if (Array.isArray(this.preview.material)) {
       for (const material of this.preview.material) {
