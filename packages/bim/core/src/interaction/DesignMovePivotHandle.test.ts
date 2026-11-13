@@ -62,6 +62,7 @@ function fixture() {
   const snap = {
     clearExcludedInstanceIds: vi.fn(), setExcludedInstanceIds: vi.fn(),
     findSnap: vi.fn(() => ({ point: snapPoint.clone(), type: "ENDPOINT" })),
+    getSnapAtCurrentPointer: vi.fn(() => null),
   };
   const history = {
     capture: vi.fn(() => new Map()),
