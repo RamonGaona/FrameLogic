@@ -97,6 +97,24 @@ try {
   assert.ok(spanZ < 0.01, `Projector plane should have zero depth, received ${spanZ}`);
   console.log("OK: world-space assembly HLR preserves 40 x 10 mm projected extents.");
 
+  // Actual BRepAlgoAPI_Section: a plane through x=5 of a 10 mm box must
+  // produce its 10x10 mm physical cut contour, not a 2D mesh silhouette.
+  const section = await drawing.sectionByPlane(
+    names[0]!, { x: 5, y: 0, z: 0 }, { x: 1, y: 0, z: 0 },
+  );
+  assert.equal(section.precision, "BREP_EXACT", section.reason);
+  assert.ok(section.segments.length > 0, "Box section must have contour segments.");
+  const sectionPoints = section.segments.flatMap((segment) => [segment.a, segment.b]);
+  assert.ok(sectionPoints.every((point) => Math.abs(point.x - 5) < 0.01),
+    "Section edges must lie on the selected physical cutting plane.");
+  const cutSpanY = Math.max(...sectionPoints.map((p) => p.y))
+    - Math.min(...sectionPoints.map((p) => p.y));
+  const cutSpanZ = Math.max(...sectionPoints.map((p) => p.z))
+    - Math.min(...sectionPoints.map((p) => p.z));
+  assert.ok(Math.abs(cutSpanY - 10) < 0.01 && Math.abs(cutSpanZ - 10) < 0.01,
+    `Exact 10x10 mm cut expected, received ${cutSpanY}x${cutSpanZ}`);
+  console.log("OK: OCCT sectionByPlane produces real 10 x 10 mm B-Rep cut contours.");
+
   const distorted = identity();
   distorted[0] = 2;
   const rejected = await drawing.hiddenLinesAssembly([
