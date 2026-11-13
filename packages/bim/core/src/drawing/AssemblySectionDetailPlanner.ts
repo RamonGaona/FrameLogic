@@ -28,10 +28,11 @@ export function planSectionStations(
   segments: readonly AssemblyLine[],
 ): SectionStation[] {
   if (!segments.length) return [];
-  const x = segments.flatMap((s) => [s.x1, s.x2]);
-  const y = segments.flatMap((s) => [s.y1, s.y2]);
-  const minX = Math.min(...x), maxX = Math.max(...x);
-  const minY = Math.min(...y), maxY = Math.max(...y);
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const s of segments) {
+    minX = Math.min(minX, s.x1, s.x2); maxX = Math.max(maxX, s.x1, s.x2);
+    minY = Math.min(minY, s.y1, s.y2); maxY = Math.max(maxY, s.y1, s.y2);
+  }
   if (![minX, maxX, minY, maxY].every(Number.isFinite)
     || maxX - minX < 0.001 || maxY - minY < 0.001) return [];
   return ([["A-A", 0.2], ["B-B", 0.8]] as const).map(([label, fraction]) => ({
