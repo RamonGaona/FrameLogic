@@ -1023,10 +1023,13 @@ export class GeneralPdfController {
       for (const line of dimension.lines) {
         this.appendDimensionLine(line.x1, line.y1, line.x2, line.y2);
       }
+      // Left-aligned text makes the SVG renderer and simple PDF export
+      // agree: that exporter does not support SVG text-anchor="middle".
+      const estimatedWidth = dimension.label.length * 8 * 0.59;
       const text = this.appendText(
-        dimension.labelX, dimension.labelY, dimension.label, 8, "#12567c",
+        dimension.labelX - estimatedWidth / 2,
+        dimension.labelY, dimension.label, 8, "#12567c",
       );
-      text.setAttribute("text-anchor", "middle");
       text.setAttribute("data-framelogic-auto-dim-view", view.id);
       text.setAttribute("data-framelogic-auto-dim-key", dimension.key);
       text.setAttribute("aria-label", `Cota ${dimension.label} mm. Arrastra para reubicar, clic derecho para ocultar.`);
