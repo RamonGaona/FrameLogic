@@ -79,6 +79,24 @@ try {
   assert.ok(assembly.visible.length < single.visible.length * 1.5,
     "The back box must not duplicate all visible edges of the front box.");
 
+  // A second independent alignment checks model-to-world translation, axis
+  // direction and physical extents, not merely nonempty HLR output.
+  const sideBySide = await drawing.hiddenLinesAssembly([
+    { instanceId: "left", documentId: names[0]!, worldMatrix: identity() },
+    { instanceId: "right", documentId: names[1]!, worldMatrix: identity(30, 0, 0) },
+  ], direction, up);
+  assert.equal(sideBySide.precision, "BREP_EXACT", sideBySide.reason);
+  const all = sideBySide.visible.flatMap((segment) => [segment.a, segment.b]);
+  const spanX = Math.max(...all.map((p) => p.x)) - Math.min(...all.map((p) => p.x));
+  const spanY = Math.max(...all.map((p) => p.y)) - Math.min(...all.map((p) => p.y));
+  const spanZ = Math.max(...all.map((p) => p.z)) - Math.min(...all.map((p) => p.z));
+  assert.ok(Math.abs(spanX - 40) < 0.01,
+    `40 mm across two placed STEP solids expected, received ${spanX}`);
+  assert.ok(Math.abs(spanY - 10) < 0.01,
+    `10 mm high STEP outlines expected, received ${spanY}`);
+  assert.ok(spanZ < 0.01, `Projector plane should have zero depth, received ${spanZ}`);
+  console.log("OK: world-space assembly HLR preserves 40 x 10 mm projected extents.");
+
   const distorted = identity();
   distorted[0] = 2;
   const rejected = await drawing.hiddenLinesAssembly([
