@@ -7,7 +7,7 @@ import { rawCadExtent } from "./CadImportUnitDialog";
  * second confirmation when raw geometry already spans kilometre-sized units.
  */
 export function suspiciousDwgMeterScale(
-  parsed: Pick<ParsedCadReference, "segments" | "points">,
+  parsed: Pick<ParsedCadReference, "segments" | "points"> & { readonly rawExtent?: number },
   factor: number,
 ): { rawSpan: number; resultingSpanMm: number } | null {
   if (!Number.isFinite(factor) || factor < 1000) return null;
