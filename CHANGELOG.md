@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.143 — 2026-11-13
+
+### Detallado automático de ensambles — primera etapa
+
+- **Comando contextual:** clic derecho sobre un ensamble → `Generar planos automáticamente`, sin exigir activar un WorkPlane ni añadir botones a la barra superior.
+- **Vistas adaptativas:** identifica el eje dominante del envolvente del ensamble, prioriza una vista principal y una vista de extremo, añade isométrica cuando existen varias piezas y una vista complementaria si el conjunto volumétrico es complejo. No impone las cuatro vistas.
+- **Hoja A3 real:** crea vistas dentro del motor PDF unificado, distribuye de dos a cuatro vistas para primer diedro y escoge una escala normalizada común sin invadir el cajetín. Permite desplazar y cambiar tamaño de las vistas con el editor existente.
+- **Marcas básicas y cantidades:** resumen obtenido de las instancias del ensamble y marcas persistentes por definición de pieza; no inventa materiales ni pesos.
+- **Pruebas nuevas:** selección de vistas para tubos, placas y conjuntos volumétricos, compatibilidad de disposición por diedro, comprobación de solapamientos, validación de escalas.
+- **Arquitectura:** investigación y límites detallados en `docs/drawing/AUTOMATIC_ASSEMBLY_DETAILING.md`, sin introducir dependencias ni licencias nuevas.
+
+**Alcance explícito:** estas primeras proyecciones siguen la ruta de aristas de malla de «Enviar a PDF». Son preliminares, sin HLR exacto ni cotas de fabricación. La hoja incluye una advertencia. La siguiente etapa debe unir proyección OCCT B-Rep, cotas asociativas editables y planos individuales. El estado del CI y de Cloudflare Pages se valida por separado.
+
+---
+
 ## v0.1.142 — 2026-11-13
 
 ### ZOOM: Enter obligatorio después de elegir E, O o S

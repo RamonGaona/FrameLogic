@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { planSmartAssemblyViews, type AutomaticViewCode } from "./AutoDrawingPlanner";
+import { planSelectedSheetLayout, selectAssemblyScaleDenominator } from "./AutoSheetLayoutPlanner";
 
 import type {
   DesignModel,
@@ -92,6 +94,8 @@ interface AssemblySheetViewRuntime {
   height: number;
   segments: readonly PlanSegment[];
   resolved: boolean;
+  /** Present only on views created by the automatic assembly drawing command. */
+  automaticViewCode?: AutomaticViewCode;
 }
 
 type GeneralSheetViewRuntime =
@@ -99,6 +103,8 @@ type GeneralSheetViewRuntime =
   | AssemblySheetViewRuntime;
 
 interface GeneralSheetRuntime extends Omit<SheetState, "views"> {
+  /** Persistent per-definition marks keep regeneration order independent. */
+  pieceMarks?: Record<string, string>;
   id?: string;
   name?: string;
   readonly views: GeneralSheetViewRuntime[];
@@ -323,6 +329,115 @@ export class GeneralPdfController {
 
     this.openSheetWithoutSection(sheetId, sheet);
     return true;
+  }
+
+  /**
+   * Creates a real, editable sheet in the existing Paper Space/PDF engine.
+   * This first stage chooses projections and a common nominal scale; it does
+   * not infer manufacturing dimensions from Three.js display triangles.
+   */
+  generateAutomaticAssembly(request: GeneralPdfRequest): boolean {
+    if (this.disposed) return false;
+    if (request.instanceIds.length < 1) {
+      window.alert("El ensamble no contiene piezas.");
+      return false;
+    }
+    const ids = new Set(request.instanceIds);
+    const bounds = new THREE.Box3();
+    let included = 0;
+    for (const [instanceId, object] of this.designScene.getInstanceEntries()) {
+      if (!ids.has(instanceId)) continue;
+      object.updateWorldMatrix(true, true);
+      const box = new THREE.Box3().setFromObject(object);
+      if (box.isEmpty()) continue;
+      bounds.union(box);
+      included += 1;
+    }
+    if (included === 0 || bounds.isEmpty()) {
+      window.alert("No se encontró geometría 3D válida en el ensamble.");
+      return false;
+    }
+    const planned = planSmartAssemblyViews({
+      min: { x: bounds.min.x, y: bounds.min.y, z: bounds.min.z },
+      max: { x: bounds.max.x, y: bounds.max.y, z: bounds.max.z },
+    }, included);
+    if (!planned.length) {
+      window.alert("No se pudieron calcular las vistas del ensamble.");
+      return false;
+    }
+
+    const sheetId = crypto.randomUUID();
+    const sheet = this.createEmptySheet(sheetId, `Plano de ensamble · ${request.assemblyName}`);
+    sheet.titleBlock.drawingTitle = request.assemblyName;
+    sheet.titleBlock.drawingNumber = `A-${request.assemblyId.slice(0, 8)}`;
+    const marks: Record<string, string> = {};
+    for (const instanceId of request.instanceIds) {
+      const piece = this.designModel.pieceInstances.get(instanceId);
+      if (piece && !marks[piece.definitionId]) {
+        marks[piece.definitionId] = `P${Object.keys(marks).length + 1}`;
+      }
+    }
+    sheet.pieceMarks = marks;
+
+    const projected: Array<{ id: string; code: AutomaticViewCode; width: number; height: number }> = [];
+    for (const plannedView of planned) {
+      const workPlane: CadWorkPlaneState = {
+        mode: request.workPlane.mode,
+        enabled: true,
+        origin: new THREE.Vector3(0, 0, 0),
+        xAxis: new THREE.Vector3(plannedView.xAxis.x, plannedView.xAxis.y, plannedView.xAxis.z),
+        yAxis: new THREE.Vector3(plannedView.yAxis.x, plannedView.yAxis.y, plannedView.yAxis.z),
+        normal: new THREE.Vector3(plannedView.normal.x, plannedView.normal.y, plannedView.normal.z),
+      };
+      const geometry = this.buildPlanGeometry(request.instanceIds, workPlane);
+      if (!geometry) {
+        window.alert(`No se pudo proyectar ${plannedView.name}. No se creó el plano.`);
+        return false;
+      }
+      const view = this.createAssemblyView({
+        ...request,
+        assemblyName: `${request.assemblyName} · ${plannedView.name.replace("AUTO · ", "")}`,
+        workPlane,
+      }, geometry);
+      view.automaticViewCode = plannedView.code;
+      sheet.views.push(view);
+      projected.push({ id: view.id, code: plannedView.code, width: geometry.width, height: geometry.height });
+    }
+    const layouts = planSelectedSheetLayout(projected, "ISO_E");
+    if (layouts.length !== projected.length) {
+      window.alert("No fue posible distribuir las vistas en la hoja A3.");
+      return false;
+    }
+    const scaleDenominator = selectAssemblyScaleDenominator(layouts[0]!.modelScale);
+    if (scaleDenominator === null) {
+      window.alert("El ensamble no cabe a una escala normalizada en A3. Revisa el tamaño del modelo.");
+      return false;
+    }
+    sheet.scaleDenominator = scaleDenominator;
+    this.production.sheets.set(sheetId, sheet);
+    for (const [index, plannedLayout] of layouts.entries()) {
+      const view = sheet.views.find((candidate) => candidate.id === plannedLayout.id);
+      if (!view || !this.isAssemblyView(view)) continue;
+      const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
+      layout.kind = "ASSEMBLY";
+      layout.x = plannedLayout.x;
+      layout.y = plannedLayout.y;
+      layout.width = plannedLayout.width;
+      layout.height = plannedLayout.height;
+      layout.scaleDenominator = scaleDenominator;
+      layout.title = view.assemblyName;
+      layout.showHidden = false;
+    }
+    this.activeSheetId = sheetId;
+    this.lastTreeSignature = "";
+    const opened = this.openSheet(sheetId);
+    if (opened) {
+      this.workspace.setStatus(
+        `DETALLADO AUTO: ${planned.length} vistas, escala 1:${scaleDenominator}. `
+        + "Proyecciones preliminares de malla; no son cotas exactas de fabricación.",
+      );
+    }
+    return opened;
   }
 
   sendAssembly(request: GeneralPdfRequest): boolean {
@@ -648,6 +763,7 @@ export class GeneralPdfController {
 
     if (!hasSectionView) {
       this.renderGenericTitleBlock(sheet);
+      this.renderAutomaticPartIndex(sheet);
     }
     this.decorateViewTree();
   }
@@ -724,6 +840,43 @@ export class GeneralPdfController {
       9,
       "#333",
     );
+  }
+
+  /** Compact marks/quantities summary, not a certified material takeoff. */
+  private renderAutomaticPartIndex(sheet: GeneralSheetRuntime): void {
+    const view = sheet.views.find((candidate): candidate is AssemblySheetViewRuntime =>
+      this.isAssemblyView(candidate) && Boolean(candidate.automaticViewCode));
+    if (!view || !sheet.pieceMarks) return;
+    const groups = new Map<string, { mark: string; label: string; quantity: number }>();
+    for (const instanceId of view.instanceIds) {
+      const piece = this.designModel.pieceInstances.get(instanceId);
+      if (!piece) continue;
+      const key = piece.definitionId;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        groups.set(key, {
+          mark: sheet.pieceMarks[key] ?? "—",
+          label: this.getPieceLabel(instanceId),
+          quantity: 1,
+        });
+      }
+    }
+    if (!groups.size) return;
+    this.appendText(54, 633, "MARCAS Y CANTIDADES · SEGÚN MODELO", 10, "#111");
+    const rows = [...groups.values()].sort((a, b) =>
+      Number(a.mark.slice(1)) - Number(b.mark.slice(1)));
+    rows.slice(0, 8).forEach((item, index) => {
+      const label = item.label.length > 70 ? item.label.slice(0, 67) + "…" : item.label;
+      this.appendText(54, 651 + index * 13,
+        `${item.mark}   ${item.quantity} ×   ${label}`, 9, "#222");
+    });
+    if (rows.length > 8) {
+      this.appendText(54, 760, `+ ${rows.length - 8} marcas adicionales (ver árbol de vistas)`, 8, "#444");
+    }
+    this.appendText(54, 779,
+      "PRELIMINAR: proyección de aristas de malla, sin HLR ni cotas de fabricación.", 8, "#8a241c");
   }
 
   private renderGenericTitleBlock(sheet: GeneralSheetRuntime): void {
