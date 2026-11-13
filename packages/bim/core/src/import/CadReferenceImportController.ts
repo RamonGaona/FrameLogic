@@ -453,6 +453,8 @@ export class CadReferenceImportController {
     report: (status: string) => void = () => {},
     onBegin: (metadata: ParsedCadReference, total: number) => Promise<void> = async () => {},
     onBatch: (segments: readonly ImportedCadSegment[], total: number) => Promise<void> = async () => {},
+    cotaMode = false,
+    onPacked: (layer: string, color: string, positions: Float64Array, total: number) => Promise<void> = async () => {},
   ): Promise<ParsedCadReference> {
     if (typeof Worker === "undefined") {
       throw new Error(
@@ -479,6 +481,7 @@ export class CadReferenceImportController {
         | { ok: true; parsed: ParsedCadReference }
         | { ok: true; phase: "begin"; parsed: ParsedCadReference; totalSegments: number }
         | { ok: true; phase: "segments"; segments: ImportedCadSegment[] }
+        | { ok: true; phase: "packed"; layer: string; color: string; positions: Float64Array }
         | { ok: true; phase: "done" }
         | { ok: false; error: string }
       >) => {
@@ -512,6 +515,13 @@ export class CadReferenceImportController {
             if (!settled) worker.postMessage({ type: "next" });
             return;
           }
+          if (response.phase === "packed") {
+            await onPacked(response.layer, response.color, response.positions, expectedSegments);
+            receivedSegments += response.positions.length / 6;
+            report(`Cota CAD · ${receivedSegments.toLocaleString("es-CO")} / ${expectedSegments.toLocaleString("es-CO")} segmentos compactos recibidos…`);
+            if (!settled) worker.postMessage({ type: "next" });
+            return;
+          }
           if (response.phase === "done") {
             if (!stop()) return;
             if (!streamedHeader || receivedSegments !== expectedSegments) {
@@ -528,7 +538,7 @@ export class CadReferenceImportController {
         if (!stop()) return;
         reject(new Error("Error en el procesador DWG/DXF: " + error.message));
       };
-      worker.postMessage({ type: "parse", extension, buffer: bytes, recoverDwg }, [bytes]);
+      worker.postMessage({ type: "parse", extension, buffer: bytes, recoverDwg, engine: cotaMode ? "cota" : "framelogic" }, [bytes]);
     });
   }
 
