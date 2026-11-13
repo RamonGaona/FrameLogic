@@ -105,6 +105,9 @@ interface AssemblySheetViewRuntime {
   automaticAnchors?: readonly AssemblyMarkAnchor[];
   exactInstances?: number;
   fallbackInstances?: number;
+  /** True only when ALL B-Rep instances shared one exact OCCT HLR calculation. */
+  assemblyOcclusionExact?: boolean;
+  automaticWarnings?: readonly string[];
   geometrySignature?: string;
 }
 
@@ -489,6 +492,8 @@ export class GeneralPdfController {
       view.automaticAnchors = geometry.anchors;
       view.exactInstances = geometry.exactInstances;
       view.fallbackInstances = geometry.fallbackInstances;
+      view.assemblyOcclusionExact = geometry.assemblyOcclusionExact;
+      view.automaticWarnings = geometry.warnings;
       view.geometrySignature = assemblyProjectionSignature({
         instanceIds: request.instanceIds, designModel: this.designModel, designScene: this.designScene,
       });
@@ -585,6 +590,8 @@ export class GeneralPdfController {
         view.automaticAnchors = partGeometry.anchors;
         view.exactInstances = partGeometry.exactInstances;
         view.fallbackInstances = partGeometry.fallbackInstances;
+        view.assemblyOcclusionExact = partGeometry.assemblyOcclusionExact;
+        view.automaticWarnings = partGeometry.warnings;
         view.geometrySignature = assemblyProjectionSignature({
           instanceIds: [instanceId], designModel: this.designModel, designScene: this.designScene,
         });
@@ -616,7 +623,7 @@ export class GeneralPdfController {
     if (opened) {
       this.workspace.setStatus(
         `DETALLADO AUTO: ${planned.length} vistas; ${detailCount} planos de pieza; escala 1:${scaleDenominator}. `
-        + `STEP HLR por pieza donde esté disponible; ${unique.size > 20 ? unique.size - 20 + " piezas sin plano individual por límite de 20. " : ""}`
+        + `${sheet.views.some((view) => this.isAssemblyView(view) && view.assemblyOcclusionExact) ? "HLR conjunto OCCT cuando toda la geometría es STEP; " : "HLR STEP por pieza, sin ocultación entre piezas; "}${unique.size > 20 ? unique.size - 20 + " piezas sin plano individual por límite de 20. " : ""}`
         + "Cotas B-Rep en las vistas ortogonales. Revisar antes de fabricar.",
       );
     }
@@ -1216,6 +1223,8 @@ export class GeneralPdfController {
         candidate.automaticAnchors = geometry.anchors;
         candidate.exactInstances = geometry.exactInstances;
         candidate.fallbackInstances = geometry.fallbackInstances;
+        candidate.assemblyOcclusionExact = geometry.assemblyOcclusionExact;
+        candidate.automaticWarnings = geometry.warnings;
         candidate.geometrySignature = signature;
         candidate.resolved = true;
         updated++;
@@ -1317,9 +1326,11 @@ export class GeneralPdfController {
       this.appendText(54, 760, `+ ${rows.length - 8} marcas adicionales (ver hoja de BOM)`, 8, "#444");
     }
     this.appendText(54, 779,
-      view.fallbackInstances
-        ? `PRELIMINAR: ${view.fallbackInstances} pieza(s) en malla; HLR solo por pieza B-Rep; comprobar cotas.`
-        : "PRELIMINAR: HLR por pieza STEP; sin ocultación entre piezas; comprobar cotas.", 8, "#8a241c");
+      view.assemblyOcclusionExact
+        ? "PRELIMINAR: HLR exacto del conjunto STEP; faltan cortes y validación de taller."
+        : view.fallbackInstances
+          ? `PRELIMINAR: ${view.fallbackInstances} pieza(s) en malla; HLR entre piezas NO exacto.`
+          : "PRELIMINAR: HLR por pieza STEP; sin ocultación entre piezas; comprobar cotas.", 8, "#8a241c");
   }
 
   private renderGenericTitleBlock(sheet: GeneralSheetRuntime): void {
