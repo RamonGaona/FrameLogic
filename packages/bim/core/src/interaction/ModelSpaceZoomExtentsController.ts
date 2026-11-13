@@ -53,6 +53,8 @@ interface CameraControlsLike {
 
 export interface ModelSpaceZoomExtentsControllerOptions {
   readonly container: HTMLElement;
+  /** Canvas receives pointer positions; popover stays next to this cursor. */
+  readonly domElement?: HTMLElement;
   readonly scene: THREE.Scene;
   readonly cameraProvider: () => THREE.Camera;
   readonly controls: CameraControlsLike;
@@ -64,7 +66,36 @@ export interface ModelSpaceZoomExtentsControllerOptions {
   readonly getSelectedCadReferenceBounds?: () => THREE.Box3 | null;
 }
 
-const COMMAND_TIMEOUT_MS = 1800;
+const COMMAND_TIMEOUT_MS = 8000;
+type ZoomChoice = "e" | "o";
+
+/** Keep a cursor-anchored command menu inside the visible browser viewport. */
+export function getZoomHintPosition(
+  x: number, y: number,
+  viewportWidth: number, viewportHeight: number,
+  popupWidth = 288, popupHeight = 118,
+): { left: number; top: number } {
+  const gap = 16;
+  const margin = 12;
+  const maxLeft = Math.max(margin, viewportWidth - popupWidth - margin);
+  const maxTop = Math.max(margin, viewportHeight - popupHeight - margin);
+  const proposedTop = y + gap + popupHeight + margin > viewportHeight
+    ? y - popupHeight - gap : y + gap;
+  return {
+    left: THREE.MathUtils.clamp(x + gap, margin, maxLeft),
+    top: THREE.MathUtils.clamp(proposedTop, margin, maxTop),
+  };
+}
+
+/** One menu updates for every zoom keystroke instead of a clipped bottom hint. */
+export function formatZoomChoices(selected: ZoomChoice): string {
+  return [
+    "Z · ZOOM",
+    `${selected === "e" ? "›" : " "} E · Extensión (todo el modelo)`,
+    `${selected === "o" ? "›" : " "} O · Objeto (selección)`,
+    "↑↓ / Tab elegir · Enter aplicar · Esc cancelar",
+  ].join("\n");
+}
 
 /**
  * Zoom commands estilo AutoCAD:
@@ -77,6 +108,10 @@ export class ModelSpaceZoomExtentsController {
   private readonly options: ModelSpaceZoomExtentsControllerOptions;
   private readonly hint: HTMLDivElement;
   private zoomCommandExpiresAt = 0;
+  private zoomChoice: ZoomChoice = "e";
+  private pointerX = typeof window !== "undefined" ? window.innerWidth / 2 : 320;
+  private pointerY = typeof window !== "undefined" ? window.innerHeight / 2 : 240;
+  private hintTimeout: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
 
   constructor(
@@ -89,6 +124,9 @@ export class ModelSpaceZoomExtentsController {
       this.handleKeyDown,
       true,
     );
+    (this.options.domElement ?? this.options.container).addEventListener(
+      "pointermove", this.handlePointerMove, true,
+    );
   }
 
   dispose(): void {
@@ -99,6 +137,10 @@ export class ModelSpaceZoomExtentsController {
       this.handleKeyDown,
       true,
     );
+    (this.options.domElement ?? this.options.container).removeEventListener(
+      "pointermove", this.handlePointerMove, true,
+    );
+    this.cancelHintTimer();
     this.hint.remove();
   }
 
@@ -380,94 +422,153 @@ export class ModelSpaceZoomExtentsController {
       : null;
   }
 
-  private readonly handleKeyDown = (
-    event: KeyboardEvent,
-  ): void => {
+  private readonly handlePointerMove = (event: PointerEvent): void => {
+    if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;
+    this.pointerX = event.clientX;
+    this.pointerY = event.clientY;
+    if (this.hint.style.display !== "none") this.positionHint();
+  };
+
+  private positionHint(): void {
+    const box = this.hint.getBoundingClientRect();
+    const sizeWidth = box.width > 0 ? box.width : 288;
+    const sizeHeight = box.height > 0 ? box.height : 118;
+    const position = getZoomHintPosition(
+      this.pointerX, this.pointerY,
+      window.innerWidth, window.innerHeight, sizeWidth, sizeHeight,
+    );
+    this.hint.style.left = `${position.left}px`;
+    this.hint.style.top = `${position.top}px`;
+  }
+
+  private cancelHintTimer(): void {
+    if (this.hintTimeout !== null) {
+      clearTimeout(this.hintTimeout);
+      this.hintTimeout = null;
+    }
+  }
+
+  private hideHint(): void {
+    this.cancelHintTimer();
+    this.hint.style.display = "none";
+  }
+
+  private showZoomChoices(): void {
+    this.showHint(formatZoomChoices(this.zoomChoice), COMMAND_TIMEOUT_MS);
+  }
+
+  private executeZoomChoice(choice: ZoomChoice): void {
+    this.zoomCommandExpiresAt = 0;
+    this.hideHint();
+    // The result or error indicator appears beside the cursor, not at the
+    // bottom of the canvas; successful camera movement is unchanged.
+    const operation = choice === "e" ? this.zoomExtents() : this.zoomSelected();
+    void operation.catch((error: unknown) => {
+      console.error(
+        choice === "e" ? "Zoom Extents failed:" : "Zoom Object failed:", error,
+      );
+      this.showHint("ZOOM · No fue posible completar la operación", 1400);
+    });
+  }
+
+  private readonly handleKeyDown = (event: KeyboardEvent): void => {
     if (
       this.disposed
       || isEditableTarget(event.target)
       || event.ctrlKey
       || event.metaKey
       || event.altKey
-    ) {
-      return;
-    }
+    ) return;
 
     const key = event.key.toLowerCase();
     const now = performance.now();
 
     if (key === "z") {
-      this.zoomCommandExpiresAt =
-        now + COMMAND_TIMEOUT_MS;
+      this.zoomCommandExpiresAt = now + COMMAND_TIMEOUT_MS;
+      this.zoomChoice = "e";
       event.preventDefault();
-      event.stopPropagation();
-      this.showHint(
-        "ZOOM — E = Extents · O = Object",
-        COMMAND_TIMEOUT_MS,
+      event.stopImmediatePropagation();
+      this.showZoomChoices();
+      return;
+    }
+
+    if (this.zoomCommandExpiresAt > 0 && now > this.zoomCommandExpiresAt) {
+      this.zoomCommandExpiresAt = 0;
+      this.hideHint();
+    }
+    if (this.zoomCommandExpiresAt === 0) return;
+
+    if (key === "escape") {
+      this.zoomCommandExpiresAt = 0;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.hideHint();
+      return;
+    }
+
+    if (key === "arrowdown" || key === "arrowup" || key === "tab") {
+      this.zoomChoice = this.zoomChoice === "e" ? "o" : "e";
+      this.zoomCommandExpiresAt = now + COMMAND_TIMEOUT_MS;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.showZoomChoices();
+      return;
+    }
+
+    if (key === "e" || key === "o" || key === "enter") {
+      event.preventDefault();
+      // In particular, "O" must never start another tool or command after Z.
+      event.stopImmediatePropagation();
+      this.executeZoomChoice(
+        key === "enter" ? this.zoomChoice : key as ZoomChoice,
       );
       return;
     }
 
-    if (
-      now <= this.zoomCommandExpiresAt
-      && (key === "e" || key === "o")
-    ) {
-      this.zoomCommandExpiresAt = 0;
-      event.preventDefault();
-      event.stopPropagation();
-      const operation = key === "e"
-        ? this.zoomExtents()
-        : this.zoomSelected();
-      void operation.catch((error) => {
-        console.error(
-          key === "e"
-            ? "Zoom Extents failed:"
-            : "Zoom Object failed:",
-          error,
-        );
-      });
-      return;
-    }
-
+    // Any unrelated shortcut is not stolen by the zoom option menu.
     this.zoomCommandExpiresAt = 0;
+    this.hideHint();
   };
 
-  private createHint(
-    container: HTMLElement,
-  ): HTMLDivElement {
+  private createHint(_container: HTMLElement): HTMLDivElement {
     const hint = document.createElement("div");
-    Object.assign(
-      hint.style,
-      {
-        position: "absolute",
-        left: "50%",
-        bottom: "18px",
-        transform: "translateX(-50%)",
-        zIndex: "160",
-        display: "none",
-        padding: "5px 9px",
-        border: "1px solid rgba(255,255,255,0.14)",
-        borderRadius: "5px",
-        background: "rgba(18,25,30,0.92)",
-        color: "#eaf2f6",
-        pointerEvents: "none",
-        font: "12px system-ui, sans-serif",
-      },
-    );
-    container.append(hint);
+    hint.dataset["framelogicZoomChoices"] = "true";
+    Object.assign(hint.style, {
+      position: "fixed",
+      left: "0px",
+      top: "0px",
+      zIndex: "2147482501",
+      display: "none",
+      width: "max-content",
+      maxWidth: "min(310px, calc(100vw - 24px))",
+      whiteSpace: "pre-line",
+      lineHeight: "1.55",
+      padding: "7px 10px",
+      border: "1px solid rgba(154,215,238,0.65)",
+      borderRadius: "5px",
+      background: "rgba(20,29,38,0.97)",
+      boxShadow: "0 5px 14px rgba(0,0,0,0.45)",
+      color: "#eaf2f6",
+      pointerEvents: "none",
+      userSelect: "none",
+      font: "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    });
+    hint.setAttribute("role", "status");
+    document.body.append(hint);
     return hint;
   }
 
-  private showHint(
-    message: string,
-    duration: number,
-  ): void {
+  private showHint(message: string, duration: number): void {
+    this.cancelHintTimer();
     this.hint.textContent = message;
     this.hint.style.display = "block";
-    const expected = message;
-    window.setTimeout(() => {
-      if (this.hint.textContent === expected) {
-        this.hint.style.display = "none";
+    this.positionHint();
+    this.hintTimeout = setTimeout(() => {
+      this.hintTimeout = null;
+      this.hint.style.display = "none";
+      if (this.zoomCommandExpiresAt > 0
+        && performance.now() >= this.zoomCommandExpiresAt) {
+        this.zoomCommandExpiresAt = 0;
       }
     }, duration);
   }
