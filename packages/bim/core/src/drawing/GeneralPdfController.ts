@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { planSmartAssemblyViews, type AutomaticViewCode } from "./AutoDrawingPlanner";
 import { planSelectedSheetLayout, selectAssemblyScaleDenominator } from "./AutoSheetLayoutPlanner";
+import { assemblyProjectionSignature, projectAssembly, type AssemblyLine, type AssemblyMarkAnchor } from "./AssemblyProjectionEngine";
+import type { EngineeringDimensionInstruction } from "./EngineeringAutoDimensionPlanner";
 
 import type {
   DesignModel,
@@ -63,12 +65,7 @@ interface WorkPlaneSnapshot {
   readonly normal: VectorSnapshot;
 }
 
-interface PlanSegment {
-  readonly x1: number;
-  readonly y1: number;
-  readonly x2: number;
-  readonly y2: number;
-}
+interface PlanSegment extends AssemblyLine {}
 
 interface PlanGeometry {
   readonly width: number;
@@ -88,7 +85,7 @@ interface AssemblySheetViewRuntime {
   kind: "ASSEMBLY";
   readonly assemblyId: string;
   readonly assemblyName: string;
-  readonly instanceIds: readonly string[];
+  instanceIds: string[];
   readonly workPlane: WorkPlaneSnapshot;
   width: number;
   height: number;
@@ -96,6 +93,12 @@ interface AssemblySheetViewRuntime {
   resolved: boolean;
   /** Present only on views created by the automatic assembly drawing command. */
   automaticViewCode?: AutomaticViewCode;
+  /** Persisted exact B-Rep dimension plans; manual annotations live separately. */
+  automaticDimensions?: EngineeringDimensionInstruction[];
+  automaticAnchors?: AssemblyMarkAnchor[];
+  exactInstances?: number;
+  fallbackInstances?: number;
+  geometrySignature?: string;
 }
 
 type GeneralSheetViewRuntime =
@@ -105,6 +108,8 @@ type GeneralSheetViewRuntime =
 interface GeneralSheetRuntime extends Omit<SheetState, "views"> {
   /** Persistent per-definition marks keep regeneration order independent. */
   pieceMarks?: Record<string, string>;
+  /** The BOM sheet is independent of any single view and paginates large assemblies. */
+  bomEntries?: Array<{ mark: string; label: string; quantity: number }>;
   id?: string;
   name?: string;
   readonly views: GeneralSheetViewRuntime[];
@@ -226,6 +231,8 @@ export class GeneralPdfController {
   private activeSheetId: string | null = null;
   private lastTreeSignature = "";
   private disposed = false;
+  private refreshInProgress = false;
+  private lastAutomaticRefresh = 0;
 
   constructor(options: GeneralPdfControllerOptions) {
     this.container = options.container;
@@ -253,6 +260,11 @@ export class GeneralPdfController {
       this.syncSectionSheets();
       this.decorateViewTree();
       this.normalizeModelSpacePdfRows();
+      // Check source geometry occasionally, not during every render or pointer movement.
+      if (Date.now() - this.lastAutomaticRefresh > 2800) {
+        this.lastAutomaticRefresh = Date.now();
+        void this.refreshAutomaticSheets(false);
+      }
     }, 240);
   }
 
@@ -336,7 +348,7 @@ export class GeneralPdfController {
    * This first stage chooses projections and a common nominal scale; it does
    * not infer manufacturing dimensions from Three.js display triangles.
    */
-  generateAutomaticAssembly(request: GeneralPdfRequest): boolean {
+  async generateAutomaticAssembly(request: GeneralPdfRequest): Promise<boolean> {
     if (this.disposed) return false;
     if (request.instanceIds.length < 1) {
       window.alert("El ensamble no contiene piezas.");
@@ -389,7 +401,16 @@ export class GeneralPdfController {
         yAxis: new THREE.Vector3(plannedView.yAxis.x, plannedView.yAxis.y, plannedView.yAxis.z),
         normal: new THREE.Vector3(plannedView.normal.x, plannedView.normal.y, plannedView.normal.z),
       };
-      const geometry = this.buildPlanGeometry(request.instanceIds, workPlane);
+      let geometry;
+      try {
+        geometry = await projectAssembly({
+          instanceIds: request.instanceIds, workPlane,
+          designModel: this.designModel, designScene: this.designScene,
+        });
+      } catch (error) {
+        window.alert(`Error proyectando ${plannedView.name}: ${String(error)}`);
+        return false;
+      }
       if (!geometry) {
         window.alert(`No se pudo proyectar ${plannedView.name}. No se creó el plano.`);
         return false;
@@ -400,6 +421,13 @@ export class GeneralPdfController {
         workPlane,
       }, geometry);
       view.automaticViewCode = plannedView.code;
+      view.automaticDimensions = plannedView.code === "ISO" ? [] : geometry.dimensions;
+      view.automaticAnchors = geometry.anchors;
+      view.exactInstances = geometry.exactInstances;
+      view.fallbackInstances = geometry.fallbackInstances;
+      view.geometrySignature = assemblyProjectionSignature({
+        instanceIds: request.instanceIds, designModel: this.designModel, designScene: this.designScene,
+      });
       sheet.views.push(view);
       projected.push({ id: view.id, code: plannedView.code, width: geometry.width, height: geometry.height });
     }
@@ -428,13 +456,100 @@ export class GeneralPdfController {
       layout.title = view.assemblyName;
       layout.showHidden = false;
     }
+    // Part and BOM sheets share DrawingProduction.sheets, never another renderer.
+    const unique = new Map<string, string>();
+    for (const id of request.instanceIds) {
+      const piece = this.designModel.pieceInstances.get(id);
+      if (piece && !unique.has(piece.definitionId)) unique.set(piece.definitionId, id);
+    }
+    const entries = [...unique].map(([definitionId, instanceId]) => ({
+      mark: marks[definitionId] ?? "—", label: this.getPieceLabel(instanceId), quantity:
+        request.instanceIds.filter((id) => this.designModel.pieceInstances.get(id)?.definitionId === definitionId).length,
+    }));
+    // Full material index on additional A3 sheets; no guessed weight/material.
+    if (entries.length > 8) {
+      const chunkSize = 40;
+      for (let start = 0; start < entries.length; start += chunkSize) {
+        const page = this.createEmptySheet(crypto.randomUUID(),
+          `Listado de piezas · ${request.assemblyName} · ${Math.floor(start / chunkSize) + 1}`);
+        page.bomEntries = entries.slice(start, start + chunkSize);
+        page.titleBlock.drawingNumber = `B-${request.assemblyId.slice(0, 8)}-${Math.floor(start / chunkSize) + 1}`;
+        this.production.sheets.set(page.id!, page);
+      }
+    }
+    // Keep the initial operation responsive with a bounded number of part views.
+    // Unprocessed marks are explicitly reported, never silently omitted.
+    let detailCount = 0;
+    for (const [definitionId, instanceId] of [...unique].slice(0, 20)) {
+      const object = this.designScene.getInstanceObject(instanceId);
+      if (!object) continue;
+      const localBounds = new THREE.Box3().setFromObject(object);
+      if (localBounds.isEmpty()) continue;
+      const partViews = planSmartAssemblyViews({
+        min: { x: localBounds.min.x, y: localBounds.min.y, z: localBounds.min.z },
+        max: { x: localBounds.max.x, y: localBounds.max.y, z: localBounds.max.z },
+      }).slice(0, 2);
+      const partSheet = this.createEmptySheet(crypto.randomUUID(),
+        `Pieza ${marks[definitionId]} · ${this.getPieceLabel(instanceId)}`);
+      partSheet.titleBlock.drawingNumber = `${marks[definitionId]}-${request.assemblyId.slice(0, 8)}`;
+      partSheet.pieceMarks = { [definitionId]: marks[definitionId]! };
+      const partProjected: Array<{ id: string; code: AutomaticViewCode; width: number; height: number }> = [];
+      for (const plannedPart of partViews) {
+        const plane: CadWorkPlaneState = {
+          mode: request.workPlane.mode, enabled: true,
+          origin: new THREE.Vector3(),
+          xAxis: new THREE.Vector3(plannedPart.xAxis.x, plannedPart.xAxis.y, plannedPart.xAxis.z),
+          yAxis: new THREE.Vector3(plannedPart.yAxis.x, plannedPart.yAxis.y, plannedPart.yAxis.z),
+          normal: new THREE.Vector3(plannedPart.normal.x, plannedPart.normal.y, plannedPart.normal.z),
+        };
+        const partGeometry = await projectAssembly({
+          instanceIds: [instanceId], workPlane: plane,
+          designModel: this.designModel, designScene: this.designScene,
+        });
+        if (!partGeometry) continue;
+        const view = this.createAssemblyView({
+          ...request, assemblyId: `piece:${instanceId}`,
+          assemblyName: `${marks[definitionId]} · ${plannedPart.name.replace("AUTO · ", "")}`,
+          instanceIds: [instanceId], workPlane: plane,
+        }, partGeometry);
+        view.automaticViewCode = plannedPart.code;
+        view.automaticDimensions = partGeometry.dimensions;
+        view.automaticAnchors = partGeometry.anchors;
+        view.exactInstances = partGeometry.exactInstances;
+        view.fallbackInstances = partGeometry.fallbackInstances;
+        view.geometrySignature = assemblyProjectionSignature({
+          instanceIds: [instanceId], designModel: this.designModel, designScene: this.designScene,
+        });
+        partSheet.views.push(view);
+        partProjected.push({ id: view.id, code: plannedPart.code,
+          width: partGeometry.width, height: partGeometry.height });
+      }
+      const arrangement = planSelectedSheetLayout(partProjected, "ISO_E");
+      const denominator = arrangement.length
+        ? selectAssemblyScaleDenominator(arrangement[0]!.modelScale) : null;
+      if (!denominator || arrangement.length !== partProjected.length) continue;
+      partSheet.scaleDenominator = denominator;
+      this.production.sheets.set(partSheet.id!, partSheet);
+      for (const [index, plannedLayout] of arrangement.entries()) {
+        const view = partSheet.views.find((candidate) => candidate.id === plannedLayout.id);
+        if (!view || !this.isAssemblyView(view)) continue;
+        const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
+        layout.kind = "ASSEMBLY";
+        layout.x = plannedLayout.x; layout.y = plannedLayout.y;
+        layout.width = plannedLayout.width; layout.height = plannedLayout.height;
+        layout.scaleDenominator = denominator; layout.title = view.assemblyName;
+        layout.showHidden = false;
+      }
+      detailCount++;
+    }
     this.activeSheetId = sheetId;
     this.lastTreeSignature = "";
     const opened = this.openSheet(sheetId);
     if (opened) {
       this.workspace.setStatus(
-        `DETALLADO AUTO: ${planned.length} vistas, escala 1:${scaleDenominator}. `
-        + "Proyecciones preliminares de malla; no son cotas exactas de fabricación.",
+        `DETALLADO AUTO: ${planned.length} vistas; ${detailCount} planos de pieza; escala 1:${scaleDenominator}. `
+        + `STEP HLR por pieza donde esté disponible; ${unique.size > 20 ? unique.size - 20 + " piezas sin plano individual por límite de 20. " : ""}`
+        + "Cotas B-Rep en las vistas ortogonales. Revisar antes de fabricar.",
       );
     }
     return opened;
@@ -774,8 +889,11 @@ export class GeneralPdfController {
     layout: ViewLayoutRuntime,
     index: number,
   ): void {
-    const innerWidth = Math.max(1, layout.width - 20);
-    const innerHeight = Math.max(1, layout.height - 34);
+    const automatic = Boolean(view.automaticViewCode);
+    const padX = automatic ? 90 : 20;
+    const padY = automatic ? 100 : 34;
+    const innerWidth = Math.max(1, layout.width - padX);
+    const innerHeight = Math.max(1, layout.height - padY);
     const scale = layout.scaleDenominator === null
       ? Math.min(
           innerWidth / Math.max(view.width, EPSILON),
@@ -784,8 +902,8 @@ export class GeneralPdfController {
       : this.technicalScale(sheet, layout.scaleDenominator);
     const drawnWidth = view.width * scale;
     const drawnHeight = view.height * scale;
-    const originX = layout.x + (layout.width - drawnWidth) / 2;
-    const originY = layout.y + 20 + (innerHeight - drawnHeight) / 2;
+    const originX = layout.x + (automatic ? 20 : 0) + (innerWidth - drawnWidth) / 2;
+    const originY = layout.y + (automatic ? 60 : 20) + (innerHeight - drawnHeight) / 2;
 
     for (const segment of view.segments) {
       this.appendLine(
@@ -794,6 +912,12 @@ export class GeneralPdfController {
         originX + segment.x2 * scale,
         originY + drawnHeight - segment.y2 * scale,
       );
+    }
+    if (automatic && view.automaticViewCode !== "ISO") {
+      this.renderAssemblyDimensions(view, layout, originX, originY, drawnHeight, scale);
+      if (index === 0 || view.assemblyId.startsWith("piece:")) {
+        this.renderAssemblyMarks(sheet, view, layout, originX, originY, drawnHeight, scale);
+      }
     }
 
     const border = document.createElementNS(SVG_NS, "rect");
@@ -842,8 +966,138 @@ export class GeneralPdfController {
     );
   }
 
+
+  private renderAssemblyDimensions(
+    view: AssemblySheetViewRuntime, layout: ViewLayoutRuntime,
+    originX: number, originY: number, drawnHeight: number, scale: number,
+  ): void {
+    const dimensions = view.automaticDimensions ?? [];
+    const measure = (metres: number): string => {
+      const mm = Math.abs(metres) * 1000;
+      return Number(mm.toFixed(mm < 10 ? 2 : 1)).toString();
+    };
+    let horizontal = 0;
+    let vertical = 0;
+    let diameters = 0;
+    for (const dimension of dimensions) {
+      const ax = originX + dimension.a.x * scale;
+      const bx = originX + dimension.b.x * scale;
+      const ay = originY + drawnHeight - dimension.a.y * scale;
+      const by = originY + drawnHeight - dimension.b.y * scale;
+      if (dimension.mode === "HORIZONTAL" && horizontal < 3) {
+        const y = layout.y + 28 + horizontal * 11;
+        this.appendDimensionLine(ax, ay, ax, y);
+        this.appendDimensionLine(bx, by, bx, y);
+        this.appendDimensionLine(ax, y, bx, y);
+        this.appendText((ax + bx) / 2, y - 3, measure(dimension.b.x - dimension.a.x), 8, "#12567c");
+        horizontal++;
+      } else if (dimension.mode === "VERTICAL" && vertical < 3) {
+        const x = layout.x + layout.width - 27 - vertical * 12;
+        this.appendDimensionLine(ax, ay, x, ay);
+        this.appendDimensionLine(bx, by, x, by);
+        this.appendDimensionLine(x, ay, x, by);
+        this.appendText(x + 3, (ay + by) / 2, measure(dimension.b.y - dimension.a.y), 8, "#12567c");
+        vertical++;
+      } else if (dimension.mode === "DIAMETER" && diameters < 3) {
+        const x = layout.x + 8;
+        const y = layout.y + layout.height - 44 - diameters * 13;
+        this.appendDimensionLine(ax, ay, x + 60, y);
+        const label = `${(dimension.quantity ?? 1) > 1 ? dimension.quantity + "× " : ""}Ø${measure((dimension.a.radius ?? 0) * 2)}`;
+        this.appendText(x, y - 3, label, 8, "#12567c");
+        diameters++;
+      }
+    }
+    if (dimensions.length) this.appendText(layout.x + 5, layout.y + 15, "COTAS STEP · mm", 8, "#12567c");
+  }
+
+  private appendDimensionLine(x1: number, y1: number, x2: number, y2: number): void {
+    const line = document.createElementNS(SVG_NS, "line");
+    line.setAttribute("x1", String(x1)); line.setAttribute("y1", String(y1));
+    line.setAttribute("x2", String(x2)); line.setAttribute("y2", String(y2));
+    line.setAttribute("stroke", "#12567c"); line.setAttribute("stroke-width", "0.65");
+    line.style.pointerEvents = "none";
+    this.workspace.svg.append(line);
+  }
+
+  private renderAssemblyMarks(
+    sheet: GeneralSheetRuntime, view: AssemblySheetViewRuntime, layout: ViewLayoutRuntime,
+    originX: number, originY: number, drawnHeight: number, scale: number,
+  ): void {
+    if (!sheet.pieceMarks) return;
+    const seen: number[] = [];
+    for (const anchor of (view.automaticAnchors ?? []).slice(0, 24)) {
+      const piece = this.designModel.pieceInstances.get(anchor.instanceId);
+      if (!piece) continue;
+      const mark = sheet.pieceMarks[piece.definitionId];
+      if (!mark) continue;
+      const x = Math.max(layout.x + 8, Math.min(layout.x + layout.width - 46,
+        originX + anchor.x * scale + 7));
+      let y = Math.max(layout.y + 46, Math.min(layout.y + layout.height - 22,
+        originY + drawnHeight - anchor.y * scale - 7));
+      while (seen.some((value) => Math.abs(value - y) < 10)) y += 10;
+      if (y > layout.y + layout.height - 22) continue;
+      seen.push(y);
+      this.appendText(x, y, mark, 9, "#8a241c");
+    }
+  }
+
+  /** Refreshes only generated views. Manual positions, scales and annotations are untouched. */
+  private async refreshAutomaticSheets(force: boolean): Promise<void> {
+    if (this.disposed || this.refreshInProgress) return;
+    const id = this.getActiveSheetId();
+    const sheet = id ? this.production.sheets.get(id) : null;
+    if (!sheet || !sheet.views.some((view) => this.isAssemblyView(view) && view.automaticViewCode)) return;
+    this.refreshInProgress = true;
+    let updated = 0;
+    try {
+      for (const candidate of sheet.views) {
+        if (!this.isAssemblyView(candidate) || !candidate.automaticViewCode) continue;
+        const signature = assemblyProjectionSignature({
+          instanceIds: candidate.instanceIds, designModel: this.designModel, designScene: this.designScene,
+        });
+        if (!force && signature === candidate.geometrySignature) continue;
+        const geometry = await projectAssembly({
+          instanceIds: candidate.instanceIds, workPlane: restoreWorkPlane(candidate.workPlane),
+          designModel: this.designModel, designScene: this.designScene,
+        });
+        if (!geometry) continue;
+        candidate.width = geometry.width; candidate.height = geometry.height;
+        candidate.segments = geometry.segments;
+        candidate.automaticDimensions = candidate.automaticViewCode === "ISO" ? [] : geometry.dimensions;
+        candidate.automaticAnchors = geometry.anchors;
+        candidate.exactInstances = geometry.exactInstances;
+        candidate.fallbackInstances = geometry.fallbackInstances;
+        candidate.geometrySignature = signature;
+        candidate.resolved = true;
+        updated++;
+      }
+      if (updated) {
+        this.workspace.render();
+        this.workspace.setStatus(`VISTAS AUTO: ${updated} vista(s) regeneradas sin mover layouts ni cotas manuales.`);
+      } else if (force) {
+        this.workspace.setStatus("VISTAS AUTO: no se encontraron cambios o geometría disponible.");
+      }
+    } catch (error) {
+      this.workspace.setStatus(`No se pudo regenerar el detallado automático: ${String(error)}`);
+    } finally {
+      this.refreshInProgress = false;
+    }
+  }
+
   /** Compact marks/quantities summary, not a certified material takeoff. */
   private renderAutomaticPartIndex(sheet: GeneralSheetRuntime): void {
+    if (sheet.bomEntries?.length) {
+      this.appendText(54, 90, "LISTADO DE PIEZAS · CANTIDADES SEGÚN MODELO (NO CERTIFICADAS)", 12, "#111");
+      for (const [i, item] of sheet.bomEntries.entries()) {
+        const col = Math.floor(i / 20);
+        const row = i % 20;
+        const x = 54 + col * 518;
+        const y = 116 + row * 24;
+        this.appendText(x, y, `${item.mark}  |  ${item.quantity} ud  |  ${item.label.slice(0, 61)}`, 9, "#222");
+      }
+      this.appendText(54, 594, "Materiales, pesos, cortes y soldaduras: comprobar por separado.", 9, "#8a241c");
+      return;
+    }
     const view = sheet.views.find((candidate): candidate is AssemblySheetViewRuntime =>
       this.isAssemblyView(candidate) && Boolean(candidate.automaticViewCode));
     if (!view || !sheet.pieceMarks) return;
@@ -876,7 +1130,9 @@ export class GeneralPdfController {
       this.appendText(54, 760, `+ ${rows.length - 8} marcas adicionales (ver árbol de vistas)`, 8, "#444");
     }
     this.appendText(54, 779,
-      "PRELIMINAR: proyección de aristas de malla, sin HLR ni cotas de fabricación.", 8, "#8a241c");
+      view.fallbackInstances
+        ? `PRELIMINAR: ${view.fallbackInstances} pieza(s) en malla; HLR solo por pieza B-Rep; comprobar cotas.`
+        : "PRELIMINAR: HLR por pieza STEP; sin ocultación entre piezas; comprobar cotas.", 8, "#8a241c");
   }
 
   private renderGenericTitleBlock(sheet: GeneralSheetRuntime): void {
@@ -1054,6 +1310,12 @@ export class GeneralPdfController {
       ? this.production.sheets.get(sheetId)
       : undefined;
     const tree = this.ensureViewTreePanel();
+    const regenerate = tree.parentElement?.querySelector<HTMLButtonElement>(
+      '[data-framelogic-regenerate-assembly="true"]');
+    if (regenerate) {
+      regenerate.style.display = sheet?.views.some((view) =>
+        this.isAssemblyView(view) && Boolean(view.automaticViewCode)) ? "block" : "none";
+    }
 
     const pieces = this.designModel.pieceInstances.getAll();
     const signature = sheet
@@ -1155,7 +1417,13 @@ export class GeneralPdfController {
         overflow: "auto",
         padding: "4px 0 8px",
       });
-      panel.append(header, content);
+      const regenerate = document.createElement("button");
+      regenerate.type = "button";
+      regenerate.textContent = "Regenerar planos automáticos";
+      regenerate.dataset["framelogicRegenerateAssembly"] = "true";
+      regenerate.style.cssText = "display:none;margin:6px;padding:6px;background:#29495a;color:#fff;border:1px solid #567483;border-radius:4px;cursor:pointer;font:11px system-ui;";
+      regenerate.addEventListener("click", () => { void this.refreshAutomaticSheets(true); });
+      panel.append(header, regenerate, content);
       this.workspace.overlay.append(panel);
     }
 
