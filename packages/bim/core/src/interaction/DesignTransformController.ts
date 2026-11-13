@@ -1,5 +1,6 @@
 import { installTransformPointerLifecycle } from "./TransformGizmoReliability";
 import * as THREE from "three";
+import { CadReferencePivotHandle } from "../import/CadReferencePivotHandle";
 
 import { configureMoveDestinationSnaps } from "./MoveSnapDestinationPolicy";
 import { PieceMoveCopySession } from "./PieceMoveCopySession";
@@ -86,6 +87,9 @@ export class DesignTransformController {
 
   private readonly pivot =
     new THREE.Object3D();
+
+  /** Same fixed-size yellow base-point control used for ROTATE and DWG. */
+  private readonly movePivotHandle: CadReferencePivotHandle | null;
 
 
   private readonly transformedObjects =
@@ -290,6 +294,42 @@ export class DesignTransformController {
       this.pivot,
     );
 
+    this.movePivotHandle = typeof document !== "undefined"
+      ? new CadReferencePivotHandle(
+          domElement,
+          () => this.controls.camera,
+          this.pivot,
+          this.setCameraEnabled,
+          () => {
+            if (!this.active || this.controls.getMode() !== "translate") return;
+            // Only the gizmo base is being relocated; no move transaction.
+            this.armedMoveAxis = null;
+            this.armedCopyMove = false;
+            this.armedPivot = true;
+            this.armedPointerDownActive = false;
+            this.ctrlCopyGesture = false;
+            this.snap.clearExcludedInstanceIds();
+            this.selection.setEnabled(false);
+          },
+          "piece",
+          () => {
+            // Sync native MOVE delta origin after free dragging this HTML
+            // handle, so the next axis drag never moves geometry by the
+            // difference between the old and new base positions.
+            this.previousPivotPosition.copy(this.pivot.position);
+            this.dragStartPivotPosition.copy(this.pivot.position);
+            this.armedMoveAxis = null;
+            this.armedCopyMove = false;
+            this.armedPivot = false;
+            this.armedPointerDownActive = false;
+            this.ctrlCopyGesture = false;
+            this.snap.clearExcludedInstanceIds();
+            this.selection.setEnabled(true);
+            this.selection.refreshHelpers();
+          },
+          (x, y) => this.snap.findSnap(x, y)?.point.clone() ?? null,
+        )
+      : null;
 
     this.unsubscribeSelection =
       this.selection.subscribe(
@@ -415,6 +455,8 @@ export class DesignTransformController {
       this.pivot,
     );
 
+    if (mode === "translate") this.movePivotHandle?.activate("translate");
+    else this.movePivotHandle?.deactivate();
 
     this.dragMode =
       "NONE";
@@ -430,6 +472,7 @@ export class DesignTransformController {
   // ==========================================================
 
   deactivate(): void {
+    this.movePivotHandle?.deactivate();
     if (this.controls.dragging && (this.ctrlCopyGesture || this.copySession)) {
       this.cancelingCtrlGesture = true;
     }
@@ -977,7 +1020,8 @@ export class DesignTransformController {
     this.controls.attach(
       this.pivot,
     );
-
+    if (this.controls.getMode() === "translate") this.movePivotHandle?.activate("translate");
+    else this.movePivotHandle?.deactivate();
 
     this.dragMode =
       "NONE";
@@ -1701,6 +1745,13 @@ export class DesignTransformController {
       this.armedPointerDownActive =
         true;
 
+      if (this.armedPivot) {
+        // Keep a destination SNAP click from starting a native XYZ drag or
+        // selecting the piece underneath. MOVE/COPY axis picks are unchanged.
+        event.preventDefault?.();
+        event.stopImmediatePropagation?.();
+      }
+
     };
 
 
@@ -2223,6 +2274,7 @@ export class DesignTransformController {
     window.removeEventListener("keydown", this.handleRepeatCopyKeyDown, true);
 
     this.deactivate();
+    this.movePivotHandle?.dispose();
 
 
     this.scene.remove(
