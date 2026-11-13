@@ -63,9 +63,10 @@ interface ExpandContext {
 }
 
 const MAX_BLOCK_DEPTH = 24;
-// Keep geometry from ALL regions of a DWG. The old 80k hard stop discarded
-// every subsequent INSERT; with batched GPU rendering and indexed SNAP we can
-// accommodate a larger bounded reference without freezing Firefox.
+// The 240k cap remains the default for DXF and callers that explicitly rely
+// on bounded geometry. DWG chooses unlimitedSegments to preserve ALL structural
+// geometry regardless of file size; that path parses in a Web Worker and sends
+// segments to the main thread in acknowledged chunks.
 export const MAX_RENDERED_SEGMENTS = 240_000;
 const IDENTITY = new THREE.Matrix4();
 const WHITE = "#ffffff";
@@ -214,9 +215,10 @@ function normalizedVertex(pt3: CadDxfPoint3, bulge = 0): Vertex {
 
 export function parseCadDxf(
   text: string,
-  options?: { readonly maxSegments?: number; readonly omitOptionalGeometry?: boolean; readonly recoverDimensionGraphics?: boolean },
+  options?: { readonly maxSegments?: number; readonly unlimitedSegments?: boolean; readonly omitOptionalGeometry?: boolean; readonly recoverDimensionGraphics?: boolean },
 ): ParsedCadReference {
-  const maxSegments = Number.isFinite(options?.maxSegments)
+  const unlimitedSegments = options?.unlimitedSegments === true;
+  const maxSegments = unlimitedSegments ? Number.POSITIVE_INFINITY : Number.isFinite(options?.maxSegments)
     ? Math.max(16, Math.min(MAX_RENDERED_SEGMENTS,
       Math.floor(options!.maxSegments!)))
     : MAX_RENDERED_SEGMENTS;
@@ -652,49 +654,52 @@ export function parseCadDxf(
     expand(root, context);
     return { used: rootEmitted, limited: rootLimited };
   };
-  // Reserve a fair share for every logical entity before expanding any
-  // potentially enormous MINSERT/HATCH. Extra budget restores full detail.
-  const fairShare = Math.max(1,
-    Math.min(4096, Math.floor(maxSegments * 0.75 / Math.max(1, roots.length))));
-  const pending: Array<{ root: DxfRecord[]; cursor: number }> = [];
-  let visitedRoots = 0;
-  for (const root of roots) {
-    const result = runRoot(root, Math.min(fairShare,
-      maxSegments - segments.length));
-    if (result.limited) pending.push({ root, cursor: result.used });
-    visitedRoots++;
-    if (segments.length >= maxSegments) break;
-  }
-  // Preserve geometry detail by replaying only the un-emitted suffix. Passes
-  // are bounded by the shrinking candidate set; all main roots have already
-  // been represented by the first pass.
-  pass = 1;
-  let remaining = pending;
-  for (let iteration = 0;
-    iteration < 6 && remaining.length && segments.length < maxSegments;
-    iteration++) {
-    const next: typeof pending = [];
-    let emittedThisPass = 0;
-    for (let i = 0; i < remaining.length; i++) {
-      const item = remaining[i]!;
-      const capacity = maxSegments - segments.length;
-      if (capacity <= 0) { next.push(item); continue; }
-      const quota = Math.max(1, Math.floor(capacity / (remaining.length - i)));
-      const result = runRoot(item.root, quota, item.cursor);
-      item.cursor += result.used;
-      emittedThisPass += result.used;
-      if (result.limited) next.push(item);
+  if (unlimitedSegments) {
+    // No 240k quota and no repeated fair-share replays. Each top-level entity
+    // (including nested INSERTs) is expanded exactly once. A large early
+    // MINSERT cannot consume a global geometry budget and hide later blocks.
+    for (const root of roots) runRoot(root, Number.POSITIVE_INFINITY);
+  } else {
+    // DXF and bounded test fixtures keep fair allocation across all roots.
+    const fairShare = Math.max(1,
+      Math.min(4096, Math.floor(maxSegments * 0.75 / Math.max(1, roots.length))));
+    const pending: Array<{ root: DxfRecord[]; cursor: number }> = [];
+    let visitedRoots = 0;
+    for (const root of roots) {
+      const result = runRoot(root, Math.min(fairShare,
+        maxSegments - segments.length));
+      if (result.limited) pending.push({ root, cursor: result.used });
+      visitedRoots++;
+      if (segments.length >= maxSegments) break;
     }
-    // If no progress can be made, stop rather than loop forever.
-    if (emittedThisPass === 0) {
+    // Revisit only the suffix skipped by bounded fair-share expansion.
+    pass = 1;
+    let remaining = pending;
+    for (let iteration = 0;
+      iteration < 6 && remaining.length && segments.length < maxSegments;
+      iteration++) {
+      const next: typeof pending = [];
+      let emittedThisPass = 0;
+      for (let i = 0; i < remaining.length; i++) {
+        const item = remaining[i]!;
+        const capacity = maxSegments - segments.length;
+        if (capacity <= 0) { next.push(item); continue; }
+        const quota = Math.max(1, Math.floor(capacity / (remaining.length - i)));
+        const result = runRoot(item.root, quota, item.cursor);
+        item.cursor += result.used;
+        emittedThisPass += result.used;
+        if (result.limited) next.push(item);
+      }
+      if (emittedThisPass === 0) {
+        remaining = next;
+        break;
+      }
       remaining = next;
-      break;
     }
-    remaining = next;
+    incompleteRootEntities = remaining.length + (roots.length - visitedRoots);
+    truncated = incompleteRootEntities > 0;
+    if (truncated) skip("LIMITE_SEGMENTOS");
   }
-  incompleteRootEntities = remaining.length + (roots.length - visitedRoots);
-  truncated = incompleteRootEntities > 0;
-  if (truncated) skip("LIMITE_SEGMENTOS");
 
   // Text uses its OWN fair budget, independent of line segments. A large
   // MINSERT in the first record must never erase a later tube label.

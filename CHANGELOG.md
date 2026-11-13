@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.131 — 2026-11-12
+
+### DWG grandes · sin límite global de 240.000 segmentos estructurales
+
+- **DWG sin corte por segmentos:** tanto `Abrir DWG/DXF` (cuando la extensión es DWG) como `Recuperar DWG` activan el modo `unlimitedSegments` en el parser. Los `INSERT` anidados y los elementos posteriores al segmento 240.000 ya no se recortan por la cuota global.
+- **Una pasada estructural:** para DWG grandes cada entidad raíz se expande directamente una sola vez, sin repartir un presupuesto de 240.000 segmentos ni repetir recursivamente los primeros miles de segmentos de cada bloque.
+- **Transferencia por lotes con confirmación:** el Web Worker anuncia la cantidad real de segmentos y los envía en lotes de máximo 8.192. El hilo principal confirma la recepción de cada lote antes de solicitar el siguiente, reduciendo picos de clonación y manteniendo la UI con indicador de progreso. Si una transferencia acaba incompleta, se rechaza antes de registrar entidades.
+- **Ahorro de memoria:** la comparación de extensiones entre los lectores DWG ya no crea una matriz auxiliar con dos puntos por segmento.
+- **DXF y herramientas existentes:** conservan por defecto el límite protector de 240.000 segmentos, las unidades explícitas introducidas en v0.1.130, la representación por capas, el procesamiento de registros en grupos, SNAP y archivos .flproject. La omisión de HATCH y XREF se mantiene; las cotas gráficas opcionales conservan su política independiente.
+- **Pruebas:** regresión con 245.761 segmentos estructurales (más de 240.000) incluyendo una viga colocada al final del archivo, validación de textos y del código INSUNITS, y transporte exacto de 250.001 registros por lotes sin pérdidas.
+
+**Límites de hardware:** sin límite numérico de segmentos no significa memoria infinita. La conversión y el modelo CAD deben caber en la RAM del dispositivo; archivos con millones de entidades pueden tardar o causar errores de memoria. Los formatos no soportados (ACAD_PROXY_ENTITY, sólidos especiales) y referencias externas siguen requiriendo revisión visual. No se asegura que todos los bloques con atributos sean legibles por este solo cambio.
+
+---
+
 ## v0.1.130 — 2026-11-12
 
 ### DWG/DXF · Unidades explícitas y prevención definitiva del factor ×1.000 accidental

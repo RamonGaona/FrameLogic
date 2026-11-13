@@ -9,7 +9,7 @@ import type {
 import type {
   CadPointSceneController,
 } from "../design/CadPointSceneController";
-import { type CadDxfPoint3, type ParsedCadReference, MAX_RENDERED_SEGMENTS } from "./CadDxfGeometryParser";
+import { type CadDxfPoint3, type ImportedCadSegment, type ParsedCadReference, MAX_RENDERED_SEGMENTS } from "./CadDxfGeometryParser";
 import { suspiciousDwgMeterScale } from "./CadImportScaleSafety";
 import { chooseCadImportUnits, type CadImportUnitChoice } from "./CadImportUnitDialog";
 import {
@@ -90,7 +90,7 @@ export class CadReferenceImportController {
         throw new Error("Selecciona un archivo .DWG o .DXF.");
       }
       report(`DWG/DXF · Convirtiendo y analizando ${file.name} fuera del navegador principal…`);
-      const parsed = await this.parseInWorker(file, extension, recoverDwg);
+      const parsed = await this.parseInWorker(file, extension, recoverDwg, report);
     if (parsed.segments.length < 1 && parsed.points.length < 1) {
       throw new Error("No se encontraron entidades 2D compatibles en el archivo CAD.");
     }
@@ -240,8 +240,10 @@ export class CadReferenceImportController {
         .map(([kind, count]) => `${kind} ${count}`).join(", ")}`
       : "";
     const truncation = parsed.truncated
-      ? `\nATENCIÓN: importación parcial. Se alcanzó el límite de ${MAX_RENDERED_SEGMENTS.toLocaleString()} segmentos. El importador reparte la capacidad entre los bloques para mostrar todo el plano, pero ${parsed.incompleteRootEntities} entidades aún tienen detalles sin incorporar. No utilizar este resultado como plano completo de fabricación.`
-      : "";
+      ? `\nATENCIÓN: importación parcial. Se alcanzó el límite de ${MAX_RENDERED_SEGMENTS.toLocaleString()} segmentos de DXF. Quedan ${parsed.incompleteRootEntities} entidades con detalle pendiente. No utilizar este resultado como plano completo de fabricación.`
+      : extension === "dwg" && parsed.segments.length > MAX_RENDERED_SEGMENTS
+        ? `\nDWG grande: ${parsed.segments.length.toLocaleString("es-CO")} segmentos estructurales/gráficos cargados completos, sin corte global a 240.000. La geometría CAD no compatible y referencias externas aún pueden faltar.`
+        : "";
     const xrefs = parsed.unresolvedExternalReferences.length
       ? `\nREFERENCIAS EXTERNAS (XREF) NO DISPONIBLES: ${parsed.unresolvedExternalReferences.join(", ")}. Estas geometrías no están embebidas en el DWG: importa también los archivos DWG referenciados.`
       : "";
@@ -360,6 +362,7 @@ export class CadReferenceImportController {
     file: File,
     extension: "dwg" | "dxf",
     recoverDwg = false,
+    report: (status: string) => void = () => {},
   ): Promise<ParsedCadReference> {
     if (typeof Worker === "undefined") {
       throw new Error(
@@ -373,6 +376,9 @@ export class CadReferenceImportController {
         { type: "module" },
       );
       let settled = false;
+      let streamedHeader: ParsedCadReference | null = null;
+      let streamedSegments: ImportedCadSegment[] = [];
+      let expectedSegments = 0;
       const stop = () => {
         if (settled) return false;
         settled = true;
@@ -380,18 +386,48 @@ export class CadReferenceImportController {
         return true;
       };
       worker.onmessage = (event: MessageEvent<
-        { ok: true; parsed: ParsedCadReference }
+        | { ok: true; parsed: ParsedCadReference }
+        | { ok: true; phase: "begin"; parsed: ParsedCadReference; totalSegments: number }
+        | { ok: true; phase: "segments"; segments: ImportedCadSegment[] }
+        | { ok: true; phase: "done" }
         | { ok: false; error: string }
       >) => {
-        if (!stop()) return;
-        if (event.data.ok) resolve(event.data.parsed);
-        else reject(new Error("No se pudo convertir o analizar el DWG/DXF: " + event.data.error));
+        const response = event.data;
+        if (!response.ok) {
+          if (stop()) reject(new Error("No se pudo convertir o analizar el DWG/DXF: " + response.error));
+          return;
+        }
+        if (!("phase" in response)) {
+          if (stop()) resolve(response.parsed);
+          return;
+        }
+        if (response.phase === "begin") {
+          streamedHeader = response.parsed;
+          expectedSegments = response.totalSegments;
+          streamedSegments = [];
+          worker.postMessage({ type: "next" });
+          return;
+        }
+        if (response.phase === "segments") {
+          streamedSegments.push(...response.segments);
+          report(`DWG · Recibiendo ${streamedSegments.length.toLocaleString("es-CO")} / ${expectedSegments.toLocaleString("es-CO")} segmentos del procesador…`);
+          worker.postMessage({ type: "next" });
+          return;
+        }
+        if (response.phase === "done") {
+          if (!stop()) return;
+          if (!streamedHeader || streamedSegments.length !== expectedSegments) {
+            reject(new Error("La transferencia DWG no terminó completa; se descartó para evitar importar un plano incompleto."));
+          } else {
+            resolve({ ...streamedHeader, segments: streamedSegments });
+          }
+        }
       };
       worker.onerror = (error) => {
         if (!stop()) return;
         reject(new Error("Error en el procesador DWG/DXF: " + error.message));
       };
-      worker.postMessage({ extension, buffer: bytes, recoverDwg }, [bytes]);
+      worker.postMessage({ type: "parse", extension, buffer: bytes, recoverDwg }, [bytes]);
     });
   }
 
