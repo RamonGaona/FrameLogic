@@ -1,3 +1,5 @@
+import { inferAssemblyLongitudinalFrame, type AssemblyLongitudinalFrame } from "./AssemblyOrientationPlanner";
+
 /**
  * Automatic drawing planning for FrameLogic.
  *
@@ -73,15 +75,76 @@ export function planAutomaticViews(bounds: DrawingBounds3): AutomaticDrawingView
   });
 }
 
+
+/**
+ * Candidate projections registered in a geometry-derived longitudinal frame.
+ * The sampled corners establish VIEW extents only; STEP B-Rep remains the
+ * measurement source. The sheet keeps the existing FRONT/TOP/RIGHT/ISO slots.
+ */
+function planLongitudinalViews(
+  points: readonly DrawingPoint3[],
+  frame: AssemblyLongitudinalFrame,
+): AutomaticDrawingView[] {
+  const add = (a: DrawingPoint3, b: DrawingPoint3): DrawingPoint3 =>
+    ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
+  const neg = (a: DrawingPoint3): DrawingPoint3 => mul(a, -1);
+  const normalize = (a: DrawingPoint3): DrawingPoint3 => mul(a, 1 / Math.hypot(a.x, a.y, a.z));
+  const cross = (a: DrawingPoint3, b: DrawingPoint3): DrawingPoint3 =>
+    v(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
+  const x = frame.xAxis, y = frame.yAxis, n = frame.normal;
+  const isoX = normalize(add(x, neg(n)));
+  const isoN = normalize(add(add(x, n), y));
+  const isoY = normalize(cross(isoN, isoX));
+  const bases: Array<Pick<AutomaticDrawingView, "code" | "name" | "xAxis" | "yAxis" | "normal">> = [
+    { code: "FRONT", name: "AUTO · Alzado longitudinal", xAxis: x, yAxis: y, normal: n },
+    { code: "TOP", name: "AUTO · Planta longitudinal", xAxis: x, yAxis: neg(n), normal: y },
+    { code: "RIGHT", name: "AUTO · Extremo", xAxis: neg(n), yAxis: y, normal: x },
+    { code: "ISO", name: "AUTO · Isométrica", xAxis: isoX, yAxis: isoY, normal: isoN },
+  ];
+  return bases.map((basis) => {
+    const px = points.map((p) => dot(p, basis.xAxis));
+    const py = points.map((p) => dot(p, basis.yAxis));
+    const pz = points.map((p) => dot(p, basis.normal));
+    const minX = Math.min(...px), minY = Math.min(...py), minZ = Math.min(...pz);
+    const maxX = Math.max(...px), maxY = Math.max(...py), maxZ = Math.max(...pz);
+    const diagonal = Math.hypot(maxX - minX, maxY - minY, maxZ - minZ);
+    const margin = Math.max(diagonal * 0.025, 1e-5);
+    return {
+      ...basis,
+      origin: sum(sum(mul(basis.xAxis, minX - margin), mul(basis.yAxis, minY - margin)),
+        mul(basis.normal, minZ - margin)),
+      width: maxX - minX + margin * 2,
+      height: maxY - minY + margin * 2,
+      depth: maxZ - minZ + margin * 2,
+    };
+  });
+}
+
 /**
  * Select only views that add useful independent information to an assembly.
- * Stage 1 uses world-axis envelopes, not an inferred machining datum or PCA.
- * Neither these envelopes nor projected mesh edges are exact fabrication dimensions.
+ * Uses a geometry-derived longitudinal reference only when strongly defined.
+ * Otherwise preserves the original world-axis view selection. Neither render
+ * envelopes nor projected mesh edges are exact manufacturing dimensions.
  */
 export function planSmartAssemblyViews(
   bounds: DrawingBounds3,
   pieceCount = 1,
+  geometryPoints?: readonly DrawingPoint3[],
 ): AutomaticDrawingView[] {
+  const frame = geometryPoints ? inferAssemblyLongitudinalFrame(geometryPoints) : null;
+  if (frame && geometryPoints) {
+    const oriented = planLongitudinalViews(geometryPoints, frame);
+    const longitudinal = oriented.find((view) => view.code === "FRONT")!;
+    const end = oriented.find((view) => view.code === "RIGHT")!;
+    // A high-confidence long axis is slender by construction; only introduce
+    // a third orthographic direction if it describes substantial depth.
+    const volumetric = Math.min(longitudinal.height, end.width)
+      / Math.max(longitudinal.width, 1e-12) >= 0.45;
+    const codes: AutomaticViewCode[] = ["FRONT", "RIGHT"];
+    if (pieceCount >= 3 && volumetric) codes.push("TOP");
+    if (pieceCount >= 2) codes.push("ISO");
+    return codes.map((code) => oriented.find((view) => view.code === code)!);
+  }
   const candidates = planAutomaticViews(bounds);
   if (!candidates.length) return [];
   const spans = [
