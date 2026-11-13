@@ -441,6 +441,7 @@ export class DesignRotateController {
             this.snap.clearExcludedInstanceIds();
             this.selection.setEnabled(false);
           },
+          "piece",
         )
       : null;
 
