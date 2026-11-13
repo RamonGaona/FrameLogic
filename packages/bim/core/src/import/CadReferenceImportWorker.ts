@@ -3,23 +3,25 @@ import type { ImportedCadSegment, ParsedCadReference } from "./CadDxfGeometryPar
 import { CadDwgSegmentChunks } from "./CadDwgSegmentChunks";
 import { rawCadExtent } from "./CadImportUnitDialog";
 import { decideDwgImport } from "./CadDwgRecoveryDecision";
+import { CotaCompactCadGeometry } from "./CotaCompactCadGeometry";
 
 // DWG conversion and recursive INSERT expansion always run off the UI thread.
 // The fast WASM reader is the default; acad-ts loads only for recovery/fallback.
 type Request =
   | { readonly type: "parse"; readonly extension: "dwg" | "dxf";
-      readonly buffer: ArrayBuffer; readonly recoverDwg?: boolean }
+      readonly buffer: ArrayBuffer; readonly recoverDwg?: boolean; readonly engine?: "framelogic" | "cota" }
   | { readonly type: "next" };
 type Response =
   | { readonly ok: true; readonly parsed: ParsedCadReference }
   | { readonly ok: true; readonly phase: "begin"; readonly parsed: ParsedCadReference;
       readonly totalSegments: number }
   | { readonly ok: true; readonly phase: "segments"; readonly segments: readonly ImportedCadSegment[] }
+  | { readonly ok: true; readonly phase: "packed"; readonly layer: string; readonly color: string; readonly positions: Float64Array }
   | { readonly ok: true; readonly phase: "done" }
   | { readonly ok: false; readonly error: string };
 const worker = self as unknown as {
   onmessage: ((event: MessageEvent<Request>) => void) | null;
-  postMessage: (message: Response) => void;
+  postMessage: (message: Response, transfer?: Transferable[]) => void;
   location: Location;
 };
 const parse = (text: string, dwg: boolean): ParsedCadReference =>
@@ -29,12 +31,26 @@ const parse = (text: string, dwg: boolean): ParsedCadReference =>
   });
 
 let activeStream: CadDwgSegmentChunks<ImportedCadSegment> | null = null;
+let activeCompact: CotaCompactCadGeometry | null = null;
 /**
  * The UI explicitly acknowledges each received chunk; there is never a
  * queue of hundreds of large structured-clone messages. DXF keeps its
  * original single-reply bounded protocol for backwards compatibility.
  */
 const sendNext = (): void => {
+  if (activeCompact) {
+    const packet = activeCompact.take();
+    if (!packet) {
+      worker.postMessage({ ok: true, phase: "done" });
+      activeCompact = null;
+      return;
+    }
+    worker.postMessage({
+      ok: true, phase: "packed", layer: packet.layer, color: packet.color,
+      positions: packet.positions,
+    }, [packet.positions.buffer]);
+    return;
+  }
   if (!activeStream) return;
   const chunk = activeStream.next();
   if (!chunk) {
@@ -53,7 +69,32 @@ worker.onmessage = (event) => {
   }
   void (async () => {
     try {
-      const { extension, buffer, recoverDwg } = request;
+      const { extension, buffer, recoverDwg, engine } = request;
+      if (engine === "cota") {
+        // Cota's DWG/DXF reader and zero-copy packed worker transfer.
+        // We keep source geometry in a compact read-only reference rather
+        // than creating up to 1.4m editable CadLine objects.
+        const { convertWithCotaCadReader } = await import("./CotaCadReader");
+        const source = await convertWithCotaCadReader(buffer, extension);
+        const compact = new CotaCompactCadGeometry();
+        const parsed = parseCadDxf(source, {
+          omitOptionalGeometry: true, recoverDimensionGraphics: false,
+          unlimitedSegments: true, onSegment: compact.add,
+        });
+        compact.finish();
+        activeCompact = compact;
+        worker.postMessage({
+          ok: true, phase: "begin", totalSegments: compact.count,
+          parsed: {
+            ...parsed, segments: [], totalSegments: compact.count,
+            rawExtent: compact.rawExtent,
+            importDiagnostics:
+              "\\nMotor Cota: geometría compacta sin crear entidades editables por segmento."
+              + "\\nSNAP por demanda, visualización y capas. Mover/copiar esta referencia ligera requiere convertirla al modo editable.",
+          },
+        });
+        return;
+      }
       if (extension === "dxf") {
         const text = new TextDecoder().decode(buffer);
         if (text.startsWith("AutoCAD Binary DXF"))
