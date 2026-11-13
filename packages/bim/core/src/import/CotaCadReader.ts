@@ -25,7 +25,7 @@ export async function convertWithCotaCadReader(
 
   const {
     DwgReader, DxfReader, DxfWriter, CadDictionary, Field, FieldList,
-    DimensionArc, Insert, MultiLeader, Polyline3D, MText, Solid, XYZ,
+    DimensionArc, Insert, MultiLeader, Polyline3D, MText,
   } = await import("@node-projects/acad-ts");
   const doc = format === "dwg"
     ? DwgReader.readFromStream(buffer, null)
