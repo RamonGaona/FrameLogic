@@ -104,7 +104,7 @@ worker.onmessage = (event) => {
       // The binary DWG may contain millions of segments. Do not clone the
       // entire array in one postMessage: announce metadata first, then send
       // acknowledged batches so the receiving main thread remains responsive.
-      activeStream = new CadDwgSegmentChunks(parsed.segments);
+      activeStream = new CadDwgSegmentChunks(parsed.segments, true);
       worker.postMessage({
         ok: true, phase: "begin", totalSegments: activeStream.total,
         parsed: { ...parsed, segments: [], totalSegments: activeStream.total, rawExtent: sourceExtent },
