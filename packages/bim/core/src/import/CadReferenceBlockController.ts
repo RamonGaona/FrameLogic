@@ -1261,17 +1261,25 @@ export class CadReferenceBlockController {
       -(y - rect.top) / rect.height * 2 + 1);
     this.ringRaycaster.setFromCamera(this.ringPointer, this.options.cameraProvider());
     let picker: THREE.Object3D | null = null;
+    let visibleRings: THREE.Object3D | null = null;
     this.helper.traverse(child => {
-      const gizmo = child as THREE.Object3D & { picker?: { rotate?: THREE.Object3D } };
-      if (child.type === "TransformControlsGizmo" && gizmo.picker?.rotate) {
-        picker = gizmo.picker.rotate;
+      const gizmo = child as THREE.Object3D & {
+        picker?: { rotate?: THREE.Object3D };
+        gizmo?: { rotate?: THREE.Object3D };
+      };
+      if (child.type === "TransformControlsGizmo") {
+        picker = gizmo.picker?.rotate ?? null;
+        visibleRings = gizmo.gizmo?.rotate ?? null;
       }
     });
-    if (picker) {
-      const matches = this.ringRaycaster.intersectObjects((picker as THREE.Object3D).children, true);
+    // Try the generous invisible native pickers first. Fall back to actual
+    // rendered torus rings if this Three.js revision has no picker mesh hit.
+    for (const group of [picker, visibleRings]) {
+      if (!group) continue;
+      const matches = this.ringRaycaster.intersectObjects((group as THREE.Object3D).children, true);
       for (const match of matches) {
         let node: THREE.Object3D | null = match.object;
-        while (node && node !== picker) {
+        while (node && node !== group) {
           if (node.name === "X" || node.name === "Y" || node.name === "Z") return node.name;
           node = node.parent;
         }
