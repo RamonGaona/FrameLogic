@@ -613,13 +613,23 @@ export class CadReferenceBlockController {
     toOrigin: THREE.Vector3,
     rotation: THREE.Quaternion,
   ): boolean {
-    if (this.isCompactReference(referenceName)) return false;
     const layerIds = this.getReferenceLayerIds(
       referenceName,
       true,
     );
     if (layerIds.size < 1) return false;
 
+    const matrix = new THREE.Matrix4().makeTranslation(toOrigin.x, toOrigin.y, toOrigin.z)
+      .multiply(new THREE.Matrix4().makeRotationFromQuaternion(rotation))
+      .multiply(new THREE.Matrix4().makeTranslation(-fromOrigin.x, -fromOrigin.y, -fromOrigin.z));
+    for (const packet of this.options.designModel.cadLines.getPackedBatches()) {
+      if (!layerIds.has(packet.layerId)) continue;
+      this.options.designModel.cadLines.setPackedBatchTransform(
+        packet.id, matrix.clone().multiply(
+          packet.transform ? new THREE.Matrix4().fromArray(packet.transform) : new THREE.Matrix4(),
+        ).elements,
+      );
+    }
     for (const line of this.options.designModel.cadLines.getAll()) {
       if (!layerIds.has(line.layerId)) continue;
       this.options.designModel.cadLines.updateGeometry(
@@ -694,11 +704,6 @@ export class CadReferenceBlockController {
     mode: "translate" | "rotate",
   ): boolean {
     if (!this.interactionEnabled) return false;
-    if ([...this.selectedReferenceNames].some((name) => this.isCompactReference(name))) {
-      this.badge.textContent = "Cota CAD: referencia ligera de solo lectura. Usa Abrir DWG/DXF para edición.";
-      this.badge.style.display = "block";
-      return false;
-    }
     const bounds = this.getSelectedBounds();
     if (!bounds) return false;
 
@@ -801,6 +806,9 @@ export class CadReferenceBlockController {
       const delta = this.pivot.position
         .clone()
         .sub(snapshot.pivotPosition);
+      this.applyPackedDelta(snapshot, new THREE.Matrix4().makeTranslation(
+        delta.x, delta.y, delta.z,
+      ));
       for (const line of snapshot.lines) {
         this.options.designModel.cadLines.updateGeometry(
           line.id,
@@ -822,6 +830,12 @@ export class CadReferenceBlockController {
       const deltaQuaternion = this.pivot.quaternion
         .clone()
         .multiply(inverseStart);
+      const center = snapshot.pivotPosition;
+      this.applyPackedDelta(snapshot,
+        new THREE.Matrix4().makeTranslation(center.x, center.y, center.z)
+          .multiply(new THREE.Matrix4().makeRotationFromQuaternion(deltaQuaternion))
+          .multiply(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z)),
+      );
       for (const line of snapshot.lines) {
         this.options.designModel.cadLines.updateGeometry(
           line.id,
@@ -963,6 +977,12 @@ export class CadReferenceBlockController {
         .map((point) => ({
           id: point.id,
           position: { ...point.position },
+        })),
+      packed: this.options.designModel.cadLines.getPackedBatches()
+        .filter((packet) => layerIds.has(packet.layerId))
+        .map((packet) => ({
+          id: packet.id, transform: packet.transform
+            ? [...packet.transform] : new THREE.Matrix4().toArray(),
         })),
     };
   }
@@ -1129,6 +1149,9 @@ export class CadReferenceBlockController {
           return;
         }
         const before = this.captureSelection();
+        this.applyPackedDelta(before, new THREE.Matrix4().makeTranslation(
+          delta.x, delta.y, delta.z,
+        ));
         for (const line of before.lines) {
           this.options.designModel.cadLines.updateGeometry(
             line.id, addPoint(line.start, delta), addPoint(line.end, delta),
@@ -1449,12 +1472,6 @@ export class CadReferenceBlockController {
     return ids;
   }
 
-  private isCompactReference(referenceName: string): boolean {
-    const layers = this.getReferenceLayerIds(referenceName, true);
-    return this.options.designModel.cadLines.getPackedBatches()
-      .some((packet) => layers.has(packet.layerId));
-  }
-
   private hasReference(referenceName: string): boolean {
     return this.options.designModel.layers
       .getAll()
@@ -1483,6 +1500,7 @@ export class CadReferenceBlockController {
   private syncGeometry(): void {
     this.options.cadLineScene.sync();
     this.options.cadPointScene.sync();
+    this.options.cadTextScene?.sync();
     this.options.clearGeometryQueryCache();
   }
 
