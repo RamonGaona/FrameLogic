@@ -534,7 +534,7 @@ export class FrameLogicProjectPackageController {
       }
       for (const packet of packageValue.cadPackedLines ?? []) {
         if (!this.options.designModel.layers.get(packet.layerId))
-          throw new Error("Capa de referencia Cota ausente: " + packet.layerId);
+          throw new Error("Capa de referencia CAD compacta ausente: " + packet.layerId);
         const bytes = decodeBase64(packet.dataBase64);
         if (bytes.byteLength === 0 || bytes.byteLength % 48 !== 0)
           throw new Error("Geometría CAD compacta dañada en el proyecto.");
