@@ -139,9 +139,9 @@ export class CadScreenSpatialIndex {
       // Exclude only segments whose projected bounding box is completely
       // off screen. Crossing lines still participate in local SNAP.
       if (Math.max(ax, bx) < rect.left - 24
-        || Math.min(ax, bx) > rect.right + 24
+        || Math.min(ax, bx) > rect.left + rect.width + 24
         || Math.max(ay, by) < rect.top - 24
-        || Math.min(ay, by) > rect.bottom + 24) continue;
+        || Math.min(ay, by) > rect.top + rect.height + 24) continue;
 
       this.visible++;
       let slot: number;
