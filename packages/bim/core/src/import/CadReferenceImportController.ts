@@ -400,6 +400,8 @@ export class CadReferenceImportController {
     extension: "dwg" | "dxf",
     recoverDwg = false,
     report: (status: string) => void = () => {},
+    onBegin: (metadata: ParsedCadReference, total: number) => Promise<void> = async () => {},
+    onBatch: (segments: readonly ImportedCadSegment[], total: number) => Promise<void> = async () => {},
   ): Promise<ParsedCadReference> {
     if (typeof Worker === "undefined") {
       throw new Error(
@@ -414,7 +416,7 @@ export class CadReferenceImportController {
       );
       let settled = false;
       let streamedHeader: ParsedCadReference | null = null;
-      let streamedSegments: ImportedCadSegment[] = [];
+      let receivedSegments = 0;
       let expectedSegments = 0;
       const stop = () => {
         if (settled) return false;
@@ -429,36 +431,47 @@ export class CadReferenceImportController {
         | { ok: true; phase: "done" }
         | { ok: false; error: string }
       >) => {
-        const response = event.data;
-        if (!response.ok) {
-          if (stop()) reject(new Error("No se pudo convertir o analizar el DWG/DXF: " + response.error));
-          return;
-        }
-        if (!("phase" in response)) {
-          if (stop()) resolve(response.parsed);
-          return;
-        }
-        if (response.phase === "begin") {
-          streamedHeader = response.parsed;
-          expectedSegments = response.totalSegments;
-          streamedSegments = [];
-          worker.postMessage({ type: "next" });
-          return;
-        }
-        if (response.phase === "segments") {
-          streamedSegments.push(...response.segments);
-          report(`DWG · Recibiendo ${streamedSegments.length.toLocaleString("es-CO")} / ${expectedSegments.toLocaleString("es-CO")} segmentos del procesador…`);
-          worker.postMessage({ type: "next" });
-          return;
-        }
-        if (response.phase === "done") {
-          if (!stop()) return;
-          if (!streamedHeader || streamedSegments.length !== expectedSegments) {
-            reject(new Error("La transferencia DWG no terminó completa; se descartó para evitar importar un plano incompleto."));
-          } else {
-            resolve({ ...streamedHeader, segments: streamedSegments });
+        void (async () => {
+          const response = event.data;
+          if (!response.ok) {
+            if (stop()) reject(new Error("No se pudo convertir o analizar el DWG/DXF: " + response.error));
+            return;
           }
-        }
+          if (!("phase" in response)) {
+            if (stop()) resolve(response.parsed);
+            return;
+          }
+          if (response.phase === "begin") {
+            streamedHeader = response.parsed;
+            expectedSegments = response.totalSegments;
+            receivedSegments = 0;
+            // Confirm DWG units BEFORE the first entity is registered.
+            // Keep the worker paused until the selection is finalized.
+            await onBegin(response.parsed, expectedSegments);
+            if (!settled) worker.postMessage({ type: "next" });
+            return;
+          }
+          if (response.phase === "segments") {
+            // There is never a second 1.4m-object JS array in the main thread.
+            // Ack only after the current batch has been registered (and a
+            // frame yielded), so the worker cannot flood the message queue.
+            await onBatch(response.segments, expectedSegments);
+            receivedSegments += response.segments.length;
+            report(`DWG · ${receivedSegments.toLocaleString("es-CO")} / ${expectedSegments.toLocaleString("es-CO")} segmentos registrados…`);
+            if (!settled) worker.postMessage({ type: "next" });
+            return;
+          }
+          if (response.phase === "done") {
+            if (!stop()) return;
+            if (!streamedHeader || receivedSegments !== expectedSegments) {
+              reject(new Error("La transferencia DWG no terminó completa; se descartó para evitar importar un plano incompleto."));
+            } else {
+              resolve(streamedHeader);
+            }
+          }
+        })().catch((error: unknown) => {
+          if (stop()) reject(error instanceof Error ? error : new Error(String(error)));
+        });
       };
       worker.onerror = (error) => {
         if (!stop()) return;
