@@ -4,11 +4,12 @@ import { FILE_MENU_ACTIONS, findFileCommand } from "./FileMenuController";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("ARCHIVO menu source actions", () => {
-  it("keeps original file actions and DWG recovery in the requested order", () => {
+  it("keeps existing file actions, adds Cota beside editable CAD, and retains DWG recovery", () => {
     expect(FILE_MENU_ACTIONS.map((action) => action.id)).toEqual([
       "save-project",
       "open-project",
       "open-cad",
+      "open-cad-cota",
       "recover-cad",
       "import-piece",
       "open-piece",
