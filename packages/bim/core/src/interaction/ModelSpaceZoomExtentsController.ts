@@ -730,10 +730,20 @@ export class ModelSpaceZoomExtentsController {
       return;
     }
 
-    if (key === "e" || key === "o" || key === "s" || key === "enter") {
+    if (key === "e" || key === "o" || key === "s") {
+      // Typing a command option only highlights it. ZOOM must wait for
+      // explicit Enter before changing the camera or starting a window.
+      this.zoomChoice = key;
+      this.zoomCommandExpiresAt = now + COMMAND_TIMEOUT_MS;
       event.preventDefault();
       event.stopImmediatePropagation();
-      this.executeZoomChoice(key === "enter" ? this.zoomChoice : key as ZoomChoice);
+      this.showZoomChoices();
+      return;
+    }
+    if (key === "enter") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.executeZoomChoice(this.zoomChoice);
       return;
     }
     this.zoomStage = "idle";
