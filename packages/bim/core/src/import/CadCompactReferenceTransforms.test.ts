@@ -120,6 +120,51 @@ describe("compact CAD reference transforms", () => {
     renderer.dispose();
   });
 
+  it("transforms and copies 1.4 million packed segments without allocating per-segment CAD entities", () => {
+    const model = new DesignModel();
+    const sourceLayer = model.layers.create({
+      name: "CAD GranPlano · 0", visible: true, locked: false, snapEnabled: true,
+    });
+    const segmentCount = 1_400_000;
+    const data = new Float64Array(segmentCount * 6);
+    for (let i = 0; i < segmentCount; i++) {
+      const o = i * 6;
+      data[o] = i;
+      data[o + 3] = i + 1;
+    }
+    model.cadLines.registerPackedBatch({
+      id: "large-reference", layerId: sourceLayer.id, positions: data,
+    });
+    const original = data.slice(0, 6);
+    expect(model.cadLines.getAll()).toHaveLength(0);
+    expect(model.cadLines.packedCount).toBe(segmentCount);
+
+    const transform = new THREE.Matrix4().makeRotationZ(Math.PI / 2);
+    const moved = new THREE.Matrix4().makeTranslation(100, 200, 0).multiply(transform);
+    expect(model.cadLines.setPackedBatchTransform("large-reference", moved.toArray())).toBe(true);
+    const point = new THREE.Vector3(1, 0, 0).applyMatrix4(
+      new THREE.Matrix4().fromArray(model.cadLines.getPackedBatches()[0]!.transform!),
+    );
+    expect(point.x).toBeCloseTo(100);
+    expect(point.y).toBeCloseTo(201);
+
+    const second = model.layers.create({
+      name: "CAD GranPlano copia 1 · 0", visible: true,
+      locked: false, snapEnabled: true,
+    });
+    model.cadLines.registerPackedCopy(
+      "large-reference-copy", second.id, "large-reference",
+      new THREE.Matrix4().makeTranslation(300, 0, 0).multiply(moved).toArray(),
+    );
+    const packets = model.cadLines.getPackedBatches();
+    expect(packets[0]!.positions).toBe(packets[1]!.positions);
+    expect(model.cadLines.getAll()).toHaveLength(0);
+    expect(data.slice(0, 6)).toEqual(original);
+    expect(packets[0]!.transform).not.toEqual(packets[1]!.transform);
+    expect(model.cadLines.getPackedBatchBounds("large-reference"))
+      .toBe(model.cadLines.getPackedBatchBounds("large-reference-copy"));
+  });
+
   it("rejects corrupt matrices without modifying packed geometry", () => {
     const f = setup();
     expect(() => f.model.cadLines.setPackedBatchTransform(
