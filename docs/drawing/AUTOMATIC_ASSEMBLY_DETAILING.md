@@ -28,6 +28,40 @@ permiten asumir interoperabilidad inmediata ni eliminar obligaciones de
 redistribución. En esta etapa no se añade una dependencia nueva ni se copia
 código de FreeCAD, OCCT o los productos comerciales.
 
+## v0.1.146 — Etapa A, orientación longitudinal (entrega incremental)
+
+`AssemblyOrientationPlanner.inferAssemblyLongitudinalFrame` usa el tensor de
+covarianza de una muestra acotada de vértices de las cajas envolventes
+**locales de cada malla**, transformadas a coordenadas mundiales. Rechaza
+geometrías isótropas/ambiguas y elige el signo de eje de forma determinista.
+`planSmartAssemblyViews` acepta opcionalmente esas muestras; propone un
+alzado longitudinal y vista de extremo ortogonales, además de vistas
+complementarias ya soportadas por `AutoSheetLayoutPlanner`.
+`GeneralPdfController` recolecta muestras por ensamble y pieza (máximo 8192
+puntos de caja) y mantiene el flujo actual, los tamaños derivados de
+`projectAssembly`, las cotas B-Rep y las posiciones manuales de Paper Space.
+La opción sin muestras conserva exactamente el comportamiento previo.
+
+Estas cajas de presentación no constituyen datums de fabricación, detección
+de conexiones, medida ni evidencia de que exista perforación o soldadura.
+Las formas no esbeltas siguen con vistas de ejes globales; aún falta
+reconocimiento topológico de perfiles y uniones, HLR del conjunto completo,
+cortes y detalles reales con sus indicadores en planta/alzado.
+
+**Siguiente incremento de Etapa A:** pasar múltiples TopoDS_Shape con las
+transformaciones correctas a un único `HLRBRep_Algo` (el API admite
+múltiples formas), verificar compatibilidad de escalas y transformaciones,
+comparar contra oclusiones reales y rechazar resultado cuando hay geometría
+mixta. Después: detectar uniones con evidencia B-Rep, elegir sección y
+proyectarla con `sectionByPlane`; no etiquetar proximidad de cajas como
+contacto geométrico verificado.
+
+Referencias: OCCT, "Modeling Algorithms", sección Hidden Lines Removal:
+https://github.com/Open-Cascade-SAS/OCCT/blob/master/dox/user_guides/modeling_algos/modeling_algos.md .
+FreeCAD TechDraw es una referencia de secuenciación (combinar formas,
+orientar, proyectar, anotar), sin copiar código:
+https://github.com/FreeCAD/FreeCAD/blob/main/src/Mod/TechDraw/App/DrawViewPart.cpp .
+
 ## V0.1.143 — etapa 1
 
 Flujo: árbol INSTANCIAS -> menú contextual de ensamble ->

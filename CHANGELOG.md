@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.146 — 2026-11-13
+
+### Etapa A (entrega incremental 1): vistas longitudinales de ensambles rotados
+
+- **Orientación según geometría:** nuevo `AssemblyOrientationPlanner` estima por análisis de varianza (PCA) el eje longitudinal de conjuntos claramente esbeltos a partir de cajas locales de mallas ya transformadas a mundo. Rechaza orientaciones ambiguas y conserva el selector antiguo de ejes globales como respaldo. La dirección es una **propuesta de vista**, no un eje de mecanizado verificado.
+- **Alzado/extremo vinculados:** `AutoDrawingPlanner` construye bases ortogonales coherentes para alzado longitudinal, extremo, planta e isométrica; `GeneralPdfController` pasa muestras de las piezas, inclusive en hojas individuales, sin sustituir `projectAssembly`, las cotas STEP ni el motor A3/PDF existente.
+- **Seguridad:** los límites y posiciones reales de las vistas siguen tomándose de la proyección posterior, no del PCA; no se generan características de fabricación a partir de cajas o triángulos.
+- **Pruebas añadidas:** perfil rotado 45°, columna vertical, volumen cúbico sin eje principal y geometrías inválidas; se incorporan a `test:drawings`.
+
+**Etapa A NO finalizada:** sigue pendiente HLR exacto de conjunto con ocultación entre piezas, cortes de unión, detalles ampliados, flechas de sección y validación técnica de planos reales. La proyección exacta continúa limitada al HLR por pieza cargada. El cambio NO convierte los PDF en planos certificados para fabricación.
+
+---
+
 ## v0.1.145 — 2026-11-13
 
 ### Acotación inteligente STEP, edición de etiquetas y BOM de ingeniería
