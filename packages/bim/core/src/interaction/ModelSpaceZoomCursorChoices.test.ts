@@ -80,7 +80,7 @@ function setup() {
     domElement: canvas as unknown as HTMLElement,
     cameraProvider: () => camera,
     controls,
-  } as Options);
+  } as unknown as Options);
   const extents = vi.fn(async () => {});
   const object = vi.fn(async () => true);
   Reflect.set(controller, "zoomExtents", extents);
