@@ -174,9 +174,25 @@ export class CadScreenSpatialIndex {
       const layer = this.model.layers.get(packet.layerId);
       if (!layer?.visible || !layer.snapEnabled) continue;
       const p = packet.positions;
+      const transform = packet.transform
+        ? new THREE.Matrix4().fromArray(packet.transform) : null;
+      const projected = transform
+        ? new THREE.Matrix4().multiplyMatrices(this.projection, transform)
+        : this.projection;
+      const projectPacked = (x: number, y: number, z: number): [number, number] | null => {
+        const point = this.scratch.set(x, y, z).applyMatrix4(projected);
+        if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+        return [rect.left + (point.x + 1) * rect.width * 0.5,
+          rect.top + (1 - point.y) * rect.height * 0.5];
+      };
+      const world = (x: number, y: number, z: number) => {
+        const result = new THREE.Vector3(x, y, z);
+        if (transform) result.applyMatrix4(transform);
+        return { x: result.x, y: result.y, z: result.z };
+      };
       for (let i = 0; i < p.length; i += 6) {
-        const start = project(p[i]!, p[i + 1]!, p[i + 2]!);
-        const end = project(p[i + 3]!, p[i + 4]!, p[i + 5]!);
+        const start = projectPacked(p[i]!, p[i + 1]!, p[i + 2]!);
+        const end = projectPacked(p[i + 3]!, p[i + 4]!, p[i + 5]!);
         if (!start || !end) continue;
         const [ax, ay] = start, [bx, by] = end;
         if (Math.max(ax, bx) < rect.left - 24
@@ -194,8 +210,8 @@ export class CadScreenSpatialIndex {
         }
         const line: CadLine = {
           id: `cota:${packet.id}:${i / 6}`, layerId: packet.layerId,
-          start: { x: p[i]!, y: p[i + 1]!, z: p[i + 2]! },
-          end: { x: p[i + 3]!, y: p[i + 4]!, z: p[i + 5]! },
+          start: world(p[i]!, p[i + 1]!, p[i + 2]!),
+          end: world(p[i + 3]!, p[i + 4]!, p[i + 5]!),
         };
         this.indexedLines[slot] = line;
         const base = slot * 4;
