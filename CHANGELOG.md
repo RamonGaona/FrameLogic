@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.140 — 2026-11-13
+
+### ZOOM: opciones de teclado legibles junto al cursor
+
+- **Z → opciones contextuales:** al pulsar `Z` aparece junto al puntero un menú con `E · Extensión (todo el modelo)` y `O · Objeto (selección)`. Se elimina el recuadro fijo de ZOOM pegado al borde inferior que se superponía con otros controles.
+- **Actualización al teclear:** `E` y `O` ejecutan directamente la opción correspondiente (como antes); `↑`/`↓` o `Tab` alternan y resaltan la opción visible; `Enter` confirma la resaltada; `Esc` cancela sin modificar la cámara.
+- **Posicionamiento robusto:** el menú sigue la última posición real del puntero sobre Model Space, se desplaza hacia arriba cuando el cursor está cerca de la parte inferior y respeta los bordes de la ventana. Indicadores de resultado/errores de ZOOM también aparecen allí.
+- **No interferencias:** el zoom no captura atajos modificados como `Ctrl+Z`, no se activa dentro de campos de texto y `Z` seguido de `E`/`O` no lanza accidentalmente otro comando CAD. El menú temporal dura hasta ocho segundos y se oculta al cancelar, ejecutar u operar otra herramienta.
+- **Pruebas:** posición en bordes y pantallas estrechas, combinación `Z/E/O`, Tab/flechas/Enter/Esc, aislamiento de otros atajos y supresión en editores de texto.
+
+**Validación en navegador pendiente:** comprobar el menú junto al cursor en Firefox/Chrome y el zoom real de modelos CAD, DWG/DXF y piezas 3D. El CI compila la aplicación, pero no garantiza la publicación automática en Cloudflare Pages.
+
+---
+
 ## v0.1.139 — 2026-11-13
 
 ### LINE: ocultar el recuadro informativo después del primer punto
