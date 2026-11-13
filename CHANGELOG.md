@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.138 — 2026-11-13
+
+### MOVE: centro de desplazamiento editable mediante el mismo control que ROTATE
+
+- **Piezas y ensambles 3D:** MOVE incorpora el marcador amarillo visible y de tamaño constante en pantalla utilizado por ROTATE. Clic sobre el marcador, luego clic en un SNAP (extremo, punto medio, etc.) para cambiar con precisión el punto base del gizmo; también admite arrastrarlo libremente.
+- **DWG/DXF:** el marcador existente de MOVE comparte la nueva experiencia. Si se arrastra y se suelta sobre un SNAP válido, el punto base se ajusta a ese punto; si no hay SNAP se mantiene en la posición libre elegida.
+- **Seguridad geométrica:** cambiar el punto base no desplaza, duplica, rota ni altera la geometría seleccionada, ni crea una entrada de Undo/Redo. El siguiente arrastre de MOVE toma ese punto base como origen y solo aplica el desplazamiento solicitado.
+- **Selección y comandos:** el marcador se superpone al lienzo para evitar clics accidentales sobre piezas ocultas detrás del gizmo, sin interferir con CTRL + copiar por eje, MOVE numérico, SNAP de destino ni el cambio de selección.
+- **Interacción:** tamaño de marcador aumentado a 24 px, texto informativo accesible, limpieza al cancelar/desactivar y actualización al cambiar de cámara.
+- **Pruebas:** clic + SNAP 3D, arrastre libre, SNAP de liberación en pieza y DWG, desplazamiento posterior sin salto de origen y conservación del historial.
+
+**Validación manual pendiente:** comprobar MOVE en piezas 3D y DWG/DXF desde Chrome y Firefox y confirmar que Cloudflare Pages publique la versión. GitHub Actions solo valida y compila.
+
+---
+
 ## v0.1.137 — 2026-11-13
 
 ### LINE: longitud numérica después de navegar la cámara
