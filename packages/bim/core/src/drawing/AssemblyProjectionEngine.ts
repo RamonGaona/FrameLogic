@@ -181,10 +181,14 @@ export async function projectAssembly(source: AssemblyProjectionSource,
     }
   }
   if (!raw.length) return null;
-  const xs = raw.flatMap((s) => [s.x1, s.x2]);
-  const ys = raw.flatMap((s) => [s.y1, s.y2]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  let minX = Number.POSITIVE_INFINITY, maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY, maxY = Number.NEGATIVE_INFINITY;
+  for (const segment of raw) {
+    minX = Math.min(minX, segment.x1, segment.x2);
+    maxX = Math.max(maxX, segment.x1, segment.x2);
+    minY = Math.min(minY, segment.y1, segment.y2);
+    maxY = Math.max(maxY, segment.y1, segment.y2);
+  }
   const padding = Math.max(maxX - minX, maxY - minY, 0.001) * 0.04;
   const dx = -minX + padding, dy = -minY + padding;
   const shift = (p: AutomaticDimensionPoint): AutomaticDimensionPoint =>
