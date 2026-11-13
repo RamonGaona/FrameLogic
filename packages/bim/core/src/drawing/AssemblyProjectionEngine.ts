@@ -307,6 +307,20 @@ export async function projectAssemblySection(
       || Math.abs(axes[0]!.dot(axes[1]!)) > size * size * 1e-6
       || Math.abs(axes[0]!.dot(axes[2]!)) > size * size * 1e-6
       || Math.abs(axes[1]!.dot(axes[2]!)) > size * size * 1e-6) return null;
+    // The world AABB is conservative for exclusion only; never declare
+    // actual contact or a section from a bounding-box overlap.
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return null;
+    const center = box.getCenter(new THREE.Vector3());
+    const half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+    const normal = source.workPlane.normal.clone().normalize();
+    const signedDistance = center.sub(source.workPlane.origin).dot(normal);
+    const radius = Math.abs(normal.x) * half.x
+      + Math.abs(normal.y) * half.y + Math.abs(normal.z) * half.z;
+    if (Math.abs(signedDistance) > radius + 1e-9) {
+      found.add(instanceId); // Definitely outside the physical cutting plane.
+      continue;
+    }
     const inverse = world.clone().invert();
     const localOrigin = source.workPlane.origin.clone().applyMatrix4(inverse);
     const localNormal = source.workPlane.normal.clone().transformDirection(inverse);
