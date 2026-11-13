@@ -47,6 +47,28 @@ navegador. Aunque el lector alternativo funcione, un DWG extremadamente
 detallado puede seguir necesitando importar por partes o simplificar
 la geometría. Un resultado parcial no está verificado para fabricación.
 
+## Selección de unidades v0.1.130
+
+Tras convertir el DWG (en el modo Abrir o Recuperar), FrameLogic muestra
+un **selector real** con mm, cm, m, pulgadas y pies. Esta ventana reemplaza
+el campo de texto anterior y muestra tanto el factor como el tamaño del
+archivo en las unidades originales y en milímetros. Seleccionar
+`Milímetros (mm) — ×1` aplica exactamente ×1 incluso cuando el DXF
+convertido indica `INSUNITS = 6` (metros). No existe una opción de
+`auto` para DWG, para evitar confundir los metadatos del conversor con
+la unidad física del dibujo.
+
+Para `CUNAS_MEDIR 1.dwg`:
+- Seleccionar **mm** y comprobar que aparece `Factor que se aplicará: ×1`.
+- Si la extensión bruta muestra 461.564,8 unidades, la extensión
+  resultante debe mostrar aproximadamente **461.564,8 mm**, nunca
+  461.564.801 mm.
+- Se puede pulsar **Cancelar** sin crear capas, geometría o textos.
+- Los DWG ya importados con escala errónea requieren eliminar la referencia
+  y reimportarla; los proyectos guardados previamente no cambian.
+- Esta mejora no aumenta el máximo de 240.000 segmentos ni completa
+  automáticamente entidades que excedan dicho límite.
+
 ## Comprobación manual con el DWG original
 
 - Confirmar tubos y bloques con ATTRIB y TEXT interiores (p. ej. "4S 3000"

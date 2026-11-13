@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.130 — 2026-11-12
+
+### DWG/DXF · Unidades explícitas y prevención definitiva del factor ×1.000 accidental
+
+- **Selector de unidades DWG:** reemplaza el `window.prompt` por un cuadro de diálogo con opciones excluyentes `mm (×1)`, `cm (×10)`, `m (×1.000)`, `in (×25,4)` y `ft (×304,8)`. Se inicia en **mm** y no ofrece `auto` para DWG; la unidad que informe el DXF generado solo es informativa y **nunca modifica la selección manual**.
+- **Vista previa previa a la importación:** muestra el código `INSUNITS` detectado, el factor realmente aplicado y la extensión máxima en unidades originales y en milímetros. Permite cancelar antes de registrar capas, geometría o textos.
+- **Una sola conversión:** el factor procede exclusivamente de la selección confirmada y se aplica por igual a líneas, puntos, posiciones y ejes de textos `TEXT`, `MTEXT`, `ATTRIB`; se comprueba que `mm` equivale exactamente a ×1.
+- **Archivos DXF:** mantiene la conversión automática para códigos de `INSUNITS` válidos; si el DXF no declara unidades conocidas, presenta el mismo selector explícito.
+- **Aviso complementario:** se conserva la confirmación de escala sospechosa al elegir metros en un dibujo con miles de unidades de extensión. El resumen final diferencia la unidad elegida manualmente del factor automático de DXF.
+- **Pruebas:** incluye el caso `CUNAS_MEDIR 1.dwg` con `INSUNITS=6` y extensión original de 461.564,80125 unidades, además de centímetros, metros, pulgadas, pies y prohibición de inferencia automática del DWG.
+
+**Limitación:** esta corrección no altera el tope protector de 240.000 segmentos ni recupera los bloques gráficos omitidos por dicho límite. Las referencias ya importadas con factor incorrecto deben eliminarse y reimportarse; no se reescala retrospectivamente un `.flproject`.
+
+---
+
 ## v0.1.129 — 2026-11-12
 
 ### DWG · Corrección del lector alternativo en producción y protección contra escala ×1.000

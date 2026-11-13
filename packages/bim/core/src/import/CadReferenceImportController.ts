@@ -11,6 +11,7 @@ import type {
 } from "../design/CadPointSceneController";
 import { type CadDxfPoint3, type ParsedCadReference, MAX_RENDERED_SEGMENTS } from "./CadDxfGeometryParser";
 import { suspiciousDwgMeterScale } from "./CadImportScaleSafety";
+import { chooseCadImportUnits, type CadImportUnitChoice } from "./CadImportUnitDialog";
 import {
   CAD_TEXT_ANCHOR_PREFIX,
   type CadReferenceTextAnnotation,
@@ -94,7 +95,24 @@ export class CadReferenceImportController {
       throw new Error("No se encontraron entidades 2D compatibles en el archivo CAD.");
     }
 
-    const unitScale = this.resolveUnitScale(parsed.insUnits, extension);
+    // Never trust the converted DWG's $INSUNITS when the coordinates were
+    // authored in millimetres: the explicit user choice is the ONLY scale
+    // applied to lines, point geometry, and text anchors.
+    const declaredDxfFactor = extension === "dxf"
+      ? insUnitsToMillimeters(parsed.insUnits) : null;
+    const selection: CadImportUnitChoice | null = declaredDxfFactor === null
+      ? await chooseCadImportUnits(parsed, file.name)
+      : { unit: "mm", factor: declaredDxfFactor };
+    if (!selection) {
+      throw new Error("Importación cancelada: no se confirmó la unidad de origen.");
+    }
+    const unitScale = selection.factor;
+    if (declaredDxfFactor === null && selection.unit === "mm" && unitScale !== 1) {
+      throw new Error("Error interno: la selección mm debe importar con factor ×1.");
+    }
+    const sourceUnitName = declaredDxfFactor === null
+      ? selection.unit
+      : "automática (metadatos DXF)";
     if (extension === "dwg") {
       const suspicious = suspiciousDwgMeterScale(parsed, unitScale);
       if (suspicious) {
@@ -112,7 +130,7 @@ export class CadReferenceImportController {
         );
       }
     }
-    report(`DWG/DXF · Unidad origen confirmada · factor ${unitScale} hacia mm…`);
+    report(`DWG/DXF · Unidad origen confirmada: ${sourceUnitName} · factor ×${unitScale} hacia mm…`);
     const layerIds = new Map<string, string>();
     const referenceName = uniqueReferenceName(
       this.options.designModel,
@@ -231,7 +249,7 @@ export class CadReferenceImportController {
       ? `\nDefiniciones BLOCK ausentes: ${parsed.unresolvedBlocks.slice(0, 8).join(", ")}.`
       : "";
     window.alert(
-      `Plano CAD "${referenceName}" importado como bloque de referencia.\nSe priorizaron perfiles, tubos, bloques y textos. Los sombreados HATCH se omiten; se rescata solo la geometría gráfica de DIMENSION que cabe después de la estructura.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.texts.length} textos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos · ${parsed.recoveredDimensionSegments} segmentos gráficos secundarios${skipped}.${truncation}${xrefs}${missingBlocks}${parsed.importDiagnostics ?? ""}\nUnidades de origen: ${unitScale === 1 ? "1 unidad = 1 mm" : `1 unidad = ${unitScale} mm`}. Factor aplicado: ×${unitScale}.\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
+      `Plano CAD "${referenceName}" importado como bloque de referencia.\nSe priorizaron perfiles, tubos, bloques y textos. Los sombreados HATCH se omiten; se rescata solo la geometría gráfica de DIMENSION que cabe después de la estructura.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.texts.length} textos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos · ${parsed.recoveredDimensionSegments} segmentos gráficos secundarios${skipped}.${truncation}${xrefs}${missingBlocks}${parsed.importDiagnostics ?? ""}\nUnidad seleccionada: ${sourceUnitName}. Equivalencia: ${unitScale === 1 ? "1 unidad = 1 mm" : `1 unidad = ${unitScale} mm`}. Factor aplicado: ×${unitScale}.\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
     );
     } finally {
       status.remove();
@@ -377,12 +395,6 @@ export class CadReferenceImportController {
     });
   }
 
-  private resolveUnitScale(insUnits: number, extension: "dwg" | "dxf"): number {
-    return resolveCadImportUnitScale(
-      extension, insUnits,
-      (message, initialValue) => window.prompt(message, initialValue),
-    );
-  }
 }
 
 /**
