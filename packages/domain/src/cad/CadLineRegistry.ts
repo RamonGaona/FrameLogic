@@ -28,6 +28,8 @@ export interface PackedCadLineBatch {
   readonly layerId: string;
   /** Six coordinates per segment, in model millimetres. */
   readonly positions: Float64Array;
+  /** Column-major world transform. Geometry remains immutable and shareable. */
+  readonly transform?: readonly number[];
 }
 
 export class CadLineRegistry {
@@ -40,6 +42,10 @@ export class CadLineRegistry {
   private changeRevision = 0;
   private readonly packedBatches = new Map<string, PackedCadLineBatch>();
   private packedSegmentCount = 0;
+  private readonly packedBounds = new WeakMap<Float64Array, {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+  }>();
 
   /**
    * Fast read-only CAD underlay storage. No per-segment JS objects or UUIDs;
@@ -47,17 +53,65 @@ export class CadLineRegistry {
    */
   registerPackedBatch(input: PackedCadLineBatch): void {
     if (input.positions.length === 0 || input.positions.length % 6 !== 0
-      || !input.positions.every(Number.isFinite))
+      || !input.positions.every(Number.isFinite)
+      || (input.transform !== undefined && (
+        input.transform.length !== 16 || !input.transform.every(Number.isFinite)
+      )))
       throw new Error("Invalid packed CAD line geometry.");
     if (this.packedBatches.has(input.id))
       throw new Error("Duplicate packed CAD line packet: " + input.id);
-    this.packedBatches.set(input.id, input);
+    this.packedBatches.set(input.id, { ...input, transform: input.transform ? [...input.transform] : undefined });
     this.packedSegmentCount += input.positions.length / 6;
     this.changeRevision++;
   }
 
   getPackedBatches(): readonly PackedCadLineBatch[] {
     return Array.from(this.packedBatches.values());
+  }
+
+  /** Change only the reference matrix: no traversal or cloning of its segments. */
+  setPackedBatchTransform(id: string, transform: readonly number[]): boolean {
+    if (transform.length !== 16 || !transform.every(Number.isFinite))
+      throw new Error("Invalid compact CAD reference transform.");
+    const existing = this.packedBatches.get(id);
+    if (!existing) return false;
+    this.packedBatches.set(id, { ...existing, transform: [...transform] });
+    this.changeRevision++;
+    return true;
+  }
+
+  /** Reuse the exact immutable Float64Array when copying a compact reference. */
+  registerPackedCopy(id: string, layerId: string, sourceId: string, transform: readonly number[]): void {
+    const source = this.packedBatches.get(sourceId);
+    if (!source) throw new Error("Compact CAD copy source not found: " + sourceId);
+    if (this.packedBatches.has(id)) throw new Error("Duplicate compact CAD copy: " + id);
+    if (transform.length !== 16 || !transform.every(Number.isFinite))
+      throw new Error("Invalid compact CAD copy transform.");
+    this.packedBatches.set(id, { id, layerId, positions: source.positions, transform: [...transform] });
+    this.packedSegmentCount += source.positions.length / 6;
+    this.changeRevision++;
+  }
+
+  /** Local bounds are computed at most once for each shared source buffer. */
+  getPackedBatchBounds(id: string): {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+  } | null {
+    const packet = this.packedBatches.get(id);
+    if (!packet) return null;
+    const cached = this.packedBounds.get(packet.positions);
+    if (cached) return cached;
+    const min = { x: Infinity, y: Infinity, z: Infinity };
+    const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+    const p = packet.positions;
+    for (let i = 0; i < p.length; i += 3) {
+      min.x = Math.min(min.x, p[i]!); max.x = Math.max(max.x, p[i]!);
+      min.y = Math.min(min.y, p[i + 1]!); max.y = Math.max(max.y, p[i + 1]!);
+      min.z = Math.min(min.z, p[i + 2]!); max.z = Math.max(max.z, p[i + 2]!);
+    }
+    const bounds = { min, max };
+    this.packedBounds.set(packet.positions, bounds);
+    return bounds;
   }
 
   removePackedByLayerIds(ids: ReadonlySet<string>): void {
