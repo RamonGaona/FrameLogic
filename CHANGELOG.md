@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.148 — 2026-11-13
+
+### Etapa A (entrega incremental 3): cortes A-A/B-B y ampliaciones vectoriales
+
+- **Secciones B-Rep reales:** `AssemblyProjectionEngine.projectAssemblySection` utiliza `OpenCascadeDrawingKernel.sectionByPlane` con el plano situado en el ensamble y transformado a cada definición STEP. Convierte las curvas de intersección a la base de dibujo; rechaza el corte completo si falta cualquier documento STEP o hay escala deformada, y nunca suplanta un perfil físico con aristas de la malla.
+- **Estaciones A-A y B-B:** `AssemblySectionDetailPlanner` propone dos secciones transversales al 20 % y 80 % de la longitud proyectada. **Son posiciones geométricas preliminares, NO conexiones detectadas ni verificadas.** Si la intersección real es vacía, no se emite un corte ficticio. La vista principal contiene trazas, flechas y referencias de hoja.
+- **Ampliaciones locales:** dos recortes vectoriales de la proyección existente conservan la condición de línea oculta; los recuadros de detalle y sus referencias llevan a una hoja A3 adicional con escalas normalizadas por viewport siempre que caben. Se reutilizan `DrawingProductionController.sheets` y el SVG del exportador PDF actual.
+- **Control de caducidad:** las secciones/ampliaciones se invalidan al cambiar los datos fuente. Regenerar una vista ortogonal también elimina los marcadores que ya no corresponden al conjunto original; es necesario crear de nuevo el paquete para recalcular sus cortes.
+- **Pruebas:** casos de estaciones, clipping y reparto A3; comprobación OCCT en Node de un perfil real de 10×10 mm, más la validación de CI.
+
+**Limitaciones:** no hay todavía detección topológica de conexiones para seleccionar las mejores estaciones, rayado de material, representación de todo el volumen detrás de los cortes, acotación especial de detalles, regeneración asociativa de hojas suplementarias ni verificación física de impresión; los planos siguen siendo **preliminares, no certificados para fabricar**. Las piezas sin B-Rep pueden aparecer sólo como ampliaciones preliminares, nunca como cortes exactos.
+
+---
+
 ## v0.1.147 — 2026-11-13
 
 ### Etapa A (entrega incremental 2): HLR del conjunto STEP
