@@ -23,6 +23,13 @@ export interface RegisterCadLineInput {
 }
 
 
+export interface PackedCadLineBatch {
+  readonly id: string;
+  readonly layerId: string;
+  /** Six coordinates per segment, in model millimetres. */
+  readonly positions: Float64Array;
+}
+
 export class CadLineRegistry {
 
   private readonly lines =
@@ -31,6 +38,39 @@ export class CadLineRegistry {
       CadLine
     >();
   private changeRevision = 0;
+  private readonly packedBatches = new Map<string, PackedCadLineBatch>();
+  private packedSegmentCount = 0;
+
+  /**
+   * Fast read-only CAD underlay storage. No per-segment JS objects or UUIDs;
+   * preserves the exact double-precision drawing coordinates.
+   */
+  registerPackedBatch(input: PackedCadLineBatch): void {
+    if (input.positions.length === 0 || input.positions.length % 6 !== 0
+      || !input.positions.every(Number.isFinite))
+      throw new Error("Invalid packed CAD line geometry.");
+    if (this.packedBatches.has(input.id))
+      throw new Error("Duplicate packed CAD line packet: " + input.id);
+    this.packedBatches.set(input.id, input);
+    this.packedSegmentCount += input.positions.length / 6;
+    this.changeRevision++;
+  }
+
+  getPackedBatches(): readonly PackedCadLineBatch[] {
+    return Array.from(this.packedBatches.values());
+  }
+
+  removePackedByLayerIds(ids: ReadonlySet<string>): void {
+    for (const [id, packet] of this.packedBatches) {
+      if (!ids.has(packet.layerId)) continue;
+      this.packedSegmentCount -= packet.positions.length / 6;
+      this.packedBatches.delete(id);
+      this.changeRevision++;
+    }
+  }
+
+  get packedCount(): number { return this.packedSegmentCount; }
+
 
   /** Incremented on every geometry mutation for reusable spatial SNAP caches. */
   get revision(): number { return this.changeRevision; }
@@ -269,6 +309,8 @@ export class CadLineRegistry {
     void {
 
     this.lines.clear();
+    this.packedBatches.clear();
+    this.packedSegmentCount = 0;
     this.changeRevision++;
 
   }
@@ -277,7 +319,7 @@ export class CadLineRegistry {
   get count():
     number {
 
-    return this.lines.size;
+    return this.lines.size + this.packedSegmentCount;
 
   }
 
