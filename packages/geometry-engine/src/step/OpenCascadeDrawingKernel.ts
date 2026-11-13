@@ -28,6 +28,13 @@ export interface OpenCascadeSectionResult {
   readonly reason?: string;
 }
 
+export interface OpenCascadeAssemblyHlrPiece {
+  readonly instanceId: string;
+  readonly documentId: string;
+  /** Column-major world transform, in Three.js model units. */
+  readonly worldMatrix: readonly number[];
+}
+
 export interface OpenCascadeHlrResult {
   readonly precision: OpenCascadeDrawingPrecision;
   readonly visible: readonly OpenCascadeDrawingSegment[];
@@ -384,6 +391,136 @@ export class OpenCascadeDrawingKernel {
             ? error.message
             : String(error),
       };
+    }
+  }
+
+
+  /**
+   * Exact HLR of multiple placed B-Rep instances in ONE algorithm.
+   *
+   * Both the meshes and the original STEP source may use different units.
+   * Apply modelScale * worldMatrix BEFORE HLR, then return WORLD coordinates.
+   * If one component is absent, distorted, or the OCCT operation fails,
+   * fail CLOSED: the caller must label the per-part fallback as non-exact
+   * for inter-part occlusion.
+   *
+   * This does not fuse touching parts and never changes the source shapes.
+   */
+  async hiddenLinesAssembly(
+    pieces: readonly OpenCascadeAssemblyHlrPiece[],
+    direction: Vector3,
+    up: Vector3,
+  ): Promise<OpenCascadeHlrResult> {
+    const runtime = getOpenCascadeBrepKernel() as unknown as KernelRuntime;
+    if (pieces.length < 2 || pieces.length > 128) {
+      return { precision: "FALLBACK", visible: [], hidden: [],
+        reason: "HLR del conjunto requiere entre 2 y 128 instancias STEP." };
+    }
+    const unique = new Set(pieces.map((piece) => piece.instanceId));
+    if (unique.size !== pieces.length) {
+      return { precision: "FALLBACK", visible: [], hidden: [],
+        reason: "HLR del conjunto recibió identificadores de instancia repetidos." };
+    }
+    const resources: unknown[] = [];
+    try {
+      for (const piece of pieces) {
+        if (!runtime.documents.has(piece.documentId)) {
+          throw new Error("Falta un documento B-Rep para el HLR del conjunto.");
+        }
+        const matrix = piece.worldMatrix;
+        if (matrix.length !== 16 || !matrix.every(Number.isFinite)) {
+          throw new Error("Matriz de una instancia STEP inválida.");
+        }
+        const x = [matrix[0]!, matrix[1]!, matrix[2]!];
+        const y = [matrix[4]!, matrix[5]!, matrix[6]!];
+        const z = [matrix[8]!, matrix[9]!, matrix[10]!];
+        const sizes = [x, y, z].map((axis) => Math.hypot(...axis));
+        const mean = (sizes[0]! + sizes[1]! + sizes[2]!) / 3;
+        const dot = (a: readonly number[], b: readonly number[]) =>
+          a.reduce((total, value, index) => total + value * b[index]!, 0);
+        if (mean <= 1e-12 || sizes.some((size) => Math.abs(size - mean) > mean * 1e-6)
+          || Math.abs(dot(x, y)) > mean * mean * 1e-6
+          || Math.abs(dot(x, z)) > mean * mean * 1e-6
+          || Math.abs(dot(y, z)) > mean * mean * 1e-6) {
+          throw new Error("Escala no uniforme o deformación: HLR de conjunto no verificable.");
+        }
+      }
+      const oc = await runtime.getOpenCascade();
+      const origin = this.construct(oc, "gp_Pnt_", [0, 0, 0]);
+      resources.push(origin);
+      const viewDirection = this.construct(oc, "gp_Dir_", [direction.x, direction.y, direction.z]);
+      resources.push(viewDirection);
+      const horizontal = normalize(cross(up, direction));
+      const xDirection = this.construct(oc, "gp_Dir_", [horizontal.x, horizontal.y, horizontal.z]);
+      resources.push(xDirection);
+      const axis = this.construct(oc, "gp_Ax2_", [origin, viewDirection, xDirection],
+        [origin, viewDirection]);
+      resources.push(axis);
+      const projector = this.construct(oc, "HLRAlgo_Projector_", [axis, false, 0], [axis]);
+      resources.push(projector);
+      const algo = this.construct(oc, "HLRBRep_Algo_", []) as Record<string, unknown> & Deleteable;
+      resources.push(algo);
+
+      for (const piece of pieces) {
+        const document = runtime.documents.get(piece.documentId)!;
+        if (!(Number.isFinite(document.modelScale) && document.modelScale > 0)) {
+          throw new Error("Escala STEP de documento inválida.");
+        }
+        const m = piece.worldMatrix;
+        // Three.js stores column-major 4x4; gp_Trsf.SetValues uses row-major 3x4.
+        const trsf = this.construct(oc, "gp_Trsf_", []) as Record<string, unknown> & Deleteable;
+        resources.push(trsf);
+        this.callRequired(trsf, ["SetValues", "SetValues_1"],
+          m[0]! * document.modelScale, m[4]! * document.modelScale,
+          m[8]! * document.modelScale, m[12]!,
+          m[1]! * document.modelScale, m[5]! * document.modelScale,
+          m[9]! * document.modelScale, m[13]!,
+          m[2]! * document.modelScale, m[6]! * document.modelScale,
+          m[10]! * document.modelScale, m[14]!);
+        const transformer = this.construct(oc, "BRepBuilderAPI_Transform_",
+          [document.shape, trsf, true]) as ShapeAlgorithm & Deleteable;
+        resources.push(transformer);
+        if (transformer.IsDone?.() === false) {
+          throw new Error("Transformación exacta B-Rep no completada.");
+        }
+        const shape = transformer.Shape?.();
+        if (!shape || (shape as { IsNull?: () => boolean }).IsNull?.()) {
+          throw new Error("La transformación OCCT produjo una forma vacía.");
+        }
+        resources.push(shape);
+        this.callRequired(algo, ["Add", "Add_1", "Add_2"], shape, 0);
+      }
+      this.callRequired(algo, ["Projector", "Projector_1"], projector);
+      this.callRequired(algo, ["Update", "Update_1"]);
+      this.callRequired(algo, ["Hide", "Hide_1"]);
+      const extractor = this.construct(oc, "HLRBRep_HLRToShape_", [algo])
+        as Record<string, unknown> & Deleteable;
+      resources.push(extractor);
+      const visibleShape = this.firstShape(extractor, [
+        "VCompound", "Rg1LineVCompound", "OutLineVCompound",
+      ]);
+      const hiddenShape = this.firstShape(extractor, [
+        "HCompound", "Rg1LineHCompound", "OutLineHCompound",
+      ]);
+      if (visibleShape) resources.push(visibleShape);
+      if (hiddenShape) resources.push(hiddenShape);
+      const visible = visibleShape
+        ? this.extractShapeSegments(oc, visibleShape, 1, true) : [];
+      const hidden = hiddenShape
+        ? this.extractShapeSegments(oc, hiddenShape, 1, false) : [];
+      if (!visible.length) {
+        throw new Error("El HLR del conjunto no produjo aristas visibles verificables.");
+      }
+      return { precision: "BREP_EXACT", visible, hidden };
+    } catch (error) {
+      return {
+        precision: "FALLBACK", visible: [], hidden: [],
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      for (let i = resources.length - 1; i >= 0; i--) {
+        this.disposeMany(resources[i]);
+      }
     }
   }
 
