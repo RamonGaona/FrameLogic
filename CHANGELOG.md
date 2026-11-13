@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.141 — 2026-11-13
+
+### ZOOM: entrar con Z + Enter y encuadrar una zona seleccionada
+
+- **Entrada de comando:** `Z` muestra una indicación breve junto al cursor y espera **Enter**. Solo entonces aparece el menú de opciones ZOOM. `E` y `O` ya no se ejecutan prematuramente al escribir después de `Z`.
+- **Opciones:** `E · Extensión (todo el modelo)`, `O · Objeto (selección)`, `S · Seleccionar área (ventana)`. Las teclas de flecha o `Tab` recorren las opciones, `Enter` ejecuta la resaltada y `Esc` cancela.
+- **S · Seleccionar área:** dibuja un rectángulo mediante **dos clics (esquinas opuestas)** o **clic y arrastre** sobre el espacio de modelado. Una vez confirmada la ventana, la cámara centra y amplía la región de pantalla elegida manteniendo su orientación original y un margen visible. Funciona con cámaras ortográficas y en perspectiva.
+- **Sin selección ni modificaciones:** el rectángulo de ZOOM está separado de la selección de piezas, DWG y CAD; captura temporalmente el ratón y bloquea la navegación de cámara durante la definición del área. No crea entidades ni historial.
+- **Posición y cancelación:** indicaciones junto al cursor, ventana azul translúcida sobre el área, `Esc` cancela antes de terminar y restaura el estado anterior de controles y pantalla. Rechaza ventanas demasiado pequeñas.
+- **Pruebas:** entradas `Z → Enter → E/O/S`, cursor y menú de opciones, ciclo de selección, las dos variantes de ventana, cancelación/restablecimiento y encuadre geométrico ortográfico y 3D en perspectiva.
+
+**Verificación manual pendiente:** probar en Chrome y Firefox con DWG grande y piezas 3D, incluyendo la selección de zonas en vistas inclinadas. La compilación de GitHub no certifica despliegue automático en Cloudflare Pages.
+
+---
+
 ## v0.1.140 — 2026-11-13
 
 ### ZOOM: opciones de teclado legibles junto al cursor
