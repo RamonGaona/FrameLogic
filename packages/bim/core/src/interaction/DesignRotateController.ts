@@ -1122,7 +1122,8 @@ export class DesignRotateController {
 
 
     this.centerHandle.visible =
-      true;
+      this.screenCenterHandle === null;
+    this.screenCenterHandle?.activate("rotate");
 
     this.ringGesture = null;
     this.ringDoubleClick.reset();
