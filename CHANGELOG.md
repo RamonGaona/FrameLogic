@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.132 — 2026-11-12
+
+### DWG grandes · reducir memoria y evitar Out of Memory con ~1.400.000 segmentos
+
+- **Problema detectado:** al importar `CUNAS_MEDIR 1.dwg` sin el límite anterior (aprox. 1,4 millones de segmentos), Firefox/Chrome puede agotar la memoria. El código anterior clonaba todos los segmentos en un segundo array JavaScript en el hilo principal y reconstruía un índice SNAP con millones de objetos, celdas y referencias.
+- **Registro DWG directo desde el Web Worker:** la interfaz confirma la unidad real **antes de registrar líneas**, recibe bloques de 8.192 segmentos con acuse después de insertarlos, nunca acumula un segundo array de 1,4 millones de objetos y libera las referencias de objetos del Worker conforme se transfieren. El encabezado incluye cantidad total y extensión original calculada en el Worker; el selector `mm ×1` conserva exactamente la escala.
+- **Rollback seguro:** si se cancela, falla la transferencia o hay un error mientras se registra el DWG, se intenta eliminar la geometría y las capas importadas parcialmente, evitando referencias CAD incompletas.
+- **GPU con dos pasadas de registro:** la escena CAD ya no usa `cadLines.getAll()` más un array con todas las líneas por capa solo para construir la representación; cuenta las líneas y rellena directamente un único `Float32Array` por capa, manteniendo todas las líneas de geometría.
+- **SNAP adaptativo de memoria acotada:** el índice de SNAP en pantalla almacena como máximo 120.000 líneas visibles, elegidas de forma distribuida cuando la vista está demasiado alejada. Las demás líneas **siguen dibujadas y presentes en el modelo**. Al acercar la cámara, el índice incluye de nuevo todas las líneas visibles cuando caben en ese presupuesto. La precisión de SNAP puede ser parcial en vistas muy densas y debe revisarse antes de ensamblar con exactitud.
+- **Recuperación DWG de alta carga:** si el lector principal recupera más de 350.000 segmentos, se omite su comparación simultánea con el lector alternativo para no duplicar enormes conjuntos de geometría en RAM. El diagnóstico indica explícitamente esta limitación. Si el lector principal falla o devuelve geometría vacía, el alternativo sigue disponible.
+- **Pruebas:** regresiones de SNAP con más de 120.000 segmentos visibles, recuperación de SNAP completo tras zoom, almacenamiento de escala a partir de cabecera de Worker y protocolo de transferencia sin acumulación de objetos duplicados. Se conservan las pruebas de importación ilimitada de DWG y el límite DXF independiente.
+
+**Advertencia:** no existe garantía de memoria ilimitada; los dispositivos con poca RAM todavía pueden fallar ante DWG enormes, guardado/transformaciones de referencias de millones de entidades o CAD altamente repetitivo. Esta mejora evita dos causas principales de OOM sin reducir el número de líneas del DWG importadas. Las entidades XREF y CAD proxy que el lector no soporte siguen sin reconstruirse. Validar en Firefox/Chrome con el archivo binario del usuario.
+
+---
+
 ## v0.1.131 — 2026-11-12
 
 ### DWG grandes · sin límite global de 240.000 segmentos estructurales

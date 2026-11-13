@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { DesignModel } from "@framelogic/domain";
-import { CadScreenSpatialIndex, getNearbyCadLines } from "./CadScreenSpatialIndex";
+import { CadScreenSpatialIndex, getNearbyCadLines, MAX_VISIBLE_CAD_SNAP_RECORDS } from "./CadScreenSpatialIndex";
 import { getStandaloneCadEntities } from "../navigation/ModelSpaceInstanceTreeBridgeController";
 
 function view() {
@@ -65,6 +65,39 @@ describe("Spatial CAD SNAP queries for very large imported DWG references", () =
     expect(getNearbyCadLines(model, camera, rect, 500, 375, 10).map(l => l.id))
       .toContain(line.id);
   });
+
+  it("bounds SNAP cache on 120k+ DWG segments but restores exact local snaps after zoom", () => {
+    const model = new DesignModel();
+    const layer = model.layers.create({
+      name: "CAD CUNAS_MEDIR 1 · TRUSS", visible: true, locked: false,
+      color: "#ffff00", snapEnabled: true,
+    });
+    for (let i = 0; i < MAX_VISIBLE_CAD_SNAP_RECORDS + 750; i++) {
+      model.registerCadLine({
+        layerId: layer.id,
+        start: { x: (i % 400) - 200, y: (Math.floor(i / 400) % 300) - 150, z: 0 },
+        end: { x: (i % 400) - 199.6, y: (Math.floor(i / 400) % 300) - 149.6, z: 0 },
+      });
+    }
+    const precise = model.registerCadLine({
+      layerId: layer.id,
+      start: { x: -1, y: 0, z: 0 },
+      end: { x: 1, y: 0, z: 0 },
+    });
+    const { camera, rect } = view();
+    const index = new CadScreenSpatialIndex(model);
+    index.query(camera, rect, 500, 375, 20);
+    expect(index.visibleCount).toBeGreaterThan(MAX_VISIBLE_CAD_SNAP_RECORDS);
+    expect(index.indexedCount).toBe(MAX_VISIBLE_CAD_SNAP_RECORDS);
+    expect(index.sampled).toBe(true);
+    // Once zoomed into a smaller region, all nearby source lines become
+    // exact candidates; there is no global DWG geometry cap.
+    camera.zoom = 40;
+    camera.updateProjectionMatrix();
+    const nearby = index.query(camera, rect, 500, 375, 20, 96);
+    expect(index.sampled).toBe(false);
+    expect(nearby.map((line) => line.id)).toContain(precise.id);
+  }, 60_000);
 
   it("preserves separate native CAD entities but never lists DWG members individually in INSTANCIAS", () => {
     const model = new DesignModel();

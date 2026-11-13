@@ -124,6 +124,11 @@ export class CadLineRegistry {
 
   }
 
+  /** Iterate large CAD references without allocating a million-element array. */
+  values(): IterableIterator<CadLine> {
+    return this.lines.values();
+  }
+
 
   findByLayerId(
     layerId: string,

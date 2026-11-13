@@ -41,6 +41,13 @@ describe("explicit CAD import units (regression for CUNAS_MEDIR 1.dwg)", () => {
     expect(() => explicitCadImportUnits("")).toThrow("inválida");
   });
 
+  it("uses the worker extent for a 1.4m-segment drawing without receiving its geometry twice", () => {
+    const header = { segments: [], points: [], rawExtent: 461564.80125, insUnits: 6 };
+    expect(rawCadExtent(header)).toBeCloseTo(461564.80125);
+    expect(cadImportUnitPreview(header, "mm").extentMm).toBeCloseTo(461564.80125);
+    expect(cadImportUnitPreview(header, "m").extentMm).toBeCloseTo(461564801.25);
+  });
+
   it("computes raw extents before conversion and handles empty geometry", () => {
     expect(rawCadExtent({ segments: [], points: [] })).toBe(0);
     expect(rawCadExtent(largeDwg)).toBeCloseTo(461564.80125);

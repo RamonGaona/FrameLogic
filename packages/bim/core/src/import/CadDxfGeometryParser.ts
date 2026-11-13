@@ -32,6 +32,10 @@ export interface ParsedCadReference {
   /** Comparison info from the independent DWG recovery reader. */
   readonly importDiagnostics?: string;
   readonly segments: readonly ImportedCadSegment[];
+  /** For streamed DWG imports whose segments are sent separately. */
+  readonly totalSegments?: number;
+  /** Axis-aligned source-space span, computed in the worker before streaming. */
+  readonly rawExtent?: number;
   readonly points: readonly ImportedCadPoint[];
   readonly texts: readonly ImportedCadText[];
   readonly insUnits: number;

@@ -89,6 +89,39 @@ gráficos de cotas no están incluidos en la cobertura garantizada.
 Los controles de unidades de la v0.1.130 no cambian: escoger mm
 mantiene las coordenadas y los textos con factor ×1.
 
+## DWG con 1,4 millones de segmentos: memoria y SNAP (v0.1.132)
+
+La v0.1.131 permitía importar más de 240.000 segmentos, pero el navegador
+podía quedarse sin memoria al recibir y registrar unos 1,4 millones de
+segmentos, especialmente cuando reconstruía las referencias SNAP.
+
+La v0.1.132 reduce varios duplicados de datos:
+- El Worker comunica la extensión y cantidad de elementos; el selector de
+  unidades funciona sin recibir todavía todas las líneas.
+- Tras elegir **mm ×1**, el registro avanza por lotes de 8.192 segmentos,
+  con acuse de recibo después de registrar cada lote. No se acumula otro
+  array entero de 1,4 millones de objetos en el hilo principal.
+- El renderizador cuenta las líneas por capa y genera directamente el
+  buffer gráfico sin duplicar otra matriz de objetos por capa.
+- El índice de SNAP solo guarda hasta **120.000 candidatos visibles** y
+  reparte esa muestra por el plano cuando la vista es demasiado densa.
+  **No es un límite de importación**: el dibujo y las líneas originales
+  siguen completos. Para utilizar SNAP exactos en una zona, acercar la
+  cámara hasta que la cantidad visible de líneas esté por debajo del
+  presupuesto. No se garantiza precisión absoluta de SNAP en vistas
+  globales con millones de segmentos superpuestos.
+- Para evitar dos copias completas de un archivo DWG enorme, al utilizar
+  «Recuperar DWG» se omite la comparación simultánea con el segundo lector
+  si el principal produjo más de 350.000 segmentos, mostrándolo en
+  el diagnóstico. El segundo lector sigue siendo fallback si el primero
+  falla.
+
+Esto mejora la estabilidad, pero no elimina todos los límites de memoria
+del dispositivo: millones de líneas siguen ocupando RAM en el modelo y
+ciertas operaciones globales como mover/copiar un plano muy grande pueden
+ser costosas. Los archivos DWG binarios originales deben comprobarse en
+Firefox y Chrome antes de utilizarlos en fabricación.
+
 ## Comprobación manual con el DWG original
 
 - Confirmar tubos y bloques con ATTRIB y TEXT interiores (p. ej. "4S 3000"
