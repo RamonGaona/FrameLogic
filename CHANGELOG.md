@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.144 — 2026-11-13
+
+### Detallado automático: STEP HLR, cotas, planos de piezas y regeneración
+
+- **Proyección B-Rep:** las vistas automáticas consultan el motor OpenCascade HLR existente por cada pieza STEP cargada y proyectan sus aristas visibles/ocultas con la transformación de cada instancia. Si una pieza no dispone de STEP válido, continúa con proyección de malla y queda identificada como aproximada.
+- **Cotas STEP:** utiliza vértices y centros de círculos B-Rep, no triángulos de visualización, para acotar los ejes X/Y y diámetros de vistas ortogonales. Reserva espacio en cada viewport para cotas y etiquetas; limita repeticiones y líderes para evitar saturación.
+- **Marcas y planos de pieza:** etiquetas en el plano de ensamble, hojas A3 individuales para hasta 20 definiciones distintas, con vistas ortogonales y medidas STEP disponibles; conservan el motor PDF unificado.
+- **BOM ampliado:** cuando un conjunto tiene más de ocho definiciones, añade hojas de inventario en páginas de 40 renglones, sin inventar pesos ni materiales.
+- **Regeneración:** detecta cambios de transformaciones o geometría de malla y permite regenerar vistas desde el árbol PDF conservando el tamaño/posición manual de las ventanas; mantiene intactas las anotaciones manuales.
+- **Resiliencia:** limita la densidad de segmentos por vista, evita desbordamiento de pila en conjuntos grandes y documenta la compatibilidad con proyectos antiguos; sin licencias ni dependencias nuevas.
+
+**Limitaciones explícitas:** OCCT HLR sólo oculta aristas dentro de una misma pieza STEP, no resuelve oclusiones entre piezas diferentes. No existen aún cotas totalmente editables/asociativas en el PDF general, geometría B-Rep para piezas sin STEP, reconocimiento completo de uniones/soldaduras, ni cortes y detalles automáticos de fabricación. Se deben revisar y validar manualmente los planos, las unidades y las dimensiones, especialmente si se mezclan mallas y STEP.
+
+---
+
 ## v0.1.143 — 2026-11-13
 
 ### Detallado automático de ensambles — primera etapa

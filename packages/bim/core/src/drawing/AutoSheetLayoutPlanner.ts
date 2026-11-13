@@ -29,8 +29,8 @@ const TOP = 46;
 const RIGHT = 1068;
 const BOTTOM = 614; // title block and revisions begin below this
 const GAP = 18;
-const FRAME_PAD_X = 26;
-const FRAME_PAD_Y = 38;
+const FRAME_PAD_X = 90; // space for automatic marks and ordinate dimensions
+const FRAME_PAD_Y = 100; // space for top and bottom dimension leaders
 const MIN_FRAME_SIZE = 80;
 const SLOTS: Record<ProjectionStandard, Record<ProjectedViewCode, readonly [number, number]>> = {
   // ISO first-angle: right view to the LEFT; plan BELOW the front view.
