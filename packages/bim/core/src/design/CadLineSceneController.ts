@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import type { DesignModel } from "@framelogic/domain";
-import type { CadLine } from "@framelogic/domain";
 
 /**
  * CAD references often contain tens of thousands of individual segments after
@@ -79,27 +78,37 @@ export class CadLineSceneController {
   }
 
   sync(): void {
-    const lines = this.designModel.cadLines.getAll();
     const nativeIds = new Set<string>();
-    const referenceGroups = new Map<string, CadLine[]>();
+    const referenceGroups = new Map<string, {
+      origin: { x: number; y: number; z: number };
+      count: number;
+      offset: number;
+      positions: Float32Array;
+    }>();
 
-    for (const line of lines) {
+    // Two cheap registry walks, no 1.4m-element getAll() snapshot or another
+    // million-element array of CAD line objects per reference layer.
+    // Store only counts first, then allocate exactly one compact GPU buffer
+    // for each layer.
+    for (const line of this.designModel.cadLines.values()) {
       const layer = this.designModel.layers.get(line.layerId);
-      if (isImportedReferenceLayer(layer?.name)) {
-        if (this.hiddenIds.has(line.id)) continue;
-        let group = referenceGroups.get(line.layerId);
-        if (!group) {
-          group = [];
-          referenceGroups.set(line.layerId, group);
-        }
-        group.push(line);
-      }
-      else {
+      if (!isImportedReferenceLayer(layer?.name)) {
         nativeIds.add(line.id);
+        continue;
       }
+      if (this.hiddenIds.has(line.id)) continue;
+      const current = referenceGroups.get(line.layerId);
+      if (current) current.count++;
+      else referenceGroups.set(line.layerId, {
+        origin: line.start, count: 1, offset: 0, positions: new Float32Array(),
+      });
     }
 
-    // An imported line is no longer rendered as a separate THREE.Line.
+    for (const group of referenceGroups.values()) {
+      group.positions = new Float32Array(group.count * 6);
+    }
+
+    // An imported line is never rendered as an individual THREE.Line.
     for (const [id, object] of this.lineObjects) {
       if (nativeIds.has(id)) continue;
       this.scene.remove(object);
@@ -109,7 +118,21 @@ export class CadLineSceneController {
       this.hiddenIds.delete(id);
     }
 
-    for (const line of lines) {
+    for (const line of this.designModel.cadLines.values()) {
+      const group = referenceGroups.get(line.layerId);
+      if (group && !this.hiddenIds.has(line.id)
+        && isImportedReferenceLayer(this.designModel.layers.get(line.layerId)?.name)) {
+        const offset = group.offset;
+        const origin = group.origin;
+        group.positions[offset] = line.start.x - origin.x;
+        group.positions[offset + 1] = line.start.y - origin.y;
+        group.positions[offset + 2] = line.start.z - origin.z;
+        group.positions[offset + 3] = line.end.x - origin.x;
+        group.positions[offset + 4] = line.end.y - origin.y;
+        group.positions[offset + 5] = line.end.z - origin.z;
+        group.offset += 6;
+        continue;
+      }
       if (!nativeIds.has(line.id)) continue;
       let object = this.lineObjects.get(line.id);
       if (!object) {
@@ -131,11 +154,8 @@ export class CadLineSceneController {
       object.updateMatrixWorld(true);
     }
 
-    // Reuse one LineSegments per source layer, regardless of block population.
-    // Relative coordinates around the first vertex avoid Float32 precision loss
-    // for DWG files with very large insertion coordinates.
     for (const [layerId, group] of referenceGroups) {
-      if (!group.length) continue;
+      if (!group.count) continue;
       const layer = this.designModel.layers.get(layerId);
       let object = this.referenceBatches.get(layerId);
       if (!object) {
@@ -148,25 +168,13 @@ export class CadLineSceneController {
         this.referenceBatches.set(layerId, object);
         this.scene.add(object);
       }
-      const origin = group[0]!.start;
-      const positions = new Float32Array(group.length * 6);
-      for (let i = 0; i < group.length; i++) {
-        const segment = group[i]!;
-        const offset = i * 6;
-        positions[offset] = segment.start.x - origin.x;
-        positions[offset + 1] = segment.start.y - origin.y;
-        positions[offset + 2] = segment.start.z - origin.z;
-        positions[offset + 3] = segment.end.x - origin.x;
-        positions[offset + 4] = segment.end.y - origin.y;
-        positions[offset + 5] = segment.end.z - origin.z;
-      }
       const previousGeometry = object.geometry;
       const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute("position", new THREE.BufferAttribute(group.positions, 3));
       geometry.computeBoundingSphere();
       object.geometry = geometry;
       previousGeometry.dispose();
-      object.position.set(origin.x, origin.y, origin.z);
+      object.position.set(group.origin.x, group.origin.y, group.origin.z);
       object.visible = layer?.visible ?? true;
       (object.material as THREE.LineBasicMaterial).color.set(layer?.color ?? "#e5e7eb");
       object.updateMatrixWorld(true);
