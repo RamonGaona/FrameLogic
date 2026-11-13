@@ -1229,7 +1229,7 @@ export class GeneralPdfController {
     if (!root) return;
     const marks = sheet.pieceMarks ?? {};
     let nextMark = 1 + Math.max(0, ...Object.values(marks)
-      .map((value) => /^P(\\d+)$/.exec(value)?.[1])
+      .map((value) => /^P(\d+)$/.exec(value)?.[1])
       .map((value) => Number(value ?? 0)));
     for (const instanceId of root.instanceIds) {
       const piece = this.designModel.pieceInstances.get(instanceId);
