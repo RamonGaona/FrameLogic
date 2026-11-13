@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.135 — 2026-11-12
+
+### Corrección de doble clic 90° y centro de giro visible en piezas 3D
+
+- **Doble clic sobre anillos de ROTATE:** los bloques DWG/DXF conservan el eje detectado por raycast cuando Three.js devuelve temporalmente un selector `E`/nulo. Se prueba el picker invisible y, como alternativa, los anillos visibles. Los dos clics sobre el mismo eje funcionan sin depender del evento `dblclick` nativo y toleran pequeños desplazamientos y pausas normales de ratón.
+- **Piezas y ensambles 3D:** se emplea el mismo marcador amarillo de pivote que ya utiliza CAD, en tamaño constante de pantalla y situado sobre el gizmo. Clic sobre el marcador y siguiente SNAP para trasladar el centro sin mover la geometría; también admite arrastre libre del centro. Tras cambiar el pivote, ROTATE gira alrededor de ese punto.
+- **Historial y precisión:** dos clics cortos sobre el mismo anillo producen un único giro de +90° y una sola operación de deshacer; clics en distintos ejes o gestos de arrastre no producen giro automático.
+- **Pruebas:** regresiones de selección nativa `E`/nula, rotación sin evento `dblclick`, SNAP de centro 3D y tolerancia de pulsaciones.
+
+**Pendiente de verificación manual:** confirmar las interacciones en Chrome y Firefox con el DWG grande original y piezas 3D STEP en la aplicación publicada.
+
+---
+
 ## v0.1.134 — 2026-11-12
 
 ### Referencias CAD compactas transformables y menú DWG/DXF unificado
