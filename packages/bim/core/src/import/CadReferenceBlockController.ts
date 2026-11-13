@@ -29,6 +29,13 @@ import type {
 const CAD_LAYER_PREFIX = "CAD ";
 const CAD_LAYER_SEPARATOR = " · ";
 const PICK_TOLERANCE_PX = 10;
+/** Native E/XYZE/null hover must not discard the axis raycast on pointerdown. */
+export function resolveCadRotationAxis(
+  picked: RotateNumericAxis | null, native: string | null,
+): RotateNumericAxis | null {
+  return native === "X" || native === "Y" || native === "Z" ? native : picked;
+}
+
 
 interface Point3 {
   readonly x: number;
@@ -793,10 +800,9 @@ export class CadReferenceBlockController {
     }
     if (this.activeMode === "rotate") {
       const axis = this.controls.axis;
-      // Preserve an axis raycast on pointerdown even if native controls.axis
-      // momentarily resolves to E/XYZE/null before the drag is initialized.
-      if (this.ringGesture && (axis === "X" || axis === "Y" || axis === "Z")) {
-        this.ringGesture.axis = axis;
+      // Preserve the accurate pointer raycast if native reports E/XYZE/null.
+      if (this.ringGesture) {
+        this.ringGesture.axis = resolveCadRotationAxis(this.ringGesture.axis, axis);
       }
       if (axis === "X" || axis === "Y" || axis === "Z") this.options.onRotateAxis?.(axis);
     }
