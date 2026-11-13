@@ -45,13 +45,14 @@ const sendNext = (): void => {
 };
 
 worker.onmessage = (event) => {
-  if (event.data.type === "next") {
+  const request = event.data;
+  if (request.type === "next") {
     sendNext();
     return;
   }
   void (async () => {
     try {
-      const { extension, buffer, recoverDwg } = event.data;
+      const { extension, buffer, recoverDwg } = request;
       if (extension === "dxf") {
         const text = new TextDecoder().decode(buffer);
         if (text.startsWith("AutoCAD Binary DXF"))
