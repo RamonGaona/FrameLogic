@@ -22,8 +22,9 @@ export function explicitCadImportUnits(value: string): CadImportUnitChoice {
 
 /** Extents are in original DWG coordinates, before any conversion to mm. */
 export function rawCadExtent(
-  parsed: Pick<ParsedCadReference, "segments" | "points">,
+  parsed: Pick<ParsedCadReference, "segments" | "points"> & { readonly rawExtent?: number },
 ): number {
+  if (Number.isFinite(parsed.rawExtent) && parsed.rawExtent! >= 0) return parsed.rawExtent!;
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   const add = (p: CadDxfPoint3): void => {
@@ -38,7 +39,7 @@ export function rawCadExtent(
 }
 
 export function cadImportUnitPreview(
-  parsed: Pick<ParsedCadReference, "segments" | "points">,
+  parsed: Pick<ParsedCadReference, "segments" | "points"> & { readonly rawExtent?: number },
   value: string,
 ): CadImportUnitChoice & { readonly rawExtent: number; readonly extentMm: number } {
   const choice = explicitCadImportUnits(value);
@@ -52,7 +53,7 @@ export function cadImportUnitPreview(
  * The user sees the exact factor and physical extent before anything is saved.
  */
 export function chooseCadImportUnits(
-  parsed: Pick<ParsedCadReference, "segments" | "points" | "insUnits">,
+  parsed: Pick<ParsedCadReference, "segments" | "points" | "insUnits"> & { readonly rawExtent?: number },
   fileName: string,
 ): Promise<CadImportUnitChoice | null> {
   return new Promise((resolve) => {
