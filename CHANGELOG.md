@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.147 — 2026-11-13
+
+### Etapa A (entrega incremental 2): HLR del conjunto STEP
+
+- **OpenCascade real para múltiples piezas:** el motor existente incorpora `hiddenLinesAssembly`, que sitúa cada forma STEP con su matriz mundial y `modelScale`, inserta **todas las formas** en un mismo `HLRBRep_Algo` y calcula líneas visibles y ocultas de conjunto. Evita tratar una suma de HLR por pieza como una oclusión exacta.
+- **Seguridad geométrica:** se rechazan matrices inválidas, escalas no uniformes, documentos STEP no cargados y conjuntos de más de 128 piezas. Cuando el cálculo no es concluyente, se mantiene el HLR por pieza o malla, con advertencia; no se atribuye exactitud entre piezas.
+- **Motor PDF existente:** `AssemblyProjectionEngine.projectAssembly` integra la nueva ruta sin sustituir las cotas B-Rep ni el planificador de hojas; `GeneralPdfController` registra la procedencia de cada vista y muestra si el HLR del conjunto pudo resolverse.
+- **Pruebas OCCT:** prueba de integración Node con dos sólidos B-Rep superpuestos en profundidad, comprobación de aristas ocultas y rechazo de escala no uniforme, incorporada al test `test:clash:occt` ya ejecutado en CI.
+
+**Pendiente Etapa A:** detección B-Rep de conexiones, ubicación automática de cortes, vistas seccionadas con referencia A-A y detalles ampliados; asimismo, pruebas visuales de planos reales y gestión por lotes de conjuntos de más de 128 piezas. El HLR exacto sólo se activa en conjuntos uniformemente transformados cuyas instancias tengan STEP B-Rep; no se certifica el plano para fabricación.
+
+---
+
 ## v0.1.146 — 2026-11-13
 
 ### Etapa A (entrega incremental 1): vistas longitudinales de ensambles rotados
