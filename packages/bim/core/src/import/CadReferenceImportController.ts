@@ -84,103 +84,120 @@ export class CadReferenceImportController {
     const report = (message: string) => { status.textContent = message; };
     const yieldFrame = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+    const createdLayerIds = new Set<string>();
+    let importCommitted = false;
     try {
       const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
       if (extension !== "dwg" && extension !== "dxf") {
         throw new Error("Selecciona un archivo .DWG o .DXF.");
       }
       report(`DWG/DXF · Convirtiendo y analizando ${file.name} fuera del navegador principal…`);
-      const parsed = await this.parseInWorker(file, extension, recoverDwg, report);
-    if (parsed.segments.length < 1 && parsed.points.length < 1) {
-      throw new Error("No se encontraron entidades 2D compatibles en el archivo CAD.");
-    }
-
-    // Never trust the converted DWG's $INSUNITS when the coordinates were
-    // authored in millimetres: the explicit user choice is the ONLY scale
-    // applied to lines, point geometry, and text anchors.
-    const declaredDxfFactor = extension === "dxf"
-      ? insUnitsToMillimeters(parsed.insUnits) : null;
-    const selection: CadImportUnitChoice | null = declaredDxfFactor === null
-      ? await chooseCadImportUnits(parsed, file.name)
-      : { unit: "mm", factor: declaredDxfFactor };
-    if (!selection) {
-      throw new Error("Importación cancelada: no se confirmó la unidad de origen.");
-    }
-    const unitScale = selection.factor;
-    if (declaredDxfFactor === null && selection.unit === "mm" && unitScale !== 1) {
-      throw new Error("Error interno: la selección mm debe importar con factor ×1.");
-    }
-    const sourceUnitName = declaredDxfFactor === null
-      ? selection.unit
-      : "automática (metadatos DXF)";
-    if (extension === "dwg") {
-      const suspicious = suspiciousDwgMeterScale(parsed, unitScale);
-      if (suspicious) {
-        const raw = suspicious.rawSpan.toLocaleString("es-CO", { maximumFractionDigits: 2 });
-        const converted = suspicious.resultingSpanMm.toLocaleString("es-CO", { maximumFractionDigits: 2 });
-        const accepted = window.confirm(
-          `ATENCIÓN: posible error de escala DWG ×${unitScale}.\n\n`
-          + `El dibujo ocupa aproximadamente ${raw} unidades de origen.\n`
-          + `Con el factor elegido ocuparía ${converted} mm.\n\n`
-          + "Si en AutoCAD esa longitud está en milímetros, pulsa Cancelar y vuelve a importar usando «mm» (factor ×1).\n"
-          + "Pulsa Aceptar SOLO si confirmaste que el dibujo realmente está en metros.",
-        );
-        if (!accepted) throw new Error(
-          "Importación cancelada para evitar multiplicar el DWG ×1.000. Importa otra vez y selecciona «mm» si las coordenadas ya están en milímetros.",
-        );
-      }
-    }
-    report(`DWG/DXF · Unidad origen confirmada: ${sourceUnitName} · factor ×${unitScale} hacia mm…`);
-    const layerIds = new Map<string, string>();
-    const referenceName = uniqueReferenceName(
-      this.options.designModel,
-      stripExtension(file.name),
-    );
-    const getLayerId = (sourceLayer: string, effectiveColor: string): string => {
-      const key = sourceLayer.trim() || "0";
-      const color = effectiveColor.toLowerCase();
-      // BYBLOCK and explicit ACI/true-colour entities may share an original
-      // layer yet differ in colour. Keep them inside the SAME imported block
-      // while splitting only their visual sublayers for proper appearance.
-      const cacheKey = `${key.toLowerCase()}|${color}`;
-      const current = layerIds.get(cacheKey);
-      if (current) return current;
-      const appearance = parsed.sourceLayers.get(key.toLowerCase());
-      const suffix = color === (appearance?.color ?? "#ffffff")
-        ? "" : ` [${color}]`;
-      const layer = this.options.designModel.layers.create({
-        name: uniqueLayerName(
-          this.options.designModel,
-          `CAD ${referenceName} · ${key}${suffix}`,
-        ),
-        color,
-        visible: appearance?.visible ?? true,
-        locked: false,
-        snapEnabled: true,
-      });
-      layerIds.set(cacheKey, layer.id);
-      return layer.id;
-    };
-
-    // Process data in short chunks. The UI can repaint and receive pointer
-    // events while lines are registered; only one GPU batch per layer is
-    // assembled at the end, avoiding a draw call for every imported line.
-    // 1,800 records per frame balances large-model registration throughput
-    // against browser responsiveness; renderer still batches once per layer.
-    const CHUNK = 1800;
-    for (let i = 0; i < parsed.segments.length; i += CHUNK) {
-      for (const segment of parsed.segments.slice(i, i + CHUNK)) {
-        // The imported layer has just been created and validated unlocked.
-        // Skip the extra layer lookup/error construction per segment.
-        this.options.designModel.cadLines.register({
-          layerId: getLayerId(segment.layer, segment.color),
-          start: scaledPoint(segment.start, unitScale),
-          end: scaledPoint(segment.end, unitScale),
+      // DWG segments are registered as acknowledged worker batches. They are
+      // never assembled into a second 1.4m-object array on the UI thread.
+      let metadata: ParsedCadReference | null = null;
+      let unitScale = 1;
+      let sourceUnitName = "mm";
+      let registeredSegments = 0;
+      const layerIds = new Map<string, string>();
+      const referenceName = uniqueReferenceName(
+        this.options.designModel,
+        stripExtension(file.name),
+      );
+      const getLayerId = (sourceLayer: string, effectiveColor: string): string => {
+        const key = sourceLayer.trim() || "0";
+        const color = effectiveColor.toLowerCase();
+        const cacheKey = `${key.toLowerCase()}|${color}`;
+        const current = layerIds.get(cacheKey);
+        if (current) return current;
+        const appearance = metadata?.sourceLayers.get(key.toLowerCase());
+        const suffix = color === (appearance?.color ?? "#ffffff")
+          ? "" : ` [${color}]`;
+        const layer = this.options.designModel.layers.create({
+          name: uniqueLayerName(
+            this.options.designModel,
+            `CAD ${referenceName} · ${key}${suffix}`,
+          ),
+          color,
+          visible: appearance?.visible ?? true,
+          locked: false,
+          snapEnabled: true,
         });
+        layerIds.set(cacheKey, layer.id);
+        createdLayerIds.add(layer.id);
+        return layer.id;
+      };
+      const prepare = async (header: ParsedCadReference): Promise<void> => {
+        metadata = header;
+        if ((header.totalSegments ?? header.segments.length) < 1 && header.points.length < 1) {
+          throw new Error("No se encontraron entidades 2D compatibles en el archivo CAD.");
+        }
+        // The converted DWG header is advisory only: user selection remains
+        // the sole origin of the unit factor, exactly as in v0.1.130.
+        const declaredDxfFactor = extension === "dxf"
+          ? insUnitsToMillimeters(header.insUnits) : null;
+        const selection: CadImportUnitChoice | null = declaredDxfFactor === null
+          ? await chooseCadImportUnits(header, file.name)
+          : { unit: "mm", factor: declaredDxfFactor };
+        if (!selection) {
+          throw new Error("Importación cancelada: no se confirmó la unidad de origen.");
+        }
+        unitScale = selection.factor;
+        if (declaredDxfFactor === null && selection.unit === "mm" && unitScale !== 1) {
+          throw new Error("Error interno: la selección mm debe importar con factor ×1.");
+        }
+        sourceUnitName = declaredDxfFactor === null
+          ? selection.unit : "automática (metadatos DXF)";
+        if (extension === "dwg") {
+          const suspicious = suspiciousDwgMeterScale(header, unitScale);
+          if (suspicious) {
+            const raw = suspicious.rawSpan.toLocaleString("es-CO", { maximumFractionDigits: 2 });
+            const converted = suspicious.resultingSpanMm.toLocaleString("es-CO", { maximumFractionDigits: 2 });
+            const accepted = window.confirm(
+              `ATENCIÓN: posible error de escala DWG ×${unitScale}.\n\n`
+              + `El dibujo ocupa aproximadamente ${raw} unidades de origen.\n`
+              + `Con el factor elegido ocuparía ${converted} mm.\n\n`
+              + "Si en AutoCAD esa longitud está en milímetros, pulsa Cancelar y vuelve a importar usando «mm» (factor ×1).\n"
+              + "Pulsa Aceptar SOLO si confirmaste que el dibujo realmente está en metros.",
+            );
+            if (!accepted) throw new Error(
+              "Importación cancelada para evitar multiplicar el DWG ×1.000. Importa otra vez y selecciona «mm» si las coordenadas ya están en milímetros.",
+            );
+          }
+        }
+        report(`DWG/DXF · Unidad de origen confirmada: ${sourceUnitName} · factor ×${unitScale} hacia mm…`);
+      };
+      const CHUNK = 1800;
+      const addSegmentBatch = async (
+        batch: readonly ImportedCadSegment[],
+        total: number,
+      ): Promise<void> => {
+        if (!metadata) throw new Error("El procesador DWG envió segmentos antes de confirmar las unidades.");
+        for (let i = 0; i < batch.length; i++) {
+          const segment = batch[i]!;
+          this.options.designModel.cadLines.register({
+            layerId: getLayerId(segment.layer, segment.color),
+            start: scaledPoint(segment.start, unitScale),
+            end: scaledPoint(segment.end, unitScale),
+          });
+          registeredSegments++;
+          if (i > 0 && i % CHUNK === 0) {
+            report(`DWG/DXF · Registrando ${registeredSegments.toLocaleString("es-CO")} / ${total.toLocaleString("es-CO")} segmentos…`);
+            await yieldFrame();
+          }
+        }
+        report(`DWG/DXF · Registrando ${registeredSegments.toLocaleString("es-CO")} / ${total.toLocaleString("es-CO")} segmentos…`);
+        await yieldFrame();
+      };
+      const parsed = await this.parseInWorker(
+        file, extension, recoverDwg, report, prepare, addSegmentBatch,
+      );
+      if (!metadata) await prepare(parsed);
+      // DXF keeps the existing bounded, single-message import protocol.
+      if (parsed.segments.length) await addSegmentBatch(parsed.segments, parsed.segments.length);
+      const totalSegments = parsed.totalSegments ?? parsed.segments.length;
+      if (registeredSegments !== totalSegments) {
+        throw new Error("Importación CAD incompleta: no se registraron todos los segmentos recibidos.");
       }
-      report(`DWG/DXF · Registrando geometría ${Math.min(i + CHUNK, parsed.segments.length).toLocaleString()} / ${parsed.segments.length.toLocaleString()} segmentos…`);
-      await yieldFrame();
-    }
     for (let i = 0; i < parsed.points.length; i += CHUNK) {
       for (const entry of parsed.points.slice(i, i + CHUNK)) {
         this.options.designModel.registerCadPoint({
@@ -232,6 +249,7 @@ export class CadReferenceImportController {
     report("DWG/DXF · Actualizando referencias, SNAP y encuadre…");
     await yieldFrame();
     await this.options.onImported?.();
+    importCommitted = true;
 
     const skipped = parsed.skippedEntities > 0
       ? ` · ${parsed.skippedEntities} entidades no representadas: ${[
@@ -241,8 +259,8 @@ export class CadReferenceImportController {
       : "";
     const truncation = parsed.truncated
       ? `\nATENCIÓN: importación parcial. Se alcanzó el límite de ${MAX_RENDERED_SEGMENTS.toLocaleString()} segmentos de DXF. Quedan ${parsed.incompleteRootEntities} entidades con detalle pendiente. No utilizar este resultado como plano completo de fabricación.`
-      : extension === "dwg" && parsed.segments.length > MAX_RENDERED_SEGMENTS
-        ? `\nDWG grande: ${parsed.segments.length.toLocaleString("es-CO")} segmentos estructurales/gráficos cargados completos, sin corte global a 240.000. La geometría CAD no compatible y referencias externas aún pueden faltar.`
+      : extension === "dwg" && totalSegments > MAX_RENDERED_SEGMENTS
+        ? `\nDWG grande: ${totalSegments.toLocaleString("es-CO")} segmentos estructurales/gráficos cargados completos, sin corte global a 240.000. La geometría CAD no compatible y referencias externas aún pueden faltar.`
         : "";
     const xrefs = parsed.unresolvedExternalReferences.length
       ? `\nREFERENCIAS EXTERNAS (XREF) NO DISPONIBLES: ${parsed.unresolvedExternalReferences.join(", ")}. Estas geometrías no están embebidas en el DWG: importa también los archivos DWG referenciados.`
@@ -251,9 +269,28 @@ export class CadReferenceImportController {
       ? `\nDefiniciones BLOCK ausentes: ${parsed.unresolvedBlocks.slice(0, 8).join(", ")}.`
       : "";
     window.alert(
-      `Plano CAD "${referenceName}" importado como bloque de referencia.\nSe priorizaron perfiles, tubos, bloques y textos. Los sombreados HATCH se omiten; se rescata solo la geometría gráfica de DIMENSION que cabe después de la estructura.\n${parsed.segments.length} segmentos · ${parsed.points.length} puntos · ${parsed.texts.length} textos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos · ${parsed.recoveredDimensionSegments} segmentos gráficos secundarios${skipped}.${truncation}${xrefs}${missingBlocks}${parsed.importDiagnostics ?? ""}\nUnidad seleccionada: ${sourceUnitName}. Equivalencia: ${unitScale === 1 ? "1 unidad = 1 mm" : `1 unidad = ${unitScale} mm`}. Factor aplicado: ×${unitScale}.\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
+      `Plano CAD "${referenceName}" importado como bloque de referencia.\nSe priorizaron perfiles, tubos, bloques y textos. Los sombreados HATCH se omiten; se rescata solo la geometría gráfica de DIMENSION que cabe después de la estructura.\n${totalSegments} segmentos · ${parsed.points.length} puntos · ${parsed.texts.length} textos · ${parsed.expandedBlocks} INSERT/DIMENSION expandidos · ${parsed.recoveredDimensionSegments} segmentos gráficos secundarios${skipped}.${truncation}${xrefs}${missingBlocks}${parsed.importDiagnostics ?? ""}\nUnidad seleccionada: ${sourceUnitName}. Equivalencia: ${unitScale === 1 ? "1 unidad = 1 mm" : `1 unidad = ${unitScale} mm`}. Factor aplicado: ×${unitScale}.\nLos colores ByLayer/ByBlock y la escala original se conservan en las entidades compatibles.`,
     );
     } finally {
+      if (!importCommitted && createdLayerIds.size) {
+        // A cancelled unit dialog or failed chunk transfer must not leave a
+        // partially imported reference in the active project.
+        try {
+          for (const line of this.options.designModel.cadLines.values()) {
+            if (createdLayerIds.has(line.layerId))
+              this.options.designModel.cadLines.remove(line.id);
+          }
+          for (const point of this.options.designModel.cadPoints.getAll()) {
+            if (createdLayerIds.has(point.layerId))
+              this.options.designModel.cadPoints.remove(point.id);
+          }
+          for (const id of createdLayerIds) this.options.designModel.layers.remove(id);
+          this.options.cadLineScene.sync();
+          this.options.cadPointScene.sync();
+        } catch (rollbackError) {
+          console.error("DWG import rollback failed:", rollbackError);
+        }
+      }
       status.remove();
       this.button.disabled = false;
       this.recoveryButton.disabled = false;
