@@ -35,8 +35,6 @@ export interface CadReferenceImportControllerOptions {
 export class CadReferenceImportController {
   private readonly options: CadReferenceImportControllerOptions;
   private readonly button: HTMLButtonElement;
-  private readonly recoveryButton: HTMLButtonElement;
-  private readonly cotaButton: HTMLButtonElement;
   private readonly input: HTMLInputElement;
   private recoverNextDwg = false;
   private cotaNextImport = false;
@@ -49,27 +47,21 @@ export class CadReferenceImportController {
     this.options = options;
     this.button = this.createButton(options.container);
     this.input = this.createInput(options.container);
-    this.recoveryButton = this.createRecoveryButton(options.container);
-    this.cotaButton = this.createCotaButton(options.container);
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.button.remove();
-    this.recoveryButton.remove();
-    this.cotaButton.remove();
     this.input.remove();
   }
 
-  async importFile(file: File, recoverDwg = false, cotaMode = false): Promise<void> {
+  async importFile(file: File, recoverDwg = false, cotaMode = true): Promise<void> {
     if (this.importing) {
       throw new Error("Ya se está importando un DWG/DXF.");
     }
     this.importing = true;
     this.button.disabled = true;
-    this.recoveryButton.disabled = true;
-    this.cotaButton.disabled = true;
     // Pause pointer-driven SNAP until the last registered CAD segment is
     // available; otherwise every 900-line import chunk invalidates the
     // spatial index while the user moves the pointer.
@@ -196,13 +188,13 @@ export class CadReferenceImportController {
       const addPackedBatch = async (
         layer: string, color: string, positions: Float64Array, total: number,
       ): Promise<void> => {
-        if (!metadata) throw new Error("La referencia Cota llegó antes de confirmar las unidades.");
+        if (!metadata) throw new Error("La referencia CAD llegó antes de confirmar las unidades.");
         for (let i = 0; i < positions.length; i++) positions[i] = positions[i]! * unitScale;
         this.options.designModel.cadLines.registerPackedBatch({
           id: crypto.randomUUID(), layerId: getLayerId(layer, color), positions,
         });
         registeredSegments += positions.length / 6;
-        report(`Cota CAD · ${registeredSegments.toLocaleString("es-CO")} / ${total.toLocaleString("es-CO")} segmentos compactos…`);
+        report(`FrameLogic CAD · ${registeredSegments.toLocaleString("es-CO")} / ${total.toLocaleString("es-CO")} segmentos compactos…`);
         await yieldFrame();
       };
       const parsed = await this.parseInWorker(
@@ -312,8 +304,6 @@ export class CadReferenceImportController {
       }
       status.remove();
       this.button.disabled = false;
-      this.recoveryButton.disabled = false;
-    this.cotaButton.disabled = false;
       this.importing = false;
       delete document.body.dataset["framelogicCadImporting"];
     }
@@ -345,7 +335,7 @@ export class CadReferenceImportController {
     });
     button.addEventListener("click", () => {
       this.recoverNextDwg = false;
-      this.cotaNextImport = false;
+      this.cotaNextImport = true;
       this.input.accept = ".dwg,.dxf";
       this.input.click();
     });
@@ -356,63 +346,6 @@ export class CadReferenceImportController {
       button.style.left = "16px";
       button.style.top = "52px";
       button.style.zIndex = "124";
-      container.append(button);
-    }
-    return button;
-  }
-
-  private createRecoveryButton(container: HTMLElement): HTMLButtonElement {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = "Recuperar DWG";
-    button.dataset["framelogicFileCommand"] = "recover-cad";
-    button.title = "Comparar el importador normal con el lector alternativo DWG. Puede tardar más; no reconstruye XREF.";
-    Object.assign(button.style, {
-      padding: "5px 8px",
-      border: "1px solid rgba(255,255,255,0.16)",
-      borderRadius: "4px", background: "#304654", color: "#f3f7f9",
-      cursor: "pointer", font: "12px system-ui, sans-serif",
-    });
-    button.addEventListener("click", () => {
-      this.recoverNextDwg = true;
-      this.cotaNextImport = false;
-      this.input.accept = ".dwg";
-      this.input.click();
-    });
-    const bar = container.querySelector<HTMLElement>('[data-framelogic-project-toolbar="true"]');
-    if (bar) bar.append(button);
-    else {
-      button.style.position = "absolute";
-      button.style.left = "130px";
-      button.style.top = "52px";
-      button.style.zIndex = "124";
-      container.append(button);
-    }
-    return button;
-  }
-
-  private createCotaButton(container: HTMLElement): HTMLButtonElement {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset["framelogicFileCommand"] = "open-cad-cota";
-    button.textContent = "Abrir CAD (motor Cota)";
-    button.title = "DWG/DXF, incluidos DXF binarios. Referencia ligera: lectura y SNAP; para MOVE/COPYBASE usa el importador editable.";
-    Object.assign(button.style, {
-      padding: "5px 8px", border: "1px solid rgba(255,255,255,0.16)",
-      borderRadius: "4px", background: "#285b56", color: "#f3f7f9",
-      cursor: "pointer", font: "12px system-ui, sans-serif",
-    });
-    button.addEventListener("click", () => {
-      this.cotaNextImport = true;
-      this.recoverNextDwg = false;
-      this.input.accept = ".dwg,.dxf";
-      this.input.click();
-    });
-    const bar = container.querySelector<HTMLElement>('[data-framelogic-project-toolbar="true"]');
-    if (bar) bar.append(button);
-    else {
-      button.style.position = "absolute"; button.style.left = "16px";
-      button.style.top = "82px"; button.style.zIndex = "124";
       container.append(button);
     }
     return button;
@@ -518,7 +451,7 @@ export class CadReferenceImportController {
           if (response.phase === "packed") {
             await onPacked(response.layer, response.color, response.positions, expectedSegments);
             receivedSegments += response.positions.length / 6;
-            report(`Cota CAD · ${receivedSegments.toLocaleString("es-CO")} / ${expectedSegments.toLocaleString("es-CO")} segmentos compactos recibidos…`);
+            report(`FrameLogic CAD · ${receivedSegments.toLocaleString("es-CO")} / ${expectedSegments.toLocaleString("es-CO")} segmentos compactos recibidos…`);
             if (!settled) worker.postMessage({ type: "next" });
             return;
           }
