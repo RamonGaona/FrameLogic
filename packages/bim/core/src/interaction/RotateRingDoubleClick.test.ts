@@ -9,6 +9,13 @@ describe("RotateRingDoubleClick", () => {
     expect(tracker.take(143, 56, 1190)).toBe("X");
     expect(tracker.take(143, 56, 1200)).toBeNull();
   });
+  it("allows a deliberate 600 ms double click and 13 pixel pointer drift", () => {
+    const tracker = new RotateRingDoubleClick();
+    tracker.record("Y", 140, 55, 1000, false);
+    tracker.record("Y", 153, 55, 1600, false);
+    expect(tracker.take(154, 55, 1610)).toBe("Y");
+  });
+
   it("ignores different axes even on the same canvas element", () => {
     const tracker = new RotateRingDoubleClick();
     tracker.record("X", 140, 55, 1000, false);
