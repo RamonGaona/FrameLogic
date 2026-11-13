@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.142 — 2026-11-13
+
+### ZOOM: Enter obligatorio después de elegir E, O o S
+
+- **Secuencia:** escribir `Z`, confirmar con `Enter`, pulsar `E`, `O` o `S` para resaltar la opción y pulsar **`Enter` otra vez** para ejecutarla. Ninguna letra inicia una operación de cámara por sí sola.
+- **S · Seleccionar área:** antes del segundo Enter, no se captura el ratón, no aparece el rectángulo y la cámara sigue navegable. Después de confirmar S, funciona la ventana por dos esquinas o arrastre, con Esc para cancelar.
+- **E/O:** conservan zoom de extensión y objeto seleccionado; también requieren confirmación Enter después de su letra.
+- **Pruebas:** entradas de teclado, realce visible, inhibición de acciones antes de Enter, ejecución tras confirmar y cancelación.
+
+**Pendiente:** comprobar la versión publicada en Cloudflare Pages y el flujo de teclado en Firefox y Chrome.
+
+---
+
 ## v0.1.141 — 2026-11-13
 
 ### ZOOM: entrar con Z + Enter y encuadrar una zona seleccionada
