@@ -15,7 +15,7 @@ function pointerEvent(type: string, x: number, y: number, id = 7): PointerEvent 
   Object.assign(e, { clientX: x, clientY: y, button: 0, pointerId: id });
   return e as PointerEvent;
 }
-function fixture() {
+function fixture(mode: "translate" | "rotate" = "rotate", snapOnRelease = false) {
   const button = new FakeButton();
   const host = new EventTarget();
   vi.stubGlobal("window", host);
@@ -35,12 +35,15 @@ function fixture() {
     left: 0, top: 0, width: 400, height: 400,
   }) } as unknown as HTMLElement;
   const arm = vi.fn();
+  const placed = vi.fn();
   const setCamera = vi.fn();
+  const findSnap = vi.fn(() => new THREE.Vector3(3, 4, 0));
   const control = new CadReferencePivotHandle(
-    canvas, () => camera, pivot, setCamera, arm,
+    canvas, () => camera, pivot, setCamera, arm, "cad",
+    placed, snapOnRelease ? findSnap : undefined,
   );
-  control.activate("rotate");
-  return { button, host, camera, pivot, arm, setCamera, control };
+  control.activate(mode);
+  return { button, host, camera, pivot, arm, placed, findSnap, setCamera, control };
 }
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -80,6 +83,20 @@ describe("DWG visible pivot button", () => {
     expect(f.arm).not.toHaveBeenCalled();
     expect(f.pivot.position.x).toBeCloseTo(2, 4);
     expect(f.pivot.position.y).toBeCloseTo(0, 4);
+    f.control.dispose();
+  });
+
+  it("repositions a DWG MOVE base exactly at SNAP on drag release, without arming MOVE", () => {
+    const f = fixture("translate", true);
+    expect(f.button.style.width).toBe("24px");
+    expect(f.button.title).toContain("Punto base MOVE");
+    f.button.dispatchEvent(pointerEvent("pointerdown", 200, 200));
+    f.host.dispatchEvent(pointerEvent("pointermove", 230, 212));
+    f.host.dispatchEvent(pointerEvent("pointerup", 230, 212));
+    expect(f.findSnap).toHaveBeenCalledWith(230, 212);
+    expect(f.pivot.position.toArray()).toEqual([3, 4, 0]);
+    expect(f.placed).toHaveBeenCalledOnce();
+    expect(f.arm).not.toHaveBeenCalled();
     f.control.dispose();
   });
 
