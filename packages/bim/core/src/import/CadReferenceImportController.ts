@@ -36,8 +36,10 @@ export class CadReferenceImportController {
   private readonly options: CadReferenceImportControllerOptions;
   private readonly button: HTMLButtonElement;
   private readonly recoveryButton: HTMLButtonElement;
+  private readonly cotaButton: HTMLButtonElement;
   private readonly input: HTMLInputElement;
   private recoverNextDwg = false;
+  private cotaNextImport = false;
   private disposed = false;
   private importing = false;
 
@@ -48,6 +50,7 @@ export class CadReferenceImportController {
     this.button = this.createButton(options.container);
     this.input = this.createInput(options.container);
     this.recoveryButton = this.createRecoveryButton(options.container);
+    this.cotaButton = this.createCotaButton(options.container);
   }
 
   dispose(): void {
@@ -55,16 +58,18 @@ export class CadReferenceImportController {
     this.disposed = true;
     this.button.remove();
     this.recoveryButton.remove();
+    this.cotaButton.remove();
     this.input.remove();
   }
 
-  async importFile(file: File, recoverDwg = false): Promise<void> {
+  async importFile(file: File, recoverDwg = false, cotaMode = false): Promise<void> {
     if (this.importing) {
       throw new Error("Ya se está importando un DWG/DXF.");
     }
     this.importing = true;
     this.button.disabled = true;
     this.recoveryButton.disabled = true;
+    this.cotaButton.disabled = true;
     // Pause pointer-driven SNAP until the last registered CAD segment is
     // available; otherwise every 900-line import chunk invalidates the
     // spatial index while the user moves the pointer.
@@ -133,7 +138,7 @@ export class CadReferenceImportController {
         }
         // The converted DWG header is advisory only: user selection remains
         // the sole origin of the unit factor, exactly as in v0.1.130.
-        const declaredDxfFactor = extension === "dxf"
+        const declaredDxfFactor = extension === "dxf" && !cotaMode
           ? insUnitsToMillimeters(header.insUnits) : null;
         const selection: CadImportUnitChoice | null = declaredDxfFactor === null
           ? await chooseCadImportUnits(header, file.name)
@@ -188,8 +193,21 @@ export class CadReferenceImportController {
         report(`DWG/DXF · Registrando ${registeredSegments.toLocaleString("es-CO")} / ${total.toLocaleString("es-CO")} segmentos…`);
         await yieldFrame();
       };
+      const addPackedBatch = async (
+        layer: string, color: string, positions: Float64Array, total: number,
+      ): Promise<void> => {
+        if (!metadata) throw new Error("La referencia Cota llegó antes de confirmar las unidades.");
+        for (let i = 0; i < positions.length; i++) positions[i] = positions[i]! * unitScale;
+        this.options.designModel.cadLines.registerPackedBatch({
+          id: crypto.randomUUID(), layerId: getLayerId(layer, color), positions,
+        });
+        registeredSegments += positions.length / 6;
+        report(`Cota CAD · ${registeredSegments.toLocaleString("es-CO")} / ${total.toLocaleString("es-CO")} segmentos compactos…`);
+        await yieldFrame();
+      };
       const parsed = await this.parseInWorker(
         file, extension, recoverDwg, report, prepare, addSegmentBatch,
+        cotaMode, addPackedBatch,
       );
       if (!metadata) await prepare(parsed);
       // DXF keeps the existing bounded, single-message import protocol.
@@ -284,6 +302,7 @@ export class CadReferenceImportController {
             if (createdLayerIds.has(point.layerId))
               this.options.designModel.cadPoints.remove(point.id);
           }
+          this.options.designModel.cadLines.removePackedByLayerIds(createdLayerIds);
           for (const id of createdLayerIds) this.options.designModel.layers.remove(id);
           this.options.cadLineScene.sync();
           this.options.cadPointScene.sync();
@@ -294,6 +313,7 @@ export class CadReferenceImportController {
       status.remove();
       this.button.disabled = false;
       this.recoveryButton.disabled = false;
+    this.cotaButton.disabled = false;
       this.importing = false;
       delete document.body.dataset["framelogicCadImporting"];
     }
@@ -325,6 +345,7 @@ export class CadReferenceImportController {
     });
     button.addEventListener("click", () => {
       this.recoverNextDwg = false;
+      this.cotaNextImport = false;
       this.input.accept = ".dwg,.dxf";
       this.input.click();
     });
@@ -354,6 +375,7 @@ export class CadReferenceImportController {
     });
     button.addEventListener("click", () => {
       this.recoverNextDwg = true;
+      this.cotaNextImport = false;
       this.input.accept = ".dwg";
       this.input.click();
     });
@@ -369,6 +391,33 @@ export class CadReferenceImportController {
     return button;
   }
 
+  private createCotaButton(container: HTMLElement): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset["framelogicFileCommand"] = "open-cad-cota";
+    button.textContent = "Abrir CAD (motor Cota)";
+    button.title = "DWG/DXF, incluidos DXF binarios. Referencia ligera: lectura y SNAP; para MOVE/COPYBASE usa el importador editable.";
+    Object.assign(button.style, {
+      padding: "5px 8px", border: "1px solid rgba(255,255,255,0.16)",
+      borderRadius: "4px", background: "#285b56", color: "#f3f7f9",
+      cursor: "pointer", font: "12px system-ui, sans-serif",
+    });
+    button.addEventListener("click", () => {
+      this.cotaNextImport = true;
+      this.recoverNextDwg = false;
+      this.input.accept = ".dwg,.dxf";
+      this.input.click();
+    });
+    const bar = container.querySelector<HTMLElement>('[data-framelogic-project-toolbar="true"]');
+    if (bar) bar.append(button);
+    else {
+      button.style.position = "absolute"; button.style.left = "16px";
+      button.style.top = "82px"; button.style.zIndex = "124";
+      container.append(button);
+    }
+    return button;
+  }
+
   private createInput(container: HTMLElement): HTMLInputElement {
     const input = document.createElement("input");
     input.type = "file";
@@ -377,10 +426,12 @@ export class CadReferenceImportController {
     input.addEventListener("change", () => {
       const file = input.files?.[0];
       const recoverDwg = this.recoverNextDwg;
+      const cotaMode = this.cotaNextImport;
       this.recoverNextDwg = false;
+      this.cotaNextImport = false;
       input.accept = ".dwg,.dxf";
       if (!file) return;
-      void this.importFile(file, recoverDwg)
+      void this.importFile(file, recoverDwg, cotaMode)
         .catch((error) => {
           console.error("Error importing DWG/DXF reference:", error);
           window.alert(
@@ -402,6 +453,8 @@ export class CadReferenceImportController {
     report: (status: string) => void = () => {},
     onBegin: (metadata: ParsedCadReference, total: number) => Promise<void> = async () => {},
     onBatch: (segments: readonly ImportedCadSegment[], total: number) => Promise<void> = async () => {},
+    cotaMode = false,
+    onPacked: (layer: string, color: string, positions: Float64Array, total: number) => Promise<void> = async () => {},
   ): Promise<ParsedCadReference> {
     if (typeof Worker === "undefined") {
       throw new Error(
@@ -428,6 +481,7 @@ export class CadReferenceImportController {
         | { ok: true; parsed: ParsedCadReference }
         | { ok: true; phase: "begin"; parsed: ParsedCadReference; totalSegments: number }
         | { ok: true; phase: "segments"; segments: ImportedCadSegment[] }
+        | { ok: true; phase: "packed"; layer: string; color: string; positions: Float64Array }
         | { ok: true; phase: "done" }
         | { ok: false; error: string }
       >) => {
@@ -461,6 +515,13 @@ export class CadReferenceImportController {
             if (!settled) worker.postMessage({ type: "next" });
             return;
           }
+          if (response.phase === "packed") {
+            await onPacked(response.layer, response.color, response.positions, expectedSegments);
+            receivedSegments += response.positions.length / 6;
+            report(`Cota CAD · ${receivedSegments.toLocaleString("es-CO")} / ${expectedSegments.toLocaleString("es-CO")} segmentos compactos recibidos…`);
+            if (!settled) worker.postMessage({ type: "next" });
+            return;
+          }
           if (response.phase === "done") {
             if (!stop()) return;
             if (!streamedHeader || receivedSegments !== expectedSegments) {
@@ -477,7 +538,7 @@ export class CadReferenceImportController {
         if (!stop()) return;
         reject(new Error("Error en el procesador DWG/DXF: " + error.message));
       };
-      worker.postMessage({ type: "parse", extension, buffer: bytes, recoverDwg }, [bytes]);
+      worker.postMessage({ type: "parse", extension, buffer: bytes, recoverDwg, engine: cotaMode ? "cota" : "framelogic" }, [bytes]);
     });
   }
 

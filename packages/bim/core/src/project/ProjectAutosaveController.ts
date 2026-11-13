@@ -7,6 +7,8 @@ export interface ProjectAutosaveControllerOptions {
   readonly createProjectPackage: (
     name?: string,
   ) => FrameLogicProjectPackage;
+  /** Avoid 90+ MB autosave snapshots for huge, compact CAD underlays. */
+  readonly hasHugeCompactCad?: () => boolean;
   readonly restoreProjectPackage: (
     project: FrameLogicProjectPackage,
   ) => Promise<void>;
@@ -123,6 +125,10 @@ export class ProjectAutosaveController {
       return;
     }
 
+    if (this.options.hasHugeCompactCad?.()) {
+      this.status.textContent = "CAD grande: usa Guardar proyecto (autoguardado pausado)";
+      return;
+    }
     this.saving =
       true;
     try {
@@ -267,6 +273,12 @@ export class ProjectAutosaveController {
         BeforeUnloadEvent,
     ): void => {
       try {
+        // Do not stringify massive binary CAD underlays on the unload event.
+        if (this.options.hasHugeCompactCad?.()) {
+          event.preventDefault();
+          event.returnValue = "";
+          return;
+        }
         const project =
           this.options.createProjectPackage(
             "FrameLogic Recovery Check",
@@ -349,6 +361,7 @@ function hasRecoverableContent(
     project.pieceDefinitions.length > 0
     || project.pieceInstances.length > 0
     || project.cadLines.length > 0
+    || (project.cadPackedLines?.length ?? 0) > 0
     || project.cadPoints.length > 0
     || project.geometrySources.length > 0
     || project.referenceSources.length > 0

@@ -610,6 +610,7 @@ export async function createBimCore(
   const autosave =
     new ProjectAutosaveController({
       container,
+      hasHugeCompactCad: () => core.designModel.cadLines.packedCount > 100_000,
       createProjectPackage: (
         name,
       ) =>

@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.132",
+  "version": "0.1.133",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -36,6 +36,7 @@
     "automation:demo": "node --import tsx apps/mcp/src/demo.ts",
     "mcp:start": "node --import tsx apps/mcp/src/main.ts",
     "mcp:deploy": "npx wrangler@4.158.0 deploy --config apps/mcp/wrangler.jsonc",
-    "test:dwg-recovery": "vitest run packages/bim/core/src/import/CadDwgRecoveryDecision.test.ts packages/bim/core/src/import/CadImportScaleSafety.test.ts tests/dwgRecoveryBuildConfig.test.ts"
+    "test:dwg-recovery": "vitest run packages/bim/core/src/import/CadDwgRecoveryDecision.test.ts packages/bim/core/src/import/CadImportScaleSafety.test.ts tests/dwgRecoveryBuildConfig.test.ts",
+    "test:cota-cad": "vitest run packages/bim/core/src/import/CotaCompactCadGeometry.test.ts packages/bim/core/src/design/CadCotaPackedReference.test.ts tests/cotaCadBridgeIntegration.test.ts"
   }
 }

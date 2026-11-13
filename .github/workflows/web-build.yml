@@ -75,6 +75,9 @@ jobs:
       - name: Piece visualization tests
         run: npm run test:piece-visuals
 
+      - name: Cota DWG/DXF compact reference and SNAP regression
+        run: npm run test:cota-cad
+
       - name: Dual DWG reader recovery regression
         run: npm run test:dwg-recovery
 

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getNearbyCadLines } from "../precision/CadScreenSpatialIndex";
 import type { CadReferenceTextSceneController } from "../design/CadReferenceTextSceneController";
 import { getActiveCadCircleModelController } from "../interaction/CadCircleModelSpaceController";
 import type { CadHistoryController } from "../interaction/CadHistoryController";
@@ -362,6 +363,18 @@ export class CadReferenceBlockController {
       );
       hasPoint = true;
     }
+    // Fast Cota underlays have no individual registered CadLine objects.
+    // Include their exact source geometry when selecting a whole reference.
+    const min = new THREE.Vector3();
+    for (const packet of this.options.designModel.cadLines.getPackedBatches()) {
+      if (!layerIds.has(packet.layerId)) continue;
+      const p = packet.positions;
+      for (let i = 0; i < p.length; i += 3) {
+        min.set(p[i]!, p[i + 1]!, p[i + 2]!);
+        box.expandByPoint(min);
+      }
+      hasPoint = true;
+    }
     for (const point of this.options.designModel.cadPoints.getAll()) {
       if (!layerIds.has(point.layerId)) continue;
       box.expandByPoint(
@@ -449,6 +462,8 @@ export class CadReferenceBlockController {
   copyReferencesByBase(
     names: readonly string[], delta: THREE.Vector3,
   ): CadReferenceCopyResult {
+    if (names.some((name) => this.isCompactReference(name)))
+      throw new Error("La referencia Cota compacta es de solo lectura. Para mover o copiar importa mediante «Abrir DWG/DXF».");
     if (!this.options.history) throw new Error("No está disponible el historial COPY CAD.");
     const result = copyCadReferenceBlocks(
       this.options.designModel, this.options.history, names, delta,
@@ -538,6 +553,7 @@ export class CadReferenceBlockController {
     referenceName: string,
     delta: THREE.Vector3,
   ): boolean {
+    if (this.isCompactReference(referenceName)) return false;
     if (delta.lengthSq() <= 1e-18) return true;
     const layerIds = this.getReferenceLayerIds(
       referenceName,
@@ -575,6 +591,7 @@ export class CadReferenceBlockController {
     toOrigin: THREE.Vector3,
     rotation: THREE.Quaternion,
   ): boolean {
+    if (this.isCompactReference(referenceName)) return false;
     const layerIds = this.getReferenceLayerIds(
       referenceName,
       true,
@@ -628,6 +645,7 @@ export class CadReferenceBlockController {
         referenceName,
         true,
       );
+      this.options.designModel.cadLines.removePackedByLayerIds(layerIds);
       for (const line of this.options.designModel.cadLines.getAll()) {
         if (layerIds.has(line.layerId)) {
           this.options.designModel.cadLines.remove(line.id);
@@ -654,6 +672,11 @@ export class CadReferenceBlockController {
     mode: "translate" | "rotate",
   ): boolean {
     if (!this.interactionEnabled) return false;
+    if ([...this.selectedReferenceNames].some((name) => this.isCompactReference(name))) {
+      this.badge.textContent = "Cota CAD: referencia ligera de solo lectura. Usa Abrir DWG/DXF para edición.";
+      this.badge.style.display = "block";
+      return false;
+    }
     const bounds = this.getSelectedBounds();
     if (!bounds) return false;
 
@@ -1348,6 +1371,26 @@ export class CadReferenceBlockController {
       }
     }
 
+    // SNAP candidates on a compact Cota underlay are virtual, not stored as
+    // separate editable CadLine records. Use them to pick the reference.
+    for (const line of getNearbyCadLines(
+      this.options.designModel, camera, rect, clientX, clientY, PICK_TOLERANCE_PX, 20,
+    )) {
+      if (!line.id.startsWith("cota:")) continue;
+      const layer = this.options.designModel.layers.get(line.layerId);
+      const parsed = layer ? parseCadLayerName(layer) : null;
+      if (!parsed || !layer?.visible) continue;
+      const start = projectPoint(line.start, camera, rect);
+      const end = projectPoint(line.end, camera, rect);
+      if (!start || !end) continue;
+      const distance = distanceToSegment(clientX, clientY, start.x, start.y, end.x, end.y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestReference = parsed.referenceName;
+        bestLineId = null;
+      }
+    }
+
     for (const point of this.options.designModel.cadPoints.getAll()) {
       const layer = this.options.designModel.layers.get(point.layerId);
       const parsed = layer ? parseCadLayerName(layer) : null;
@@ -1382,6 +1425,12 @@ export class CadReferenceBlockController {
       }
     }
     return ids;
+  }
+
+  private isCompactReference(referenceName: string): boolean {
+    const layers = this.getReferenceLayerIds(referenceName, true);
+    return this.options.designModel.cadLines.getPackedBatches()
+      .some((packet) => layers.has(packet.layerId));
   }
 
   private hasReference(referenceName: string): boolean {

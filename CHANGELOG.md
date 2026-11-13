@@ -12,6 +12,24 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.133 — 2026-11-12
+
+### Motor CAD de Cota adaptado: DWG/DXF y referencias compactas
+
+- **Nueva opción en ARCHIVO:** `Abrir CAD (motor Cota)` permite abrir DWG y DXF tanto de texto como binario con la ruta de conversión `@node-projects/acad-ts` utilizada por Cota, manteniendo los importadores antiguos para archivos editables.
+- **Lector CAD unificado:** se adapta el flujo de Cota de `DwgReader`/`DxfReader`, reparación de FIELDs huérfanos, reconstrucción gráfica de ciertas cotas de arco y multileaders, escritura DXF incremental en UTF-8 y procesamiento mediante un Web Worker. Los XREF no se reconstruyen.
+- **Geometría ligera:** el importador interpreta la geometría, pero en lugar de crear un `CadLine` con UUID y dos objetos de puntos por cada segmento, utiliza buffers de precisión doble `Float64Array` por paquetes de hasta 8.192 líneas; transferencia sin clonación, con acuse del hilo principal. Esto reduce significativamente la memoria permanente de la referencia CAD.
+- **GPU agrupada y SNAP local:** las referencias ligeras se dibujan en `THREE.LineSegments` con origen local para precisión en coordenadas grandes. El índice de SNAP incluye los paquetes compactos, conservando el límite de 120.000 candidatos de pantalla y recalculando al cambiar visibilidad o zoom.
+- **Capas, textos y unidades:** conserva colores, capa visible, textos recuperados y anclas de texto existentes, con confirmación explícita de mm ×1 para los formatos importados con Cota; el modo editable original no cambia.
+- **Guardar/restaurar:** los `.flproject` incorporan opcionalmente buffers CAD compactos; los proyectos anteriores mantienen compatibilidad. El autoguardado se pausa para referencias compactas mayores de 100.000 segmentos para evitar crear snapshots masivos.
+- **Protección de edición:** las referencias Cota son **de solo lectura** en esta primera integración. Selección, visualización por capa y SNAP siguen disponibles, pero mover/rotar/copiar en modo compacto requiere primero usar el importador editable anterior.
+- **Pruebas:** añade tests de 250.001 segmentos compactos, parser sin entidades individuales, renderizado, colores, visibilidad, snaps, almacenamiento y conexión del menú/Worker.
+- **Licencia y atribución:** incorpora los documentos Apache-2.0 y NOTICE oficiales de Cota (Copyright 2026 Christian Orengia) en `licenses/`; implementación adaptada, no afiliada al proyecto Cota.
+
+**Limitaciones:** no es una sustitución íntegra del editor o parser de Cota. La expansión de entidades sigue siendo responsabilidad de FrameLogic; el rendimiento con `CUNAS_MEDIR 1.dwg` requiere una prueba real. Entidades proxy complejas y 3DSOLID pueden seguir siendo incompletos. Consultar `docs/COTA_CAD_IMPORT.md`.
+
+---
+
 ## v0.1.132 — 2026-11-12
 
 ### DWG grandes · reducir memoria y evitar Out of Memory con ~1.400.000 segmentos

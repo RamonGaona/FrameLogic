@@ -42,6 +42,7 @@ export class CadScreenSpatialIndex {
   private lastViewport: number[] = [];
   private lastCamera: THREE.Camera | null = null;
   private lastRevision = -1;
+  private lastLayerSignature = "";
 
   // Unlike ScreenLine[] this uses a compact flat buffer with one array entry
   // per visible, sampled line, rather than millions of per-line JS objects.
@@ -102,13 +103,16 @@ export class CadScreenSpatialIndex {
     const matrix = this.projection.elements;
     const viewport = [rect.left, rect.top, rect.width, rect.height];
     const revision = this.model.cadLines.revision;
+    const layerSignature = this.model.layers.getAll().map((layer) => `${layer.id}:${layer.visible}:${layer.snapEnabled}`).join("|");
     if (camera === this.lastCamera && revision === this.lastRevision
+      && layerSignature === this.lastLayerSignature
       && viewport.every((v, i) => v === this.lastViewport[i])
       && matrix.every((v, i) => Math.abs(v - (this.lastMatrix[i] ?? NaN)) < 1e-12)) {
       return;
     }
     this.lastCamera = camera;
     this.lastRevision = revision;
+    this.lastLayerSignature = layerSignature;
     this.lastMatrix = Array.from(matrix);
     this.lastViewport = viewport;
     this.rebuild(rect);
@@ -161,6 +165,45 @@ export class CadScreenSpatialIndex {
       this.screenCoords[base + 1] = ay;
       this.screenCoords[base + 2] = bx;
       this.screenCoords[base + 3] = by;
+    }
+
+    // Cota-style packed CAD underlays retain six doubles per line rather
+    // than millions of CadLine objects. Project only the visible candidates
+    // on demand and materialize at most 120k temporary SNAP records.
+    for (const packet of this.model.cadLines.getPackedBatches()) {
+      const layer = this.model.layers.get(packet.layerId);
+      if (!layer?.visible || !layer.snapEnabled) continue;
+      const p = packet.positions;
+      for (let i = 0; i < p.length; i += 6) {
+        const start = project(p[i]!, p[i + 1]!, p[i + 2]!);
+        const end = project(p[i + 3]!, p[i + 4]!, p[i + 5]!);
+        if (!start || !end) continue;
+        const [ax, ay] = start, [bx, by] = end;
+        if (Math.max(ax, bx) < rect.left - 24
+          || Math.min(ax, bx) > rect.left + rect.width + 24
+          || Math.max(ay, by) < rect.top - 24
+          || Math.min(ay, by) > rect.top + rect.height + 24) continue;
+        this.visible++;
+        let slot: number;
+        if (this.indexedLines.length < MAX_VISIBLE_CAD_SNAP_RECORDS) {
+          slot = this.indexedLines.length;
+        } else {
+          const hash = (Math.imul(this.visible, 1664525) + 1013904223) >>> 0;
+          slot = Math.floor((hash / 0x1_0000_0000) * this.visible);
+          if (slot >= MAX_VISIBLE_CAD_SNAP_RECORDS) continue;
+        }
+        const line: CadLine = {
+          id: `cota:${packet.id}:${i / 6}`, layerId: packet.layerId,
+          start: { x: p[i]!, y: p[i + 1]!, z: p[i + 2]! },
+          end: { x: p[i + 3]!, y: p[i + 4]!, z: p[i + 5]! },
+        };
+        this.indexedLines[slot] = line;
+        const base = slot * 4;
+        this.screenCoords[base] = ax;
+        this.screenCoords[base + 1] = ay;
+        this.screenCoords[base + 2] = bx;
+        this.screenCoords[base + 3] = by;
+      }
     }
 
     // Build buckets only for the bounded visible reservoir. Never place

@@ -89,6 +89,8 @@ export interface FrameLogicProjectPackageV1 {
   readonly assemblies: readonly Assembly[];
   readonly cadPoints: readonly CadPoint[];
   readonly cadLines: readonly CadLine[];
+  /** Compact, read-only Cota CAD reference segments; present in v1.133+ files. */
+  readonly cadPackedLines?: readonly { id: string; layerId: string; dataBase64: string }[];
   readonly cadReferenceTexts?: readonly CadReferenceTextAnnotation[];
   readonly geometrySources: readonly ProjectGeometrySource[];
   readonly referenceSources: readonly ProjectReferenceSource[];
@@ -260,6 +262,12 @@ export class FrameLogicProjectPackageController {
         cloneJson(
           this.options.designModel.cadLines.getAll(),
         ),
+      cadPackedLines: this.options.designModel.cadLines.getPackedBatches().map((packet) => ({
+        id: packet.id, layerId: packet.layerId,
+        dataBase64: encodeBase64(new Uint8Array(
+          packet.positions.buffer, packet.positions.byteOffset, packet.positions.byteLength,
+        )),
+      })),
       cadReferenceTexts: this.options.cadTextScene?.getAnnotations() ?? [],
       geometrySources,
       referenceSources:
@@ -522,6 +530,17 @@ export class FrameLogicProjectPackageController {
             ? line.layerId : undefined,
           start: { ...line.start },
           end: { ...line.end },
+        });
+      }
+      for (const packet of packageValue.cadPackedLines ?? []) {
+        if (!this.options.designModel.layers.get(packet.layerId))
+          throw new Error("Capa de referencia Cota ausente: " + packet.layerId);
+        const bytes = decodeBase64(packet.dataBase64);
+        if (bytes.byteLength === 0 || bytes.byteLength % 48 !== 0)
+          throw new Error("Geometría CAD compacta dañada en el proyecto.");
+        this.options.designModel.cadLines.registerPackedBatch({
+          id: packet.id, layerId: packet.layerId,
+          positions: new Float64Array(bytes.buffer),
         });
       }
     }
