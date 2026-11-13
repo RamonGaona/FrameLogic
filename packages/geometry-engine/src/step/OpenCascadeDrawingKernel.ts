@@ -318,11 +318,12 @@ export class OpenCascadeDrawingKernel {
         ["Hide", "Hide_1"],
       );
 
+      const algoHandle = this.construct(oc, "Handle_HLRBRep_Algo_", [algo]);
       const extractor =
         this.construct(
           oc,
           "HLRBRep_HLRToShape_",
-          [algo],
+          [algoHandle],
         ) as Record<string, unknown> & Deleteable;
       const visibleShape =
         this.firstShape(
@@ -365,6 +366,7 @@ export class OpenCascadeDrawingKernel {
         visibleShape,
         hiddenShape,
         extractor,
+        algoHandle,
         algo,
         projector,
         axis,
@@ -493,7 +495,9 @@ export class OpenCascadeDrawingKernel {
       this.callRequired(algo, ["Projector", "Projector_1"], projector);
       this.callRequired(algo, ["Update", "Update_1"]);
       this.callRequired(algo, ["Hide", "Hide_1"]);
-      const extractor = this.construct(oc, "HLRBRep_HLRToShape_", [algo]) as Record<string, unknown> & Deleteable;
+      const algoHandle = this.construct(oc, "Handle_HLRBRep_Algo_", [algo]);
+      resources.push(algoHandle);
+      const extractor = this.construct(oc, "HLRBRep_HLRToShape_", [algoHandle]) as Record<string, unknown> & Deleteable;
       resources.push(extractor);
       const visibleShape = this.firstShape(extractor, [
         "VCompound", "Rg1LineVCompound", "OutLineVCompound",
