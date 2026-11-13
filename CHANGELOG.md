@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.136 — 2026-11-13
+
+### SNAP INTERSECCIÓN sobre la trayectoria provisional de LINE
+
+- **LINE / INTERSECCIÓN:** después de seleccionar el primer punto, la vista previa busca el primer cruce real con segmentos existentes entre el origen y el cursor y propone ese punto exacto como destino. Funciona con líneas CAD independientes y referencias DWG/DXF compactas, incluso desplazadas o rotadas.
+- **Indicador visible:** se muestra un punto de color cian sobre la intersección mientras el tramo provisional está capturado; al hacer clic se crea el segmento hasta allí y LINE continúa. **Alt** permite atravesar otras líneas temporalmente sin la captura automática.
+- **Cálculo geométrico:** requiere coincidencia de los segmentos finitos en 3D; evita falsos cruces debidos únicamente a su proyección en pantalla, capas ocultas/deshabilitadas para SNAP, segmentos paralelos y el punto inicial de la propia línea.
+- **Rendimiento:** reutiliza el índice SNAP espacial con muestreo de la trayectoria (máximo 80 estaciones, hasta 80 candidatos locales). No explota ni recorre en cada movimiento los millones de segmentos compactos del DWG; respeta el presupuesto de muestras de referencias muy densas del índice existente.
+- **Compatibilidad:** mantiene el workplane y ORTO, los SNAP de puntos existentes, el historial LINE y la entrada numérica de distancia sin aplicar captura de trayectoria a valores numéricos.
+- **Pruebas:** intersecciones nativas, DWG transformado, primer cruce, distintas cotas Z, capas/SNAP, exclusión de inicio y tecla Alt.
+
+**Limitación consciente:** en vistas muy alejadas con más de 120.000 segmentos visibles, la cobertura de candidatos depende del muestreo existente; acercar la cámara permite recuperar intersecciones locales exactas.
+
+---
+
 ## v0.1.135 — 2026-11-12
 
 ### Corrección de doble clic 90° y centro de giro visible en piezas 3D
