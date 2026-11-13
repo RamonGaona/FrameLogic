@@ -375,6 +375,39 @@ export class GeneralPdfController {
   }
 
   /**
+   * Bounded set of transformed mesh-local box corners. Unlike the union of
+   * world-aligned boxes, these retain the angle of a rotated long profile.
+   * Used exclusively for proposing projection directions, never for dimensions.
+   */
+  private collectAutomaticViewOrientationPoints(
+    instanceIds: readonly string[],
+  ): Array<{ x: number; y: number; z: number }> {
+    const wanted = new Set(instanceIds);
+    const points: Array<{ x: number; y: number; z: number }> = [];
+    const corner = new THREE.Vector3();
+    for (const [instanceId, object] of this.designScene.getInstanceEntries()) {
+      if (!wanted.has(instanceId)) continue;
+      object.updateWorldMatrix(true, true);
+      object.traverse((child) => {
+        if (!(child instanceof THREE.Mesh) || points.length >= 8192) return;
+        const geometry = child.geometry;
+        if (!geometry.boundingBox) geometry.computeBoundingBox();
+        const box = geometry.boundingBox;
+        if (!box || box.isEmpty()) return;
+        for (const x of [box.min.x, box.max.x])
+          for (const y of [box.min.y, box.max.y])
+            for (const z of [box.min.z, box.max.z]) {
+              corner.set(x, y, z).applyMatrix4(child.matrixWorld);
+              if ([corner.x, corner.y, corner.z].every(Number.isFinite)) {
+                points.push({ x: corner.x, y: corner.y, z: corner.z });
+              }
+            }
+      });
+    }
+    return points;
+  }
+
+  /**
    * Creates a real, editable sheet in the existing Paper Space/PDF engine.
    * This first stage chooses projections and a common nominal scale; it does
    * not infer manufacturing dimensions from Three.js display triangles.
@@ -403,7 +436,7 @@ export class GeneralPdfController {
     const planned = planSmartAssemblyViews({
       min: { x: bounds.min.x, y: bounds.min.y, z: bounds.min.z },
       max: { x: bounds.max.x, y: bounds.max.y, z: bounds.max.z },
-    }, included);
+    }, included, this.collectAutomaticViewOrientationPoints(request.instanceIds));
     if (!planned.length) {
       window.alert("No se pudieron calcular las vistas del ensamble.");
       return false;
@@ -517,7 +550,7 @@ export class GeneralPdfController {
       const partViews = planSmartAssemblyViews({
         min: { x: localBounds.min.x, y: localBounds.min.y, z: localBounds.min.z },
         max: { x: localBounds.max.x, y: localBounds.max.y, z: localBounds.max.z },
-      }).slice(0, 2);
+      }, 1, this.collectAutomaticViewOrientationPoints([instanceId])).slice(0, 2);
       const partSheet = this.createEmptySheet(crypto.randomUUID(),
         `Pieza ${marks[definitionId]} · ${this.getPieceLabel(instanceId)}`);
       partSheet.titleBlock.drawingNumber = `${marks[definitionId]}-${request.assemblyId.slice(0, 8)}`;
