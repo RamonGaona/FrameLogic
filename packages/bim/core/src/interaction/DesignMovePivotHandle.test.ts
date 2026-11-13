@@ -20,7 +20,7 @@ function pointer(type: string, x: number, y: number, id = 7) {
 function fixture() {
   const button = new FakeButton();
   const host = new EventTarget() as Window & { setTimeout: (fn: () => void) => number };
-  host.setTimeout = callback => { queueMicrotask(callback); return 1; };
+  host.setTimeout = callback => { if (typeof callback === "function") queueMicrotask(() => callback()); return 1; };
   vi.stubGlobal("window", host);
   vi.stubGlobal("requestAnimationFrame", vi.fn(() => 11));
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
