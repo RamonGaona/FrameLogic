@@ -13,7 +13,8 @@ import type { DesignSceneController } from "../design/DesignSceneController";
 import { getStepBrepDocumentId } from "../step/StepEngineeringBridge";
 import type { CadWorkPlaneState } from "../interaction/CadWorkPlaneController";
 import type { AutomaticDimensionPoint } from "./AutoDrawingPlanner";
-import { planEngineeringAutomaticDimensions, type EngineeringDimensionInstruction } from "./EngineeringAutoDimensionPlanner";
+import type { EngineeringDimensionInstruction } from "./EngineeringAutoDimensionPlanner";
+import { planWorkshopFeatureDimensions } from "./WorkshopFeatureDimensionPlanner";
 
 export interface AssemblyLine {
   readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number;
@@ -64,12 +65,7 @@ export function planExactAssemblyDimensions(
   points: readonly AutomaticDimensionPoint[],
   limit = 18,
 ): EngineeringDimensionInstruction[] {
-  if (!points.some((p) => p.kind === "VERTEX")) return [];
-  const planned = planEngineeringAutomaticDimensions(points, {
-    scope: "ASSEMBLY", arrangement: "BASELINE", detail: "ALL",
-    maxFeaturesPerAxis: 6, maxDiameterGroups: 6,
-  });
-  return planned.slice(0, Math.max(0, Math.min(32, Math.trunc(limit))));
+  return planWorkshopFeatureDimensions(points, limit);
 }
 
 export async function projectAssembly(source: AssemblyProjectionSource,

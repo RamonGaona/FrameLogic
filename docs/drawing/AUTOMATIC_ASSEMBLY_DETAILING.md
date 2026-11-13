@@ -113,6 +113,52 @@ manual ni las anotaciones manuales existentes.
   instancias existentes; aún falta reconciliar todas las altas/bajas
   y cambios jerárquicos con marcas y BOM de manera transaccional.
 
+## v0.1.145 — cotas STEP, distribución y BOM asociativa
+
+`WorkshopFeatureDimensionPlanner` selecciona primero los extremos de
+vértices STEP exactos; luego agrupa aristas circulares coplanares por
+radio y **centro único**, genera estaciones de sus centros y mide
+separaciones entre centros sólo cuando coinciden realmente en una
+misma fila o columna dentro de la tolerancia geométrica. No deduce
+que toda arista circular sea un taladro ni que todo vértice interior
+sea un corte de taller. Los puntos siempre son B-Rep.
+
+`WorkshopDimensionLayout` calcula posiciones deterministas en los
+márgenes superior, derecho e inferior de cada ventana; evita
+colisiones entre cajas de texto y oculta las dimensiones que no caben
+mostrando el número omitido. Los textos de las cotas automáticas
+pueden arrastrarse sin cambiar su valor y ocultarse con clic
+derecho. El botón **Restablecer cotas** recupera la posición
+automática y los textos ocultos. El PDF exporta la misma alineación
+de texto que el SVG; no usa la propiedad `text-anchor` que el
+exportador PDF heredado no interpreta.
+
+`AssemblyBomPlanner` obtiene la cantidad de instancias por
+definición de pieza y lee de `FrameLogicEngineeringModel` los
+atributos `material.name`, `material.grade` y
+`physical.massKg` cuando existen. Calcula masa total solamente
+multiplicando una masa unitaria explícita por la cantidad real.
+Si falta información, la tabla muestra «sin dato» y no deduce masa,
+material ni perfiles de una malla. Se utiliza en el resumen principal
+y las hojas ampliadas de BOM.
+
+La regeneración de un ensamble consulta la lista actual de
+instancias jerárquicas, conserva marcas ya asignadas, agrega
+nuevas marcas y actualiza la BOM. Las hojas individuales de pieza
+preexistentes se mantienen, pero **no** se crean automáticamente
+planos adicionales al insertar una definición nueva mediante la
+regeneración. Esto queda pendiente.
+
+**Límites que permanecen:** HLR es por pieza y no entre piezas;
+las cotas se basan en referencias STEP pero su edición gráfica
+manual se limita a mover/ocultar textos; no hay optimizador global
+de intersecciones de líneas de cota, ni detalles de soldadura,
+cortes, biseles o despieces de producción revisados por norma.
+En vistas pequeñas los candidatos sin sitio se omiten
+intencionalmente y se reportan, no se saturan los planos.
+Se necesita comprobación dimensional y física del PDF de un
+ensamble real antes de autorizar su fabricación.
+
 ## Etapas posteriores
 
 1. HLR real por vista y acotación exacta editable de ensamble y piezas, sin

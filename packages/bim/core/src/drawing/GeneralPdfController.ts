@@ -3,9 +3,15 @@ import { planSmartAssemblyViews, type AutomaticViewCode } from "./AutoDrawingPla
 import { planSelectedSheetLayout, selectAssemblyScaleDenominator } from "./AutoSheetLayoutPlanner";
 import { assemblyProjectionSignature, projectAssembly, type AssemblyLine, type AssemblyMarkAnchor } from "./AssemblyProjectionEngine";
 import type { EngineeringDimensionInstruction } from "./EngineeringAutoDimensionPlanner";
+import {
+  layoutWorkshopDimensions,
+  type WorkshopDimensionOverride,
+} from "./WorkshopDimensionLayout";
+import { buildAssemblyBom, renderAssemblyBomRow, type AssemblyBomRow } from "./AssemblyBomPlanner";
 
 import type {
   DesignModel,
+  FrameLogicEngineeringModel,
 } from "@framelogic/domain";
 
 import type {
@@ -95,6 +101,7 @@ interface AssemblySheetViewRuntime {
   automaticViewCode?: AutomaticViewCode;
   /** Persisted exact B-Rep dimension plans; manual annotations live separately. */
   automaticDimensions?: readonly EngineeringDimensionInstruction[];
+  dimensionOverrides?: Record<string, WorkshopDimensionOverride>;
   automaticAnchors?: readonly AssemblyMarkAnchor[];
   exactInstances?: number;
   fallbackInstances?: number;
@@ -109,7 +116,8 @@ interface GeneralSheetRuntime extends Omit<SheetState, "views"> {
   /** Persistent per-definition marks keep regeneration order independent. */
   pieceMarks?: Record<string, string>;
   /** The BOM sheet is independent of any single view and paginates large assemblies. */
-  bomEntries?: Array<{ mark: string; label: string; quantity: number }>;
+  bomEntries?: AssemblyBomRow[];
+  bomAssemblyId?: string;
   id?: string;
   name?: string;
   readonly views: GeneralSheetViewRuntime[];
@@ -135,6 +143,7 @@ interface WorkspaceRuntime {
   render(): void;
   setTool(tool: "SELECT" | "DIMENSION" | "LABEL" | "TEXT"): void;
   setStatus(message: string): void;
+  eventToSheetPoint(event: PointerEvent | MouseEvent): THREE.Vector2 | null;
 }
 
 interface SectionRuntime {
@@ -187,6 +196,7 @@ export interface GeneralPdfControllerOptions {
   readonly container: HTMLElement;
   readonly designModel: DesignModel;
   readonly designScene: DesignSceneController;
+  readonly engineeringModel: FrameLogicEngineeringModel;
   readonly drawingProduction: DrawingProductionController;
   readonly drawingProfessional: DrawingProfessionalController;
   readonly drawingWorkspace: DrawingWorkspaceController;
@@ -220,6 +230,7 @@ export class GeneralPdfController {
   private readonly container: HTMLElement;
   private readonly designModel: DesignModel;
   private readonly designScene: DesignSceneController;
+  private readonly engineeringModel: FrameLogicEngineeringModel;
   private readonly production: ProductionRuntime;
   private readonly professional: ProfessionalRuntime;
   private readonly workspace: WorkspaceRuntime;
@@ -233,11 +244,20 @@ export class GeneralPdfController {
   private disposed = false;
   private refreshInProgress = false;
   private lastAutomaticRefresh = 0;
+  private dimensionDrag: {
+    readonly viewId: string;
+    readonly key: string;
+    readonly pointerId: number;
+    readonly start: THREE.Vector2;
+    readonly originalX: number;
+    readonly originalY: number;
+  } | null = null;
 
   constructor(options: GeneralPdfControllerOptions) {
     this.container = options.container;
     this.designModel = options.designModel;
     this.designScene = options.designScene;
+    this.engineeringModel = options.engineeringModel;
     this.production =
       options.drawingProduction as unknown as ProductionRuntime;
     this.professional =
@@ -255,6 +275,11 @@ export class GeneralPdfController {
       this.renderGeneralViews();
     };
 
+    this.workspace.svg.addEventListener("pointerdown", this.onAutoDimensionDown, true);
+    this.workspace.svg.addEventListener("pointermove", this.onAutoDimensionMove, true);
+    this.workspace.svg.addEventListener("pointerup", this.onAutoDimensionUp, true);
+    this.workspace.svg.addEventListener("pointercancel", this.onAutoDimensionUp, true);
+    this.workspace.svg.addEventListener("contextmenu", this.onAutoDimensionContextMenu, true);
     this.syncSectionSheets();
     this.timer = window.setInterval(() => {
       this.syncSectionSheets();
@@ -272,6 +297,12 @@ export class GeneralPdfController {
     if (this.disposed) return;
     this.disposed = true;
     window.clearInterval(this.timer);
+    this.workspace.svg.removeEventListener("pointerdown", this.onAutoDimensionDown, true);
+    this.workspace.svg.removeEventListener("pointermove", this.onAutoDimensionMove, true);
+    this.workspace.svg.removeEventListener("pointerup", this.onAutoDimensionUp, true);
+    this.workspace.svg.removeEventListener("pointercancel", this.onAutoDimensionUp, true);
+    this.workspace.svg.removeEventListener("contextmenu", this.onAutoDimensionContextMenu, true);
+    this.dimensionDrag = null;
     this.workspace.render = this.baseWorkspaceRender;
     this.workspace.overlay
       .querySelector('[data-framelogic-pdf-view-tree="GENERAL"]')
@@ -462,10 +493,7 @@ export class GeneralPdfController {
       const piece = this.designModel.pieceInstances.get(id);
       if (piece && !unique.has(piece.definitionId)) unique.set(piece.definitionId, id);
     }
-    const entries = [...unique].map(([definitionId, instanceId]) => ({
-      mark: marks[definitionId] ?? "—", label: this.getPieceLabel(instanceId), quantity:
-        request.instanceIds.filter((id) => this.designModel.pieceInstances.get(id)?.definitionId === definitionId).length,
-    }));
+    const entries = this.buildBomRows(request.instanceIds, marks);
     // Full material index on additional A3 sheets; no guessed weight/material.
     if (entries.length > 8) {
       const chunkSize = 40;
@@ -473,6 +501,7 @@ export class GeneralPdfController {
         const page = this.createEmptySheet(crypto.randomUUID(),
           `Listado de piezas · ${request.assemblyName} · ${Math.floor(start / chunkSize) + 1}`);
         page.bomEntries = entries.slice(start, start + chunkSize);
+        page.bomAssemblyId = request.assemblyId;
         page.titleBlock.drawingNumber = `B-${request.assemblyId.slice(0, 8)}-${Math.floor(start / chunkSize) + 1}`;
         this.production.sheets.set(page.id!, page);
       }
@@ -930,7 +959,7 @@ export class GeneralPdfController {
       }
     }
     if (automatic && view.automaticViewCode !== "ISO") {
-      this.renderAssemblyDimensions(view, layout, originX, originY, drawnHeight, scale);
+      this.renderAssemblyDimensions(view, layout, originX, originY, drawnWidth, drawnHeight, scale);
       if (index === 0 || view.assemblyId.startsWith("piece:")) {
         this.renderAssemblyMarks(sheet, view, layout, originX, originY, drawnHeight, scale);
       }
@@ -983,47 +1012,42 @@ export class GeneralPdfController {
   }
 
 
+
   private renderAssemblyDimensions(
     view: AssemblySheetViewRuntime, layout: ViewLayoutRuntime,
-    originX: number, originY: number, drawnHeight: number, scale: number,
+    originX: number, originY: number,
+    drawnWidth: number, drawnHeight: number, scale: number,
   ): void {
     const dimensions = view.automaticDimensions ?? [];
-    const measure = (metres: number): string => {
-      const mm = Math.abs(metres) * 1000;
-      return Number(mm.toFixed(mm < 10 ? 2 : 1)).toString();
-    };
-    let horizontal = 0;
-    let vertical = 0;
-    let diameters = 0;
-    for (const dimension of dimensions) {
-      const ax = originX + dimension.a.x * scale;
-      const bx = originX + dimension.b.x * scale;
-      const ay = originY + drawnHeight - dimension.a.y * scale;
-      const by = originY + drawnHeight - dimension.b.y * scale;
-      if (dimension.mode === "HORIZONTAL" && horizontal < 3) {
-        const y = layout.y + 28 + horizontal * 11;
-        this.appendDimensionLine(ax, ay, ax, y);
-        this.appendDimensionLine(bx, by, bx, y);
-        this.appendDimensionLine(ax, y, bx, y);
-        this.appendText((ax + bx) / 2, y - 3, measure(dimension.b.x - dimension.a.x), 8, "#12567c");
-        horizontal++;
-      } else if (dimension.mode === "VERTICAL" && vertical < 3) {
-        const x = layout.x + layout.width - 27 - vertical * 12;
-        this.appendDimensionLine(ax, ay, x, ay);
-        this.appendDimensionLine(bx, by, x, by);
-        this.appendDimensionLine(x, ay, x, by);
-        this.appendText(x + 3, (ay + by) / 2, measure(dimension.b.y - dimension.a.y), 8, "#12567c");
-        vertical++;
-      } else if (dimension.mode === "DIAMETER" && diameters < 3) {
-        const x = layout.x + 8;
-        const y = layout.y + layout.height - 44 - diameters * 13;
-        this.appendDimensionLine(ax, ay, x + 60, y);
-        const label = `${(dimension.quantity ?? 1) > 1 ? dimension.quantity + "× " : ""}Ø${measure((dimension.a.radius ?? 0) * 2)}`;
-        this.appendText(x, y - 3, label, 8, "#12567c");
-        diameters++;
+    const result = layoutWorkshopDimensions(dimensions, {
+      x: layout.x, y: layout.y, width: layout.width, height: layout.height,
+      originX, originY, drawnWidth, drawnHeight, scale,
+    }, view.dimensionOverrides);
+    for (const dimension of result.placed) {
+      for (const line of dimension.lines) {
+        this.appendDimensionLine(line.x1, line.y1, line.x2, line.y2);
       }
+      // Left-aligned text makes the SVG renderer and simple PDF export
+      // agree: that exporter does not support SVG text-anchor="middle".
+      const estimatedWidth = dimension.label.length * 8 * 0.59;
+      const text = this.appendText(
+        dimension.labelX - estimatedWidth / 2,
+        dimension.labelY, dimension.label, 8, "#12567c",
+      );
+      text.setAttribute("data-framelogic-auto-dim-view", view.id);
+      text.setAttribute("data-framelogic-auto-dim-key", dimension.key);
+      text.setAttribute("aria-label", `Cota ${dimension.label} mm. Arrastra para reubicar, clic derecho para ocultar.`);
+      text.style.cursor = "move";
+      text.style.pointerEvents = "auto";
     }
-    if (dimensions.length) this.appendText(layout.x + 5, layout.y + 15, "COTAS STEP · mm", 8, "#12567c");
+    if (dimensions.length) {
+      this.appendText(layout.x + 5, layout.y + 15,
+        `COTAS STEP · mm · ${result.placed.length} visibles`, 8, "#12567c");
+    }
+    if (result.omitted > 0) {
+      this.appendText(layout.x + 5, layout.y + layout.height - 18,
+        `${result.omitted} cota(s) omitidas: falta espacio o duplicadas`, 7, "#8a241c");
+    }
   }
 
   private appendDimensionLine(x1: number, y1: number, x2: number, y2: number): void {
@@ -1034,6 +1058,77 @@ export class GeneralPdfController {
     line.style.pointerEvents = "none";
     this.workspace.svg.append(line);
   }
+
+
+  private findAutoDimensionView(viewId: string): AssemblySheetViewRuntime | null {
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    const candidate = sheet?.views.find((v) => v.id === viewId);
+    return candidate && this.isAssemblyView(candidate) && candidate.automaticViewCode
+      ? candidate : null;
+  }
+
+  private readonly onAutoDimensionDown = (event: PointerEvent): void => {
+    if (event.button !== 0 || this.disposed) return;
+    const target = event.target instanceof Element
+      ? event.target.closest<SVGTextElement>("[data-framelogic-auto-dim-key]") : null;
+    const viewId = target?.getAttribute("data-framelogic-auto-dim-view");
+    const key = target?.getAttribute("data-framelogic-auto-dim-key");
+    const start = this.workspace.eventToSheetPoint(event);
+    if (!viewId || !key || !start) return;
+    const view = this.findAutoDimensionView(viewId);
+    if (!view) return;
+    const previous = view.dimensionOverrides?.[key];
+    this.dimensionDrag = {
+      viewId, key, pointerId: event.pointerId, start,
+      originalX: previous?.dx ?? 0, originalY: previous?.dy ?? 0,
+    };
+    try { this.workspace.svg.setPointerCapture(event.pointerId); } catch { /* device without capture */ }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private readonly onAutoDimensionMove = (event: PointerEvent): void => {
+    const drag = this.dimensionDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const pointer = this.workspace.eventToSheetPoint(event);
+    const view = this.findAutoDimensionView(drag.viewId);
+    if (!pointer || !view) return;
+    view.dimensionOverrides ??= {};
+    view.dimensionOverrides[drag.key] = {
+      ...view.dimensionOverrides[drag.key],
+      dx: Math.max(-110, Math.min(110, drag.originalX + pointer.x - drag.start.x)),
+      dy: Math.max(-65, Math.min(65, drag.originalY + pointer.y - drag.start.y)),
+    };
+    this.workspace.render();
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private readonly onAutoDimensionUp = (event: PointerEvent): void => {
+    if (this.dimensionDrag?.pointerId !== event.pointerId) return;
+    this.dimensionDrag = null;
+    if (this.workspace.svg.hasPointerCapture(event.pointerId))
+      this.workspace.svg.releasePointerCapture(event.pointerId);
+    this.workspace.setStatus("COTA STEP: posición de texto ajustada; medida geométrica intacta.");
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private readonly onAutoDimensionContextMenu = (event: MouseEvent): void => {
+    const target = event.target instanceof Element
+      ? event.target.closest<SVGTextElement>("[data-framelogic-auto-dim-key]") : null;
+    const viewId = target?.getAttribute("data-framelogic-auto-dim-view");
+    const key = target?.getAttribute("data-framelogic-auto-dim-key");
+    const view = viewId ? this.findAutoDimensionView(viewId) : null;
+    if (!view || !key) return;
+    view.dimensionOverrides ??= {};
+    view.dimensionOverrides[key] = { ...view.dimensionOverrides[key], hidden: true };
+    this.workspace.render();
+    this.workspace.setStatus("COTA STEP ocultada. Usa 'Restablecer cotas' para recuperarla.");
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
 
   private renderAssemblyMarks(
     sheet: GeneralSheetRuntime, view: AssemblySheetViewRuntime, layout: ViewLayoutRuntime,
@@ -1068,6 +1163,11 @@ export class GeneralPdfController {
     try {
       for (const candidate of sheet.views) {
         if (!this.isAssemblyView(candidate) || !candidate.automaticViewCode) continue;
+        if (!candidate.assemblyId.startsWith("piece:")
+          && this.designModel.assemblies.get(candidate.assemblyId)) {
+          // Hierarchical membership can change independently of geometry.
+          candidate.instanceIds = [...this.designModel.getAssemblyPieceIdsDeep(candidate.assemblyId)];
+        }
         const signature = assemblyProjectionSignature({
           instanceIds: candidate.instanceIds, designModel: this.designModel, designScene: this.designScene,
         });
@@ -1087,7 +1187,9 @@ export class GeneralPdfController {
         candidate.resolved = true;
         updated++;
       }
+      if (updated || force) this.syncAutomaticAssemblyIndex(sheet);
       if (updated) {
+        this.lastTreeSignature = "";
         this.workspace.render();
         this.workspace.setStatus(`VISTAS AUTO: ${updated} vista(s) regeneradas sin mover layouts ni cotas manuales.`);
       } else if (force) {
@@ -1100,6 +1202,58 @@ export class GeneralPdfController {
     }
   }
 
+  private buildBomRows(
+    instanceIds: readonly string[],
+    marks: Readonly<Record<string, string>>,
+  ): AssemblyBomRow[] {
+    const occurrences: Array<{ definitionId: string; label: string }> = [];
+    const properties: Record<string, { material?: string; grade?: string; unitMassKg?: number }> = {};
+    for (const instanceId of instanceIds) {
+      const piece = this.designModel.pieceInstances.get(instanceId);
+      if (!piece) continue;
+      occurrences.push({ definitionId: piece.definitionId, label: this.getPieceLabel(instanceId) });
+      const engineering = this.engineeringModel.pieces.get(piece.definitionId);
+      properties[piece.definitionId] = {
+        material: engineering?.material?.name,
+        grade: engineering?.material?.grade,
+        unitMassKg: engineering?.physical?.massKg,
+      };
+    }
+    return buildAssemblyBom(occurrences, marks, properties);
+  }
+
+  private syncAutomaticAssemblyIndex(sheet: GeneralSheetRuntime): void {
+    const root = sheet.views.find((candidate): candidate is AssemblySheetViewRuntime =>
+      this.isAssemblyView(candidate) && Boolean(candidate.automaticViewCode)
+      && !candidate.assemblyId.startsWith("piece:"));
+    if (!root) return;
+    const marks = sheet.pieceMarks ?? {};
+    let nextMark = 1 + Math.max(0, ...Object.values(marks)
+      .map((value) => /^P(\d+)$/.exec(value)?.[1])
+      .map((value) => Number(value ?? 0)));
+    for (const instanceId of root.instanceIds) {
+      const piece = this.designModel.pieceInstances.get(instanceId);
+      if (piece && !marks[piece.definitionId]) marks[piece.definitionId] = `P${nextMark++}`;
+    }
+    sheet.pieceMarks = marks;
+    const rows = this.buildBomRows(root.instanceIds, marks);
+    const pages = [...this.production.sheets.values()].filter((page) =>
+      page.bomAssemblyId === root.assemblyId);
+    const required = rows.length > 8 ? Math.ceil(rows.length / 40) : 0;
+    for (let i = 0; i < Math.max(required, pages.length); i++) {
+      let page = pages[i];
+      if (!page && i < required) {
+        page = this.createEmptySheet(crypto.randomUUID(),
+          `Listado de piezas · ${root.assemblyName} · ${i + 1}`);
+        page.bomAssemblyId = root.assemblyId;
+        page.titleBlock.drawingNumber = `B-${root.assemblyId.slice(0, 8)}-${i + 1}`;
+        this.production.sheets.set(page.id!, page);
+      }
+      if (page) page.bomEntries = i < required
+        ? rows.slice(i * 40, (i + 1) * 40) : [];
+    }
+  }
+
   /** Compact marks/quantities summary, not a certified material takeoff. */
   private renderAutomaticPartIndex(sheet: GeneralSheetRuntime): void {
     if (sheet.bomEntries?.length) {
@@ -1109,41 +1263,25 @@ export class GeneralPdfController {
         const row = i % 20;
         const x = 54 + col * 518;
         const y = 116 + row * 24;
-        this.appendText(x, y, `${item.mark}  |  ${item.quantity} ud  |  ${item.label.slice(0, 61)}`, 9, "#222");
+        this.appendText(x, y, renderAssemblyBomRow(item, 25), 8.5, "#222");
       }
-      this.appendText(54, 594, "Materiales, pesos, cortes y soldaduras: comprobar por separado.", 9, "#8a241c");
+      this.appendText(54, 594,
+        "Material y masa: solo si constan en los datos de ingeniería. Verificar antes de fabricar.",
+        8.5, "#8a241c");
       return;
     }
     const view = sheet.views.find((candidate): candidate is AssemblySheetViewRuntime =>
       this.isAssemblyView(candidate) && Boolean(candidate.automaticViewCode));
     if (!view || !sheet.pieceMarks) return;
-    const groups = new Map<string, { mark: string; label: string; quantity: number }>();
-    for (const instanceId of view.instanceIds) {
-      const piece = this.designModel.pieceInstances.get(instanceId);
-      if (!piece) continue;
-      const key = piece.definitionId;
-      const existing = groups.get(key);
-      if (existing) {
-        existing.quantity += 1;
-      } else {
-        groups.set(key, {
-          mark: sheet.pieceMarks[key] ?? "—",
-          label: this.getPieceLabel(instanceId),
-          quantity: 1,
-        });
-      }
-    }
-    if (!groups.size) return;
-    this.appendText(54, 633, "MARCAS Y CANTIDADES · SEGÚN MODELO", 10, "#111");
-    const rows = [...groups.values()].sort((a, b) =>
-      Number(a.mark.slice(1)) - Number(b.mark.slice(1)));
+    const rows = this.buildBomRows(view.instanceIds, sheet.pieceMarks);
+    if (!rows.length) return;
+    this.appendText(54, 633, "MARCAS, MATERIALES Y CANTIDADES · SEGÚN MODELO", 10, "#111");
     rows.slice(0, 8).forEach((item, index) => {
-      const label = item.label.length > 70 ? item.label.slice(0, 67) + "…" : item.label;
       this.appendText(54, 651 + index * 13,
-        `${item.mark}   ${item.quantity} ×   ${label}`, 9, "#222");
+        renderAssemblyBomRow(item, 31), 8.5, "#222");
     });
     if (rows.length > 8) {
-      this.appendText(54, 760, `+ ${rows.length - 8} marcas adicionales (ver árbol de vistas)`, 8, "#444");
+      this.appendText(54, 760, `+ ${rows.length - 8} marcas adicionales (ver hoja de BOM)`, 8, "#444");
     }
     this.appendText(54, 779,
       view.fallbackInstances
@@ -1332,6 +1470,13 @@ export class GeneralPdfController {
       regenerate.style.display = sheet?.views.some((view) =>
         this.isAssemblyView(view) && Boolean(view.automaticViewCode)) ? "block" : "none";
     }
+    const reset = tree.parentElement?.querySelector<HTMLButtonElement>(
+      '[data-framelogic-reset-auto-dimensions="true"]');
+    if (reset) {
+      reset.style.display = sheet?.views.some((view) =>
+        this.isAssemblyView(view) && Object.keys(view.dimensionOverrides ?? {}).length > 0)
+        ? "block" : "none";
+    }
 
     const pieces = this.designModel.pieceInstances.getAll();
     const signature = sheet
@@ -1439,7 +1584,23 @@ export class GeneralPdfController {
       regenerate.dataset["framelogicRegenerateAssembly"] = "true";
       regenerate.style.cssText = "display:none;margin:6px;padding:6px;background:#29495a;color:#fff;border:1px solid #567483;border-radius:4px;cursor:pointer;font:11px system-ui;";
       regenerate.addEventListener("click", () => { void this.refreshAutomaticSheets(true); });
-      panel.append(header, regenerate, content);
+      const resetDimensions = document.createElement("button");
+      resetDimensions.type = "button";
+      resetDimensions.textContent = "Restablecer cotas";
+      resetDimensions.dataset["framelogicResetAutoDimensions"] = "true";
+      resetDimensions.style.cssText = regenerate.style.cssText;
+      resetDimensions.addEventListener("click", () => {
+        const sheetId = this.getActiveSheetId();
+        const sheet = sheetId ? this.production.sheets.get(sheetId) : undefined;
+        if (!sheet) return;
+        for (const candidate of sheet.views) {
+          if (this.isAssemblyView(candidate)) candidate.dimensionOverrides = {};
+        }
+        this.lastTreeSignature = "";
+        this.workspace.render();
+        this.workspace.setStatus("COTAS STEP: posiciones restablecidas y etiquetas ocultas recuperadas.");
+      });
+      panel.append(header, regenerate, resetDimensions, content);
       this.workspace.overlay.append(panel);
     }
 
@@ -1632,7 +1793,7 @@ export class GeneralPdfController {
     text: string,
     size: number,
     fill: string,
-  ): void {
+  ): SVGTextElement {
     const element = document.createElementNS(SVG_NS, "text");
     element.setAttribute("x", String(x));
     element.setAttribute("y", String(y));
@@ -1641,6 +1802,7 @@ export class GeneralPdfController {
     element.textContent = text;
     element.style.pointerEvents = "none";
     this.workspace.svg.append(element);
+    return element;
   }
 }
 
