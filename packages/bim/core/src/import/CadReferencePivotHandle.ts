@@ -25,6 +25,8 @@ export class CadReferencePivotHandle {
   private readonly pivot: THREE.Object3D;
   private readonly setCameraEnabled: (enabled: boolean) => void;
   private readonly onArm: () => void;
+  private readonly onPlaced: (() => void) | undefined;
+  private readonly findDropSnap: ((x: number, y: number) => THREE.Vector3 | null) | undefined;
 
   constructor(
     canvas: HTMLElement,
@@ -33,12 +35,16 @@ export class CadReferencePivotHandle {
     setCameraEnabled: (enabled: boolean) => void,
     onArm: () => void,
     kind: "cad" | "piece" = "cad",
+    onPlaced?: () => void,
+    findDropSnap?: (x: number, y: number) => THREE.Vector3 | null,
   ) {
     this.canvas = canvas;
     this.cameraProvider = cameraProvider;
     this.pivot = pivot;
     this.setCameraEnabled = setCameraEnabled;
     this.onArm = onArm;
+    this.onPlaced = onPlaced;
+    this.findDropSnap = findDropSnap;
     const button = document.createElement("button");
     this.button = button;
     button.type = "button";
@@ -46,7 +52,7 @@ export class CadReferencePivotHandle {
     button.setAttribute("aria-label", "Cambiar el punto base del gizmo con SNAP");
     Object.assign(button.style, {
       position: "fixed", display: "none", zIndex: "1002",
-      width: "20px", height: "20px", padding: "0",
+      width: "24px", height: "24px", padding: "0",
       borderRadius: "50%", transform: "translate(-50%, -50%)",
       boxSizing: "border-box", border: "2px solid #14232c",
       background: "#ffec7c", boxShadow: "0 0 0 2px #ffffff",
@@ -109,7 +115,7 @@ export class CadReferencePivotHandle {
     this.button.style.display = "block";
     this.button.title = this.mode === "rotate"
       ? "Centro ROTATE: clic, después elige un SNAP para el centro de giro"
-      : "Punto base MOVE: clic, después elige un SNAP para el punto base";
+      : "Punto base MOVE: clic y selecciona un SNAP; o arrastra hasta otra ubicación";
   }
 
   private readonly onDown = (event: PointerEvent): void => {
@@ -148,7 +154,19 @@ export class CadReferencePivotHandle {
     event.stopImmediatePropagation();
     const click = !this.dragged
       && Math.hypot(event.clientX - this.pointerX, event.clientY - this.pointerY) <= 5;
+    const placed = this.dragged && this.active;
+    // A free drag is convenient, but an actual ENDPOINT/MIDPOINT/etc.
+    // under the released cursor takes priority for an exact base location.
+    if (placed && this.mode === "translate" && this.findDropSnap) {
+      const snap = this.findDropSnap(event.clientX, event.clientY);
+      if (snap && [snap.x, snap.y, snap.z].every(Number.isFinite)) {
+        this.pivot.position.copy(snap);
+        this.pivot.updateMatrixWorld(true);
+        this.position();
+      }
+    }
     this.finish(true);
+    if (placed) this.onPlaced?.();
     if (click && this.active) this.onArm();
   };
 
