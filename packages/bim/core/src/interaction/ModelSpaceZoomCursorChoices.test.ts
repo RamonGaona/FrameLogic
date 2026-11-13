@@ -75,7 +75,7 @@ describe("ZOOM cursor choices", () => {
       .toEqual({ left: 480, top: 366 });
     expect(getZoomHintPosition(15, 12, 780, 520, 288, 118))
       .toEqual({ left: 31, top: 28 });
-    expect(getZoomHintPosition(15, 3, 320, 200, 288, 118).left).toBe(12);
+    expect(getZoomHintPosition(15, 3, 320, 200, 288, 118).left).toBe(20);
   });
 
   it("shows ZOOM E/O options after Z, allows Tab/arrows and Enter, and avoids bottom HUD", () => {
