@@ -148,18 +148,25 @@ describe("ZOOM cursor choices", () => {
     expect(f.overlay.removed).toBe(true);
   });
 
-  it("Z+Enter+O/E executes; before Enter the same letters do not run ZOOM", () => {
+  it("Z Enter E/O highlights options, but only another Enter executes them", () => {
     const f = setup();
     const nextKeyHandler = vi.fn();
     f.windowStub.addEventListener("keydown", nextKeyHandler, true);
     sendKey(f.windowStub, "z");
     sendKey(f.windowStub, "Enter");
     sendKey(f.windowStub, "o");
-    expect(f.object).toHaveBeenCalledOnce();
+    expect(f.object).not.toHaveBeenCalled();
+    expect(f.hint.textContent).toContain("› O · Objeto");
+    expect(f.hint.style.display).toBe("block");
     expect(nextKeyHandler).not.toHaveBeenCalled();
+    sendKey(f.windowStub, "Enter");
+    expect(f.object).toHaveBeenCalledOnce();
     sendKey(f.windowStub, "z");
     sendKey(f.windowStub, "Enter");
     sendKey(f.windowStub, "e");
+    expect(f.extents).not.toHaveBeenCalled();
+    expect(f.hint.textContent).toContain("› E · Extensión");
+    sendKey(f.windowStub, "Enter");
     expect(f.extents).toHaveBeenCalledOnce();
     expect(nextKeyHandler).not.toHaveBeenCalled();
 
@@ -175,6 +182,10 @@ describe("ZOOM cursor choices", () => {
     sendKey(f.windowStub, "z");
     sendKey(f.windowStub, "Enter");
     sendKey(f.windowStub, "s");
+    expect(f.hint.textContent).toContain("› S · Seleccionar área");
+    expect(f.controls.enabled).toBe(true);
+    expect(f.overlay.style.display).toBe("none");
+    sendKey(f.windowStub, "Enter");
     expect(f.controls.enabled).toBe(false);
     expect(f.hint.textContent).toContain("Primera esquina");
 
@@ -211,6 +222,9 @@ describe("ZOOM cursor choices", () => {
     sendKey(f.windowStub, "z");
     sendKey(f.windowStub, "Enter");
     sendKey(f.windowStub, "s");
+    expect(f.controls.enabled).toBe(true);
+    sendKey(f.windowStub, "Enter");
+    expect(f.controls.enabled).toBe(false);
     const handler = (name: string) => Reflect.get(f.controller, name) as
       (event: PointerEvent) => void;
     const pointer = (x: number, y: number, id = 7) => ({
@@ -228,6 +242,9 @@ describe("ZOOM cursor choices", () => {
     sendKey(f.windowStub, "z");
     sendKey(f.windowStub, "Enter");
     sendKey(f.windowStub, "s");
+    expect(f.controls.enabled).toBe(true);
+    expect(f.hint.textContent).toContain("› S · Seleccionar área");
+    sendKey(f.windowStub, "Enter");
     expect(f.controls.enabled).toBe(false);
     sendKey(f.windowStub, "Escape");
     expect(f.controls.enabled).toBe(true);
