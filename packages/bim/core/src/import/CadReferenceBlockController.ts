@@ -365,7 +365,7 @@ export class CadReferenceBlockController {
     }
     // Fast Cota underlays have no individual registered CadLine objects.
     // Include their exact source geometry when selecting a whole reference.
-    const min = new THREE.Vector3(), max = new THREE.Vector3();
+    const min = new THREE.Vector3();
     for (const packet of this.options.designModel.cadLines.getPackedBatches()) {
       if (!layerIds.has(packet.layerId)) continue;
       const p = packet.positions;
