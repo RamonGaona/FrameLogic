@@ -78,7 +78,7 @@ export class DesignRotateController {
 
   /** Capture pointer positions before TransformControls handles the ring. */
   private readonly handleRingPointerDown = (event: PointerEvent): void => {
-    if (!this.active || event.button !== 0 || this.centerDragging) return;
+    if (!this.active || event.button !== 0 || this.centerDragging || this.centerArmed) return;
     this.ringGesture = {
       pointerId: event.pointerId, x: event.clientX, y: event.clientY, axis: null, dragged: false,
     };
@@ -1522,7 +1522,7 @@ export class DesignRotateController {
         event.preventDefault();
 
 
-        event.stopPropagation();
+        event.stopImmediatePropagation();
 
 
         return;
@@ -1569,7 +1569,7 @@ export class DesignRotateController {
       event.preventDefault();
 
 
-      event.stopPropagation();
+      event.stopImmediatePropagation();
 
 
       this.centerDragging =
@@ -1737,7 +1737,7 @@ export class DesignRotateController {
             event.preventDefault();
 
 
-            event.stopPropagation();
+            event.stopImmediatePropagation();
 
 
             this.pivot.position.copy(
