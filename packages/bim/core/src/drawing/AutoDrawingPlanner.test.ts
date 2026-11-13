@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planAutomaticDimensions, planAutomaticViews, type AutomaticDimensionPoint } from "./AutoDrawingPlanner";
+import { planAutomaticDimensions, planAutomaticViews, planSmartAssemblyViews, type AutomaticDimensionPoint } from "./AutoDrawingPlanner";
 
 describe("automatic technical views", () => {
   it("generates four nondegenerate sections containing all eight world bounds corners", () => {
@@ -62,5 +62,35 @@ describe("automatic dimensions from exact references", () => {
   it("only derives overall extents from exact vertices, not circle centers", () => {
     const dims = planAutomaticDimensions([vertex("a", 0, 0), vertex("b", 2, 1), circle("c", 99, 99, 1)]);
     expect(dims.find((d) => d.mode === "HORIZONTAL")?.b.x).toBe(2);
+  });
+});
+
+describe("intelligent assembly view selection", () => {
+  it("uses the long axis and an independent end view for a tubular assembly", () => {
+    const views = planSmartAssemblyViews({
+      min: { x: 0, y: -0.2, z: -0.4 },
+      max: { x: 5, y: 0.2, z: 0.4 },
+    }, 3);
+    expect(views.map((item) => item.code)).toEqual(["FRONT", "RIGHT", "ISO"]);
+  });
+  it("reduces a single flat plate to its face and thickness views", () => {
+    const codes = planSmartAssemblyViews({
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 2, y: 2, z: 0.02 },
+    }).map((view) => view.code);
+    expect(codes).toEqual(["TOP", "RIGHT"]);
+  });
+  it("retains three orthographic views for a complex non-slender assembly", () => {
+    const codes = planSmartAssemblyViews({
+      min: { x: -1, y: -1, z: -1 },
+      max: { x: 1, y: 1, z: 1 },
+    }, 8).map((view) => view.code);
+    expect(codes).toEqual(["FRONT", "RIGHT", "TOP", "ISO"]);
+  });
+  it("rejects invalid, empty assemblies", () => {
+    expect(planSmartAssemblyViews({
+      min: { x: 0, y: 0, z: 0 },
+      max: { x: 0, y: 0, z: 0 },
+    }, 2)).toEqual([]);
   });
 });
