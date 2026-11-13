@@ -182,9 +182,12 @@ describe("DesignRotateController - exact degrees and ring double click", () => {
     await new Promise(resolve => setTimeout(resolve, 5));
     expect(f.model.pieceInstances.get(f.ids[0]!)?.transform.rotation.z)
       .toBeCloseTo(Math.PI / 2, 7);
-    expect(f.historyRecord).toHaveBeenCalledOnce();
+    expect(f.history.canUndo).toBe(true);
     expect(f.history.undo()).toBe(true);
+    expect(f.history.canUndo).toBe(false); // no empty mouseDown/mouseUp entries
     expect(f.model.pieceInstances.get(f.ids[0]!)?.transform.rotation.z).toBeCloseTo(0);
+    expect(f.history.redo()).toBe(true);
+    expect(f.history.canRedo).toBe(false);
     f.controller.dispose();
   });
 
