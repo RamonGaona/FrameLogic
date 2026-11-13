@@ -181,12 +181,10 @@ describe("ZOOM cursor choices", () => {
     const handler = (name: string) => Reflect.get(f.controller, name) as
       (event: PointerEvent) => void;
     const pointer = (type: string, x: number, y: number, id = 10) => {
-      const event = Object.assign(new Event(type, { cancelable: true }), {
-        target: f.canvas, button: 0, pointerId: id,
+      return { type, target: f.canvas, button: 0, pointerId: id,
         clientX: x, clientY: y, preventDefault: vi.fn(),
         stopImmediatePropagation: vi.fn(),
-      });
-      return event as unknown as PointerEvent;
+      } as unknown as PointerEvent;
     };
     // A click anchors the first point without zooming.
     handler("handleZoomWindowDown")(pointer("pointerdown", 100, 100));
