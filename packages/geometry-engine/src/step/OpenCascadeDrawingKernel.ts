@@ -343,24 +343,17 @@ export class OpenCascadeDrawingKernel {
             "OutLineHCompound",
           ],
         );
-      const visible =
-        visibleShape
-          ? this.extractShapeSegments(
-              oc,
-              visibleShape,
-              document.modelScale,
-              true,
-            )
-          : [];
-      const hidden =
-        hiddenShape
-          ? this.extractShapeSegments(
-              oc,
-              hiddenShape,
-              document.modelScale,
-              false,
-            )
-          : [];
+      // VCompound/HCompound contain projector-plane coordinates, not world
+      // vertices. Recover a 3D point on that plane before the caller applies
+      // the piece placement and view matrix.
+      const visible = this.restoreProjectedSegments(
+        visibleShape ? this.extractShapeSegments(oc, visibleShape, document.modelScale, true) : [],
+        direction, up,
+      );
+      const hidden = this.restoreProjectedSegments(
+        hiddenShape ? this.extractShapeSegments(oc, hiddenShape, document.modelScale, false) : [],
+        direction, up,
+      );
 
       this.disposeMany(
         visibleShape,
@@ -507,10 +500,14 @@ export class OpenCascadeDrawingKernel {
       ]);
       if (visibleShape) resources.push(visibleShape);
       if (hiddenShape) resources.push(hiddenShape);
-      const visible = visibleShape
-        ? this.extractShapeSegments(oc, visibleShape, 1, true) : [];
-      const hidden = hiddenShape
-        ? this.extractShapeSegments(oc, hiddenShape, 1, false) : [];
+      const visible = this.restoreProjectedSegments(
+        visibleShape ? this.extractShapeSegments(oc, visibleShape, 1, true) : [],
+        direction, up,
+      );
+      const hidden = this.restoreProjectedSegments(
+        hiddenShape ? this.extractShapeSegments(oc, hiddenShape, 1, false) : [],
+        direction, up,
+      );
       if (!visible.length) {
         throw new Error("El HLR del conjunto no produjo aristas visibles verificables.");
       }
@@ -525,6 +522,32 @@ export class OpenCascadeDrawingKernel {
         this.disposeMany(resources[i]);
       }
     }
+  }
+
+  /**
+   * HLRBRep_HLRToShape.VCompound and HCompound return 2D projector-space
+   * edges, NOT the 3D source coordinates. Reconstruct a point on the camera
+   * plane with gp_Ax2 x = up CROSS direction and y = direction CROSS x.
+   *
+   * This preserves model units and permits a single worldToPlane transform in
+   * AssemblyProjectionEngine. The discarded view depth is irrelevant to 2D
+   * vector projection and cannot be used for geometric measurements.
+   */
+  private restoreProjectedSegments(
+    segments: readonly OpenCascadeDrawingSegment[],
+    direction: Vector3,
+    up: Vector3,
+  ): OpenCascadeDrawingSegment[] {
+    const x = normalize(cross(up, direction));
+    const y = normalize(cross(direction, x));
+    const restore = (p: Point3): Point3 => ({
+      x: p.x * x.x + p.y * y.x,
+      y: p.x * x.y + p.y * y.y,
+      z: p.x * x.z + p.y * y.z,
+    });
+    return segments.map((segment) => ({
+      ...segment, a: restore(segment.a), b: restore(segment.b),
+    }));
   }
 
   private extractShapeSegments(
