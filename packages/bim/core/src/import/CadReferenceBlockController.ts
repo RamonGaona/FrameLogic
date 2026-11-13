@@ -169,6 +169,7 @@ export class CadReferenceBlockController {
       },
       "cad",
       () => {
+        if (this.activeMode !== "translate") return;
         // The HTML marker dragged only the CAD gizmo's base; its geometry,
         // copy operations and history stay untouched until MOVE is applied.
         this.armedPivot = false;
@@ -176,8 +177,8 @@ export class CadReferenceBlockController {
         this.armedCopyMove = false;
         this.destinationDown = false;
         this.transformStartPivot.copy(this.pivot.position);
-        this.badge.textContent = "MOVE DWG · Punto base reubicado · Elige un eje";
         this.refreshSelectionVisual();
+        this.badge.textContent = "MOVE DWG · Punto base reubicado · Elige un eje";
       },
       (x, y) => this.activeMode === "translate"
         ? this.options.findSnapPoint?.(x, y) ?? null : null,
