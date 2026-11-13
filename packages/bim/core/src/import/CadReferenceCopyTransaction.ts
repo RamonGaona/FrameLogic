@@ -12,6 +12,7 @@ interface CadReferenceCopySnapshot {
   readonly layers: readonly DesignLayer[];
   readonly lines: readonly CadLine[];
   readonly points: readonly CadPoint[];
+  readonly packed: readonly { id: string; layerId: string; positions: Float64Array; transform?: readonly number[]; sourceId: string }[];
   readonly referenceNames: readonly string[];
 }
 export interface CadReferenceCopyResult {
@@ -55,12 +56,24 @@ function restore(model: DesignModel, snapshot: CadReferenceCopySnapshot): void {
       id: point.id, layerId: point.layerId, position: { ...point.position },
     });
   }
+  for (const packet of snapshot.packed) {
+    if (model.cadLines.getPackedBatches().some(p => p.id === packet.id)) continue;
+    if (model.cadLines.getPackedBatches().some(p => p.id === packet.sourceId)) {
+      model.cadLines.registerPackedCopy(
+        packet.id, packet.layerId, packet.sourceId,
+        packet.transform ?? new THREE.Matrix4().elements,
+      );
+    } else {
+      model.cadLines.registerPackedBatch(packet);
+    }
+  }
   // Layer protection must be restored only after its geometry exists.
   for (const layer of snapshot.layers) {
     if (layer.locked) model.layers.update(layer.id, { locked: true });
   }
 }
 function remove(model: DesignModel, snapshot: CadReferenceCopySnapshot): void {
+  model.cadLines.removePackedByLayerIds(new Set(snapshot.layers.map(layer => layer.id)));
   for (const line of snapshot.lines) model.removeCadLine(line.id);
   for (const point of snapshot.points) model.removeCadPoint(point.id);
   for (const layer of snapshot.layers) model.layers.remove(layer.id);
@@ -90,6 +103,8 @@ export function copyCadReferenceBlocks(
   const layers: DesignLayer[] = [];
   const lines: CadLine[] = [];
   const points: CadPoint[] = [];
+  const packed: Array<{ id: string; layerId: string; positions: Float64Array; transform?: readonly number[]; sourceId: string }> = [];
+  const sourcePackets = model.cadLines.getPackedBatches();
   const referenceNames: string[] = [];
   const layerIdMap = new Map<string, string>();
   const pointIdMap = new Map<string, string>();
@@ -116,6 +131,16 @@ export function copyCadReferenceBlocks(
         });
         layers.push({ ...createdLayer, locked: original.locked });
         layerIdMap.set(original.id, createdLayer.id);
+        for (const source of sourcePackets) {
+          if (source.layerId !== original.id) continue;
+          const transform = new THREE.Matrix4().makeTranslation(delta.x, delta.y, delta.z)
+            .multiply(source.transform
+              ? new THREE.Matrix4().fromArray(source.transform) : new THREE.Matrix4());
+          const id = crypto.randomUUID();
+          model.cadLines.registerPackedCopy(id, createdLayer.id, source.id, transform.elements);
+          packed.push({ id, layerId: createdLayer.id, positions: source.positions,
+            transform: transform.toArray(), sourceId: source.id });
+        }
         for (const old of model.cadLines.findByLayerId(original.id)) {
           const created = model.registerCadLine({
             layerId: createdLayer.id,
@@ -134,7 +159,7 @@ export function copyCadReferenceBlocks(
         }
       }
     }
-    if (!lines.length && !points.length) {
+    if (!lines.length && !points.length && !packed.length) {
       throw new Error("La referencia no contiene geometría CAD que pueda copiarse.");
     }
     // Copy glyph annotations together with their three transformable CAD
@@ -157,7 +182,7 @@ export function copyCadReferenceBlocks(
       if (layer.locked) model.layers.update(layer.id, { locked: true });
     }
     const snapshot: CadReferenceCopySnapshot = {
-      layers, lines, points, referenceNames,
+      layers, lines, points, packed, referenceNames,
     };
     sync();
     history.recordOperation("COPY DWG/DXF",
@@ -174,7 +199,7 @@ export function copyCadReferenceBlocks(
     return { referenceNames, lineIds: lines.map(x => x.id), pointIds: points.map(x => x.id) };
   } catch (error) {
     textScene?.removeAnnotations(createdTexts.map(x => x.id));
-    remove(model, { layers, lines, points, referenceNames });
+    remove(model, { layers, lines, points, packed, referenceNames });
     sync();
     throw error;
   }
