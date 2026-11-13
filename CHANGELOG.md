@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.134 — 2026-11-12
+
+### Referencias CAD compactas transformables y menú DWG/DXF unificado
+
+- **ARCHIVO → Abrir DWG/DXF:** una sola entrada utiliza el lector compacto integrado en v0.1.133. El menú deja de ofrecer las opciones duplicadas de importación y recuperación; la ruta alternativa sigue disponible internamente.
+- **MOVE / ROTATE / COPYBASE:** habilitadas para referencias compactas mediante matrices de transformación por paquete, sin modificar sus segmentos originales en Float64Array. Se conservan los controles de giro con eje, centro SNAP, doble clic de 90 grados y entrada numérica.
+- **Copias independientes sin clonar geometría:** cada referencia copiada tiene capas, identificadores y matrices propias; reutiliza el buffer de segmentos y la geometría GPU cuando es seguro hacerlo.
+- **SNAP, cotas y etiquetas:** la búsqueda local devuelve las coordenadas mundiales después de aplicar matrices; los textos siguen la transformación mediante sus puntos de anclaje. Los límites de selección usan cajas locales cacheadas y ocho esquinas, evitando recorrer millones de segmentos al mover el gizmo.
+- **Persistencia e historial:** los proyectos `.flproject` guardan matrices opcionales de las referencias compactas y pueden seguir abriendo los proyectos v0.1.133. MOVE, ROTATE y COPYBASE se integran con Undo/Redo.
+- **Comandos:** `R` y `ROTATE` se asignan al giro en referencias seleccionadas; `T`/`TRIM` conservan el recorte y `REC` conserva el rectángulo. La interfaz utiliza nombres de FrameLogic y mantiene las atribuciones Apache-2.0 en el repositorio.
+- **Regresiones:** pruebas para giro, pivote, matrices, SNAP transformado, copias de buffer compartido, historial y menú único.
+
+**Validación manual necesaria:** comprobar en Chrome y Firefox con el DWG original de aproximadamente 1.400.000 segmentos, así como interacciones mixtas con varias piezas 3D.
+
+---
+
 ## v0.1.133 — 2026-11-12
 
 ### Motor CAD de Cota adaptado: DWG/DXF y referencias compactas

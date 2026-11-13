@@ -89,7 +89,7 @@ worker.onmessage = (event) => {
             ...parsed, segments: [], totalSegments: compact.count,
             rawExtent: compact.rawExtent,
             importDiagnostics:
-              "\\nMotor Cota: geometría compacta sin crear entidades editables por segmento."
+              "\\nFrameLogic CAD: geometría compacta sin crear entidades editables por segmento."
               + "\\nSNAP por demanda, visualización y capas. Mover/copiar esta referencia ligera requiere convertirla al modo editable.",
           },
         });

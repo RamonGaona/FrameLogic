@@ -6,10 +6,12 @@ const source = (relative: string) =>
   readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");
 
 describe("Cota DWG/DXF integration stays connected", () => {
-  it("exposes the separate Cota path without replacing editable CAD import", () => {
+  it("uses the compact CAD reader through one public menu option", () => {
     const menu = source("../packages/bim/core/src/navigation/FileMenuController.ts");
     const importController = source("../packages/bim/core/src/import/CadReferenceImportController.ts");
-    expect(menu).toContain('id: "open-cad-cota"');
+    expect(menu).toContain('id: "open-cad"');
+    expect(menu).not.toContain('id: "open-cad-cota"');
+    expect(menu).not.toContain('id: "recover-cad"');
     expect(importController).toContain('this.cotaNextImport = true');
     expect(importController).toContain('engine: cotaMode ? "cota" : "framelogic"');
     expect(importController).toContain("registerPackedBatch");

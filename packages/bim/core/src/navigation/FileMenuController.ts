@@ -12,8 +12,6 @@ export const FILE_MENU_ACTIONS = [
   { id: "save-project", label: "Guardar proyecto" },
   { id: "open-project", label: "Abrir proyecto" },
   { id: "open-cad", label: "Abrir DWG/DXF" },
-  { id: "open-cad-cota", label: "Abrir CAD (motor Cota)" },
-  { id: "recover-cad", label: "Recuperar DWG" },
   { id: "import-piece", label: "Importar pieza" },
   { id: "open-piece", label: "Abrir pieza FrameLogic" },
 ] as const;

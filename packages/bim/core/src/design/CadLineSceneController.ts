@@ -22,6 +22,10 @@ export class CadLineSceneController {
   private readonly referenceBatches = new Map<string, THREE.LineSegments>();
   /** Cota-style read-only CAD underlays: one compact GPU batch per packet. */
   private readonly packedReferenceBatches = new Map<string, THREE.LineSegments>();
+  private readonly packedSources = new Map<string, Float64Array>();
+  private readonly sharedPackedGeometry = new Map<Float64Array, {
+    geometry: THREE.BufferGeometry; origin: THREE.Vector3; uses: number;
+  }>();
   private readonly afterSyncListeners = new Set<() => void>();
   private readonly selectedIds = new Set<string>();
   private readonly hiddenIds = new Set<string>();
@@ -200,26 +204,44 @@ export class CadLineSceneController {
       let object = this.packedReferenceBatches.get(packet.id);
       if (!object) {
         const src = packet.positions;
-        const px = src[0]!, py = src[1]!, pz = src[2]!;
-        const relative = new Float32Array(src.length);
-        for (let i = 0; i < src.length; i += 3) {
-          relative[i] = src[i]! - px;
-          relative[i + 1] = src[i + 1]! - py;
-          relative[i + 2] = src[i + 2]! - pz;
+        let shared = this.sharedPackedGeometry.get(src);
+        if (!shared) {
+          const px = src[0]!, py = src[1]!, pz = src[2]!;
+          const relative = new Float32Array(src.length);
+          for (let i = 0; i < src.length; i += 3) {
+            relative[i] = src[i]! - px;
+            relative[i + 1] = src[i + 1]! - py;
+            relative[i + 2] = src[i + 2]! - pz;
+          }
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.BufferAttribute(relative, 3));
+          geometry.computeBoundingSphere();
+          shared = { geometry, origin: new THREE.Vector3(px, py, pz), uses: 0 };
+          this.sharedPackedGeometry.set(src, shared);
         }
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute("position", new THREE.BufferAttribute(relative, 3));
-        geometry.computeBoundingSphere();
+        shared.uses++;
         object = new THREE.LineSegments(
-          geometry, new THREE.LineBasicMaterial({ color: layer?.color ?? "#e5e7eb" }),
+          shared.geometry, new THREE.LineBasicMaterial({ color: layer?.color ?? "#e5e7eb" }),
         );
-        object.name = `CadCotaReference:${packet.id}`;
+        object.name = `FrameLogicCadReference:${packet.id}`;
         object.userData = {
           frameLogic: { entityType: "CadReferenceBatch", layerId: packet.layerId, compact: true },
         };
-        object.position.set(px, py, pz);
+        object.matrixAutoUpdate = false;
+        object.position.copy(shared.origin);
+        this.packedSources.set(packet.id, src);
         this.scene.add(object);
         this.packedReferenceBatches.set(packet.id, object);
+      }
+      const shared = this.sharedPackedGeometry.get(packet.positions);
+      if (shared) {
+        // Original doubles are never modified; one transform controls the entire batch.
+        object.matrix.copy(packet.transform
+          ? new THREE.Matrix4().fromArray(packet.transform)
+          : new THREE.Matrix4());
+        object.matrix.multiply(new THREE.Matrix4().makeTranslation(
+          shared.origin.x, shared.origin.y, shared.origin.z,
+        ));
       }
       object.visible = layer?.visible ?? true;
       (object.material as THREE.LineBasicMaterial).color.set(layer?.color ?? "#e5e7eb");
@@ -228,8 +250,14 @@ export class CadLineSceneController {
     for (const [id, object] of this.packedReferenceBatches) {
       if (livePacked.has(id)) continue;
       this.scene.remove(object);
-      object.geometry.dispose();
       this.disposeMaterial(object.material);
+      const src = this.packedSources.get(id);
+      const shared = src && this.sharedPackedGeometry.get(src);
+      if (shared && --shared.uses === 0) {
+        shared.geometry.dispose();
+        this.sharedPackedGeometry.delete(src!);
+      }
+      this.packedSources.delete(id);
       this.packedReferenceBatches.delete(id);
     }
     this.updateSelectionAppearance();
@@ -272,9 +300,13 @@ export class CadLineSceneController {
   dispose(): void {
     for (const object of this.getLineObjects()) {
       this.scene.remove(object);
-      object.geometry.dispose();
+      if (![...this.packedReferenceBatches.values()].includes(object as THREE.LineSegments))
+        object.geometry.dispose();
       this.disposeMaterial(object.material);
     }
+    for (const shared of this.sharedPackedGeometry.values()) shared.geometry.dispose();
+    this.sharedPackedGeometry.clear();
+    this.packedSources.clear();
     this.lineObjects.clear();
     this.referenceBatches.clear();
     this.packedReferenceBatches.clear();
