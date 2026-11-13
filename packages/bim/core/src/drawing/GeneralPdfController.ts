@@ -417,7 +417,7 @@ export class GeneralPdfController {
     this.production.sheets.set(sheetId, sheet);
     for (const [index, plannedLayout] of layouts.entries()) {
       const view = sheet.views.find((candidate) => candidate.id === plannedLayout.id);
-      if (!view) continue;
+      if (!view || !this.isAssemblyView(view)) continue;
       const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
       layout.kind = "ASSEMBLY";
       layout.x = plannedLayout.x;
