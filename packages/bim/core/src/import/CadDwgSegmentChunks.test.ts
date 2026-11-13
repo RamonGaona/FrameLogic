@@ -17,6 +17,24 @@ describe("DWG segment transfer with backpressure and no file-wide cap", () => {
     expect(cursor.next()).toBeNull();
     expect(output).toEqual(input);
   });
+  it("releases worker-only segment objects after copying to outbound batches", () => {
+    const input = Array.from({ length: DWG_SEGMENT_CHUNK_SIZE + 5 }, (_, i) => ({
+      id: i, positions: [i, i + 1],
+    }));
+    const stream = new CadDwgSegmentChunks(input, true);
+    const first = stream.next()!;
+    expect(first).toHaveLength(DWG_SEGMENT_CHUNK_SIZE);
+    expect(first[0]?.id).toBe(0);
+    expect(input[0]).toBeUndefined();
+    expect(input[DWG_SEGMENT_CHUNK_SIZE]).toBeDefined();
+    const last = stream.next()!;
+    expect(last).toHaveLength(5);
+    expect(last.at(-1)?.id).toBe(DWG_SEGMENT_CHUNK_SIZE + 4);
+    expect(input.at(-1)).toBeUndefined();
+    expect(stream.sent).toBe(input.length);
+    expect(stream.next()).toBeNull();
+  });
+
   it("handles an empty file without sending a batch", () => {
     expect(new CadDwgSegmentChunks([]).next()).toBeNull();
   });
