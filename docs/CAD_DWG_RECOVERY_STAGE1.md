@@ -69,6 +69,26 @@ Para `CUNAS_MEDIR 1.dwg`:
 - Esta mejora no aumenta el máximo de 240.000 segmentos ni completa
   automáticamente entidades que excedan dicho límite.
 
+## Importación de DWG sin límite global de segmentos (v0.1.131)
+
+Para los archivos con extensión **DWG** se eliminó el recorte global de
+240.000 segmentos. Los lectores principal y alternativo expanden las
+entidades y los INSERT sin esa cuota; los registros se envían desde
+el procesador Web Worker al importador principal en lotes de 8.192,
+esperando una confirmación antes de transferir el siguiente lote.
+
+Se mantiene el procesado de registro por lotes de 1.800 elementos para
+no bloquear la interfaz durante la creación del modelo. El resultado
+debe incluir una indicación de que se importaron más de 240.000 líneas
+cuando el archivo realmente las contiene. DXF conserva el tope anterior.
+
+**Importante:** esto no significa que FrameLogic pueda abrir un archivo
+de tamaño ilimitado: la RAM y la capacidad del navegador siguen siendo
+limitaciones reales. XREF, sombreados HATCH, proxies CAD y algunos
+gráficos de cotas no están incluidos en la cobertura garantizada.
+Los controles de unidades de la v0.1.130 no cambian: escoger mm
+mantiene las coordenadas y los textos con factor ×1.
+
 ## Comprobación manual con el DWG original
 
 - Confirmar tubos y bloques con ATTRIB y TEXT interiores (p. ej. "4S 3000"
