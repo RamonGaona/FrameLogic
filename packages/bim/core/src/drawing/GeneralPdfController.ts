@@ -502,10 +502,16 @@ export class GeneralPdfController {
           yAxis: new THREE.Vector3(plannedPart.yAxis.x, plannedPart.yAxis.y, plannedPart.yAxis.z),
           normal: new THREE.Vector3(plannedPart.normal.x, plannedPart.normal.y, plannedPart.normal.z),
         };
-        const partGeometry = await projectAssembly({
-          instanceIds: [instanceId], workPlane: plane,
-          designModel: this.designModel, designScene: this.designScene,
-        });
+        let partGeometry;
+        try {
+          partGeometry = await projectAssembly({
+            instanceIds: [instanceId], workPlane: plane,
+            designModel: this.designModel, designScene: this.designScene,
+          });
+        } catch {
+          // An individual over-complex piece must not invalidate the assembly sheet.
+          continue;
+        }
         if (!partGeometry) continue;
         const view = this.createAssemblyView({
           ...request, assemblyId: `piece:${instanceId}`,
@@ -906,12 +912,22 @@ export class GeneralPdfController {
     const originY = layout.y + (automatic ? 60 : 20) + (innerHeight - drawnHeight) / 2;
 
     for (const segment of view.segments) {
-      this.appendLine(
-        originX + segment.x1 * scale,
-        originY + drawnHeight - segment.y1 * scale,
-        originX + segment.x2 * scale,
-        originY + drawnHeight - segment.y2 * scale,
-      );
+      if (segment.hidden && !layout.showHidden) continue;
+      const x1 = originX + segment.x1 * scale;
+      const y1 = originY + drawnHeight - segment.y1 * scale;
+      const x2 = originX + segment.x2 * scale;
+      const y2 = originY + drawnHeight - segment.y2 * scale;
+      if (segment.hidden) {
+        const line = document.createElementNS(SVG_NS, "line");
+        line.setAttribute("x1", String(x1)); line.setAttribute("y1", String(y1));
+        line.setAttribute("x2", String(x2)); line.setAttribute("y2", String(y2));
+        line.setAttribute("stroke", "#777"); line.setAttribute("stroke-width", "0.6");
+        line.setAttribute("stroke-dasharray", "4 3");
+        line.style.pointerEvents = "none";
+        this.workspace.svg.append(line);
+      } else {
+        this.appendLine(x1, y1, x2, y2);
+      }
     }
     if (automatic && view.automaticViewCode !== "ISO") {
       this.renderAssemblyDimensions(view, layout, originX, originY, drawnHeight, scale);
