@@ -42,6 +42,7 @@ export class CadScreenSpatialIndex {
   private lastViewport: number[] = [];
   private lastCamera: THREE.Camera | null = null;
   private lastRevision = -1;
+  private lastLayerSignature = "";
 
   // Unlike ScreenLine[] this uses a compact flat buffer with one array entry
   // per visible, sampled line, rather than millions of per-line JS objects.
@@ -102,13 +103,16 @@ export class CadScreenSpatialIndex {
     const matrix = this.projection.elements;
     const viewport = [rect.left, rect.top, rect.width, rect.height];
     const revision = this.model.cadLines.revision;
+    const layerSignature = this.model.layers.getAll().map((layer) => `${layer.id}:${layer.visible}:${layer.snapEnabled}`).join("|");
     if (camera === this.lastCamera && revision === this.lastRevision
+      && layerSignature === this.lastLayerSignature
       && viewport.every((v, i) => v === this.lastViewport[i])
       && matrix.every((v, i) => Math.abs(v - (this.lastMatrix[i] ?? NaN)) < 1e-12)) {
       return;
     }
     this.lastCamera = camera;
     this.lastRevision = revision;
+    this.lastLayerSignature = layerSignature;
     this.lastMatrix = Array.from(matrix);
     this.lastViewport = viewport;
     this.rebuild(rect);
