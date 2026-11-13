@@ -219,7 +219,7 @@ function normalizedVertex(pt3: CadDxfPoint3, bulge = 0): Vertex {
 
 export function parseCadDxf(
   text: string,
-  options?: { readonly maxSegments?: number; readonly unlimitedSegments?: boolean; readonly omitOptionalGeometry?: boolean; readonly recoverDimensionGraphics?: boolean },
+  options?: { readonly maxSegments?: number; readonly unlimitedSegments?: boolean; readonly omitOptionalGeometry?: boolean; readonly recoverDimensionGraphics?: boolean; readonly onSegment?: (segment: ImportedCadSegment) => void },
 ): ParsedCadReference {
   const unlimitedSegments = options?.unlimitedSegments === true;
   const maxSegments = unlimitedSegments ? Number.POSITIVE_INFINITY : Number.isFinite(options?.maxSegments)
@@ -232,6 +232,7 @@ export function parseCadDxf(
   const sourceLayers = sourceLayersFrom(pairs);
   const blocks = blockDefinitions(pairs);
   const segments: ImportedCadSegment[] = [];
+  let emittedSegmentCount = 0;
   const points: ImportedCadPoint[] = [];
   const texts: ImportedCadText[] = [];
   const skippedTypes = new Map<string, number>();
@@ -368,11 +369,14 @@ export function parseCadDxf(
       || a.distanceToSquared(b) <= 1e-20) return;
     rootSeen++;
     if (rootSeen <= rootReplaySkip) return;
-    if (rootEmitted >= rootQuota || segments.length >= maxSegments) {
+    if (rootEmitted >= rootQuota || emittedSegmentCount >= maxSegments) {
       rootLimited = true;
       return;
     }
-    segments.push({ layer, color, start: coords(a), end: coords(b) });
+    const segment = { layer, color, start: coords(a), end: coords(b) };
+    if (options?.onSegment) options.onSegment(segment);
+    else segments.push(segment);
+    emittedSegmentCount++;
     rootEmitted++;
   };
   const polyline = (layer: string, color: string, context: ExpandContext,
@@ -671,22 +675,22 @@ export function parseCadDxf(
     let visitedRoots = 0;
     for (const root of roots) {
       const result = runRoot(root, Math.min(fairShare,
-        maxSegments - segments.length));
+        maxSegments - emittedSegmentCount));
       if (result.limited) pending.push({ root, cursor: result.used });
       visitedRoots++;
-      if (segments.length >= maxSegments) break;
+      if (emittedSegmentCount >= maxSegments) break;
     }
     // Revisit only the suffix skipped by bounded fair-share expansion.
     pass = 1;
     let remaining = pending;
     for (let iteration = 0;
-      iteration < 6 && remaining.length && segments.length < maxSegments;
+      iteration < 6 && remaining.length && emittedSegmentCount < maxSegments;
       iteration++) {
       const next: typeof pending = [];
       let emittedThisPass = 0;
       for (let i = 0; i < remaining.length; i++) {
         const item = remaining[i]!;
-        const capacity = maxSegments - segments.length;
+        const capacity = maxSegments - emittedSegmentCount;
         if (capacity <= 0) { next.push(item); continue; }
         const quota = Math.max(1, Math.floor(capacity / (remaining.length - i)));
         const result = runRoot(item.root, quota, item.cursor);
@@ -756,7 +760,7 @@ export function parseCadDxf(
   // budget capped at 24k segments so large annotation sets cannot evict tubes.
   if (recoverDimensionGraphics) {
     pass = 3;
-    let optionalRemaining = Math.min(24_000, maxSegments - segments.length);
+    let optionalRemaining = Math.min(24_000, maxSegments - emittedSegmentCount);
     const fairOptional = Math.max(1, Math.floor(optionalRemaining / Math.max(1, roots.length)));
     for (const root of roots) {
       if (optionalRemaining <= 0) break;
@@ -767,7 +771,7 @@ export function parseCadDxf(
   }
 
   return {
-    segments, points, texts, insUnits: insUnits(pairs), expandedBlocks, sourceLayers,
+    segments, ...(options?.onSegment ? { totalSegments: emittedSegmentCount } : {}), points, texts, insUnits: insUnits(pairs), expandedBlocks, sourceLayers,
     truncated, incompleteRootEntities, recoveredDimensionSegments,
     unresolvedExternalReferences: [...externalReferences],
     unresolvedBlocks: [...unresolvedBlocks],
