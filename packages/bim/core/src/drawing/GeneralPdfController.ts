@@ -776,8 +776,12 @@ export class GeneralPdfController {
   private buildAutomaticDetailCrop(
     segments: readonly AssemblyLine[], station: SectionStation,
   ): CroppedAssemblyDetail | null {
-    const xValues = segments.flatMap((s) => [s.x1, s.x2]);
-    const spanX = Math.max(...xValues) - Math.min(...xValues);
+    let minX = Infinity, maxX = -Infinity;
+    for (const segment of segments) {
+      minX = Math.min(minX, segment.x1, segment.x2);
+      maxX = Math.max(maxX, segment.x1, segment.x2);
+    }
+    const spanX = maxX - minX;
     const spanY = station.yMax - station.yMin;
     if (!Number.isFinite(spanX) || !Number.isFinite(spanY)
       || spanX <= 0 || spanY <= 0) return null;
@@ -1097,7 +1101,21 @@ export class GeneralPdfController {
 
     sheet.views.forEach((candidate, index) => {
       if (!this.isAssemblyView(candidate)) return;
-      this.ensureAssemblyResolved(candidate);
+      // A supplementary cut is tied to its original STEP topology. Never
+      // display stale contours after the underlying model has been edited.
+      const outdated = Boolean(candidate.automaticSupplement && candidate.geometrySignature
+        && candidate.geometrySignature !== assemblyProjectionSignature({
+          instanceIds: candidate.instanceIds,
+          designModel: this.designModel, designScene: this.designScene,
+        }));
+      if (outdated) {
+        candidate.segments = [];
+        candidate.automaticWarnings = [
+          "DESACTUALIZADO: cambió el modelo. Genera nuevamente los planos automáticos.",
+        ];
+      } else {
+        this.ensureAssemblyResolved(candidate);
+      }
       const layout = this.professional.ensureViewLayout(
         candidate.id,
         candidate.sectionId,
@@ -1156,6 +1174,10 @@ export class GeneralPdfController {
       }
     }
     if (view.automaticSupplement) {
+      if (view.automaticWarnings?.length) {
+        this.appendText(layout.x + 6, layout.y + layout.height - 23,
+          view.automaticWarnings[0]!.slice(0, 76), 8, "#8a241c");
+      }
       this.appendText(layout.x + 6, layout.y + 15,
         view.automaticSupplement === "SECTION"
           ? `CORTE ${view.automaticSectionLabel} · INTERSECCIÓN STEP (sin rayado de materiales)`
@@ -1425,6 +1447,14 @@ export class GeneralPdfController {
         candidate.fallbackInstances = geometry.fallbackInstances;
         candidate.assemblyOcclusionExact = geometry.assemblyOcclusionExact;
         candidate.automaticWarnings = geometry.warnings;
+        if (candidate.cutReferences?.length || candidate.detailReferences?.length) {
+          candidate.cutReferences = [];
+          candidate.detailReferences = [];
+          candidate.automaticWarnings = [
+            ...geometry.warnings,
+            "Cortes y detalles invalidados: es necesario generar de nuevo el paquete.",
+          ];
+        }
         candidate.geometrySignature = signature;
         candidate.resolved = true;
         updated++;
