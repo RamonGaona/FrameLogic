@@ -12,10 +12,10 @@ describe("DWG import unit integration", () => {
       fileURLToPath(new URL("../packages/bim/core/src/import/CadReferenceImportController.ts", import.meta.url)),
       "utf8",
     );
-    expect(source).toContain("await chooseCadImportUnits(parsed, file.name)");
-    expect(source).toContain("const unitScale = selection.factor");
+    expect(source).toContain("await chooseCadImportUnits(header, file.name)");
+    expect(source).toContain("unitScale = selection.factor");
     expect(source).toContain('selection.unit === "mm" && unitScale !== 1');
-    expect(source).toContain("const sourceUnitName =");
+    expect(source).toContain("sourceUnitName =");
     expect(source).not.toContain("this.resolveUnitScale");
     expect(source.match(/scaledPoint\([^,]+, unitScale\)/g)?.length).toBeGreaterThanOrEqual(4);
   });
