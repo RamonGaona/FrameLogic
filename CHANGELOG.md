@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.139 — 2026-11-13
+
+### LINE: ocultar el recuadro informativo después del primer punto
+
+- **Aviso flotante:** mientras LINE espera el primer punto, conserva la indicación `LINE · SNAP / Primer punto`. Una vez elegido el primer SNAP, oculta inmediatamente el recuadro `LINE · SNAP / Segundo punto · ...` y no vuelve a mostrarlo durante la misma cadena de segmentos.
+- **Vista despejada:** mantiene visibles únicamente las cotas temporales de distancia y ángulo, la vista previa de la línea y los indicadores SNAP. La entrada de distancia numérica y sus atajos siguen funcionando sin cambios.
+- **Control de eventos:** la ocultación ocurre en el mismo `pointerup` que confirma el primer punto; no necesita esperar a mover el cursor ni afecta las indicaciones de PUNTO y TRIM.
+- **Pruebas:** verificaciones de indicación inicial, ocultación inmediata tras el primer punto y ausencia de reapertura durante el resto de LINE.
+
+**Validación en navegador pendiente:** verificar en Firefox y Chrome que las cotas temporales siguen visibles y el aviso no tapa el dibujo.
+
+---
+
 ## v0.1.138 — 2026-11-13
 
 ### MOVE: centro de desplazamiento editable mediante el mismo control que ROTATE
