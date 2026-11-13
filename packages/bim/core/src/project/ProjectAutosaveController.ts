@@ -349,6 +349,7 @@ function hasRecoverableContent(
     project.pieceDefinitions.length > 0
     || project.pieceInstances.length > 0
     || project.cadLines.length > 0
+    || (project.cadPackedLines?.length ?? 0) > 0
     || project.cadPoints.length > 0
     || project.geometrySources.length > 0
     || project.referenceSources.length > 0
