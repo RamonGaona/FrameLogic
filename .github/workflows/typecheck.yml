@@ -81,6 +81,9 @@ jobs:
       - name: DWG block/color import and millimetre regression
         run: npm run test:dwg-import
 
+      - name: Cota DWG/DXF compact reference and SNAP regression
+        run: npm run test:cota-cad
+
       - name: Dual DWG reader recovery regression
         run: npm run test:dwg-recovery
 
