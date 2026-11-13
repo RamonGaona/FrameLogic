@@ -69,7 +69,7 @@ export class CadLineNumericPreviewBridgeController {
       return;
     }
 
-    const distance = Number(raw);
+    const distance = Number(raw.replace(",", "."));
     if (
       !Number.isFinite(distance)
       || Math.abs(distance) <= 1e-12
