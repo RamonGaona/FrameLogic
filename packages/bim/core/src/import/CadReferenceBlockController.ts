@@ -124,6 +124,7 @@ export class CadReferenceBlockController {
   private readonly transformStartPivot = new THREE.Vector3();
   private pivotOnlyDrag = false;
   private disposed = false;
+  private readonly startRotateTextCommand = (): boolean => this.activateRotate();
 
   constructor(
     options: CadReferenceBlockControllerOptions,
@@ -174,6 +175,8 @@ export class CadReferenceBlockController {
       this.handleTransformEnd,
     );
 
+    (window as Window & { __frameLogicStartRotateReferenceCommand?: () => boolean })
+      .__frameLogicStartRotateReferenceCommand = this.startRotateTextCommand;
     window.addEventListener(
       "pointerdown",
       this.handlePointerDown,
@@ -196,6 +199,9 @@ export class CadReferenceBlockController {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    const runtime = window as Window & { __frameLogicStartRotateReferenceCommand?: () => boolean };
+    if (runtime.__frameLogicStartRotateReferenceCommand === this.startRotateTextCommand)
+      delete runtime.__frameLogicStartRotateReferenceCommand;
     this.deactivateTransform();
     window.removeEventListener(
       "pointerdown",
