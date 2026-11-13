@@ -875,6 +875,8 @@ export class GeneralPdfController {
     if (rows.length > 8) {
       this.appendText(54, 760, `+ ${rows.length - 8} marcas adicionales (ver árbol de vistas)`, 8, "#444");
     }
+    this.appendText(54, 779,
+      "PRELIMINAR: proyección de aristas de malla, sin HLR ni cotas de fabricación.", 8, "#8a241c");
   }
 
   private renderGenericTitleBlock(sheet: GeneralSheetRuntime): void {
