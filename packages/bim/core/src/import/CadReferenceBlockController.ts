@@ -793,8 +793,10 @@ export class CadReferenceBlockController {
     }
     if (this.activeMode === "rotate") {
       const axis = this.controls.axis;
-      if (this.ringGesture) {
-        this.ringGesture.axis = axis === "X" || axis === "Y" || axis === "Z" ? axis : null;
+      // Preserve an axis raycast on pointerdown even if native controls.axis
+      // momentarily resolves to E/XYZE/null before the drag is initialized.
+      if (this.ringGesture && (axis === "X" || axis === "Y" || axis === "Z")) {
+        this.ringGesture.axis = axis;
       }
       if (axis === "X" || axis === "Y" || axis === "Z") this.options.onRotateAxis?.(axis);
     }
@@ -1114,6 +1116,10 @@ export class CadReferenceBlockController {
       if (Math.hypot(event.clientX - this.ringGesture.x, event.clientY - this.ringGesture.y) > 5) {
         this.ringGesture.dragged = true;
       }
+      if (!this.ringGesture.axis && this.controls.dragging) {
+        const axis = this.controls.axis;
+        if (axis === "X" || axis === "Y" || axis === "Z") this.ringGesture.axis = axis;
+      }
       this.recordRingClick();
     }
 
@@ -1250,6 +1256,7 @@ export class CadReferenceBlockController {
   private pickRotateRingAxis(x: number, y: number): RotateNumericAxis | null {
     const rect = this.options.domElement.getBoundingClientRect();
     if (!(rect.width > 0 && rect.height > 0)) return null;
+    this.helper.updateMatrixWorld(true);
     this.ringPointer.set((x - rect.left) / rect.width * 2 - 1,
       -(y - rect.top) / rect.height * 2 + 1);
     this.ringRaycaster.setFromCamera(this.ringPointer, this.options.cameraProvider());
@@ -1270,10 +1277,11 @@ export class CadReferenceBlockController {
         }
       }
     }
-    // TransformControls also resolves the hovered ring itself; use that
-    // when an invisible native picker could not be raycast in this Three.js version.
+    // Native controls knows the active handle only during an owned drag.
+    // A stale hover axis alone must not trigger a rotation on empty canvas.
     const axis = this.controls.axis;
-    return axis === "X" || axis === "Y" || axis === "Z" ? axis : null;
+    return this.controls.dragging
+      && (axis === "X" || axis === "Y" || axis === "Z") ? axis : null;
   }
 
   private pickMoveAxis(clientX: number, clientY: number): TranslationGizmoAxis | null {
