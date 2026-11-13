@@ -12,16 +12,21 @@ export function cadStructuralSegments(parsed: ParsedCadReference): number {
 }
 
 function boundsDiagonal(parsed: ParsedCadReference): number {
-  const points: CadDxfPoint3[] = [];
-  for (const segment of parsed.segments) points.push(segment.start, segment.end);
-  for (const point of parsed.points) points.push(point.point);
-  if (!points.length) return 0;
+  // Never build a second 2N-point array merely to check DWG extents:
+  // an unbounded DWG can contain millions of structural segments.
   let x0 = Infinity, y0 = Infinity, z0 = Infinity;
   let x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
-  for (const p of points) {
+  const include = (p: CadDxfPoint3): void => {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return;
     x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); z0 = Math.min(z0, p.z);
     x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); z1 = Math.max(z1, p.z);
+  };
+  for (const segment of parsed.segments) {
+    include(segment.start);
+    include(segment.end);
   }
+  for (const point of parsed.points) include(point.point);
+  if (!Number.isFinite(x0)) return 0;
   return Math.hypot(x1 - x0, y1 - y0, z1 - z0);
 }
 
