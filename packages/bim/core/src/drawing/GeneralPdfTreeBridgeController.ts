@@ -220,11 +220,13 @@ export class GeneralPdfTreeBridgeController {
   private generateAutomaticAssembly(assemblyId: string): void {
     const assembly = this.options.designModel.assemblies.get(assemblyId);
     if (!assembly) return;
-    this.options.generalPdf.generateAutomaticAssembly({
+    void this.options.generalPdf.generateAutomaticAssembly({
       assemblyId: assembly.id,
       assemblyName: assembly.name,
       instanceIds: this.options.designModel.getAssemblyPieceIdsDeep(assembly.id),
       workPlane: this.options.workPlane.getState(),
+    }).catch((error: unknown) => {
+      window.alert("No se pudieron generar los planos: " + String(error));
     });
   }
 
