@@ -1,5 +1,6 @@
 import { installTransformPointerLifecycle, completeRotationRings } from "./TransformGizmoReliability";
 import { RotateRingDoubleClick } from "./RotateRingDoubleClick";
+import { CadReferencePivotHandle } from "../import/CadReferencePivotHandle";
 import * as THREE from "three";
 
 import {
@@ -47,16 +48,55 @@ export class DesignRotateController {
   private readonly releasePointerLifecycle: () => void;
 
   private readonly ringDoubleClick = new RotateRingDoubleClick();
+  private pendingRingTurn: ReturnType<typeof setTimeout> | null = null;
   private ringGesture: {
-    pointerId: number; x: number; y: number; axis: RotateNumericAxis | null; dragged: boolean;
+    pointerId: number; x: number; y: number; axis: RotateNumericAxis | null;
+    dragged: boolean; recorded?: boolean;
   } | null = null;
+
+  /** Record exactly once regardless of native mouseUp / pointerup order. */
+  private recordRingClick(): void {
+    const gesture = this.ringGesture;
+    if (!gesture || gesture.recorded || !this.active || this.centerDragging) return;
+    gesture.recorded = true;
+    if (!gesture.axis || gesture.dragged) {
+      this.ringDoubleClick.reset();
+      return;
+    }
+    this.ringDoubleClick.record(gesture.axis, gesture.x, gesture.y, Date.now(), false);
+    if (!this.ringDoubleClick.pendingAxis || this.pendingRingTurn !== null) return;
+    const { x, y } = gesture;
+    this.pendingRingTurn = setTimeout(() => {
+      this.pendingRingTurn = null;
+      if (!this.active || this.disposed) return;
+      const axis = this.ringDoubleClick.take(x, y, Date.now());
+      if (!axis) return;
+      this.onNumericAxis(axis);
+      this.applyNumericRotation(axis, 90);
+    }, 0);
+  }
 
   /** Capture pointer positions before TransformControls handles the ring. */
   private readonly handleRingPointerDown = (event: PointerEvent): void => {
-    if (!this.active || event.button !== 0 || this.centerDragging) return;
+    if (!this.active || event.button !== 0 || this.centerDragging || this.centerArmed) return;
     this.ringGesture = {
       pointerId: event.pointerId, x: event.clientX, y: event.clientY, axis: null, dragged: false,
     };
+  };
+
+  private readonly handleRingPointerUp = (event: PointerEvent): void => {
+    const gesture = this.ringGesture;
+    if (!gesture || event.pointerId !== gesture.pointerId || !this.active) return;
+    if (Math.hypot(gesture.x - event.clientX, gesture.y - event.clientY) > 5)
+      gesture.dragged = true;
+    if (!gesture.axis) {
+      const axis = this.controls.axis;
+      if ((axis === "X" || axis === "Y" || axis === "Z") && this.controls.dragging)
+        gesture.axis = axis;
+    }
+    this.recordRingClick();
+    // A short ring click must not be reinterpreted as selection behind the gizmo.
+    // Native TransformControls is allowed to finish its own pointer lifecycle.
   };
 
   private readonly handleRingPointerMove = (event: PointerEvent): void => {
@@ -71,6 +111,10 @@ export class DesignRotateController {
     if (!this.active || this.disposed || this.centerDragging || event.button !== 0) return;
     const axis = this.ringDoubleClick.take(event.clientX, event.clientY, Date.now());
     if (!axis) return;
+    if (this.pendingRingTurn !== null) {
+      clearTimeout(this.pendingRingTurn);
+      this.pendingRingTurn = null;
+    }
     event.preventDefault();
     event.stopImmediatePropagation();
     // A confirmed double click is exactly one 90° operation. No asynchronous
@@ -138,6 +182,9 @@ export class DesignRotateController {
    */
   private readonly centerHandle:
     THREE.Mesh;
+
+  /** Screen-space button: always visible and clickable, unlike the tiny 3D sphere. */
+  private readonly screenCenterHandle: CadReferencePivotHandle | null;
 
 
   private readonly centerRaycaster =
@@ -383,6 +430,20 @@ export class DesignRotateController {
       this.centerHandle,
     );
 
+    // The browser overlay matches the DWG pivot control and stays at a stable
+    // 20px screen size at any camera zoom. The sphere remains a test/non-DOM fallback.
+    this.screenCenterHandle = typeof document !== "undefined"
+      ? new CadReferencePivotHandle(
+          domElement, () => this.camera, this.pivot, this.setCameraEnabled,
+          () => {
+            this.centerArmed = true;
+            this.armedCenterPointerDownActive = false;
+            this.snap.clearExcludedInstanceIds();
+            this.selection.setEnabled(false);
+          },
+          "piece",
+        )
+      : null;
 
     this.unsubscribeSelection =
       this.selection.subscribe(
@@ -423,6 +484,7 @@ export class DesignRotateController {
      * intente interpretar el mismo pointerdown.
      */
     this.domElement.addEventListener("pointerdown", this.handleRingPointerDown, true);
+    window.addEventListener("pointerup", this.handleRingPointerUp, true);
     this.domElement.addEventListener("dblclick", this.handleRingDoubleClick, true);
     window.addEventListener("pointermove", this.handleRingPointerMove, true);
 
@@ -503,8 +565,8 @@ export class DesignRotateController {
 
 
     this.centerHandle.visible =
-      true;
-
+      this.screenCenterHandle === null;
+    this.screenCenterHandle?.activate("rotate");
 
     return true;
 
@@ -516,7 +578,12 @@ export class DesignRotateController {
   // ==========================================================
 
   deactivate(): void {
+    this.screenCenterHandle?.deactivate();
     this.cancelCenterInteraction();
+    if (this.pendingRingTurn !== null) {
+      clearTimeout(this.pendingRingTurn);
+      this.pendingRingTurn = null;
+    }
     if (this.controls.dragging) {
       this.controls.reset();
       this.controls.pointerUp(null);
@@ -1056,7 +1123,8 @@ export class DesignRotateController {
 
 
     this.centerHandle.visible =
-      true;
+      this.screenCenterHandle === null;
+    this.screenCenterHandle?.activate("rotate");
 
     this.ringGesture = null;
     this.ringDoubleClick.reset();
@@ -1346,14 +1414,8 @@ export class DesignRotateController {
 
 
       const gesture = this.ringGesture;
+      if (gesture) this.recordRingClick();
       this.ringGesture = null;
-      if (gesture?.axis) {
-        this.ringDoubleClick.record(
-          gesture.axis, gesture.x, gesture.y, Date.now(), gesture.dragged,
-        );
-      } else {
-        this.ringDoubleClick.reset();
-      }
 
       this.commitTransforms();
 
@@ -1460,7 +1522,7 @@ export class DesignRotateController {
         event.preventDefault();
 
 
-        event.stopPropagation();
+        event.stopImmediatePropagation();
 
 
         return;
@@ -1507,7 +1569,7 @@ export class DesignRotateController {
       event.preventDefault();
 
 
-      event.stopPropagation();
+      event.stopImmediatePropagation();
 
 
       this.centerDragging =
@@ -1675,7 +1737,7 @@ export class DesignRotateController {
             event.preventDefault();
 
 
-            event.stopPropagation();
+            event.stopImmediatePropagation();
 
 
             this.pivot.position.copy(
@@ -2047,6 +2109,7 @@ export class DesignRotateController {
 
 
     this.domElement.removeEventListener("pointerdown", this.handleRingPointerDown, true);
+    window.removeEventListener("pointerup", this.handleRingPointerUp, true);
     this.domElement.removeEventListener("dblclick", this.handleRingDoubleClick, true);
     window.removeEventListener("pointermove", this.handleRingPointerMove, true);
 
@@ -2074,6 +2137,7 @@ export class DesignRotateController {
     window.removeEventListener("blur", this.cancelCenterInteraction);
 
     this.deactivate();
+    this.screenCenterHandle?.dispose();
 
 
     this.scene.remove(

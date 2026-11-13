@@ -4,7 +4,25 @@ import { DesignModel } from "@framelogic/domain";
 import { CadHistoryController } from "./CadHistoryController";
 import { DesignRotateController } from "./DesignRotateController";
 
-function fixture() {
+class FakePivotButton extends EventTarget {
+  type = "";
+  title = "";
+  style: Record<string, string> = {};
+  dataset: Record<string, string> = {};
+  setAttribute = vi.fn();
+  remove = vi.fn();
+}
+
+function fixture(withScreenPivot = false) {
+  const screenButton = withScreenPivot ? new FakePivotButton() : null;
+  if (screenButton) {
+    vi.stubGlobal("document", {
+      body: { append: vi.fn() },
+      createElement: vi.fn(() => screenButton),
+    });
+    vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  }
   const model = new DesignModel();
   const asset = model.registerAsset({ name: "pieza.step", format: "STEP" });
   const definition = model.registerPieceDefinition({
@@ -61,7 +79,10 @@ function fixture() {
   const history = new CadHistoryController(model, scene as never, selection as never);
   const historyRecord = vi.spyOn(history, "recordTransform");
   const dom = new EventTarget() as HTMLElement;
-  Object.assign(dom, { style: { touchAction: "" } });
+  Object.assign(dom, {
+    style: { touchAction: "" },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 400 }),
+  });
   const win = new EventTarget() as Window;
   Object.assign(win, { setTimeout: (callback: () => void) => {
     queueMicrotask(callback);
@@ -71,10 +92,15 @@ function fixture() {
   const snap = {
     clearExcludedInstanceIds: vi.fn(),
     setExcludedInstanceIds: vi.fn(),
+    findSnap: vi.fn(() => ({ point: new THREE.Vector3(10, 0, 0), type: "ENDPOINT" })),
   };
   type Args = ConstructorParameters<typeof DesignRotateController>;
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+  camera.position.set(0, 0, 50);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
   const controller = new DesignRotateController(
-    world, new THREE.PerspectiveCamera(), dom,
+    world, camera, dom,
     model, scene as unknown as Args[4], selection as unknown as Args[5],
     history, snap as unknown as Args[7], vi.fn(),
   );
@@ -102,7 +128,7 @@ function fixture() {
     end();
   };
   return { model, scene, objects, ids, history, historyRecord, selection,
-    controller, pivot, click, dbl, doubleEvent };
+    controller, pivot, click, dbl, doubleEvent, screenButton, win, snap };
 }
 
 afterEach(() => {
@@ -147,6 +173,54 @@ describe("DesignRotateController - exact degrees and ring double click", () => {
     f.dbl(f.doubleEvent);
     expect(f.doubleEvent.preventDefault).not.toHaveBeenCalled();
     f.controller.dispose();
+  });
+
+  it("completes exactly one +90 degree turn from two clicks without native dblclick", async () => {
+    const f = fixture();
+    f.click("Z");
+    f.click("Z");
+    await new Promise(resolve => setTimeout(resolve, 5));
+    expect(f.model.pieceInstances.get(f.ids[0]!)?.transform.rotation.z)
+      .toBeCloseTo(Math.PI / 2, 7);
+    expect(f.history.canUndo).toBe(true);
+    expect(f.history.undo()).toBe(true);
+    expect(f.history.canUndo).toBe(false); // no empty mouseDown/mouseUp entries
+    expect(f.model.pieceInstances.get(f.ids[0]!)?.transform.rotation.z).toBeCloseTo(0);
+    expect(f.history.redo()).toBe(true);
+    expect(f.history.canRedo).toBe(false);
+    f.controller.dispose();
+  });
+
+  it("exposes a visible 3D pivot handle that moves only the rotation center to SNAP", () => {
+    const f = fixture(true);
+    expect(f.screenButton?.dataset["framelogicPiecePivot"]).toBe("true");
+    expect(f.screenButton?.style.display).toBe("block");
+    const before = f.model.pieceInstances.get(f.ids[0]!)!.transform.position;
+    const down = Object.assign(new Event("pointerdown", { cancelable: true }), {
+      button: 0, pointerId: 9, clientX: 200, clientY: 200,
+    });
+    f.screenButton!.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+    f.win.dispatchEvent(Object.assign(new Event("pointerup", { cancelable: true }), {
+      button: 0, pointerId: 9, clientX: 200, clientY: 200,
+    }));
+    expect(Reflect.get(f.controller, "centerArmed")).toBe(true);
+    const end = Object.assign(new Event("pointerup", { cancelable: true }), {
+      button: 0, pointerId: 10, clientX: 300, clientY: 170,
+    });
+    const start = Object.assign(new Event("pointerdown", { cancelable: true }), {
+      button: 0, pointerId: 10, clientX: 300, clientY: 170,
+    });
+    (Reflect.get(f.controller, "handleCenterPointerDown") as (e: PointerEvent) => void)(start as PointerEvent);
+    (Reflect.get(f.controller, "handleCenterPointerUp") as (e: PointerEvent) => void)(end as PointerEvent);
+    expect(f.pivot.position.toArray()).toEqual([10, 0, 0]);
+    expect(f.model.pieceInstances.get(f.ids[0]!)!.transform.position).toEqual(before);
+    expect(f.historyRecord).not.toHaveBeenCalled();
+    expect(f.controller.applyNumericRotation("Z", 90)).toBe(true);
+    expect(f.model.pieceInstances.get(f.ids[0]!)?.transform.position.x).toBeCloseTo(15);
+    expect(f.model.pieceInstances.get(f.ids[0]!)?.transform.position.y).toBeCloseTo(-10);
+    f.controller.dispose();
+    expect(f.screenButton?.remove).toHaveBeenCalledOnce();
   });
 
   it("applies fractional and negative numeric degrees around the chosen world axis", () => {

@@ -32,6 +32,7 @@ export class CadReferencePivotHandle {
     pivot: THREE.Object3D,
     setCameraEnabled: (enabled: boolean) => void,
     onArm: () => void,
+    kind: "cad" | "piece" = "cad",
   ) {
     this.canvas = canvas;
     this.cameraProvider = cameraProvider;
@@ -41,7 +42,7 @@ export class CadReferencePivotHandle {
     const button = document.createElement("button");
     this.button = button;
     button.type = "button";
-    button.dataset["framelogicDwgPivot"] = "true";
+    button.dataset[kind === "piece" ? "framelogicPiecePivot" : "framelogicDwgPivot"] = "true";
     button.setAttribute("aria-label", "Cambiar el punto base del gizmo con SNAP");
     Object.assign(button.style, {
       position: "fixed", display: "none", zIndex: "1002",

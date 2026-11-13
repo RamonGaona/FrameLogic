@@ -29,6 +29,13 @@ import type {
 const CAD_LAYER_PREFIX = "CAD ";
 const CAD_LAYER_SEPARATOR = " · ";
 const PICK_TOLERANCE_PX = 10;
+/** Native E/XYZE/null hover must not discard the axis raycast on pointerdown. */
+export function resolveCadRotationAxis(
+  picked: RotateNumericAxis | null, native: string | null,
+): RotateNumericAxis | null {
+  return native === "X" || native === "Y" || native === "Z" ? native : picked;
+}
+
 
 interface Point3 {
   readonly x: number;
@@ -793,8 +800,9 @@ export class CadReferenceBlockController {
     }
     if (this.activeMode === "rotate") {
       const axis = this.controls.axis;
+      // Preserve the accurate pointer raycast if native reports E/XYZE/null.
       if (this.ringGesture) {
-        this.ringGesture.axis = axis === "X" || axis === "Y" || axis === "Z" ? axis : null;
+        this.ringGesture.axis = resolveCadRotationAxis(this.ringGesture.axis, axis);
       }
       if (axis === "X" || axis === "Y" || axis === "Z") this.options.onRotateAxis?.(axis);
     }
@@ -1114,6 +1122,10 @@ export class CadReferenceBlockController {
       if (Math.hypot(event.clientX - this.ringGesture.x, event.clientY - this.ringGesture.y) > 5) {
         this.ringGesture.dragged = true;
       }
+      if (!this.ringGesture.axis && this.controls.dragging) {
+        const axis = this.controls.axis;
+        if (axis === "X" || axis === "Y" || axis === "Z") this.ringGesture.axis = axis;
+      }
       this.recordRingClick();
     }
 
@@ -1250,30 +1262,40 @@ export class CadReferenceBlockController {
   private pickRotateRingAxis(x: number, y: number): RotateNumericAxis | null {
     const rect = this.options.domElement.getBoundingClientRect();
     if (!(rect.width > 0 && rect.height > 0)) return null;
+    this.helper.updateMatrixWorld(true);
     this.ringPointer.set((x - rect.left) / rect.width * 2 - 1,
       -(y - rect.top) / rect.height * 2 + 1);
     this.ringRaycaster.setFromCamera(this.ringPointer, this.options.cameraProvider());
     let picker: THREE.Object3D | null = null;
+    let visibleRings: THREE.Object3D | null = null;
     this.helper.traverse(child => {
-      const gizmo = child as THREE.Object3D & { picker?: { rotate?: THREE.Object3D } };
-      if (child.type === "TransformControlsGizmo" && gizmo.picker?.rotate) {
-        picker = gizmo.picker.rotate;
+      const gizmo = child as THREE.Object3D & {
+        picker?: { rotate?: THREE.Object3D };
+        gizmo?: { rotate?: THREE.Object3D };
+      };
+      if (child.type === "TransformControlsGizmo") {
+        picker = gizmo.picker?.rotate ?? null;
+        visibleRings = gizmo.gizmo?.rotate ?? null;
       }
     });
-    if (picker) {
-      const matches = this.ringRaycaster.intersectObjects((picker as THREE.Object3D).children, true);
+    // Try the generous invisible native pickers first. Fall back to actual
+    // rendered torus rings if this Three.js revision has no picker mesh hit.
+    for (const group of [picker, visibleRings]) {
+      if (!group) continue;
+      const matches = this.ringRaycaster.intersectObjects((group as THREE.Object3D).children, true);
       for (const match of matches) {
         let node: THREE.Object3D | null = match.object;
-        while (node && node !== picker) {
+        while (node && node !== group) {
           if (node.name === "X" || node.name === "Y" || node.name === "Z") return node.name;
           node = node.parent;
         }
       }
     }
-    // TransformControls also resolves the hovered ring itself; use that
-    // when an invisible native picker could not be raycast in this Three.js version.
+    // Native controls knows the active handle only during an owned drag.
+    // A stale hover axis alone must not trigger a rotation on empty canvas.
     const axis = this.controls.axis;
-    return axis === "X" || axis === "Y" || axis === "Z" ? axis : null;
+    return this.controls.dragging
+      && (axis === "X" || axis === "Y" || axis === "Z") ? axis : null;
   }
 
   private pickMoveAxis(clientX: number, clientY: number): TranslationGizmoAxis | null {
