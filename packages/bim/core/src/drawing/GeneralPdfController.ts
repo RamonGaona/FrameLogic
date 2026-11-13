@@ -1,7 +1,10 @@
 import * as THREE from "three";
 import { planSmartAssemblyViews, type AutomaticViewCode } from "./AutoDrawingPlanner";
 import { planSelectedSheetLayout, selectAssemblyScaleDenominator } from "./AutoSheetLayoutPlanner";
-import { assemblyProjectionSignature, projectAssembly, type AssemblyLine, type AssemblyMarkAnchor } from "./AssemblyProjectionEngine";
+import { assemblyProjectionSignature, projectAssembly, projectAssemblySection,
+  type AssemblyLine, type AssemblyMarkAnchor, type AssemblyProjection } from "./AssemblyProjectionEngine";
+import { planSectionStations, cropAssemblyDetail, planSectionDetailSheetSlots,
+  type SectionStation, type CroppedAssemblyDetail } from "./AssemblySectionDetailPlanner";
 import type { EngineeringDimensionInstruction } from "./EngineeringAutoDimensionPlanner";
 import {
   layoutWorkshopDimensions,
@@ -108,6 +111,18 @@ interface AssemblySheetViewRuntime {
   /** True only when ALL B-Rep instances shared one exact OCCT HLR calculation. */
   assemblyOcclusionExact?: boolean;
   automaticWarnings?: readonly string[];
+  /** True physical B-Rep section vs cropped enlargement of the source projection. */
+  automaticSupplement?: "SECTION" | "DETAIL";
+  automaticSectionLabel?: string;
+  /** Stable source reference; cutting stations are preliminary, not confirmed connections. */
+  supplementFraction?: number;
+  sourceViewId?: string;
+  cutReferences?: readonly (SectionStation & { readonly targetSheet: string })[];
+  detailReferences?: readonly ({
+    readonly label: string;
+    readonly targetSheet: string;
+    readonly window: CroppedAssemblyDetail["window"];
+  })[];
   geometrySignature?: string;
 }
 
@@ -459,6 +474,7 @@ export class GeneralPdfController {
     sheet.pieceMarks = marks;
 
     const projected: Array<{ id: string; code: AutomaticViewCode; width: number; height: number }> = [];
+    const projectionByView = new Map<string, AssemblyProjection>();
     for (const plannedView of planned) {
       const workPlane: CadWorkPlaneState = {
         mode: request.workPlane.mode,
@@ -498,6 +514,7 @@ export class GeneralPdfController {
         instanceIds: request.instanceIds, designModel: this.designModel, designScene: this.designScene,
       });
       sheet.views.push(view);
+      projectionByView.set(view.id, geometry);
       projected.push({ id: view.id, code: plannedView.code, width: geometry.width, height: geometry.height });
     }
     const layouts = planSelectedSheetLayout(projected, "ISO_E");
@@ -525,6 +542,13 @@ export class GeneralPdfController {
       layout.title = view.assemblyName;
       layout.showHidden = false;
     }
+    const mainView = sheet.views.find((candidate): candidate is AssemblySheetViewRuntime =>
+      this.isAssemblyView(candidate) && Boolean(candidate.automaticViewCode)
+      && candidate.automaticViewCode !== "ISO");
+    const supplements = mainView && projectionByView.get(mainView.id)
+      ? await this.generateAutomaticSectionDetailSheet(request, mainView,
+        projectionByView.get(mainView.id)!)
+      : { sections: 0, details: 0 };
     // Part and BOM sheets share DrawingProduction.sheets, never another renderer.
     const unique = new Map<string, string>();
     for (const id of request.instanceIds) {
@@ -622,12 +646,149 @@ export class GeneralPdfController {
     const opened = this.openSheet(sheetId);
     if (opened) {
       this.workspace.setStatus(
-        `DETALLADO AUTO: ${planned.length} vistas; ${detailCount} planos de pieza; escala 1:${scaleDenominator}. `
+        `DETALLADO AUTO: ${planned.length} vistas; ${supplements.sections} cortes STEP; ${supplements.details} detalles ampliados; ${detailCount} planos de pieza; escala 1:${scaleDenominator}. `
         + `${sheet.views.some((view) => this.isAssemblyView(view) && view.assemblyOcclusionExact) ? "HLR conjunto OCCT cuando toda la geometría es STEP; " : "HLR STEP por pieza, sin ocultación entre piezas; "}${unique.size > 20 ? unique.size - 20 + " piezas sin plano individual por límite de 20. " : ""}`
         + "Cotas B-Rep en las vistas ortogonales. Revisar antes de fabricar.",
       );
     }
     return opened;
+  }
+
+  /**
+   * One additional A3 sheet for physical STEP cut profiles and localized,
+   * enlarged crops of the original orthographic HLR. Station choice is a
+   * preliminary 20/80% sampling: NOT a verified connection detector.
+   * Each section must intersect the actual placed B-Rep shapes to be emitted.
+   */
+  private async generateAutomaticSectionDetailSheet(
+    request: GeneralPdfRequest,
+    sourceView: AssemblySheetViewRuntime,
+    sourceGeometry: AssemblyProjection,
+  ): Promise<{ sections: number; details: number }> {
+    const stations = planSectionStations(sourceGeometry.segments);
+    if (!stations.length || sourceGeometry.offsetX === undefined) {
+      return { sections: 0, details: 0 };
+    }
+    const sourcePlane = restoreWorkPlane(sourceView.workPlane);
+    const sectionViews: AssemblySheetViewRuntime[] = [];
+    const detailViews: AssemblySheetViewRuntime[] = [];
+    const sheetNumber = `C-${request.assemblyId.slice(0, 8)}`;
+    const cutReferences: Array<SectionStation & { targetSheet: string }> = [];
+    const detailReferences: Array<{
+      label: string; targetSheet: string;
+      window: CroppedAssemblyDetail["window"];
+    }> = [];
+    for (const station of stations) {
+      // In a right-handed orthographic workplane: (-normal, yAxis) makes
+      // the cutting normal equal to the parent drawing's longitudinal X.
+      const plane: CadWorkPlaneState = {
+        mode: sourcePlane.mode, enabled: true,
+        origin: sourcePlane.origin.clone().addScaledVector(
+          sourcePlane.xAxis, station.x + sourceGeometry.offsetX,
+        ),
+        xAxis: sourcePlane.normal.clone().negate(),
+        yAxis: sourcePlane.yAxis.clone(),
+        normal: sourcePlane.xAxis.clone(),
+      };
+      try {
+        const physical = await projectAssemblySection({
+          instanceIds: request.instanceIds, workPlane: plane,
+          designModel: this.designModel, designScene: this.designScene,
+        }, station.label);
+        if (physical) {
+          const cutView = this.createAssemblyView({
+            ...request, workPlane: plane,
+            assemblyName: `CORTE ${station.label} · ${request.assemblyName}`,
+          }, physical);
+          cutView.automaticSupplement = "SECTION";
+          cutView.automaticSectionLabel = station.label;
+          cutView.supplementFraction = station.fraction;
+          cutView.sourceViewId = sourceView.id;
+          cutView.exactInstances = physical.exactInstances;
+          cutView.geometrySignature = assemblyProjectionSignature({
+            instanceIds: request.instanceIds,
+            designModel: this.designModel, designScene: this.designScene,
+          });
+          sectionViews.push(cutView);
+          cutReferences.push({ ...station, targetSheet: sheetNumber });
+        }
+      } catch {
+        // A failed OCCT cut is never replaced by a misleading mesh silhouette.
+      }
+      // The enlargement preserves line visibility from the parent HLR.
+      // Unlike the section it is a crop, not a new geometric intersection.
+      const detail = this.buildAutomaticDetailCrop(sourceGeometry.segments, station);
+      if (!detail) continue;
+      const label = station.label[0]!;
+      const detailView = this.createAssemblyView({
+        ...request, workPlane: sourcePlane,
+        assemblyName: `DETALLE ${label} · ${request.assemblyName}`,
+      }, detail);
+      detailView.automaticSupplement = "DETAIL";
+      detailView.automaticSectionLabel = label;
+      detailView.supplementFraction = station.fraction;
+      detailView.sourceViewId = sourceView.id;
+      detailView.automaticWarnings = sourceGeometry.assemblyOcclusionExact
+        ? [] : ["Ampliación preliminar: ocultación entre piezas no verificada."];
+      detailView.geometrySignature = assemblyProjectionSignature({
+        instanceIds: request.instanceIds,
+        designModel: this.designModel, designScene: this.designScene,
+      });
+      detailViews.push(detailView);
+      detailReferences.push({ label, window: detail.window, targetSheet: sheetNumber });
+    }
+    if (!sectionViews.length && !detailViews.length) return { sections: 0, details: 0 };
+    const sheetId = crypto.randomUUID();
+    const sheet = this.createEmptySheet(sheetId,
+      `Cortes y detalles · ${request.assemblyName}`);
+    sheet.titleBlock.drawingNumber = sheetNumber;
+    sheet.titleBlock.drawingTitle = `Cortes y detalles · ${request.assemblyName}`;
+    // Show exact physical cuts above their separately magnified details.
+    sheet.views.push(...sectionViews, ...detailViews);
+    const slots = planSectionDetailSheetSlots(sheet.views.length);
+    for (const [index, view] of sheet.views.entries()) {
+      if (!this.isAssemblyView(view)) continue;
+      const slot = slots[index]!;
+      const modelScale = Math.min(
+        (slot.width - 90) / view.width, (slot.height - 100) / view.height,
+      );
+      const denominator = selectAssemblyScaleDenominator(modelScale);
+      const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
+      layout.kind = "ASSEMBLY";
+      layout.x = slot.x; layout.y = slot.y;
+      layout.width = slot.width; layout.height = slot.height;
+      layout.scaleDenominator = denominator;
+      layout.title = view.assemblyName;
+      layout.showHidden = false;
+    }
+    sourceView.cutReferences = cutReferences;
+    sourceView.detailReferences = detailReferences;
+    if (sectionViews.length < stations.length) {
+      sourceView.automaticWarnings = [
+        ...(sourceView.automaticWarnings ?? []),
+        "Algunos cortes A-A/B-B no se generaron: falta B-Rep o el plano no intersecta el sólido.",
+      ];
+    }
+    this.production.sheets.set(sheetId, sheet);
+    return { sections: sectionViews.length, details: detailViews.length };
+  }
+
+  private buildAutomaticDetailCrop(
+    segments: readonly AssemblyLine[], station: SectionStation,
+  ): CroppedAssemblyDetail | null {
+    let minX = Infinity, maxX = -Infinity;
+    for (const segment of segments) {
+      minX = Math.min(minX, segment.x1, segment.x2);
+      maxX = Math.max(maxX, segment.x1, segment.x2);
+    }
+    const spanX = maxX - minX;
+    const spanY = station.yMax - station.yMin;
+    if (!Number.isFinite(spanX) || !Number.isFinite(spanY)
+      || spanX <= 0 || spanY <= 0) return null;
+    const width = Math.max(spanX * 0.12, spanY * 0.75);
+    const height = Math.max(spanY * 0.85, width * 0.65);
+    return cropAssemblyDetail(segments, station.x,
+      (station.yMin + station.yMax) / 2, width, height);
   }
 
   sendAssembly(request: GeneralPdfRequest): boolean {
@@ -940,7 +1101,21 @@ export class GeneralPdfController {
 
     sheet.views.forEach((candidate, index) => {
       if (!this.isAssemblyView(candidate)) return;
-      this.ensureAssemblyResolved(candidate);
+      // A supplementary cut is tied to its original STEP topology. Never
+      // display stale contours after the underlying model has been edited.
+      const outdated = Boolean(candidate.automaticSupplement && candidate.geometrySignature
+        && candidate.geometrySignature !== assemblyProjectionSignature({
+          instanceIds: candidate.instanceIds,
+          designModel: this.designModel, designScene: this.designScene,
+        }));
+      if (outdated) {
+        candidate.segments = [];
+        candidate.automaticWarnings = [
+          "DESACTUALIZADO: cambió el modelo. Genera nuevamente los planos automáticos.",
+        ];
+      } else {
+        this.ensureAssemblyResolved(candidate);
+      }
       const layout = this.professional.ensureViewLayout(
         candidate.id,
         candidate.sectionId,
@@ -964,7 +1139,7 @@ export class GeneralPdfController {
     layout: ViewLayoutRuntime,
     index: number,
   ): void {
-    const automatic = Boolean(view.automaticViewCode);
+    const automatic = Boolean(view.automaticViewCode || view.automaticSupplement);
     const padX = automatic ? 90 : 20;
     const padY = automatic ? 100 : 34;
     const innerWidth = Math.max(1, layout.width - padX);
@@ -998,7 +1173,21 @@ export class GeneralPdfController {
         this.appendLine(x1, y1, x2, y2);
       }
     }
-    if (automatic && view.automaticViewCode !== "ISO") {
+    if (view.automaticSupplement) {
+      if (view.automaticWarnings?.length) {
+        this.appendText(layout.x + 6, layout.y + layout.height - 23,
+          view.automaticWarnings[0]!.slice(0, 76), 8, "#8a241c");
+      }
+      this.appendText(layout.x + 6, layout.y + 15,
+        view.automaticSupplement === "SECTION"
+          ? `CORTE ${view.automaticSectionLabel} · INTERSECCIÓN STEP (sin rayado de materiales)`
+          : `DETALLE ${view.automaticSectionLabel} · AMPLIACIÓN LOCAL PRELIMINAR`,
+        8, "#12567c");
+    }
+    if (view.cutReferences?.length || view.detailReferences?.length) {
+      this.renderSectionDetailReferences(view, layout, originX, originY, drawnHeight, scale);
+    }
+    if (view.automaticViewCode && view.automaticViewCode !== "ISO") {
       this.renderAssemblyDimensions(view, layout, originX, originY, drawnWidth, drawnHeight, scale);
       if (index === 0 || view.assemblyId.startsWith("piece:")) {
         this.renderAssemblyMarks(sheet, view, layout, originX, originY, drawnHeight, scale);
@@ -1052,6 +1241,41 @@ export class GeneralPdfController {
   }
 
 
+
+  /**
+   * Section station arrows and detail windows live in the SAME SVG as the
+   * regular views, so the existing PDF exporter receives vector annotations.
+   */
+  private renderSectionDetailReferences(
+    view: AssemblySheetViewRuntime, layout: ViewLayoutRuntime,
+    originX: number, originY: number, drawnHeight: number, scale: number,
+  ): void {
+    const toX = (x: number) => originX + x * scale;
+    const toY = (y: number) => originY + drawnHeight - y * scale;
+    for (const station of view.cutReferences ?? []) {
+      const x = toX(station.x), top = toY(station.yMax), bottom = toY(station.yMin);
+      if (![x, top, bottom].every(Number.isFinite)) continue;
+      for (let y = top; y < bottom; y += 11) this.appendDimensionLine(x, y, x, Math.min(y + 7, bottom));
+      // Arrowheads point to the RIGHT of the cut trace, matching the
+      // +X physical section normal in the parent orthographic projection.
+      for (const y of [top, bottom]) {
+        this.appendDimensionLine(x - 4, y, x + 8, y);
+        this.appendDimensionLine(x + 8, y, x, y - 4);
+        this.appendDimensionLine(x + 8, y, x, y + 4);
+      }
+      this.appendText(Math.min(x + 5, layout.x + layout.width - 100),
+        Math.max(layout.y + 25, top - 10),
+        `CORTE ${station.label} · ${station.targetSheet}`, 8, "#12567c");
+    }
+    for (const detail of view.detailReferences ?? []) {
+      const x = toX(detail.window.x), y = toY(detail.window.y + detail.window.height);
+      const w = detail.window.width * scale, h = detail.window.height * scale;
+      if (![x, y, w, h].every(Number.isFinite) || w < 1 || h < 1) continue;
+      this.appendRect(x, y, w, h, "none", "#12567c", 0.8);
+      this.appendText(x + 4, Math.max(layout.y + 30, y - 3),
+        `DETALLE ${detail.label} · ${detail.targetSheet}`, 8, "#12567c");
+    }
+  }
 
   private renderAssemblyDimensions(
     view: AssemblySheetViewRuntime, layout: ViewLayoutRuntime,
@@ -1225,6 +1449,14 @@ export class GeneralPdfController {
         candidate.fallbackInstances = geometry.fallbackInstances;
         candidate.assemblyOcclusionExact = geometry.assemblyOcclusionExact;
         candidate.automaticWarnings = geometry.warnings;
+        if (candidate.cutReferences?.length || candidate.detailReferences?.length) {
+          candidate.cutReferences = [];
+          candidate.detailReferences = [];
+          candidate.automaticWarnings = [
+            ...geometry.warnings,
+            "Cortes y detalles invalidados: es necesario generar de nuevo el paquete.",
+          ];
+        }
         candidate.geometrySignature = signature;
         candidate.resolved = true;
         updated++;
@@ -1327,7 +1559,7 @@ export class GeneralPdfController {
     }
     this.appendText(54, 779,
       view.assemblyOcclusionExact
-        ? "PRELIMINAR: HLR exacto del conjunto STEP; faltan cortes y validación de taller."
+        ? "PRELIMINAR: HLR conjunto STEP; cortes orientativos; requiere validación de taller."
         : view.fallbackInstances
           ? `PRELIMINAR: ${view.fallbackInstances} pieza(s) en malla; HLR entre piezas NO exacto.`
           : "PRELIMINAR: HLR por pieza STEP; sin ocultación entre piezas; comprobar cotas.", 8, "#8a241c");
@@ -1339,7 +1571,9 @@ export class GeneralPdfController {
     const width = 360;
     const height = 92;
     const revision = sheet.revisions.at(-1)?.code ?? "0";
-    const scale = sheet.scaleDenominator === null
+    const scale = sheet.views.some((v) => this.isAssemblyView(v) && v.automaticSupplement)
+      ? "VARIAS"
+      : sheet.scaleDenominator === null
       ? "AUTO"
       : `1:${sheet.scaleDenominator}`;
     this.appendRect(x, y, width, height, "white", "#111", 0.9);

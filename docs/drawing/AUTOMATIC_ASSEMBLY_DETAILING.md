@@ -28,6 +28,37 @@ permiten asumir interoperabilidad inmediata ni eliminar obligaciones de
 redistribución. En esta etapa no se añade una dependencia nueva ni se copia
 código de FreeCAD, OCCT o los productos comerciales.
 
+## v0.1.148 — Cortes A-A/B-B y ampliaciones dentro del PDF
+
+La generación automática del ensamble ya puede agregar **una segunda hoja A3**
+con perfiles transversales `CORTE A-A` y `CORTE B-B` obtenidos
+por `BRepAlgoAPI_Section`, además de `DETALLE A` y `DETALLE B`
+ampliados desde la vista ortográfica principal. Se añaden trazas, flechas
+y referencias `C-<ID del ensamble>` en esa vista; la hoja conserva
+escalas individualizadas para no deformar el dibujo.
+
+La estación A-A está al 20 % y B-B al 80 % de la **extensión proyectada**,
+no de una conexión geométricamente reconocida. Un perfil de sección sólo
+se presenta si **todas las instancias** disponen de STEP B-Rep legible y
+transformaciones rígidas o de escala uniforme y si existe una verdadera
+intersección con el plano. Una sección que falla no se reemplaza por
+triángulos. Los detalles son recortes vectoriales de la vista HLR o de su
+fallback, **no son cortes** ni comprobaciones de unión.
+
+Los nuevos layouts y anotaciones son elementos del SVG de Paper Space y
+entran en la exportación PDF existente. Los recortes se calculan con clipping
+geométrico, sin cambiar el carácter visible/oculto de cada segmento. La hoja
+de cortes utiliza las cuatro celdas disponibles con escalas por viewport.
+Si no hay escala ISO que quepa, el viewport se muestra como AUTO,
+debiendo verificarse antes de uso físico.
+
+**Caducidad:** modificar piezas invalida los cortes y detalles ya emitidos:
+se oculta su geometría obsoleta y se solicita generar nuevamente el paquete.
+La regeneración asociativa automática de cortes con reposicionamiento de
+estaciones, así como el reconocimiento de conexiones, rayados y las cotas
+específicas de taller, son tareas posteriores. No se certifican estos planos
+para fabricación sin revisión humana y ensayo de impresión a escala.
+
 ## v0.1.147 — HLR del conjunto STEP con oclusión entre piezas
 
 `OpenCascadeDrawingKernel.hiddenLinesAssembly` aprovecha la misma instancia

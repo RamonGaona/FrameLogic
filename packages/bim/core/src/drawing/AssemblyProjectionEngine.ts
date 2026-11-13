@@ -35,6 +35,16 @@ export interface AssemblyProjection {
   readonly fallbackInstances: number;
   readonly assemblyOcclusionExact: boolean;
   readonly warnings: readonly string[];
+  /** Plane-space origin subtracted before the padded normalized drawing shift. */
+  readonly offsetX?: number;
+  readonly offsetY?: number;
+}
+export interface AssemblySectionProjection {
+  readonly width: number;
+  readonly height: number;
+  readonly segments: readonly AssemblyLine[];
+  readonly exactInstances: number;
+  readonly label: string;
 }
 export interface AssemblyProjectionSource {
   readonly instanceIds: readonly string[];
@@ -249,5 +259,101 @@ export async function projectAssembly(source: AssemblyProjectionSource,
     features, dimensions: planExactAssemblyDimensions(features),
     anchors: anchors.map((a) => ({ ...a, x: a.x + dx, y: a.y + dy })),
     exactInstances, fallbackInstances, assemblyOcclusionExact, warnings,
+    offsetX: minX - padding, offsetY: minY - padding,
+  };
+}
+
+/**
+ * Physical intersection of placed STEP shapes by a world-space cutting plane.
+ * This is NOT an HLR view of material behind the cut: only real B-Rep section
+ * curves are returned. If a piece is missing STEP or has distorted placement,
+ * no partial section is released for the drawing.
+ */
+export async function projectAssemblySection(
+  source: AssemblyProjectionSource,
+  label: string,
+  ocDrawing = new OpenCascadeDrawingKernel(),
+): Promise<AssemblySectionProjection | null> {
+  if (!source.instanceIds.length || source.instanceIds.length > 128) return null;
+  const ids = new Set(source.instanceIds);
+  const worldBasis = new THREE.Matrix4().makeBasis(
+    source.workPlane.xAxis.clone().normalize(),
+    source.workPlane.yAxis.clone().normalize(),
+    source.workPlane.normal.clone().normalize(),
+  );
+  worldBasis.setPosition(source.workPlane.origin);
+  const worldToCut = worldBasis.invert();
+  const raw: AssemblyLine[] = [];
+  let sections = 0;
+  const found = new Set<string>();
+  for (const [instanceId, object] of source.designScene.getInstanceEntries()) {
+    if (!ids.has(instanceId)) continue;
+    const piece = source.designModel.pieceInstances.get(instanceId);
+    if (!piece) return null;
+    const documentId = getStepBrepDocumentId(piece.definitionId);
+    if (!documentId) return null;
+    const document = getOpenCascadeBrepKernel().getDocument(documentId);
+    if (!document) return null;
+    object.updateWorldMatrix(true, true);
+    const world = object.matrixWorld;
+    const axes = [
+      new THREE.Vector3().setFromMatrixColumn(world, 0),
+      new THREE.Vector3().setFromMatrixColumn(world, 1),
+      new THREE.Vector3().setFromMatrixColumn(world, 2),
+    ];
+    const lengths = axes.map((axis) => axis.length());
+    const size = lengths.reduce((a, b) => a + b, 0) / 3;
+    if (!(size > 1e-12) || lengths.some((v) => Math.abs(v - size) > size * 1e-6)
+      || Math.abs(axes[0]!.dot(axes[1]!)) > size * size * 1e-6
+      || Math.abs(axes[0]!.dot(axes[2]!)) > size * size * 1e-6
+      || Math.abs(axes[1]!.dot(axes[2]!)) > size * size * 1e-6) return null;
+    // The world AABB is conservative for exclusion only; never declare
+    // actual contact or a section from a bounding-box overlap.
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return null;
+    const center = box.getCenter(new THREE.Vector3());
+    const half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+    const normal = source.workPlane.normal.clone().normalize();
+    const signedDistance = center.sub(source.workPlane.origin).dot(normal);
+    const radius = Math.abs(normal.x) * half.x
+      + Math.abs(normal.y) * half.y + Math.abs(normal.z) * half.z;
+    if (Math.abs(signedDistance) > radius + 1e-9) {
+      found.add(instanceId); // Definitely outside the physical cutting plane.
+      continue;
+    }
+    const inverse = world.clone().invert();
+    const localOrigin = source.workPlane.origin.clone().applyMatrix4(inverse);
+    const localNormal = source.workPlane.normal.clone().transformDirection(inverse);
+    const result = await ocDrawing.sectionByPlane(documentId, localOrigin, localNormal);
+    if (result.precision !== "BREP_EXACT") return null;
+    found.add(instanceId);
+    if (!result.segments.length) continue; // Valid no-intersection for this piece.
+    sections++;
+    for (const segment of result.segments) {
+      const a = new THREE.Vector3(segment.a.x, segment.a.y, segment.a.z)
+        .applyMatrix4(world).applyMatrix4(worldToCut);
+      const b = new THREE.Vector3(segment.b.x, segment.b.y, segment.b.z)
+        .applyMatrix4(world).applyMatrix4(worldToCut);
+      if (a.distanceToSquared(b) <= EPSILON) continue;
+      raw.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+      if (raw.length > MAX_SEGMENTS) return null;
+    }
+  }
+  if (found.size !== ids.size || !sections || !raw.length) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const s of raw) {
+    minX = Math.min(minX, s.x1, s.x2); minY = Math.min(minY, s.y1, s.y2);
+    maxX = Math.max(maxX, s.x1, s.x2); maxY = Math.max(maxY, s.y1, s.y2);
+  }
+  if (![minX, maxX, minY, maxY].every(Number.isFinite)) return null;
+  const pad = Math.max(maxX - minX, maxY - minY, 0.001) * 0.06;
+  return {
+    label, exactInstances: sections,
+    width: Math.max(0.001, maxX - minX) + pad * 2,
+    height: Math.max(0.001, maxY - minY) + pad * 2,
+    segments: raw.map((s) => ({
+      x1: s.x1 - minX + pad, y1: s.y1 - minY + pad,
+      x2: s.x2 - minX + pad, y2: s.y2 - minY + pad,
+    })),
   };
 }
