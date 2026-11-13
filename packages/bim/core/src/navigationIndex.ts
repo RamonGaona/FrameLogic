@@ -12,6 +12,7 @@ import type {
 
 import {
   CadCommandInputController,
+  getLineCommandHint,
 } from "./interaction/CadCommandInputController";
 
 import {
@@ -256,12 +257,10 @@ export async function createBimCore(
           startLine: () =>
             core.startLineCommand(),
           getActiveCommandHint: () => {
-            if (core.cadLinePlacement.isActive) return {
-              command: "LINE · SNAP",
-              detail: core.cadLinePlacement.hasStartPoint
-                ? "Segundo punto · SNAP / distancia / Enter · Esc termina"
-                : "Primer punto · selecciona SNAP exacto",
-            };
+            // The command input HUD is useful until the FIRST point only.
+            // The length/angle and exact numeric LINE input remain independent.
+            if (core.cadLinePlacement.isActive)
+              return getLineCommandHint(core.cadLinePlacement.hasStartPoint);
             if (core.cadPointPlacement.isActive) return {
               command: "PUNTO", detail: "Selecciona SNAP / coordenadas",
             };
