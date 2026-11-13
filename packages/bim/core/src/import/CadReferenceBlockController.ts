@@ -167,6 +167,20 @@ export class CadReferenceBlockController {
           ? "ROTATE DWG · Selecciona SNAP para el centro de giro"
           : "MOVE DWG · Selecciona SNAP para el punto base";
       },
+      "cad",
+      () => {
+        // The HTML marker dragged only the CAD gizmo's base; its geometry,
+        // copy operations and history stay untouched until MOVE is applied.
+        this.armedPivot = false;
+        this.armedMoveAxis = null;
+        this.armedCopyMove = false;
+        this.destinationDown = false;
+        this.transformStartPivot.copy(this.pivot.position);
+        this.badge.textContent = "MOVE DWG · Punto base reubicado · Elige un eje";
+        this.refreshSelectionVisual();
+      },
+      (x, y) => this.activeMode === "translate"
+        ? this.options.findSnapPoint?.(x, y) ?? null : null,
     );
 
     this.controls.addEventListener(
