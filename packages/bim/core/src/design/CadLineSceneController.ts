@@ -228,6 +228,7 @@ export class CadLineSceneController {
           frameLogic: { entityType: "CadReferenceBatch", layerId: packet.layerId, compact: true },
         };
         object.matrixAutoUpdate = false;
+        object.position.copy(shared.origin);
         this.packedSources.set(packet.id, src);
         this.scene.add(object);
         this.packedReferenceBatches.set(packet.id, object);
