@@ -674,34 +674,23 @@ export class OpenCascadeDrawingKernel {
     target: Record<string, unknown>,
     methods: readonly string[],
   ): unknown | null {
-    for (
-      const name
-      of methods
-    ) {
-      const value =
-        target[name];
-
-      if (
-        typeof value
-        !== "function"
-      ) {
-        continue;
-      }
-
-      try {
-        const result =
-          Reflect.apply(
-            value,
-            target,
-            [],
-          );
-
-        if (result) {
+    for (const base of methods) {
+      // opencascade.js exposes overloads as VCompound_1/VCompound_2,
+      // while some generated builds expose an unsuffixed method.
+      for (const name of [base, ...Array.from({ length: 8 }, (_, i) => `${base}_${i + 1}`)]) {
+        const value = target[name];
+        if (typeof value !== "function") continue;
+        try {
+          const result = Reflect.apply(value, target, []);
+          if (!result) continue;
+          if ((result as { IsNull?: () => boolean }).IsNull?.()) {
+            this.disposeMany(result);
+            continue;
+          }
           return result;
+        } catch {
+          // Try the next extractor supported by this build.
         }
-      }
-      catch {
-        // Try the next extractor supported by this build.
       }
     }
 
