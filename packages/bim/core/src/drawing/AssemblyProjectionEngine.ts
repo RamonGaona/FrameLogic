@@ -2,9 +2,10 @@
  * Assembly orthographic projection and exact topology feature extraction.
  * Reuses FrameLogic's OpenCascade STEP documents; no external dependency.
  *
- * IMPORTANT: HLR is evaluated for each STEP part. It removes self-hidden edges
- * but does NOT solve occlusion between different parts. Mixed STEP/mesh views
- * must not be certified as fully exact manufacturing projections.
+ * When every instance has usable STEP B-Rep with rigid/uniform placement,
+ * all parts share one OCCT HLR pass (including inter-part occlusion).
+ * Mixed or distorted assemblies fall back to per-part projections and must
+ * not be presented as exact manufacturing views.
  */
 import * as THREE from "three";
 import type { DesignModel } from "@framelogic/domain";
@@ -32,6 +33,7 @@ export interface AssemblyProjection {
   readonly anchors: readonly AssemblyMarkAnchor[];
   readonly exactInstances: number;
   readonly fallbackInstances: number;
+  readonly assemblyOcclusionExact: boolean;
   readonly warnings: readonly string[];
 }
 export interface AssemblyProjectionSource {
@@ -84,8 +86,55 @@ export async function projectAssembly(source: AssemblyProjectionSource,
   const warnings: string[] = [];
   let exactInstances = 0;
   let fallbackInstances = 0;
+  let assemblyOcclusionExact = false;
 
-  for (const [instanceId, object] of source.designScene.getInstanceEntries()) {
+  // The exact HLR must see ALL B-Rep objects together: occlusion cannot be
+  // reconstructed by joining already-visible lines from individual pieces.
+  const entries = [...source.designScene.getInstanceEntries()].filter(([instanceId, object]) => {
+    if (!ids.has(instanceId) || !source.designModel.pieceInstances.get(instanceId)) return false;
+    object.updateWorldMatrix(true, true);
+    return !new THREE.Box3().setFromObject(object).isEmpty();
+  });
+  if (entries.length >= 2) {
+    const placed = entries.map(([instanceId, object]) => {
+      const piece = source.designModel.pieceInstances.get(instanceId)!;
+      const documentId = getStepBrepDocumentId(piece.definitionId);
+      return documentId && getOpenCascadeBrepKernel().getDocument(documentId)
+        ? { instanceId, documentId, worldMatrix: [...object.matrixWorld.elements] } : null;
+    });
+    if (placed.every((item) => item !== null)) {
+      const result = await ocDrawing.hiddenLinesAssembly(
+        placed.filter((item): item is NonNullable<typeof item> => item !== null),
+        { x: -source.workPlane.normal.x, y: -source.workPlane.normal.y,
+          z: -source.workPlane.normal.z },
+        { x: source.workPlane.yAxis.x, y: source.workPlane.yAxis.y,
+          z: source.workPlane.yAxis.z },
+      );
+      if (result.precision === "BREP_EXACT" && result.visible.length) {
+        const appendWorldSegments = (segments: typeof result.visible, hidden: boolean): void => {
+          for (const segment of segments) {
+            const a = new THREE.Vector3(segment.a.x, segment.a.y, segment.a.z)
+              .applyMatrix4(worldToPlane);
+            const b = new THREE.Vector3(segment.b.x, segment.b.y, segment.b.z)
+              .applyMatrix4(worldToPlane);
+            if (a.distanceToSquared(b) > EPSILON) {
+              raw.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, hidden });
+            }
+          }
+        };
+        appendWorldSegments(result.visible, false);
+        appendWorldSegments(result.hidden, true);
+        assemblyOcclusionExact = true;
+      } else {
+        warnings.push("HLR del conjunto no verificado: "
+          + (result.reason || "Sin proyección exacta visible."));
+      }
+    } else {
+      warnings.push("HLR entre piezas no disponible: el conjunto contiene geometría sin STEP B-Rep.");
+    }
+  }
+
+  for (const [instanceId, object] of entries) {
     if (!ids.has(instanceId)) continue;
     const piece = source.designModel.pieceInstances.get(instanceId);
     if (!piece) continue;
@@ -96,9 +145,10 @@ export async function projectAssembly(source: AssemblyProjectionSource,
     anchors.push({ instanceId, x: center.x, y: center.y });
     const docId = getStepBrepDocumentId(piece.definitionId);
     const document = docId ? getOpenCascadeBrepKernel().getDocument(docId) : undefined;
-    let projectedExactly = false;
+    let projectedExactly = assemblyOcclusionExact;
+    if (assemblyOcclusionExact) exactInstances++;
 
-    if (docId && document) {
+    if (!projectedExactly && docId && document) {
       const inverse = object.matrixWorld.clone().invert();
       const localDirection = source.workPlane.normal.clone()
         .multiplyScalar(-1).transformDirection(inverse).normalize();
@@ -198,6 +248,6 @@ export async function projectAssembly(source: AssemblyProjectionSource,
       x1: s.x1 + dx, x2: s.x2 + dx, y1: s.y1 + dy, y2: s.y2 + dy })),
     features, dimensions: planExactAssemblyDimensions(features),
     anchors: anchors.map((a) => ({ ...a, x: a.x + dx, y: a.y + dy })),
-    exactInstances, fallbackInstances, warnings,
+    exactInstances, fallbackInstances, assemblyOcclusionExact, warnings,
   };
 }

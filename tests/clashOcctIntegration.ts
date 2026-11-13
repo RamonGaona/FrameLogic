@@ -7,6 +7,7 @@ import { resolve, dirname } from "node:path";
 import { createRequire } from "node:module";
 import { getOpenCascadeBrepKernel } from "../packages/geometry-engine/src/step/OpenCascadeBrepKernel";
 import { OpenCascadeClashKernel } from "../packages/geometry-engine/src/step/OpenCascadeClashKernel";
+import { OpenCascadeDrawingKernel } from "../packages/geometry-engine/src/step/OpenCascadeDrawingKernel";
 
 type Owned = { delete(): void };
 type Box = Owned & { Shape(): Owned };
@@ -36,6 +37,8 @@ try {
   const wasmPath = resolve(process.cwd(), "node_modules/opencascade.js/dist/opencascade.full.wasm");
   const oc = await initOc({ locateFile: (path: string) => path.endsWith(".wasm") ? wasmPath : path });
   runtime.getOpenCascade = async () => oc;
+  console.log("OCCT HLR binding diagnostics:", Object.keys(oc)
+    .filter((name) => /HLRBRep_HLRToShape|HLRBRep_Algo_|Handle_HLRBRep_Algo_|HLRBRep_PolyHLRToShape/.test(name)).sort().join(", "));
   for (const name of names) {
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     resources.push(box);
@@ -57,6 +60,52 @@ try {
     assert.ok(Math.abs(overlap.center.x - 7.5) < 0.001);
   }
   console.log("OK: OCCT Common excludes contacts, confirms 500 mm3 penetration.");
+  // Two independent boxes with identical XY silhouettes at different depths.
+  // Both must be submitted to a single HLRBRep_Algo; individual HLRs cannot
+  // hide the back box behind the front one.
+  const drawing = new OpenCascadeDrawingKernel();
+  const direction = { x: 0, y: 0, z: -1 };
+  const up = { x: 0, y: 1, z: 0 };
+  const single = await drawing.hiddenLines(names[0]!, direction, up);
+  assert.equal(single.precision, "BREP_EXACT", single.reason);
+  assert.ok(single.visible.length > 0, "Single STEP box must have visible lines.");
+  const assembly = await drawing.hiddenLinesAssembly([
+    { instanceId: "back", documentId: names[0]!, worldMatrix: identity() },
+    { instanceId: "front", documentId: names[1]!, worldMatrix: identity(0, 0, 20) },
+  ], direction, up);
+  assert.equal(assembly.precision, "BREP_EXACT", assembly.reason);
+  assert.ok(assembly.visible.length > 0, "Assembly HLR must have visible lines.");
+  assert.ok(assembly.hidden.length > 0, "Rear STEP box must have hidden lines.");
+  assert.ok(assembly.visible.length < single.visible.length * 1.5,
+    "The back box must not duplicate all visible edges of the front box.");
+
+  // A second independent alignment checks model-to-world translation, axis
+  // direction and physical extents, not merely nonempty HLR output.
+  const sideBySide = await drawing.hiddenLinesAssembly([
+    { instanceId: "left", documentId: names[0]!, worldMatrix: identity() },
+    { instanceId: "right", documentId: names[1]!, worldMatrix: identity(30, 0, 0) },
+  ], direction, up);
+  assert.equal(sideBySide.precision, "BREP_EXACT", sideBySide.reason);
+  const all = sideBySide.visible.flatMap((segment) => [segment.a, segment.b]);
+  const spanX = Math.max(...all.map((p) => p.x)) - Math.min(...all.map((p) => p.x));
+  const spanY = Math.max(...all.map((p) => p.y)) - Math.min(...all.map((p) => p.y));
+  const spanZ = Math.max(...all.map((p) => p.z)) - Math.min(...all.map((p) => p.z));
+  assert.ok(Math.abs(spanX - 40) < 0.01,
+    `40 mm across two placed STEP solids expected, received ${spanX}`);
+  assert.ok(Math.abs(spanY - 10) < 0.01,
+    `10 mm high STEP outlines expected, received ${spanY}`);
+  assert.ok(spanZ < 0.01, `Projector plane should have zero depth, received ${spanZ}`);
+  console.log("OK: world-space assembly HLR preserves 40 x 10 mm projected extents.");
+
+  const distorted = identity();
+  distorted[0] = 2;
+  const rejected = await drawing.hiddenLinesAssembly([
+    { instanceId: "back", documentId: names[0]!, worldMatrix: identity() },
+    { instanceId: "front", documentId: names[1]!, worldMatrix: distorted },
+  ], direction, up);
+  assert.equal(rejected.precision, "FALLBACK");
+  assert.match(rejected.reason ?? "", /Escala no uniforme|deformación/);
+  console.log("OK: OCCT assembly HLR hides the rear part and rejects distorted placements.");
 } finally {
   for (const name of names) runtime.documents.delete(name);
   for (const resource of resources.reverse()) resource.delete();
