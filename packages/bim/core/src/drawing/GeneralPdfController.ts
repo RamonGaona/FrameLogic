@@ -7,9 +7,11 @@ import {
   layoutWorkshopDimensions,
   type WorkshopDimensionOverride,
 } from "./WorkshopDimensionLayout";
+import { buildAssemblyBom, renderAssemblyBomRow, type AssemblyBomRow } from "./AssemblyBomPlanner";
 
 import type {
   DesignModel,
+  FrameLogicEngineeringModel,
 } from "@framelogic/domain";
 
 import type {
@@ -114,7 +116,8 @@ interface GeneralSheetRuntime extends Omit<SheetState, "views"> {
   /** Persistent per-definition marks keep regeneration order independent. */
   pieceMarks?: Record<string, string>;
   /** The BOM sheet is independent of any single view and paginates large assemblies. */
-  bomEntries?: Array<{ mark: string; label: string; quantity: number }>;
+  bomEntries?: AssemblyBomRow[];
+  bomAssemblyId?: string;
   id?: string;
   name?: string;
   readonly views: GeneralSheetViewRuntime[];
@@ -193,6 +196,7 @@ export interface GeneralPdfControllerOptions {
   readonly container: HTMLElement;
   readonly designModel: DesignModel;
   readonly designScene: DesignSceneController;
+  readonly engineeringModel: FrameLogicEngineeringModel;
   readonly drawingProduction: DrawingProductionController;
   readonly drawingProfessional: DrawingProfessionalController;
   readonly drawingWorkspace: DrawingWorkspaceController;
@@ -226,6 +230,7 @@ export class GeneralPdfController {
   private readonly container: HTMLElement;
   private readonly designModel: DesignModel;
   private readonly designScene: DesignSceneController;
+  private readonly engineeringModel: FrameLogicEngineeringModel;
   private readonly production: ProductionRuntime;
   private readonly professional: ProfessionalRuntime;
   private readonly workspace: WorkspaceRuntime;
@@ -252,6 +257,7 @@ export class GeneralPdfController {
     this.container = options.container;
     this.designModel = options.designModel;
     this.designScene = options.designScene;
+    this.engineeringModel = options.engineeringModel;
     this.production =
       options.drawingProduction as unknown as ProductionRuntime;
     this.professional =
@@ -487,10 +493,7 @@ export class GeneralPdfController {
       const piece = this.designModel.pieceInstances.get(id);
       if (piece && !unique.has(piece.definitionId)) unique.set(piece.definitionId, id);
     }
-    const entries = [...unique].map(([definitionId, instanceId]) => ({
-      mark: marks[definitionId] ?? "—", label: this.getPieceLabel(instanceId), quantity:
-        request.instanceIds.filter((id) => this.designModel.pieceInstances.get(id)?.definitionId === definitionId).length,
-    }));
+    const entries = this.buildBomRows(request.instanceIds, marks);
     // Full material index on additional A3 sheets; no guessed weight/material.
     if (entries.length > 8) {
       const chunkSize = 40;
@@ -498,6 +501,7 @@ export class GeneralPdfController {
         const page = this.createEmptySheet(crypto.randomUUID(),
           `Listado de piezas · ${request.assemblyName} · ${Math.floor(start / chunkSize) + 1}`);
         page.bomEntries = entries.slice(start, start + chunkSize);
+        page.bomAssemblyId = request.assemblyId;
         page.titleBlock.drawingNumber = `B-${request.assemblyId.slice(0, 8)}-${Math.floor(start / chunkSize) + 1}`;
         this.production.sheets.set(page.id!, page);
       }
@@ -1159,6 +1163,11 @@ export class GeneralPdfController {
     try {
       for (const candidate of sheet.views) {
         if (!this.isAssemblyView(candidate) || !candidate.automaticViewCode) continue;
+        if (!candidate.assemblyId.startsWith("piece:")
+          && this.designModel.assemblies.get(candidate.assemblyId)) {
+          // Hierarchical membership can change independently of geometry.
+          candidate.instanceIds = [...this.designModel.getAssemblyPieceIdsDeep(candidate.assemblyId)];
+        }
         const signature = assemblyProjectionSignature({
           instanceIds: candidate.instanceIds, designModel: this.designModel, designScene: this.designScene,
         });
@@ -1178,7 +1187,9 @@ export class GeneralPdfController {
         candidate.resolved = true;
         updated++;
       }
+      if (updated || force) this.syncAutomaticAssemblyIndex(sheet);
       if (updated) {
+        this.lastTreeSignature = "";
         this.workspace.render();
         this.workspace.setStatus(`VISTAS AUTO: ${updated} vista(s) regeneradas sin mover layouts ni cotas manuales.`);
       } else if (force) {
@@ -1191,6 +1202,58 @@ export class GeneralPdfController {
     }
   }
 
+  private buildBomRows(
+    instanceIds: readonly string[],
+    marks: Readonly<Record<string, string>>,
+  ): AssemblyBomRow[] {
+    const occurrences: Array<{ definitionId: string; label: string }> = [];
+    const properties: Record<string, { material?: string; grade?: string; unitMassKg?: number }> = {};
+    for (const instanceId of instanceIds) {
+      const piece = this.designModel.pieceInstances.get(instanceId);
+      if (!piece) continue;
+      occurrences.push({ definitionId: piece.definitionId, label: this.getPieceLabel(instanceId) });
+      const engineering = this.engineeringModel.pieces.get(piece.definitionId);
+      properties[piece.definitionId] = {
+        material: engineering?.material?.name,
+        grade: engineering?.material?.grade,
+        unitMassKg: engineering?.physical?.massKg,
+      };
+    }
+    return buildAssemblyBom(occurrences, marks, properties);
+  }
+
+  private syncAutomaticAssemblyIndex(sheet: GeneralSheetRuntime): void {
+    const root = sheet.views.find((candidate): candidate is AssemblySheetViewRuntime =>
+      this.isAssemblyView(candidate) && Boolean(candidate.automaticViewCode)
+      && !candidate.assemblyId.startsWith("piece:"));
+    if (!root) return;
+    const marks = sheet.pieceMarks ?? {};
+    let nextMark = 1 + Math.max(0, ...Object.values(marks)
+      .map((value) => /^P(\\d+)$/.exec(value)?.[1])
+      .map((value) => Number(value ?? 0)));
+    for (const instanceId of root.instanceIds) {
+      const piece = this.designModel.pieceInstances.get(instanceId);
+      if (piece && !marks[piece.definitionId]) marks[piece.definitionId] = `P${nextMark++}`;
+    }
+    sheet.pieceMarks = marks;
+    const rows = this.buildBomRows(root.instanceIds, marks);
+    const pages = [...this.production.sheets.values()].filter((page) =>
+      page.bomAssemblyId === root.assemblyId);
+    const required = rows.length > 8 ? Math.ceil(rows.length / 40) : 0;
+    for (let i = 0; i < Math.max(required, pages.length); i++) {
+      let page = pages[i];
+      if (!page && i < required) {
+        page = this.createEmptySheet(crypto.randomUUID(),
+          `Listado de piezas · ${root.assemblyName} · ${i + 1}`);
+        page.bomAssemblyId = root.assemblyId;
+        page.titleBlock.drawingNumber = `B-${root.assemblyId.slice(0, 8)}-${i + 1}`;
+        this.production.sheets.set(page.id!, page);
+      }
+      if (page) page.bomEntries = i < required
+        ? rows.slice(i * 40, (i + 1) * 40) : [];
+    }
+  }
+
   /** Compact marks/quantities summary, not a certified material takeoff. */
   private renderAutomaticPartIndex(sheet: GeneralSheetRuntime): void {
     if (sheet.bomEntries?.length) {
@@ -1200,41 +1263,25 @@ export class GeneralPdfController {
         const row = i % 20;
         const x = 54 + col * 518;
         const y = 116 + row * 24;
-        this.appendText(x, y, `${item.mark}  |  ${item.quantity} ud  |  ${item.label.slice(0, 61)}`, 9, "#222");
+        this.appendText(x, y, renderAssemblyBomRow(item, 25), 8.5, "#222");
       }
-      this.appendText(54, 594, "Materiales, pesos, cortes y soldaduras: comprobar por separado.", 9, "#8a241c");
+      this.appendText(54, 594,
+        "Material y masa: solo si constan en los datos de ingeniería. Verificar antes de fabricar.",
+        8.5, "#8a241c");
       return;
     }
     const view = sheet.views.find((candidate): candidate is AssemblySheetViewRuntime =>
       this.isAssemblyView(candidate) && Boolean(candidate.automaticViewCode));
     if (!view || !sheet.pieceMarks) return;
-    const groups = new Map<string, { mark: string; label: string; quantity: number }>();
-    for (const instanceId of view.instanceIds) {
-      const piece = this.designModel.pieceInstances.get(instanceId);
-      if (!piece) continue;
-      const key = piece.definitionId;
-      const existing = groups.get(key);
-      if (existing) {
-        existing.quantity += 1;
-      } else {
-        groups.set(key, {
-          mark: sheet.pieceMarks[key] ?? "—",
-          label: this.getPieceLabel(instanceId),
-          quantity: 1,
-        });
-      }
-    }
-    if (!groups.size) return;
-    this.appendText(54, 633, "MARCAS Y CANTIDADES · SEGÚN MODELO", 10, "#111");
-    const rows = [...groups.values()].sort((a, b) =>
-      Number(a.mark.slice(1)) - Number(b.mark.slice(1)));
+    const rows = this.buildBomRows(view.instanceIds, sheet.pieceMarks);
+    if (!rows.length) return;
+    this.appendText(54, 633, "MARCAS, MATERIALES Y CANTIDADES · SEGÚN MODELO", 10, "#111");
     rows.slice(0, 8).forEach((item, index) => {
-      const label = item.label.length > 70 ? item.label.slice(0, 67) + "…" : item.label;
       this.appendText(54, 651 + index * 13,
-        `${item.mark}   ${item.quantity} ×   ${label}`, 9, "#222");
+        renderAssemblyBomRow(item, 31), 8.5, "#222");
     });
     if (rows.length > 8) {
-      this.appendText(54, 760, `+ ${rows.length - 8} marcas adicionales (ver árbol de vistas)`, 8, "#444");
+      this.appendText(54, 760, `+ ${rows.length - 8} marcas adicionales (ver hoja de BOM)`, 8, "#444");
     }
     this.appendText(54, 779,
       view.fallbackInstances
