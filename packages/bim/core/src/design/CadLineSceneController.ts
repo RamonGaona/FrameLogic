@@ -20,6 +20,8 @@ export class CadLineSceneController {
   private readonly designModel: DesignModel;
   private readonly lineObjects = new Map<string, THREE.Line>();
   private readonly referenceBatches = new Map<string, THREE.LineSegments>();
+  /** Cota-style read-only CAD underlays: one compact GPU batch per packet. */
+  private readonly packedReferenceBatches = new Map<string, THREE.LineSegments>();
   private readonly afterSyncListeners = new Set<() => void>();
   private readonly selectedIds = new Set<string>();
   private readonly hiddenIds = new Set<string>();
@@ -37,6 +39,7 @@ export class CadLineSceneController {
     return [
       ...this.lineObjects.values(),
       ...this.referenceBatches.values(),
+      ...this.packedReferenceBatches.values(),
     ];
   }
 
@@ -187,6 +190,48 @@ export class CadLineSceneController {
       this.disposeMaterial(object.material);
       this.referenceBatches.delete(layerId);
     }
+    // Compact Cota underlays avoid creating one CadLine and UUID per segment.
+    // Float64 source coordinates are rebased to a local origin before upload
+    // so large industrial DWG coordinates retain useful GPU precision.
+    const livePacked = new Set<string>();
+    for (const packet of this.designModel.cadLines.getPackedBatches()) {
+      livePacked.add(packet.id);
+      const layer = this.designModel.layers.get(packet.layerId);
+      let object = this.packedReferenceBatches.get(packet.id);
+      if (!object) {
+        const src = packet.positions;
+        const px = src[0]!, py = src[1]!, pz = src[2]!;
+        const relative = new Float32Array(src.length);
+        for (let i = 0; i < src.length; i += 3) {
+          relative[i] = src[i]! - px;
+          relative[i + 1] = src[i + 1]! - py;
+          relative[i + 2] = src[i + 2]! - pz;
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.BufferAttribute(relative, 3));
+        geometry.computeBoundingSphere();
+        object = new THREE.LineSegments(
+          geometry, new THREE.LineBasicMaterial({ color: layer?.color ?? "#e5e7eb" }),
+        );
+        object.name = `CadCotaReference:${packet.id}`;
+        object.userData = {
+          frameLogic: { entityType: "CadReferenceBatch", layerId: packet.layerId, compact: true },
+        };
+        object.position.set(px, py, pz);
+        this.scene.add(object);
+        this.packedReferenceBatches.set(packet.id, object);
+      }
+      object.visible = layer?.visible ?? true;
+      (object.material as THREE.LineBasicMaterial).color.set(layer?.color ?? "#e5e7eb");
+      object.updateMatrixWorld(true);
+    }
+    for (const [id, object] of this.packedReferenceBatches) {
+      if (livePacked.has(id)) continue;
+      this.scene.remove(object);
+      object.geometry.dispose();
+      this.disposeMaterial(object.material);
+      this.packedReferenceBatches.delete(id);
+    }
     this.updateSelectionAppearance();
     for (const listener of this.afterSyncListeners) listener();
   }
@@ -232,6 +277,7 @@ export class CadLineSceneController {
     }
     this.lineObjects.clear();
     this.referenceBatches.clear();
+    this.packedReferenceBatches.clear();
     this.afterSyncListeners.clear();
     this.hiddenIds.clear();
   }
