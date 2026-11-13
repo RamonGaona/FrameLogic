@@ -1256,10 +1256,12 @@ export class GeneralPdfController {
       const x = toX(station.x), top = toY(station.yMax), bottom = toY(station.yMin);
       if (![x, top, bottom].every(Number.isFinite)) continue;
       for (let y = top; y < bottom; y += 11) this.appendDimensionLine(x, y, x, Math.min(y + 7, bottom));
-      // Section viewing direction: two opposed arrow strokes at the ends.
+      // Arrowheads point to the RIGHT of the cut trace, matching the
+      // +X physical section normal in the parent orthographic projection.
       for (const y of [top, bottom]) {
-        this.appendDimensionLine(x, y, x - 4, y + 6);
-        this.appendDimensionLine(x, y, x + 4, y + 6);
+        this.appendDimensionLine(x - 4, y, x + 8, y);
+        this.appendDimensionLine(x + 8, y, x, y - 4);
+        this.appendDimensionLine(x + 8, y, x, y + 4);
       }
       this.appendText(Math.min(x + 5, layout.x + layout.width - 100),
         Math.max(layout.y + 25, top - 10),
@@ -1557,7 +1559,7 @@ export class GeneralPdfController {
     }
     this.appendText(54, 779,
       view.assemblyOcclusionExact
-        ? "PRELIMINAR: HLR exacto del conjunto STEP; faltan cortes y validación de taller."
+        ? "PRELIMINAR: HLR conjunto STEP; cortes orientativos; requiere validación de taller."
         : view.fallbackInstances
           ? `PRELIMINAR: ${view.fallbackInstances} pieza(s) en malla; HLR entre piezas NO exacto.`
           : "PRELIMINAR: HLR por pieza STEP; sin ocultación entre piezas; comprobar cotas.", 8, "#8a241c");
