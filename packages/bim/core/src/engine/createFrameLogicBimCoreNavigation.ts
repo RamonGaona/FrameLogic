@@ -438,6 +438,7 @@ export async function createBimCore(
       container,
       designModel: core.designModel,
       designScene: core.designScene,
+      engineeringModel: core.engineeringModel,
       drawingProduction: core.drawingProduction,
       drawingProfessional: core.drawingProfessional,
       drawingWorkspace: core.drawingWorkspace,
