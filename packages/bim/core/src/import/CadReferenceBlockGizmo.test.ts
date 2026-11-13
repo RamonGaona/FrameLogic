@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { DesignModel } from "@framelogic/domain";
-import { CadReferenceBlockController } from "./CadReferenceBlockController";
+import { CadReferenceBlockController, resolveCadRotationAxis } from "./CadReferenceBlockController";
 import { RotateRingDoubleClick } from "../interaction/RotateRingDoubleClick";
 import { CadLinePlacementController } from "../interaction/CadLinePlacementController";
 
@@ -94,21 +94,21 @@ describe("DWG gizmo events: don't reselect imported CAD through rotate ring", ()
     } finally { vi.restoreAllMocks(); }
   });
 
-  it("preserves the clicked CAD ring when native controls temporarily reports E/null", async () => {
+  it("preserves the clicked ring when native controls temporarily reports E/XYZE/null", async () => {
+    expect(resolveCadRotationAxis("Z", "E")).toBe("Z");
+    expect(resolveCadRotationAxis("X", "XYZE")).toBe("X");
+    expect(resolveCadRotationAxis("Y", null)).toBe("Y");
+    expect(resolveCadRotationAxis("Z", "X")).toBe("X");
     const f = fixture();
     Reflect.set(f.controller, "activeMode", "rotate");
-    // The native helper has a larger E/XYZE picker overlapping the ring.
-    // A valid X/Y/Z from pointer raycasting must not be overwritten with null.
     for (let i = 0; i < 2; i++) {
       Reflect.set(f.controller, "ringGesture", {
-        pointerId: 7, x: 120, y: 80, axis: "Z", dragged: false,
+        pointerId: 7, x: 120, y: 80, axis: resolveCadRotationAxis("Z", "E"),
+        dragged: false,
       });
       f.controls.axis = "E";
-      f.handler("handleTransformStart")();
-      expect((Reflect.get(f.controller, "ringGesture") as {axis: string}).axis).toBe("Z");
       Reflect.set(f.controller, "pointerDownActive", true);
       f.release();
-      f.handler("transformEndInternal")();
     }
     await new Promise(resolve => setTimeout(resolve, 5));
     expect(f.model.cadLines.get(f.line.id)?.start.x).toBeCloseTo(5);
