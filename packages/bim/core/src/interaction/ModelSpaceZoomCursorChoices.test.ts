@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as THREE from "three";
 import {
   formatZoomChoices,
   getZoomHintPosition,
@@ -20,7 +21,8 @@ class FakeElement extends EventTarget {
   append(...elements: FakeElement[]): void { this.children.push(...elements); }
   setAttribute(_name: string, _value: string): void {}
   getBoundingClientRect(): DOMRect {
-    return { left: 0, top: 0, width: 288, height: 118 } as DOMRect;
+    return { left: 0, top: 0, right: 288, bottom: 118,
+      width: 288, height: 118 } as DOMRect;
   }
   remove(): void { this.removed = true; }
 }
@@ -45,23 +47,47 @@ function setup() {
   const body = new FakeElement("BODY");
   const container = new FakeElement();
   const canvas = new FakeElement("CANVAS");
+  canvas.getBoundingClientRect = () => ({
+    left: 0, top: 0, right: 780, bottom: 520,
+    width: 780, height: 520,
+  }) as DOMRect;
   vi.stubGlobal("window", windowStub);
   vi.stubGlobal("document", { body, createElement: () => new FakeElement() });
   vi.stubGlobal("HTMLElement", FakeElement);
 
-  // Existing camera fit implementation is not under test: only the
-  // keyboard dispatch and cursor-positioned menu should change.
+  const camera = new THREE.OrthographicCamera(-390, 390, 260, -260, 0.1, 10000);
+  camera.position.set(0, 0, 1200);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  const controls = {
+    enabled: true,
+    minDistance: 1,
+    minZoom: 0.0001,
+    getTarget: vi.fn((point: THREE.Vector3) => point.set(0, 0, 0)),
+    setLookAt: vi.fn(async (px: number, py: number, pz: number,
+      tx: number, ty: number, tz: number) => {
+      camera.position.set(px, py, pz);
+      camera.lookAt(tx, ty, tz);
+      camera.updateMatrixWorld(true);
+    }),
+    zoomTo: vi.fn(async (zoom: number) => {
+      camera.zoom = zoom; camera.updateProjectionMatrix();
+    }),
+  };
   type Options = ConstructorParameters<typeof ModelSpaceZoomExtentsController>[0];
   const controller = new ModelSpaceZoomExtentsController({
     container: container as unknown as HTMLElement,
     domElement: canvas as unknown as HTMLElement,
+    cameraProvider: () => camera,
+    controls,
   } as Options);
   const extents = vi.fn(async () => {});
   const object = vi.fn(async () => true);
   Reflect.set(controller, "zoomExtents", extents);
   Reflect.set(controller, "zoomSelected", object);
   const hint = body.children[0]!;
-  return { controller, extents, object, hint, canvas, windowStub };
+  return { controller, extents, object, hint, overlay: body.children[1]!,
+    canvas, windowStub, camera, controls };
 }
 
 afterEach(() => {
@@ -78,7 +104,7 @@ describe("ZOOM cursor choices", () => {
     expect(getZoomHintPosition(15, 3, 320, 200, 288, 118).left).toBe(20);
   });
 
-  it("shows ZOOM E/O options after Z, allows Tab/arrows and Enter, and avoids bottom HUD", () => {
+  it("requires Z + Enter before showing E/O/S; Tab/arrows cycle and Enter applies", () => {
     const f = setup();
     pointerMove(f.canvas, 680, 495);
     const initial = sendKey(f.windowStub, "z");
@@ -86,15 +112,25 @@ describe("ZOOM cursor choices", () => {
     expect(f.hint.style.position).toBe("fixed");
     expect(f.hint.dataset.framelogicZoomChoices).toBe("true");
     expect(f.hint.style.display).toBe("block");
+    expect(f.hint.textContent).toContain("Enter para abrir ZOOM");
+    expect(f.hint.textContent).not.toContain("E · Extensión");
     expect(Number.parseInt(f.hint.style.top!, 10)).toBeLessThan(495);
-    expect(Number.parseInt(f.hint.style.left!, 10)).toBeLessThan(680);
-    expect(f.hint.textContent).toContain("Z · ZOOM");
+
+    // E must not execute before entering the command with Enter.
+    const eEarly = sendKey(f.windowStub, "e");
+    expect(eEarly.defaultPrevented).toBe(false);
+    expect(f.extents).not.toHaveBeenCalled();
+
+    sendKey(f.windowStub, "z");
+    sendKey(f.windowStub, "Enter");
     expect(f.hint.textContent).toContain("› E · Extensión");
     expect(f.hint.textContent).toContain("O · Objeto");
-
+    expect(f.hint.textContent).toContain("S · Seleccionar área");
     sendKey(f.windowStub, "ArrowDown");
     expect(f.hint.textContent).toContain("› O · Objeto");
     sendKey(f.windowStub, "Tab");
+    expect(f.hint.textContent).toContain("› S · Seleccionar área");
+    sendKey(f.windowStub, "ArrowDown");
     expect(f.hint.textContent).toContain("› E · Extensión");
     sendKey(f.windowStub, "Enter");
     expect(f.extents).toHaveBeenCalledOnce();
@@ -102,22 +138,27 @@ describe("ZOOM cursor choices", () => {
     expect(f.hint.style.display).toBe("none");
 
     sendKey(f.windowStub, "z");
+    sendKey(f.windowStub, "Enter");
+    sendKey(f.windowStub, "ArrowUp");
     sendKey(f.windowStub, "ArrowUp");
     sendKey(f.windowStub, "Enter");
     expect(f.object).toHaveBeenCalledOnce();
     f.controller.dispose();
     expect(f.hint.removed).toBe(true);
+    expect(f.overlay.removed).toBe(true);
   });
 
-  it("Z + O/E executes immediately; those letters do not start an unrelated command", () => {
+  it("Z+Enter+O/E executes; before Enter the same letters do not run ZOOM", () => {
     const f = setup();
     const nextKeyHandler = vi.fn();
     f.windowStub.addEventListener("keydown", nextKeyHandler, true);
     sendKey(f.windowStub, "z");
+    sendKey(f.windowStub, "Enter");
     sendKey(f.windowStub, "o");
     expect(f.object).toHaveBeenCalledOnce();
     expect(nextKeyHandler).not.toHaveBeenCalled();
     sendKey(f.windowStub, "z");
+    sendKey(f.windowStub, "Enter");
     sendKey(f.windowStub, "e");
     expect(f.extents).toHaveBeenCalledOnce();
     expect(nextKeyHandler).not.toHaveBeenCalled();
@@ -126,6 +167,74 @@ describe("ZOOM cursor choices", () => {
     sendKey(f.windowStub, "Escape");
     expect(f.hint.style.display).toBe("none");
     expect(f.object).toHaveBeenCalledOnce();
+    f.controller.dispose();
+  });
+
+  it("S starts a two-corner zoom window; 2 clicks frame camera without selecting objects", async () => {
+    const f = setup();
+    sendKey(f.windowStub, "z");
+    sendKey(f.windowStub, "Enter");
+    sendKey(f.windowStub, "s");
+    expect(f.controls.enabled).toBe(false);
+    expect(f.hint.textContent).toContain("Primera esquina");
+
+    const handler = (name: string) => Reflect.get(f.controller, name) as
+      (event: PointerEvent) => void;
+    const pointer = (type: string, x: number, y: number, id = 10) => {
+      const event = Object.assign(new Event(type, { cancelable: true }), {
+        target: f.canvas, button: 0, pointerId: id,
+        clientX: x, clientY: y, preventDefault: vi.fn(),
+        stopImmediatePropagation: vi.fn(),
+      });
+      return event as unknown as PointerEvent;
+    };
+    // A click anchors the first point without zooming.
+    handler("handleZoomWindowDown")(pointer("pointerdown", 100, 100));
+    handler("handleZoomWindowUp")(pointer("pointerup", 100, 100));
+    expect(f.hint.textContent).toContain("Segunda esquina");
+    expect(f.controls.setLookAt).not.toHaveBeenCalled();
+    handler("handleZoomWindowMove")(pointer("pointermove", 450, 390));
+    expect(f.overlay.style.display).toBe("block");
+    expect(f.overlay.style.width).toBe("350px");
+    handler("handleZoomWindowDown")(pointer("pointerdown", 450, 390, 11));
+    handler("handleZoomWindowUp")(pointer("pointerup", 450, 390, 11));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(f.controls.enabled).toBe(true);
+    expect(f.controls.setLookAt).toHaveBeenCalledOnce();
+    expect(f.controls.zoomTo).toHaveBeenCalledOnce();
+    expect(f.camera.zoom).toBeGreaterThan(1);
+    expect(f.overlay.style.display).toBe("none");
+    f.controller.dispose();
+  });
+
+  it("S supports one drag from first corner; Escape restores controls without zoom", async () => {
+    const f = setup();
+    sendKey(f.windowStub, "z");
+    sendKey(f.windowStub, "Enter");
+    sendKey(f.windowStub, "s");
+    const handler = (name: string) => Reflect.get(f.controller, name) as
+      (event: PointerEvent) => void;
+    const pointer = (x: number, y: number, id = 7) => ({
+      button: 0, pointerId: id, clientX: x, clientY: y,
+      target: f.canvas, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn(),
+    } as unknown as PointerEvent);
+    handler("handleZoomWindowDown")(pointer(100, 100));
+    handler("handleZoomWindowMove")(pointer(300, 300));
+    handler("handleZoomWindowUp")(pointer(300, 300));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(f.controls.setLookAt).toHaveBeenCalledOnce();
+    expect(f.controls.enabled).toBe(true);
+
+    sendKey(f.windowStub, "z");
+    sendKey(f.windowStub, "Enter");
+    sendKey(f.windowStub, "s");
+    expect(f.controls.enabled).toBe(false);
+    sendKey(f.windowStub, "Escape");
+    expect(f.controls.enabled).toBe(true);
+    expect(f.overlay.style.display).toBe("none");
+    expect(f.controls.setLookAt).toHaveBeenCalledOnce();
     f.controller.dispose();
   });
 
