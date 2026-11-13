@@ -3,6 +3,10 @@ import { planSmartAssemblyViews, type AutomaticViewCode } from "./AutoDrawingPla
 import { planSelectedSheetLayout, selectAssemblyScaleDenominator } from "./AutoSheetLayoutPlanner";
 import { assemblyProjectionSignature, projectAssembly, type AssemblyLine, type AssemblyMarkAnchor } from "./AssemblyProjectionEngine";
 import type { EngineeringDimensionInstruction } from "./EngineeringAutoDimensionPlanner";
+import {
+  layoutWorkshopDimensions,
+  type WorkshopDimensionOverride,
+} from "./WorkshopDimensionLayout";
 
 import type {
   DesignModel,
@@ -95,6 +99,7 @@ interface AssemblySheetViewRuntime {
   automaticViewCode?: AutomaticViewCode;
   /** Persisted exact B-Rep dimension plans; manual annotations live separately. */
   automaticDimensions?: readonly EngineeringDimensionInstruction[];
+  dimensionOverrides?: Record<string, WorkshopDimensionOverride>;
   automaticAnchors?: readonly AssemblyMarkAnchor[];
   exactInstances?: number;
   fallbackInstances?: number;
@@ -135,6 +140,7 @@ interface WorkspaceRuntime {
   render(): void;
   setTool(tool: "SELECT" | "DIMENSION" | "LABEL" | "TEXT"): void;
   setStatus(message: string): void;
+  eventToSheetPoint(event: PointerEvent | MouseEvent): THREE.Vector2 | null;
 }
 
 interface SectionRuntime {
@@ -233,6 +239,14 @@ export class GeneralPdfController {
   private disposed = false;
   private refreshInProgress = false;
   private lastAutomaticRefresh = 0;
+  private dimensionDrag: {
+    readonly viewId: string;
+    readonly key: string;
+    readonly pointerId: number;
+    readonly start: THREE.Vector2;
+    readonly originalX: number;
+    readonly originalY: number;
+  } | null = null;
 
   constructor(options: GeneralPdfControllerOptions) {
     this.container = options.container;
@@ -255,6 +269,11 @@ export class GeneralPdfController {
       this.renderGeneralViews();
     };
 
+    this.workspace.svg.addEventListener("pointerdown", this.onAutoDimensionDown, true);
+    this.workspace.svg.addEventListener("pointermove", this.onAutoDimensionMove, true);
+    this.workspace.svg.addEventListener("pointerup", this.onAutoDimensionUp, true);
+    this.workspace.svg.addEventListener("pointercancel", this.onAutoDimensionUp, true);
+    this.workspace.svg.addEventListener("contextmenu", this.onAutoDimensionContextMenu, true);
     this.syncSectionSheets();
     this.timer = window.setInterval(() => {
       this.syncSectionSheets();
@@ -272,6 +291,12 @@ export class GeneralPdfController {
     if (this.disposed) return;
     this.disposed = true;
     window.clearInterval(this.timer);
+    this.workspace.svg.removeEventListener("pointerdown", this.onAutoDimensionDown, true);
+    this.workspace.svg.removeEventListener("pointermove", this.onAutoDimensionMove, true);
+    this.workspace.svg.removeEventListener("pointerup", this.onAutoDimensionUp, true);
+    this.workspace.svg.removeEventListener("pointercancel", this.onAutoDimensionUp, true);
+    this.workspace.svg.removeEventListener("contextmenu", this.onAutoDimensionContextMenu, true);
+    this.dimensionDrag = null;
     this.workspace.render = this.baseWorkspaceRender;
     this.workspace.overlay
       .querySelector('[data-framelogic-pdf-view-tree="GENERAL"]')
@@ -930,7 +955,7 @@ export class GeneralPdfController {
       }
     }
     if (automatic && view.automaticViewCode !== "ISO") {
-      this.renderAssemblyDimensions(view, layout, originX, originY, drawnHeight, scale);
+      this.renderAssemblyDimensions(view, layout, originX, originY, drawnWidth, drawnHeight, scale);
       if (index === 0 || view.assemblyId.startsWith("piece:")) {
         this.renderAssemblyMarks(sheet, view, layout, originX, originY, drawnHeight, scale);
       }
@@ -983,47 +1008,39 @@ export class GeneralPdfController {
   }
 
 
+
   private renderAssemblyDimensions(
     view: AssemblySheetViewRuntime, layout: ViewLayoutRuntime,
-    originX: number, originY: number, drawnHeight: number, scale: number,
+    originX: number, originY: number,
+    drawnWidth: number, drawnHeight: number, scale: number,
   ): void {
     const dimensions = view.automaticDimensions ?? [];
-    const measure = (metres: number): string => {
-      const mm = Math.abs(metres) * 1000;
-      return Number(mm.toFixed(mm < 10 ? 2 : 1)).toString();
-    };
-    let horizontal = 0;
-    let vertical = 0;
-    let diameters = 0;
-    for (const dimension of dimensions) {
-      const ax = originX + dimension.a.x * scale;
-      const bx = originX + dimension.b.x * scale;
-      const ay = originY + drawnHeight - dimension.a.y * scale;
-      const by = originY + drawnHeight - dimension.b.y * scale;
-      if (dimension.mode === "HORIZONTAL" && horizontal < 3) {
-        const y = layout.y + 28 + horizontal * 11;
-        this.appendDimensionLine(ax, ay, ax, y);
-        this.appendDimensionLine(bx, by, bx, y);
-        this.appendDimensionLine(ax, y, bx, y);
-        this.appendText((ax + bx) / 2, y - 3, measure(dimension.b.x - dimension.a.x), 8, "#12567c");
-        horizontal++;
-      } else if (dimension.mode === "VERTICAL" && vertical < 3) {
-        const x = layout.x + layout.width - 27 - vertical * 12;
-        this.appendDimensionLine(ax, ay, x, ay);
-        this.appendDimensionLine(bx, by, x, by);
-        this.appendDimensionLine(x, ay, x, by);
-        this.appendText(x + 3, (ay + by) / 2, measure(dimension.b.y - dimension.a.y), 8, "#12567c");
-        vertical++;
-      } else if (dimension.mode === "DIAMETER" && diameters < 3) {
-        const x = layout.x + 8;
-        const y = layout.y + layout.height - 44 - diameters * 13;
-        this.appendDimensionLine(ax, ay, x + 60, y);
-        const label = `${(dimension.quantity ?? 1) > 1 ? dimension.quantity + "× " : ""}Ø${measure((dimension.a.radius ?? 0) * 2)}`;
-        this.appendText(x, y - 3, label, 8, "#12567c");
-        diameters++;
+    const result = layoutWorkshopDimensions(dimensions, {
+      x: layout.x, y: layout.y, width: layout.width, height: layout.height,
+      originX, originY, drawnWidth, drawnHeight, scale,
+    }, view.dimensionOverrides);
+    for (const dimension of result.placed) {
+      for (const line of dimension.lines) {
+        this.appendDimensionLine(line.x1, line.y1, line.x2, line.y2);
       }
+      const text = this.appendText(
+        dimension.labelX, dimension.labelY, dimension.label, 8, "#12567c",
+      );
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("data-framelogic-auto-dim-view", view.id);
+      text.setAttribute("data-framelogic-auto-dim-key", dimension.key);
+      text.setAttribute("aria-label", `Cota ${dimension.label} mm. Arrastra para reubicar, clic derecho para ocultar.`);
+      text.style.cursor = "move";
+      text.style.pointerEvents = "auto";
     }
-    if (dimensions.length) this.appendText(layout.x + 5, layout.y + 15, "COTAS STEP · mm", 8, "#12567c");
+    if (dimensions.length) {
+      this.appendText(layout.x + 5, layout.y + 15,
+        `COTAS STEP · mm · ${result.placed.length} visibles`, 8, "#12567c");
+    }
+    if (result.omitted > 0) {
+      this.appendText(layout.x + 5, layout.y + layout.height - 18,
+        `${result.omitted} cota(s) omitidas: falta espacio o duplicadas`, 7, "#8a241c");
+    }
   }
 
   private appendDimensionLine(x1: number, y1: number, x2: number, y2: number): void {
@@ -1034,6 +1051,77 @@ export class GeneralPdfController {
     line.style.pointerEvents = "none";
     this.workspace.svg.append(line);
   }
+
+
+  private findAutoDimensionView(viewId: string): AssemblySheetViewRuntime | null {
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    const candidate = sheet?.views.find((v) => v.id === viewId);
+    return candidate && this.isAssemblyView(candidate) && candidate.automaticViewCode
+      ? candidate : null;
+  }
+
+  private readonly onAutoDimensionDown = (event: PointerEvent): void => {
+    if (event.button !== 0 || this.disposed) return;
+    const target = event.target instanceof Element
+      ? event.target.closest<SVGTextElement>("[data-framelogic-auto-dim-key]") : null;
+    const viewId = target?.getAttribute("data-framelogic-auto-dim-view");
+    const key = target?.getAttribute("data-framelogic-auto-dim-key");
+    const start = this.workspace.eventToSheetPoint(event);
+    if (!viewId || !key || !start) return;
+    const view = this.findAutoDimensionView(viewId);
+    if (!view) return;
+    const previous = view.dimensionOverrides?.[key];
+    this.dimensionDrag = {
+      viewId, key, pointerId: event.pointerId, start,
+      originalX: previous?.dx ?? 0, originalY: previous?.dy ?? 0,
+    };
+    try { this.workspace.svg.setPointerCapture(event.pointerId); } catch { /* device without capture */ }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private readonly onAutoDimensionMove = (event: PointerEvent): void => {
+    const drag = this.dimensionDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const pointer = this.workspace.eventToSheetPoint(event);
+    const view = this.findAutoDimensionView(drag.viewId);
+    if (!pointer || !view) return;
+    view.dimensionOverrides ??= {};
+    view.dimensionOverrides[drag.key] = {
+      ...view.dimensionOverrides[drag.key],
+      dx: Math.max(-110, Math.min(110, drag.originalX + pointer.x - drag.start.x)),
+      dy: Math.max(-65, Math.min(65, drag.originalY + pointer.y - drag.start.y)),
+    };
+    this.workspace.render();
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private readonly onAutoDimensionUp = (event: PointerEvent): void => {
+    if (this.dimensionDrag?.pointerId !== event.pointerId) return;
+    this.dimensionDrag = null;
+    if (this.workspace.svg.hasPointerCapture(event.pointerId))
+      this.workspace.svg.releasePointerCapture(event.pointerId);
+    this.workspace.setStatus("COTA STEP: posición de texto ajustada; medida geométrica intacta.");
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private readonly onAutoDimensionContextMenu = (event: MouseEvent): void => {
+    const target = event.target instanceof Element
+      ? event.target.closest<SVGTextElement>("[data-framelogic-auto-dim-key]") : null;
+    const viewId = target?.getAttribute("data-framelogic-auto-dim-view");
+    const key = target?.getAttribute("data-framelogic-auto-dim-key");
+    const view = viewId ? this.findAutoDimensionView(viewId) : null;
+    if (!view || !key) return;
+    view.dimensionOverrides ??= {};
+    view.dimensionOverrides[key] = { ...view.dimensionOverrides[key], hidden: true };
+    this.workspace.render();
+    this.workspace.setStatus("COTA STEP ocultada. Usa 'Restablecer cotas' para recuperarla.");
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
 
   private renderAssemblyMarks(
     sheet: GeneralSheetRuntime, view: AssemblySheetViewRuntime, layout: ViewLayoutRuntime,
@@ -1332,6 +1420,13 @@ export class GeneralPdfController {
       regenerate.style.display = sheet?.views.some((view) =>
         this.isAssemblyView(view) && Boolean(view.automaticViewCode)) ? "block" : "none";
     }
+    const reset = tree.parentElement?.querySelector<HTMLButtonElement>(
+      '[data-framelogic-reset-auto-dimensions="true"]');
+    if (reset) {
+      reset.style.display = sheet?.views.some((view) =>
+        this.isAssemblyView(view) && Object.keys(view.dimensionOverrides ?? {}).length > 0)
+        ? "block" : "none";
+    }
 
     const pieces = this.designModel.pieceInstances.getAll();
     const signature = sheet
@@ -1439,7 +1534,23 @@ export class GeneralPdfController {
       regenerate.dataset["framelogicRegenerateAssembly"] = "true";
       regenerate.style.cssText = "display:none;margin:6px;padding:6px;background:#29495a;color:#fff;border:1px solid #567483;border-radius:4px;cursor:pointer;font:11px system-ui;";
       regenerate.addEventListener("click", () => { void this.refreshAutomaticSheets(true); });
-      panel.append(header, regenerate, content);
+      const resetDimensions = document.createElement("button");
+      resetDimensions.type = "button";
+      resetDimensions.textContent = "Restablecer cotas";
+      resetDimensions.dataset["framelogicResetAutoDimensions"] = "true";
+      resetDimensions.style.cssText = regenerate.style.cssText;
+      resetDimensions.addEventListener("click", () => {
+        const sheetId = this.getActiveSheetId();
+        const sheet = sheetId ? this.production.sheets.get(sheetId) : undefined;
+        if (!sheet) return;
+        for (const candidate of sheet.views) {
+          if (this.isAssemblyView(candidate)) candidate.dimensionOverrides = {};
+        }
+        this.lastTreeSignature = "";
+        this.workspace.render();
+        this.workspace.setStatus("COTAS STEP: posiciones restablecidas y etiquetas ocultas recuperadas.");
+      });
+      panel.append(header, regenerate, resetDimensions, content);
       this.workspace.overlay.append(panel);
     }
 
@@ -1632,7 +1743,7 @@ export class GeneralPdfController {
     text: string,
     size: number,
     fill: string,
-  ): void {
+  ): SVGTextElement {
     const element = document.createElementNS(SVG_NS, "text");
     element.setAttribute("x", String(x));
     element.setAttribute("y", String(y));
@@ -1641,6 +1752,7 @@ export class GeneralPdfController {
     element.textContent = text;
     element.style.pointerEvents = "none";
     this.workspace.svg.append(element);
+    return element;
   }
 }
 
