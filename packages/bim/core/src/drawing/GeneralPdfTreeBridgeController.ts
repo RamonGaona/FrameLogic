@@ -77,6 +77,7 @@ export class GeneralPdfTreeBridgeController {
             key,
             "Renombrar ensamble · F2",
             () => this.sendAssembly(assembly.id),
+            () => this.generateAutomaticAssembly(assembly.id),
           ),
           0,
         );
@@ -125,6 +126,7 @@ export class GeneralPdfTreeBridgeController {
     key: string,
     requiredButtonText: string | null,
     action: () => void,
+    automaticAction?: () => void,
   ): void {
     if (this.disposed) return;
     const menus = Array.from(
@@ -190,12 +192,35 @@ export class GeneralPdfTreeBridgeController {
       menu.remove();
     });
     menu.prepend(button);
+    if (automaticAction) {
+      const automaticButton = button.cloneNode(true) as HTMLButtonElement;
+      automaticButton.textContent = "Generar planos automáticamente";
+      automaticButton.dataset["framelogicAutomaticDrawingMenu"] = key;
+      automaticButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        automaticAction();
+        menu.remove();
+      });
+      menu.prepend(automaticButton);
+    }
   }
 
   private sendAssembly(assemblyId: string): void {
     const assembly = this.options.designModel.assemblies.get(assemblyId);
     if (!assembly) return;
     this.options.generalPdf.sendAssembly({
+      assemblyId: assembly.id,
+      assemblyName: assembly.name,
+      instanceIds: this.options.designModel.getAssemblyPieceIdsDeep(assembly.id),
+      workPlane: this.options.workPlane.getState(),
+    });
+  }
+
+  private generateAutomaticAssembly(assemblyId: string): void {
+    const assembly = this.options.designModel.assemblies.get(assemblyId);
+    if (!assembly) return;
+    this.options.generalPdf.generateAutomaticAssembly({
       assemblyId: assembly.id,
       assemblyName: assembly.name,
       instanceIds: this.options.designModel.getAssemblyPieceIdsDeep(assembly.id),
