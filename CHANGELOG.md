@@ -12,6 +12,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.145 — 2026-11-13
+
+### Acotación inteligente STEP, edición de etiquetas y BOM de ingeniería
+
+- **Cotas de taller:** el planificador de ensambles prioriza dimensiones generales exactas X/Y, agrupación de diámetros por centros distintos, posiciones de centros circulares, pasos entre centros realmente alineados y estaciones intermedias de vértices STEP. Conserva referencias `instanceId` / `topologyId` y elimina valores geométricamente repetidos.
+- **Distribución sin texto superpuesto:** incorpora un organizador de cotas por corredores de la vista (superior, lateral derecho e inferior); las cotas que no caben se omiten con un contador visible en vez de dibujarse encima de otras medidas. Protege la geometría principal de las etiquetas mediante márgenes y limita la densidad a 32 candidatos por vista.
+- **Ajuste manual de etiquetas:** arrastra el texto de una cota automática para reposicionarlo sin cambiar su valor, clic derecho para ocultarlo y botón `Restablecer cotas` en el árbol del PDF para recuperarlas. Los ajustes se guardan con la hoja y se preservan al regenerar si la referencia STEP sigue existiendo. Las posiciones SVG y PDF comparten la misma alineación de texto.
+- **BOM con datos reales:** agrupa ocurrencias por definición y añade nombre y calidad de material, masa unitaria y masa total **solo cuando existen** en `FrameLogicEngineeringModel`; los datos faltantes aparecen como no disponibles. No se calculan masas a partir de mallas.
+- **Jerarquía y cambios:** la regeneración de vistas de ensamble consulta la pertenencia actual de subensambles, mantiene las marcas existentes, numera nuevas definiciones sin reutilizar marcas y actualiza las hojas de BOM asociadas sin eliminar hojas editadas.
+- **Pruebas nuevas:** centros, diámetros y pasos colineales; exclusión de centros oblicuos; omisión por falta de espacio; ajustes manuales; cantidades, procedencia de masa y materiales.
+
+**Alcance y pendientes:** los círculos STEP no se interpretan automáticamente como taladros mecanizados. Las cotas son geométricas y sus **textos** se pueden desplazar u ocultar, pero las líneas de cota aún no tienen edición manual completa. Siguen pendientes cortes y vistas auxiliares automáticos de uniones, ocultación exacta entre componentes, exportación multipágina en un archivo, reconciliación de hojas de pieza cuando cambia la jerarquía y verificación presencial contra planos de taller. No emplear los planos sin revisión profesional.
+
+---
+
 ## v0.1.144 — 2026-11-13
 
 ### Detallado automático: STEP HLR, cotas, planos de piezas y regeneración
