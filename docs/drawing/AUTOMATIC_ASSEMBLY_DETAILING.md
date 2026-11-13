@@ -28,6 +28,36 @@ permiten asumir interoperabilidad inmediata ni eliminar obligaciones de
 redistribución. En esta etapa no se añade una dependencia nueva ni se copia
 código de FreeCAD, OCCT o los productos comerciales.
 
+## v0.1.147 — HLR del conjunto STEP con oclusión entre piezas
+
+`OpenCascadeDrawingKernel.hiddenLinesAssembly` aprovecha la misma instancia
+OpenCascade existente, sin dependencias nuevas. Para cada pieza STEP calcula
+su forma en coordenadas de mundo con la matriz de `DesignSceneController`
+y la escala de `OpenCascadeBrepKernel`; añade todas las formas al mismo
+`HLRBRep_Algo` y calcula `Update/Hide` antes de extraer visibles/ocultas.
+Se exige una transformación ortogonal con escala uniforme y un documento B-Rep
+cargado para **cada** instancia del ensamble. Se limita el lote a 128
+instancias para proteger el navegador; los conjuntos mayores aún necesitan
+fragmentación. No se fusionan sólidos ni se infieren soldaduras o agujeros.
+
+La proyección devuelta ya está en coordenadas de mundo, por lo que el
+`AssemblyProjectionEngine` sólo aplica `worldToPlane`. Los puntos de
+cotas siguen procediendo de la topología de cada STEP con referencias
+`instanceId/topologyId`. Para mezclas STEP/malla, matriz no uniforme,
+fallo del kernel o proyección vacía, se mantiene la ruta previa **por pieza**
+y se indica que la ocultación entre componentes no es exacta.
+
+`GeneralPdfController` distingue vistas de HLR de conjunto y per-piece
+en las advertencias del PDF y su estado. La prueba de integración Node
+`tests/clashOcctIntegration.ts` utiliza dos cajas B-Rep alineadas en
+profundidad; comprueba que el HLR conjunto no reproduce todas las
+aristas visibles de la caja posterior y que se rechaza escala no uniforme.
+Sin prueba real de impresión y geometría compleja no se habilita uso
+de fabricación.
+
+**No implementado aquí:** identificación automática de uniones, cortes,
+detalles de conexión y colocación de sus marcadores. Siguen en la Etapa A.
+
 ## v0.1.146 — Etapa A, orientación longitudinal (entrega incremental)
 
 `AssemblyOrientationPlanner.inferAssemblyLongitudinalFrame` usa el tensor de
