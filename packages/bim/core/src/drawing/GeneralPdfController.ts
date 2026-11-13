@@ -654,6 +654,139 @@ export class GeneralPdfController {
     return opened;
   }
 
+  /**
+   * One additional A3 sheet for physical STEP cut profiles and localized,
+   * enlarged crops of the original orthographic HLR. Station choice is a
+   * preliminary 20/80% sampling: NOT a verified connection detector.
+   * Each section must intersect the actual placed B-Rep shapes to be emitted.
+   */
+  private async generateAutomaticSectionDetailSheet(
+    request: GeneralPdfRequest,
+    sourceView: AssemblySheetViewRuntime,
+    sourceGeometry: AssemblyProjection,
+  ): Promise<{ sections: number; details: number }> {
+    const stations = planSectionStations(sourceGeometry.segments);
+    if (!stations.length || sourceGeometry.offsetX === undefined) {
+      return { sections: 0, details: 0 };
+    }
+    const sourcePlane = restoreWorkPlane(sourceView.workPlane);
+    const sectionViews: AssemblySheetViewRuntime[] = [];
+    const detailViews: AssemblySheetViewRuntime[] = [];
+    const sheetNumber = `C-${request.assemblyId.slice(0, 8)}`;
+    const cutReferences: Array<SectionStation & { targetSheet: string }> = [];
+    const detailReferences: Array<{
+      label: string; targetSheet: string;
+      window: CroppedAssemblyDetail["window"];
+    }> = [];
+    for (const station of stations) {
+      // In a right-handed orthographic workplane: (-normal, yAxis) makes
+      // the cutting normal equal to the parent drawing's longitudinal X.
+      const plane: CadWorkPlaneState = {
+        mode: sourcePlane.mode, enabled: true,
+        origin: sourcePlane.origin.clone().addScaledVector(
+          sourcePlane.xAxis, station.x + sourceGeometry.offsetX,
+        ),
+        xAxis: sourcePlane.normal.clone().negate(),
+        yAxis: sourcePlane.yAxis.clone(),
+        normal: sourcePlane.xAxis.clone(),
+      };
+      try {
+        const physical = await projectAssemblySection({
+          instanceIds: request.instanceIds, workPlane: plane,
+          designModel: this.designModel, designScene: this.designScene,
+        }, station.label);
+        if (physical) {
+          const cutView = this.createAssemblyView({
+            ...request, workPlane: plane,
+            assemblyName: `CORTE ${station.label} · ${request.assemblyName}`,
+          }, physical);
+          cutView.automaticSupplement = "SECTION";
+          cutView.automaticSectionLabel = station.label;
+          cutView.supplementFraction = station.fraction;
+          cutView.sourceViewId = sourceView.id;
+          cutView.exactInstances = physical.exactInstances;
+          cutView.geometrySignature = assemblyProjectionSignature({
+            instanceIds: request.instanceIds,
+            designModel: this.designModel, designScene: this.designScene,
+          });
+          sectionViews.push(cutView);
+          cutReferences.push({ ...station, targetSheet: sheetNumber });
+        }
+      } catch {
+        // A failed OCCT cut is never replaced by a misleading mesh silhouette.
+      }
+      // The enlargement preserves line visibility from the parent HLR.
+      // Unlike the section it is a crop, not a new geometric intersection.
+      const detail = this.buildAutomaticDetailCrop(sourceGeometry.segments, station);
+      if (!detail) continue;
+      const label = station.label[0]!;
+      const detailView = this.createAssemblyView({
+        ...request, workPlane: sourcePlane,
+        assemblyName: `DETALLE ${label} · ${request.assemblyName}`,
+      }, detail);
+      detailView.automaticSupplement = "DETAIL";
+      detailView.automaticSectionLabel = label;
+      detailView.supplementFraction = station.fraction;
+      detailView.sourceViewId = sourceView.id;
+      detailView.automaticWarnings = sourceGeometry.assemblyOcclusionExact
+        ? [] : ["Ampliación preliminar: ocultación entre piezas no verificada."];
+      detailView.geometrySignature = assemblyProjectionSignature({
+        instanceIds: request.instanceIds,
+        designModel: this.designModel, designScene: this.designScene,
+      });
+      detailViews.push(detailView);
+      detailReferences.push({ label, window: detail.window, targetSheet: sheetNumber });
+    }
+    if (!sectionViews.length && !detailViews.length) return { sections: 0, details: 0 };
+    const sheetId = crypto.randomUUID();
+    const sheet = this.createEmptySheet(sheetId,
+      `Cortes y detalles · ${request.assemblyName}`);
+    sheet.titleBlock.drawingNumber = sheetNumber;
+    sheet.titleBlock.drawingTitle = `Cortes y detalles · ${request.assemblyName}`;
+    // Show exact physical cuts above their separately magnified details.
+    sheet.views.push(...sectionViews, ...detailViews);
+    const slots = planSectionDetailSheetSlots(sheet.views.length);
+    for (const [index, view] of sheet.views.entries()) {
+      if (!this.isAssemblyView(view)) continue;
+      const slot = slots[index]!;
+      const modelScale = Math.min(
+        (slot.width - 90) / view.width, (slot.height - 100) / view.height,
+      );
+      const denominator = selectAssemblyScaleDenominator(modelScale);
+      const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
+      layout.kind = "ASSEMBLY";
+      layout.x = slot.x; layout.y = slot.y;
+      layout.width = slot.width; layout.height = slot.height;
+      layout.scaleDenominator = denominator;
+      layout.title = view.assemblyName;
+      layout.showHidden = false;
+    }
+    sourceView.cutReferences = cutReferences;
+    sourceView.detailReferences = detailReferences;
+    if (sectionViews.length < stations.length) {
+      sourceView.automaticWarnings = [
+        ...(sourceView.automaticWarnings ?? []),
+        "Algunos cortes A-A/B-B no se generaron: falta B-Rep o el plano no intersecta el sólido.",
+      ];
+    }
+    this.production.sheets.set(sheetId, sheet);
+    return { sections: sectionViews.length, details: detailViews.length };
+  }
+
+  private buildAutomaticDetailCrop(
+    segments: readonly AssemblyLine[], station: SectionStation,
+  ): CroppedAssemblyDetail | null {
+    const xValues = segments.flatMap((s) => [s.x1, s.x2]);
+    const spanX = Math.max(...xValues) - Math.min(...xValues);
+    const spanY = station.yMax - station.yMin;
+    if (!Number.isFinite(spanX) || !Number.isFinite(spanY)
+      || spanX <= 0 || spanY <= 0) return null;
+    const width = Math.max(spanX * 0.12, spanY * 0.75);
+    const height = Math.max(spanY * 0.85, width * 0.65);
+    return cropAssemblyDetail(segments, station.x,
+      (station.yMin + station.yMax) / 2, width, height);
+  }
+
   sendAssembly(request: GeneralPdfRequest): boolean {
     if (this.disposed) return false;
     if (!request.workPlane.enabled) {
