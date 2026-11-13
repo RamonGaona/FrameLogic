@@ -65,6 +65,54 @@ Antes de dar por concluidos los planos se requieren pruebas con piezas
 rotadas, conjuntos jerárquicos, curvas, agujeros, cambios de modelo y PDF
 a escala física en distintos navegadores.
 
+## v0.1.144 — continuación de las prioridades
+
+La nueva ruta `AssemblyProjectionEngine.projectAssembly` intenta primero
+`OpenCascadeDrawingKernel.hiddenLines` para cada pieza STEP cuyo documento
+B-Rep esté cargado, transformando el resultado al sistema de cada vista.
+Sólo si falla el cálculo o falta B-Rep recurre a `EdgesGeometry`.
+Las aristas ocultas pueden activarse por viewport y se conservan separadas.
+
+`planExactAssemblyDimensions` trabaja exclusivamente con vértices B-Rep
+y centros de arcos/círculos coplanares de las piezas. Presenta cotas
+X, Y y Ø en **mm**, priorizando cotas generales, centros y diámetros.
+Un círculo sometido a escalado no uniforme no genera un Ø engañoso.
+La selección de vistas sigue el envolvente de la etapa 1; no se ha
+introducido orientación PCA ni identificación semántica de las uniones.
+
+Para cada definición de pieza del ensamble se crea hasta un máximo de
+**20 hojas individuales por comando** (representante de la primera
+instancia de dicha definición) y, si hay más de ocho definiciones, hojas
+de listado completo con hasta 40 entradas cada una. Los identificadores
+se conservan en la hoja; el listado proporciona marcas, cantidades y
+nombres, pero no atribuye pesos, calidades de acero ni soldaduras sin
+datos reales. Se informa cuando el límite deja piezas sin plano individual.
+
+Las vistas automáticas guardan referencias `instanceId` /
+`topologyId` de las cotas y firma de modelo. El botón
+**Regenerar planos automáticos** y un control periódico detectan
+cambios en matrices, versión de geometría y B-Rep. La regeneración
+actualiza las vistas y cotas automáticas sin sustituir el layout
+manual ni las anotaciones manuales existentes.
+
+**ADVERTENCIAS IMPORTANTES**
+
+- El HLR es **por pieza**, no hay ocultación exacta entre piezas distintas.
+- Las cotas del PDF general se proyectan como SVG técnico, pero aún no
+  son controles gráficos editables de arrastre ni se validan contra
+  normas de fabricación; las vistas STEP no secciones carecen de cortes.
+- Las dimensiones exteriores se basan en los vértices STEP indexados;
+  determinadas superficies curvadas pueden superar esos vértices.
+- Si el documento STEP no está cargado o sólo existe una malla,
+  no se generan dimensiones exactas para esa geometría.
+- No se dibujan soldaduras, taladros roscados, tolerancias ni biseles
+  inferidos automáticamente. Se requiere revisión de fabricación.
+- La exportación sigue siendo por hoja PDF; no hay exportación masiva
+  de todas las hojas como un único PDF.
+- La regeneración de esta etapa atiende cambios de geometría de las
+  instancias existentes; aún falta reconciliar todas las altas/bajas
+  y cambios jerárquicos con marcas y BOM de manera transaccional.
+
 ## Etapas posteriores
 
 1. HLR real por vista y acotación exacta editable de ensamble y piezas, sin
