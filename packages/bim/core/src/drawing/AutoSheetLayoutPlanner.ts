@@ -39,6 +39,64 @@ const SLOTS: Record<ProjectionStandard, Record<ProjectedViewCode, readonly [numb
   ISO_A: { TOP: [0, 0], ISO: [1, 0], FRONT: [0, 1], RIGHT: [1, 1] },
 };
 
+/**
+ * Arrange a selected subset without changing the legacy four-view planner.
+ * Uses the same first-/third-angle slots and reserved title-block area.
+ * The shared modelScale is pixels per model unit; it is NOT a scale denominator.
+ */
+export function planSelectedSheetLayout(
+  views: readonly ProjectedSheetView[],
+  standard: ProjectionStandard,
+): PlannedSheetViewport[] {
+  if (views.length < 1 || views.length > 4
+    || new Set(views.map((view) => view.code)).size !== views.length
+    || !views.every((view) => Number.isFinite(view.width) && Number.isFinite(view.height)
+      && view.width > 0 && view.height > 0)) return [];
+  if (views.length === 4) return planAutomaticSheetLayout(views, standard);
+  if (views.length === 1) {
+    const view = views[0]!;
+    const availableWidth = RIGHT - LEFT;
+    const availableHeight = BOTTOM - TOP;
+    const scale = Math.min(
+      (availableWidth - FRAME_PAD_X) / view.width,
+      (availableHeight - FRAME_PAD_Y) / view.height,
+    );
+    if (!Number.isFinite(scale) || scale <= 0) return [];
+    return [{
+      id: view.id, code: view.code,
+      x: LEFT, y: TOP, width: availableWidth, height: availableHeight,
+      modelScale: scale,
+    }];
+  }
+  const cellW = (RIGHT - LEFT - GAP) / 2;
+  const cellH = (BOTTOM - TOP - GAP) / 2;
+  const scale = Math.min(...views.map((view) => Math.min(
+    (cellW - FRAME_PAD_X) / view.width,
+    (cellH - FRAME_PAD_Y) / view.height,
+  )));
+  if (!Number.isFinite(scale) || scale <= 0) return [];
+  return views.map((view) => {
+    const [column, row] = SLOTS[standard][view.code];
+    const width = Math.min(cellW, Math.max(MIN_FRAME_SIZE, view.width * scale + FRAME_PAD_X));
+    const height = Math.min(cellH, Math.max(MIN_FRAME_SIZE, view.height * scale + FRAME_PAD_Y));
+    return {
+      id: view.id, code: view.code,
+      x: LEFT + column * (cellW + GAP) + (cellW - width) / 2,
+      y: TOP + row * (cellH + GAP) + (cellH - height) / 2,
+      width, height, modelScale: scale,
+    };
+  });
+}
+
+/** Choose an ISO-preferred 1:n scale that fits the A3 layout without cropping. */
+export function selectAssemblyScaleDenominator(modelScale: number): number | null {
+  if (!Number.isFinite(modelScale) || modelScale <= 0) return null;
+  const pxPerMm = Math.min((1120 - 84) / 420, (792 - 84) / 297);
+  const required = 1000 * pxPerMm / modelScale;
+  return [1, 2, 2.5, 5, 10, 20, 25, 50, 75, 100, 150, 200, 250, 500, 1000, 2000, 5000]
+    .find((denominator) => denominator + 1e-9 >= required) ?? null;
+}
+
 export function planAutomaticSheetLayout(
   views: readonly ProjectedSheetView[],
   standard: ProjectionStandard,
