@@ -52,6 +52,7 @@ interface TransformSnapshot {
   readonly pivotQuaternion: THREE.Quaternion;
   readonly lines: readonly LineSnapshot[];
   readonly points: readonly PointSnapshot[];
+  readonly packed: readonly { id: string; transform: readonly number[] }[];
 }
 
 export interface CadReferenceBlockControllerOptions {
@@ -363,16 +364,18 @@ export class CadReferenceBlockController {
       );
       hasPoint = true;
     }
-    // Fast Cota underlays have no individual registered CadLine objects.
-    // Include their exact source geometry when selecting a whole reference.
-    const min = new THREE.Vector3();
+    // Cache local source bounds. Only eight corners need transformation,
+    // not 1.4 million vertices for every gizmo move or rotation.
     for (const packet of this.options.designModel.cadLines.getPackedBatches()) {
       if (!layerIds.has(packet.layerId)) continue;
-      const p = packet.positions;
-      for (let i = 0; i < p.length; i += 3) {
-        min.set(p[i]!, p[i + 1]!, p[i + 2]!);
-        box.expandByPoint(min);
-      }
+      const bounds = this.options.designModel.cadLines.getPackedBatchBounds(packet.id);
+      if (!bounds) continue;
+      const local = new THREE.Box3(
+        new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
+        new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
+      );
+      if (packet.transform) local.applyMatrix4(new THREE.Matrix4().fromArray(packet.transform));
+      box.union(local);
       hasPoint = true;
     }
     for (const point of this.options.designModel.cadPoints.getAll()) {
@@ -462,8 +465,6 @@ export class CadReferenceBlockController {
   copyReferencesByBase(
     names: readonly string[], delta: THREE.Vector3,
   ): CadReferenceCopyResult {
-    if (names.some((name) => this.isCompactReference(name)))
-      throw new Error("La referencia Cota compacta es de solo lectura. Para mover o copiar importa mediante «Abrir DWG/DXF».");
     if (!this.options.history) throw new Error("No está disponible el historial COPY CAD.");
     const result = copyCadReferenceBlocks(
       this.options.designModel, this.options.history, names, delta,
@@ -491,7 +492,7 @@ export class CadReferenceBlockController {
   applyNumericRotation(axis: RotateNumericAxis, degrees: number): boolean {
     if (!this.isRotateActive || !Number.isFinite(degrees) || degrees === 0) return false;
     const before = this.captureSelection();
-    if (!before.lines.length && !before.points.length) return false;
+    if (!before.lines.length && !before.points.length && !before.packed.length) return false;
     const vector = axis === "X" ? new THREE.Vector3(1, 0, 0)
       : axis === "Y" ? new THREE.Vector3(0, 1, 0)
       : new THREE.Vector3(0, 0, 1);
@@ -503,11 +504,22 @@ export class CadReferenceBlockController {
     return true;
   }
 
+  private applyPackedDelta(snapshot: TransformSnapshot, delta: THREE.Matrix4): void {
+    for (const packet of snapshot.packed) {
+      const next = delta.clone().multiply(new THREE.Matrix4().fromArray(packet.transform));
+      this.options.designModel.cadLines.setPackedBatchTransform(packet.id, next.elements);
+    }
+  }
+
   private rotateSnapshot(
     snapshot: TransformSnapshot,
     center: THREE.Vector3,
     delta: THREE.Quaternion,
   ): void {
+    const matrix = new THREE.Matrix4().makeTranslation(center.x, center.y, center.z)
+      .multiply(new THREE.Matrix4().makeRotationFromQuaternion(delta))
+      .multiply(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z));
+    this.applyPackedDelta(snapshot, matrix);
     for (const line of snapshot.lines) {
       this.options.designModel.cadLines.updateGeometry(
         line.id, rotatePoint(line.start, center, delta), rotatePoint(line.end, center, delta),
@@ -523,6 +535,8 @@ export class CadReferenceBlockController {
   }
 
   private applyGeometrySnapshot(snapshot: TransformSnapshot): void {
+    for (const packet of snapshot.packed)
+      this.options.designModel.cadLines.setPackedBatchTransform(packet.id, packet.transform);
     for (const line of snapshot.lines) {
       if (this.options.designModel.cadLines.get(line.id)) {
         this.options.designModel.cadLines.updateGeometry(line.id, line.start, line.end);
@@ -540,8 +554,8 @@ export class CadReferenceBlockController {
   private recordGeometryHistory(before: TransformSnapshot, label = "ROTATE DWG/DXF"): void {
     if (!this.options.history) return;
     const after = this.captureSelection();
-    if (JSON.stringify({ lines: before.lines, points: before.points })
-      === JSON.stringify({ lines: after.lines, points: after.points })) return;
+    if (JSON.stringify({ lines: before.lines, points: before.points, packed: before.packed })
+      === JSON.stringify({ lines: after.lines, points: after.points, packed: after.packed })) return;
     this.options.history.recordOperation(
       label,
       () => this.applyGeometrySnapshot(before),
@@ -553,7 +567,6 @@ export class CadReferenceBlockController {
     referenceName: string,
     delta: THREE.Vector3,
   ): boolean {
-    if (this.isCompactReference(referenceName)) return false;
     if (delta.lengthSq() <= 1e-18) return true;
     const layerIds = this.getReferenceLayerIds(
       referenceName,
@@ -561,6 +574,15 @@ export class CadReferenceBlockController {
     );
     if (layerIds.size < 1) return false;
 
+    const matrix = new THREE.Matrix4().makeTranslation(delta.x, delta.y, delta.z);
+    for (const packet of this.options.designModel.cadLines.getPackedBatches()) {
+      if (!layerIds.has(packet.layerId)) continue;
+      this.options.designModel.cadLines.setPackedBatchTransform(
+        packet.id, matrix.clone().multiply(
+          packet.transform ? new THREE.Matrix4().fromArray(packet.transform) : new THREE.Matrix4(),
+        ).elements,
+      );
+    }
     for (const line of this.options.designModel.cadLines.getAll()) {
       if (!layerIds.has(line.layerId)) continue;
       this.options.designModel.cadLines.updateGeometry(
