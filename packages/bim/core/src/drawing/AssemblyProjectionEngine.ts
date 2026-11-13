@@ -52,7 +52,7 @@ export function assemblyProjectionSignature(source: Pick<AssemblyProjectionSourc
     object.updateWorldMatrix(true, true);
     const geometries: string[] = [];
     object.traverse((child) => {
-      if (child instanceof THREE.Mesh) geometries.push(child.geometry.uuid + ":" + child.geometry.version);
+      if (child instanceof THREE.Mesh) geometries.push(child.geometry.uuid + ":" + (child.geometry.getAttribute("position")?.version ?? 0));
     });
     return [instanceId, piece.definitionId, getStepBrepDocumentId(piece.definitionId) ?? "",
       object.matrixWorld.elements.map((n) => n.toPrecision(12)).join(","), ...geometries].join(":");
@@ -109,7 +109,7 @@ export async function projectAssembly(source: AssemblyProjectionSource,
       const localUp = source.workPlane.yAxis.clone().transformDirection(inverse).normalize();
       const result = await ocDrawing.hiddenLines(docId, localDirection, localUp);
       if (result.precision === "BREP_EXACT" && result.visible.length > 0) {
-        const append = (segments: readonly typeof result.visible[number][], hidden: boolean): void => {
+        const append = (segments: typeof result.visible, hidden: boolean): void => {
           for (const segment of segments) {
             const a = new THREE.Vector3(segment.a.x, segment.a.y, segment.a.z)
               .applyMatrix4(object.matrixWorld).applyMatrix4(worldToPlane);
