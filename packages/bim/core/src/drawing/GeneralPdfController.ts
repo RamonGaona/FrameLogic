@@ -94,8 +94,8 @@ interface AssemblySheetViewRuntime {
   /** Present only on views created by the automatic assembly drawing command. */
   automaticViewCode?: AutomaticViewCode;
   /** Persisted exact B-Rep dimension plans; manual annotations live separately. */
-  automaticDimensions?: EngineeringDimensionInstruction[];
-  automaticAnchors?: AssemblyMarkAnchor[];
+  automaticDimensions?: readonly EngineeringDimensionInstruction[];
+  automaticAnchors?: readonly AssemblyMarkAnchor[];
   exactInstances?: number;
   fallbackInstances?: number;
   geometrySignature?: string;
