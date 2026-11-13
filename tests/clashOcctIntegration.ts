@@ -37,6 +37,8 @@ try {
   const wasmPath = resolve(process.cwd(), "node_modules/opencascade.js/dist/opencascade.full.wasm");
   const oc = await initOc({ locateFile: (path: string) => path.endsWith(".wasm") ? wasmPath : path });
   runtime.getOpenCascade = async () => oc;
+  console.log("OCCT HLR binding diagnostics:", Object.keys(oc)
+    .filter((name) => /HLRBRep_HLRToShape|HLRBRep_Algo_|Handle_HLRBRep_Algo_|HLRBRep_PolyHLRToShape/.test(name)).sort().join(", "));
   for (const name of names) {
     const box = new oc.BRepPrimAPI_MakeBox_2(10, 10, 10);
     resources.push(box);
