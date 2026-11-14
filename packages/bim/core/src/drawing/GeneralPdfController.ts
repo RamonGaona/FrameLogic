@@ -114,6 +114,8 @@ interface SectionSheetViewRuntime {
   readonly id: string;
   readonly sectionId: string;
   kind?: "SECTION";
+  renderMode?: "BLACK_WHITE" | "VISIBLE_HIDDEN" | "WIREFRAME"
+    | "SOLID" | "SOLID_EDGES" | "MONOCHROME" | "TRANSPARENT";
 }
 
 interface AssemblySheetViewRuntime {
