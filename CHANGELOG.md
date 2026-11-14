@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.153 — 2026-11-13
+
+### Escala individual visible y editable en cada View de Paper Space
+
+- **Control visible «Escala de View»:** en el panel superior «VIEW seleccionada», junto a los controles de orientación, «Proyectar View» y render, se puede asignar una escala independiente a la View seleccionada.
+- **Un control en cada rama del árbol VIEWS:** cada View de pieza, ensamble, sección o detalle incluye su propio selector de escala; el título de cada View indica su escala actual. Las demás Views de la hoja y la escala global permanecen intactas.
+- **Modos de escala:** AUTO (ajustar al marco), escalas 1:1, 1:2, 1:2,5, 1:5, 1:10, 1:15, 1:20, 1:25, 1:50, 1:75, 1:100, 1:150, 1:200, 1:250, 1:500, 1:1000 y personalizada 1:N (acepta denominadores decimales positivos a partir de 1, hasta 1.000.000). El valor personalizado se aplica al pulsar Enter o «Aplicar»; valores inválidos se rechazan.
+- **Modelo de unidades corregido:** el modelo CAD utiliza milímetros. La conversión real de representación pasa a ser `pxPorMilímetroEnPapel / denominador` en las proyecciones de pieza/ensamble y en las vistas de sección/detalle. La selección de escala automática normalizada emplea la misma convención y elimina un factor ×1000 heredado.
+- **Cotas reales:** cambiar la escala modifica la representación, sin alterar posiciones/transformaciones del modelo 3D ni los valores físicos de cotas. Las vistas proyectadas heredan inicialmente la escala de la View origen pero conservan su escala independiente después.
+- **Seguridad de hoja:** la geometría visible de ensamble y de las secciones secundarias se recorta al marco de cada View; se advierte cuando la escala solicitada supera el tamaño disponible. El cajetín muestra «ESC VARIAS» cuando existen escalas diferentes.
+- **Persistencia:** la escala de cada View se conserva en el estado profesional de la documentación, con historial y restauración; las opciones por View no escriben sobre la escala general de la hoja.
+- **Pruebas:** analizador de 1:N y AUTO, valores personalizados/incorrectos, conversión de 3000 mm a papel real a 1:20, geometría recortada, independencia y serialización de múltiples Views.
+
+**Pendiente de aceptación visual:** comprobar que las escalas personalizadas y el recorte de secciones principales se representan correctamente en el navegador y el PDF para proyectos guardados con unidades anteriores. No se considera validación de fabricación sin verificación dimensional externa.
+
+---
+
 ## v0.1.152 — 2026-11-13
 
 ### Proyectar View a partir de una pieza individual o un ensamble
