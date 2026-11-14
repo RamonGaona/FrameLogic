@@ -5,10 +5,28 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 ## Convención de mantenimiento
 
 - Cada versión funcional nueva debe añadir su entrada aquí antes de considerarse cerrada.
+- Fuente de versión única: `package.json` raíz. `package-lock.json` (raíz y `packages[""]`) y la entrada más reciente del changelog deben coincidir; la validación existente de versión comprueba los tres.
+- Incrementar `patch` para cada corrección funcional durante `0.1.x`; documentación aislada no cambia la versión. Indicar versión también en el PR.
+- Distinguir implementación y pruebas automatizadas de comprobaciones reales de navegador, fusión y despliegue: no declarar estas últimas sin evidencia.
 - Las entradas se ordenan de la más reciente a la más antigua.
 - Se documentan funciones nuevas, cambios de comportamiento, correcciones importantes y cambios técnicos que afecten el uso o la arquitectura.
 - Los cambios únicamente de documentación no incrementan por sí solos la versión visible de FrameLogic.
 - Las herramientas o diagnósticos temporales deben indicarse expresamente como temporales para poder retirarlos después.
+
+---
+
+## v0.1.161 — 2026-11-14 (orientaciones Paper Space)
+
+### Seis vistas ortogonales con ejes propios y cotas aisladas por proyección
+
+- Nuevas opciones **Posterior**, **Inferior** y **Extremo opuesto · eje propio**, calculadas desde el eje geométrico longitudinal del ensamble. Cada vista opuesta invierte la dirección de observación manteniendo una base ortogonal dextrógira y una dirección vertical u horizontal coherente.
+- El selector tiene Actual/WorkPlane, siete orientaciones propias (incluida Isométrica) y tres globales. Se elimina **Lateral · ejes globales** del menú, conservando la lectura del modo histórico `WORLD_RIGHT` para proyectos anteriores.
+- Se mantiene el sistema STEP/B-Rep/HLR y la cola de orientaciones de v0.1.158. Cambiar una View no rota el modelo, no cambia el render ni altera el marco o escala de otra View.
+- Los ajustes manuales de cotas STEP se almacenan por orientación de cada View: al regresar al mismo modo y geometría se recuperan los puntos A/B editados. Cuando el modelo cambia, los puntos 2D incompatibles no se reutilizan y se comunica la restauración a referencias STEP originales; nunca se reutiliza un valor calculado desde puntos inválidos.
+- Regresiones para tres parejas opuestas, ejes propios/globales rotados, reversibilidad, separación entre Views y persistencia serializable de ajustes. Las pruebas PDF existentes siguen como protección contra regresiones.
+- Las mejoras CI ya presentes en `main` se mantienen: suites de Validate sin duplicación en Web build, cancelación de ejecuciones obsoletas por PR y detector de impacto para omitir MCP cuando únicamente cambian versión y planos.
+
+**Pendiente:** validación manual real con STEP de ensambles/subensambles, cotas editables, cortes, vistas de detalle y exportación PDF. Fusión y Cloudflare Pages sujetos a comprobaciones obligatorias.
 
 ---
 
