@@ -21,11 +21,15 @@ describe("per-View drawing scales", () => {
     expect(formatDrawingViewScale(17.5)).toBe("1:17.5");
     expect(drawingViewScaleSelection(17.5)).toBe("CUSTOM");
     expect(formatDrawingViewScale(null)).toBe("AUTO");
+    expect(parseDrawingViewScale("2:1")).toBeCloseTo(0.5);
+    expect(parseDrawingViewScale("5:1")).toBeCloseTo(0.2);
+    expect(formatDrawingViewScale(0.5)).toBe("2:1");
+    expect(formatDrawingViewScale(0.2)).toBe("5:1");
     expect(drawingViewScaleSelection(null)).toBe("AUTO");
   });
 
   it("does not silently accept zero, fractions larger than 1:1, Infinity or malformed input", () => {
-    for (const value of ["", "1:0", "1:0.5", "0", "-10", "1:-5", "1:2:3", "1e99",
+    for (const value of ["", "1:0", "0:0.5", "0", "-10", "1:-5", "1:2:3", "1e99",
       "Infinity", "NaN", "1:1000001", "1:", "17mm", "20/1"]) {
       expect(parseDrawingViewScale(value)).toBeUndefined();
     }
@@ -39,6 +43,9 @@ describe("per-View drawing scales", () => {
     expect(modelToPaperScale(1, mmToCanvasPixels)).toBeCloseTo(2.4, 10);
     expect(modelToPaperScale(50, mmToCanvasPixels)).toBeCloseTo(0.048, 10);
     expect(modelToPaperScale(0, mmToCanvasPixels)).toBeNull();
+    expect(modelToPaperScale(0.2, mmToCanvasPixels)).toBeCloseTo(12, 10);
+    expect(100 * modelToPaperScale(0.2, mmToCanvasPixels)! / mmToCanvasPixels)
+      .toBeCloseTo(500, 10);
   });
 
   it("clips enlarged geometry to its own View without distorting the scale", () => {
