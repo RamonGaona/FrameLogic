@@ -671,20 +671,13 @@ export class DrawingViewRenderStyleController {
     this.select.value = selected ? this.modeForView(selected) : "BLACK_WHITE";
   }
 
-  private exportStyledPdf(): void {
+  private captureStyledPdfPage(): DrawingPdfPage | null {
     this.workspace.render();
     const sheet = this.production.getActiveSheet();
-    if (!sheet) {
-      this.baseExportPdf();
-      return;
-    }
+    if (!sheet) return null;
 
-    const size = SHEET_MM[sheet.size] ?? SHEET_MM["A3"]!;
-    const [rawW, rawH] = size;
-    const widthMm = sheet.orientation === "LANDSCAPE" ? rawW : rawH;
-    const heightMm = sheet.orientation === "LANDSCAPE" ? rawH : rawW;
-    const widthPt = widthMm * 72 / 25.4;
-    const heightPt = heightMm * 72 / 25.4;
+    const { widthPt, heightPt } = pdfSheetDimensions(
+      sheet.size, sheet.orientation);
     const sx = widthPt / CANVAS_WIDTH;
     const sy = heightPt / CANVAS_HEIGHT;
     const commands: string[] = ["q", "1 J 1 j"];
@@ -780,16 +773,125 @@ export class DrawingViewRenderStyleController {
       }
     }
     commands.push("Q");
+    return { width: widthPt, height: heightPt,
+      stream: commands.join("\n"), images: jpegImages };
+  }
 
-    const bytes = buildPdf(widthPt, heightPt, commands.join("\n"), jpegImages);
-    const blob = new Blob([bytes], { type: "application/pdf" });
+  private exportStyledPdf(): void {
+    if (this.batchSaving) return;
+    const page = this.captureStyledPdfPage();
+    if (!page) {
+      this.baseExportPdf();
+      return;
+    }
+    const sheet = this.production.getActiveSheet()!;
+    const filename = pdfExportFilename(sheet, 0);
+    this.downloadPdfFile(
+      buildPdf(page.width, page.height, page.stream, page.images),
+      filename, "application/pdf",
+    );
+    this.workspace.setStatus(`PDF guardado: ${filename} · ${sheet.size} · `
+      + (sheet.orientation === "PORTRAIT" ? "vertical" : "horizontal")
+      + ". El tamaño de impresión está definido por la hoja.");
+  }
+
+  private downloadPdfFile(
+    bytes: Uint8Array<ArrayBuffer>,
+    filename: string,
+    mime: string,
+  ): void {
+    const blob = new Blob([bytes], { type: mime });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
-    const revision = sheet.revisions.at(-1)?.code ?? "0";
     anchor.href = url;
-    anchor.download = `${fileSafeName(sheet.titleBlock.drawingNumber || "plano")}_R${revision}.pdf`;
+    anchor.download = filename;
+    anchor.style.display = "none";
+    document.body.append(anchor);
     anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 20_000);
+  }
+
+  private async saveAllPdfSheets(mode: "COMBINED" | "ZIP"): Promise<void> {
+    if (this.batchSaving) return;
+    const originalSheetId = this.generalPdf.getActiveSheetId();
+    if (!originalSheetId) {
+      this.workspace.setStatus("GUARDAR PDF: abre primero Paper Space.");
+      return;
+    }
+    const ids = this.generalPdf.getExportableSheetIds();
+    if (!ids.length) {
+      this.workspace.setStatus("GUARDAR PDF: el proyecto no tiene hojas.");
+      return;
+    }
+
+    const pages: DrawingPdfPage[] = [];
+    const files: Array<{ name: string; bytes: Uint8Array<ArrayBuffer> }> = [];
+    this.batchSaving = true;
+    this.batchSaveButton.disabled = true;
+    this.batchSaveButton.textContent = "Generando…";
+    let error: string | null = null;
+    try {
+      // Export the same Paper Space sheet order shown in the user tree,
+      // and render through the normal 3D-shaded/vector/BOM/section pipeline.
+      // Never silently omit a failed sheet.
+      for (const [index, id] of ids.entries()) {
+        if (!this.generalPdf.openSheet(id)) {
+          throw new Error("No se pudo abrir la hoja " + (index + 1));
+        }
+        const sheet = this.production.getActiveSheet();
+        if (!sheet || sheet.ownerSectionId !== id) {
+          throw new Error("No se encontró la hoja solicitada: " + id);
+        }
+        const page = this.captureStyledPdfPage();
+        if (!page) throw new Error("No se pudo dibujar " + sheet.titleBlock.drawingNumber);
+        if (mode === "COMBINED") {
+          pages.push(page);
+        } else {
+          const filename = pdfExportFilename(sheet, index);
+          files.push({ name: filename,
+            bytes: buildPdf(page.width, page.height, page.stream, page.images) });
+        }
+        this.batchSaveButton.textContent = `${index + 1}/${ids.length}`;
+        if ((index + 1) % 4 === 0) {
+          // Let the browser paint and remain responsive during large projects.
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        }
+      }
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      // Restore the exact document the user was editing, even after failure.
+      if (!this.generalPdf.openSheet(originalSheetId)) {
+        error = (error ? error + " · " : "") + "No se pudo restaurar la hoja original.";
+      }
+      this.batchSaving = false;
+      this.batchSaveButton.disabled = false;
+      this.batchSaveButton.textContent = "Guardar todos";
+    }
+    if (error) {
+      this.workspace.setStatus("GUARDAR PDF: error. " + error
+        + " No se descargó un paquete parcial.");
+      return;
+    }
+    try {
+      if (mode === "COMBINED") {
+        const bytes = buildMultiPageDrawingPdf(pages);
+        this.downloadPdfFile(bytes,
+          `FrameLogic_Planos_Completos_${pages.length}_hojas.pdf`, "application/pdf");
+        this.workspace.setStatus(`Se guardaron ${pages.length} hojas en un PDF multipágina. `
+          + "Cada página conserva su propio tamaño y orientación de papel.");
+      } else {
+        const bytes = buildDrawingPdfZip(files);
+        this.downloadPdfFile(bytes,
+          `FrameLogic_Planos_Individuales_${files.length}_hojas.zip`, "application/zip");
+        this.workspace.setStatus(`Se guardaron ${files.length} PDFs independientes en un ZIP. `
+          + "Cada PDF conserva el tamaño, orientación, escala y cotas de su hoja.");
+      }
+    } catch (cause) {
+      this.workspace.setStatus("GUARDAR PDF: no fue posible crear el paquete. "
+        + (cause instanceof Error ? cause.message : String(cause)));
+    }
   }
 }
 
