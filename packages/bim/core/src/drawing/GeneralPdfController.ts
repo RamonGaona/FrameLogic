@@ -1204,7 +1204,15 @@ export class GeneralPdfController {
     modeSelect.addEventListener("change", () => {
       void this.changeSelectedPdfViewOrientation(modeSelect.value as AssemblyViewOrientationMode);
     });
-    panel.append(label, viewSelect, modeSelect);
+    const project = document.createElement("button");
+    project.type = "button";
+    project.textContent = "Proyectar View";
+    project.title = "Crear una vista ortográfica o isométrica desde la pieza/ensamble de la View seleccionada. Arrastra el cursor y haz clic para colocar.";
+    project.dataset["framelogicProjectView"] = "true";
+    project.style.cssText = "padding:5px 9px;border:1px solid #73a8be;border-radius:4px;background:#244f65;color:#fff;font:inherit;cursor:pointer;";
+    project.addEventListener("click", () => this.toggleProjectedView());
+    this.projectionButton = project;
+    panel.append(label, viewSelect, modeSelect, project);
     this.workspace.overlay.append(panel);
     return panel;
   }
@@ -1268,6 +1276,15 @@ export class GeneralPdfController {
     // The 3D assembly orientation choices do not apply to a section View.
     modeSelect.disabled = this.orientationChangeInProgress
       || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement);
+    if (this.projectionButton) {
+      this.projectionButton.disabled = !this.pendingProjection
+        && (this.orientationChangeInProgress || this.projectionInProgress
+          || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement));
+      this.projectionButton.textContent = this.pendingProjection
+        ? "Cancelar proyección (Esc)" : "Proyectar View";
+      this.projectionButton.style.background = this.pendingProjection ? "#775128" : "#244f65";
+    }
+    viewSelect.disabled = this.orientationChangeInProgress || Boolean(this.pendingProjection);
   }
 
   private async changeSelectedPdfViewOrientation(
@@ -1427,6 +1444,7 @@ export class GeneralPdfController {
     }
     this.updateViewOrientationPanel(sheet);
     this.decorateViewTree();
+    this.drawProjectedViewPreview();
   }
 
   private renderAssemblyView(
