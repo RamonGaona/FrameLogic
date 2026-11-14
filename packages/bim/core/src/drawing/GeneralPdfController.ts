@@ -3271,7 +3271,7 @@ export class GeneralPdfController {
       const label = item.kind === "ASSEMBLY"
         ? `${indent}[E] ${item.label}` : `${indent}${item.label}`;
       const material = [item.material, item.grade].filter(Boolean).join(" ");
-      drawText(c[0]!, baseline, String(pageStart + i + 1), 7.8);
+      drawText(c[0]!, baseline, item.itemNumber, 7.8);
       drawText(c[1]!, baseline, item.mark.slice(0, 10), 7.8);
       drawText(c[2]!, baseline, label.slice(0, Math.max(10, Math.floor(width * 0.40 / 4.7))), 7.8);
       drawText(c[3]!, baseline, String(item.quantity), 7.8);
