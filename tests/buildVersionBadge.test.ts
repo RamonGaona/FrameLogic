@@ -23,5 +23,8 @@ describe("FrameLogic deployed version badge", () => {
     };
     expect(lock.version).toBe(pkg.version);
     expect(lock.packages[""]?.version).toBe(pkg.version);
+    const changelog = read("../CHANGELOG.md");
+    const latest = changelog.match(/^## v(\d+\.\d+\.\d+)\s+—/m);
+    expect(latest?.[1]).toBe(pkg.version);
   });
 });
