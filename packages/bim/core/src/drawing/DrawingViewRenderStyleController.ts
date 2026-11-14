@@ -1,4 +1,9 @@
 import * as THREE from "three";
+import {
+  buildDrawingPdfZip, buildMultiPageDrawingPdf, pdfExportFilename,
+  pdfSheetDimensions, type DrawingPdfPage,
+} from "./DrawingPdfBatch";
+import type { GeneralPdfController } from "./GeneralPdfController";
 import type { DesignSceneController } from "../design/DesignSceneController";
 import {
   AssemblyViewShadingRenderer,
@@ -73,6 +78,7 @@ interface DrawingSnapshotRuntime {
 interface WorkspaceRuntime {
   readonly svg: SVGSVGElement;
   readonly overlay: HTMLDivElement;
+  setStatus(text: string): void;
   snapshot: DrawingSnapshotRuntime | null;
   render(): void;
   buildSnapshot(section: SectionViewDefinition): DrawingSnapshotRuntime;
@@ -113,22 +119,14 @@ interface Options {
   readonly drawingProfessional: DrawingProfessionalController;
   readonly sectionDrawing: SectionDrawingController;
   readonly designScene: DesignSceneController;
+  readonly generalPdf: GeneralPdfController;
 }
 
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CANVAS_WIDTH = 1120;
 const CANVAS_HEIGHT = 792;
-const SHEET_MM: Record<string, readonly [number, number]> = {
-  A4: [297, 210],
-  A3: [420, 297],
-  A2: [594, 420],
-  A1: [841, 594],
-  A0: [1189, 841],
-};
-
-
-/**
+ /**
  * Estilo de render por viewport para planos de sección/detalle.
  *
  * Each View retains its own style in the project snapshot. For standard
@@ -140,6 +138,11 @@ export class DrawingViewRenderStyleController {
   private readonly production: ProductionRuntime;
   private readonly professional: ProfessionalRuntime;
   private readonly sectionDrawing: SectionDrawingController;
+  private readonly generalPdf: GeneralPdfController;
+  private readonly batchModeSelect: HTMLSelectElement;
+  private readonly batchSaveButton: HTMLButtonElement;
+  private readonly sheetSizeLabel: HTMLSpanElement;
+  private batchSaving = false;
   private readonly baseRender: () => void;
   private readonly baseExportPdf: () => void;
   private readonly baseCreateSnapshot: () => DrawingProfessionalSnapshot;
@@ -158,6 +161,7 @@ export class DrawingViewRenderStyleController {
     this.production = options.drawingProduction as unknown as ProductionRuntime;
     this.professional = options.drawingProfessional as unknown as ProfessionalRuntime;
     this.sectionDrawing = options.sectionDrawing;
+    this.generalPdf = options.generalPdf;
     this.shading = new AssemblyViewShadingRenderer(options.designScene);
     this.viewSelect = this.workspace.overlay.querySelector<HTMLSelectElement>(
       '[data-framelogic-view-select="true"]',
@@ -173,6 +177,10 @@ export class DrawingViewRenderStyleController {
     const toolbarControls = this.installToolbar();
     this.toolbarLabel = toolbarControls.label;
     this.select = toolbarControls.select;
+    const batch = this.installBatchSaveControls();
+    this.batchModeSelect = batch.select;
+    this.batchSaveButton = batch.button;
+    this.sheetSizeLabel = batch.sizeLabel;
     this.viewSelect?.addEventListener("change", this.handleViewSelectionChange);
     this.installPatches();
     this.workspace.svg.addEventListener("pointerdown", this.handlePointerDown, true);
@@ -190,6 +198,9 @@ export class DrawingViewRenderStyleController {
     this.professional.restoreProfessionalSnapshot = this.baseRestoreSnapshot;
     this.toolbarLabel.remove();
     this.select.remove();
+    this.batchModeSelect.remove();
+    this.batchSaveButton.remove();
+    this.sheetSizeLabel.remove();
     this.styles.clear();
   }
 
@@ -197,6 +208,10 @@ export class DrawingViewRenderStyleController {
     this.workspace.render = (): void => {
       this.baseRender();
       this.decorate();
+      const sheet = this.production.getActiveSheet();
+      this.sheetSizeLabel.textContent = sheet
+        ? sheet.size + (sheet.orientation === "PORTRAIT" ? " · vertical" : " · horizontal")
+        : "Sin hoja";
     };
 
     this.professional.createProfessionalSnapshot = (): DrawingProfessionalSnapshot => {
