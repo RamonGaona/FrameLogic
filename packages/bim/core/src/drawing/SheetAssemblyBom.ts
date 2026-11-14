@@ -38,6 +38,8 @@ export interface SheetBomPiece {
 export interface SheetBomRow {
   readonly kind: "ASSEMBLY" | "PIECE";
   readonly key: string;
+  /** Stable tree position within this BOM, e.g. 1.2.1, not a physical piece count. */
+  readonly itemNumber: string;
   readonly mark: string;
   readonly label: string;
   readonly depth: number;
@@ -96,7 +98,8 @@ export function buildSheetAssemblyBom(
   const property = (value?: string): string | undefined => value?.trim() || undefined;
   const validMass = (value: number | undefined): number | undefined =>
     typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
-  const addParts = (ids: readonly string[], depth: number, target: SheetBomRow[]): void => {
+  const addParts = (ids: readonly string[], depth: number, target: SheetBomRow[],
+    nextNumber: () => string = () => String(target.length + 1)): void => {
     const groups = new Map<string, { part: SheetBomPiece; quantity: number }>();
     for (const id of ids) {
       const part = pieces[id];
@@ -115,31 +118,33 @@ export function buildSheetAssemblyBom(
       const mass = validMass(part.unitMassKg);
       target.push({
         kind: "PIECE", key: "piece:" + definitionId + ":" + depth + ":" + target.length,
-        mark: usableMark(part), label: part.label, depth, quantity,
+        itemNumber: nextNumber(), mark: usableMark(part), label: part.label, depth, quantity,
         ...(property(part.material) ? { material: property(part.material) } : {}),
         ...(property(part.grade) ? { grade: property(part.grade) } : {}),
         ...(mass !== undefined ? { unitMassKg: mass, totalMassKg: mass * quantity } : {}),
       });
     }
   };
-  const walk = (id: string, depth: number): void => {
+  const walk = (id: string, depth: number, path: string): void => {
     if (visiting.has(id)) throw new Error("BOM: circular assembly hierarchy.");
     if (visitedAssemblies.has(id)) throw new Error("BOM: duplicated assembly relationship.");
     const assembly = byId.get(id);
     if (!assembly) return;
     visitedAssemblies.add(id);
     visiting.add(id);
+    let ordinal = 0;
     if (mode === "HIERARCHY") {
       const mark = "E" + ++assemblySequence;
       output.push({
-        kind: "ASSEMBLY", key: "assembly:" + id, mark,
+        kind: "ASSEMBLY", key: "assembly:" + id, itemNumber: path, mark,
         label: assembly.name || "Ensamble sin nombre", depth, quantity: 1,
       });
-      addParts(assembly.pieceInstanceIds, depth + 1, output);
+      addParts(assembly.pieceInstanceIds, depth + 1, output,
+        () => `${path}.${++ordinal}`);
     } else {
       addParts(assembly.pieceInstanceIds, depth, []);
     }
-    for (const child of children.get(id) ?? []) walk(child.id, depth + 1);
+    for (const child of children.get(id) ?? []) walk(child.id, depth + 1, `${path}.${++ordinal}`);
     visiting.delete(id);
   };
   if (mode === "FLAT") {
@@ -171,7 +176,8 @@ export function buildSheetAssemblyBom(
     for (const [definitionId, { part, quantity }] of groups) {
       const mass = validMass(part.unitMassKg);
       output.push({
-        kind: "PIECE", key: "piece:" + definitionId, mark: usableMark(part),
+        kind: "PIECE", key: "piece:" + definitionId,
+        itemNumber: String(output.length + 1), mark: usableMark(part),
         label: part.label, depth: 0, quantity,
         ...(property(part.material) ? { material: property(part.material) } : {}),
         ...(property(part.grade) ? { grade: property(part.grade) } : {}),
@@ -179,7 +185,7 @@ export function buildSheetAssemblyBom(
       });
     }
   } else {
-    walk(root.id, 0);
+    walk(root.id, 0, "1");
   }
   return { rows: output, totalPieces: seenPieces.size, missingPieces: [...missingPieces], rootFound: true };
 }
