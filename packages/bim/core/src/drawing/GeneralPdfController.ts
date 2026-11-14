@@ -2474,8 +2474,10 @@ export class GeneralPdfController {
   private getSheetBomRows(sheet: GeneralSheetRuntime): SheetBomResult | null {
     const selection = sheet.bomTable;
     if (!selection) return null;
-    const source = sheet.views.find((view) =>
-      view.id === selection.sourceViewId && this.isAssemblyView(view));
+    const source = (selection.sourceViewId
+      ? [...this.production.sheets.values()].flatMap((page) => page.views)
+        .find((view) => view.id === selection.sourceViewId && this.isAssemblyView(view))
+      : undefined);
     const root = this.designModel.assemblies.get(selection.rootAssemblyId);
     const isModelSummary = selection.rootAssemblyId === "model:all";
     const assemblies: SheetBomAssembly[] = root
@@ -2533,8 +2535,8 @@ export class GeneralPdfController {
     if (![x, y, width, height].every(Number.isFinite)
       || width < 320 || height < 110) return;
     const root = this.designModel.assemblies.get(table.rootAssemblyId);
-    const source = sheet.views.find((view) =>
-      view.id === table.sourceViewId && this.isAssemblyView(view));
+    const source = [...this.production.sheets.values()].flatMap((page) => page.views)
+      .find((view) => view.id === table.sourceViewId && this.isAssemblyView(view));
     const title = root?.name
       ?? (source && this.isAssemblyView(source) ? source.assemblyName : undefined)
       ?? (table.rootAssemblyId === "model:all" ? "Piezas del modelo" : undefined)
@@ -2567,15 +2569,17 @@ export class GeneralPdfController {
     const lineHeight = 12.5;
     const available = Math.max(0, Math.floor((height - 60) / lineHeight));
     const rows = result?.rows ?? [];
-    for (let i = 0; i < Math.min(available, rows.length); i++) {
-      const item = rows[i]!;
+    const pageStart = Math.max(0, Math.trunc(table.pageStart ?? 0));
+    const pageRows = rows.slice(pageStart);
+    for (let i = 0; i < Math.min(available, pageRows.length); i++) {
+      const item = pageRows[i]!;
       const baseline = y + 53 + i * lineHeight;
       if (baseline > y + height - 10) break;
       const indent = "  ".repeat(Math.min(4, item.depth));
       const label = item.kind === "ASSEMBLY"
         ? `${indent}[E] ${item.label}` : `${indent}${item.label}`;
       const material = [item.material, item.grade].filter(Boolean).join(" ");
-      drawText(c[0]!, baseline, String(i + 1), 7.8);
+      drawText(c[0]!, baseline, String(pageStart + i + 1), 7.8);
       drawText(c[1]!, baseline, item.mark.slice(0, 10), 7.8);
       drawText(c[2]!, baseline, label.slice(0, Math.max(10, Math.floor(width * 0.40 / 4.7))), 7.8);
       drawText(c[3]!, baseline, String(item.quantity), 7.8);
@@ -2586,14 +2590,16 @@ export class GeneralPdfController {
     }
     drawLine(x, y + height - 14, x + width, y + height - 14);
     const missing = result?.missingPieces.length ?? 0;
-    const extra = Math.max(0, rows.length - available);
+    const extra = Math.max(0, rows.length - (pageStart + available));
     const foot = !result?.rootFound
       ? "BOM sin origen válido: selecciona otro ensamble en VIEWS"
-      : extra > 0
-        ? `MOSTRANDO ${available}/${rows.length} filas · ${extra} sin espacio. Amplía la tabla o crea otra hoja BOM.`
-        : missing > 0
-          ? `AVISO: faltan ${missing} instancias de pieza en el modelo.`
-          : "Valores de material y masa: solo datos declarados en ingeniería.";
+      : table.pageCount && table.pageCount > 1
+        ? `HOJA BOM ${table.pageIndex ?? 1}/${table.pageCount} · ${Math.min(available, pageRows.length)} filas · ${result.totalPieces} piezas`
+        : extra > 0
+          ? `MOSTRANDO ${Math.min(available, pageRows.length)}/${rows.length} filas · ${extra} sin espacio. Amplía o crea hojas BOM.`
+          : missing > 0
+            ? `AVISO: faltan ${missing} instancias de pieza en el modelo.`
+            : "Valores de material y masa: solo datos declarados en ingeniería.";
     drawText(x + 8, y + height - 4, foot.slice(0, 105), 7, extra || missing ? "#942b1f" : "#666");
     const move = document.createElementNS(SVG_NS, "rect");
     move.setAttribute("x", String(x));
