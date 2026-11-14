@@ -2456,7 +2456,7 @@ export class GeneralPdfController {
           this.sheetName(sheetId ?? "", sheet),
           ...sheet.views.map((view, index) =>
             this.isAssemblyView(view)
-              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}`
+              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}`
               : `${index}:${view.id}:S:${view.sectionId}:${pieces.map((piece) => piece.id).join(",")}`,
           ),
         ].join("|")
@@ -2477,9 +2477,14 @@ export class GeneralPdfController {
 
     sheet.views.forEach((view, index) => {
       if (this.isAssemblyView(view)) {
+        const parentIndex = view.projectedDirection
+          ? sheet.views.findIndex((candidate) => candidate.id === view.sourceViewId) : -1;
         const block = this.createViewDetails(
-          `View ${index + 1} · ${view.assemblyName}`,
-          `ENSAMBLE · ${view.instanceIds.length} instancia${view.instanceIds.length === 1 ? "" : "s"}`,
+          `View ${index + 1} · ${view.assemblyName}${view.orientationLabel
+            ? " · " + view.orientationLabel : ""}`,
+          view.projectedDirection
+            ? `PROYECCIÓN · origen View ${parentIndex >= 0 ? parentIndex + 1 : "?"} · ${view.projectedStandard ?? "ISO E"} · ${view.instanceIds.length} piezas`
+            : `ENSAMBLE/PIEZA · ${view.instanceIds.length} instancia${view.instanceIds.length === 1 ? "" : "s"}`,
         );
         for (const instanceId of view.instanceIds) {
           block.content.append(this.createInstanceRow(instanceId));
