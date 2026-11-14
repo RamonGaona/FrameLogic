@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DRAWING_VIEW_SCALE_PRESETS,
+  clipDrawingSegmentToView,
   drawingViewScaleSelection,
   formatDrawingViewScale,
   modelToPaperScale,
@@ -38,6 +39,25 @@ describe("per-View drawing scales", () => {
     expect(modelToPaperScale(1, mmToCanvasPixels)).toBeCloseTo(2.4, 10);
     expect(modelToPaperScale(50, mmToCanvasPixels)).toBeCloseTo(0.048, 10);
     expect(modelToPaperScale(0, mmToCanvasPixels)).toBeNull();
+  });
+
+  it("clips enlarged geometry to its own View without distorting the scale", () => {
+    const frame = { x: 100, y: 100, width: 120, height: 80 };
+    expect(clipDrawingSegmentToView(
+      { x1: 60, y1: 140, x2: 300, y2: 140 }, frame,
+    )).toEqual({ x1: 100, y1: 140, x2: 220, y2: 140 });
+    expect(clipDrawingSegmentToView(
+      { x1: 160, y1: 50, x2: 160, y2: 240 }, frame,
+    )).toEqual({ x1: 160, y1: 100, x2: 160, y2: 180 });
+    expect(clipDrawingSegmentToView(
+      { x1: 0, y1: 0, x2: 80, y2: 80 }, frame,
+    )).toBeNull();
+    expect(clipDrawingSegmentToView(
+      { x1: 110, y1: 120, x2: 200, y2: 170 }, frame,
+    )).toEqual({ x1: 110, y1: 120, x2: 200, y2: 170 });
+    expect(clipDrawingSegmentToView(
+      { x1: NaN, y1: 0, x2: 1, y2: 1 }, frame,
+    )).toBeNull();
   });
 
   it("serializes scales for different Views independently, including AUTO and custom scales", () => {
