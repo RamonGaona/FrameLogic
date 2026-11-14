@@ -48,6 +48,28 @@ describe("workshop dimension paper placement", () => {
     expect(changed.placed.some((p) => p.key === other)).toBe(false);
     expect(changed.placed.find((p) => p.key === key)!.lines).toHaveLength(4);
   });
+  it("shows original STEP reference grips and allows retargeting each end of one cota", () => {
+    const before = layoutWorkshopDimensions(dimensions, frame).placed[0]!;
+    expect(before.anchorA).toEqual({ x: 130, y: 350 });
+    expect(before.anchorB).toEqual({ x: 430, y: 350 });
+    expect(before.referenceEdited).toBe(false);
+    const key = workshopDimensionKey(dimensions[0]!);
+    const adjusted = layoutWorkshopDimensions(dimensions, frame, {
+      [key]: { anchorB: { x: 2000, y: 0 } },
+    }).placed;
+    const picked = adjusted.find((dim) => dim.key === key)!;
+    expect(picked.label).toBe("2000");
+    expect(picked.referenceEdited).toBe(true);
+    expect(picked.anchorA).toEqual(before.anchorA);
+    expect(picked.anchorB).toEqual({ x: 330, y: 350 });
+    // Changes belong to this View's overrides, never to STEP source dimensions.
+    expect(dimensions[0]!.b.x).toBe(3000);
+    expect(layoutWorkshopDimensions(dimensions, frame).placed[0]!.label).toBe("3000");
+    expect(layoutWorkshopDimensions(dimensions, frame, {
+      [key]: { anchorB: { x: 2000, y: 0 }, hidden: true },
+    }).placed.find((dim) => dim.key === key)).toBeUndefined();
+  });
+
   it("moves a dimension line without changing its original geometric anchor", () => {
     const original = layoutWorkshopDimensions(dimensions, frame).placed;
     const horizontalKey = workshopDimensionKey(dimensions[0]!);
