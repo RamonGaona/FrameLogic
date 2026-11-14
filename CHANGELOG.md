@@ -24,7 +24,7 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 - Se mantiene el sistema STEP/B-Rep/HLR y la cola de orientaciones de v0.1.158. Cambiar una View no rota el modelo, no cambia el render ni altera el marco o escala de otra View.
 - Los ajustes manuales de cotas STEP se almacenan por orientación de cada View: al regresar al mismo modo y geometría se recuperan los puntos A/B editados. Cuando el modelo cambia, los puntos 2D incompatibles no se reutilizan y se comunica la restauración a referencias STEP originales; nunca se reutiliza un valor calculado desde puntos inválidos.
 - Regresiones para tres parejas opuestas, ejes propios/globales rotados, reversibilidad, separación entre Views y persistencia serializable de ajustes. Las pruebas PDF existentes siguen como protección contra regresiones.
-- Las mejoras CI ya presentes en `main` se mantienen: suites de Validate sin duplicación en Web build, cancelación de ejecuciones obsoletas por PR y detector de impacto para omitir MCP cuando únicamente cambian versión y planos.
+- CI: Validate y Web build mantienen sus responsabilidades separadas y las ejecuciones obsoletas de un PR se cancelan. El filtro de MCP omite cambios de versión, planos, scripts de pruebas de dibujo y cambios internos del propio detector; conserva despliegues por contratos, dependencias, configuración y scripts reales del Worker. Añadidas regresiones del filtro sin nuevos servicios de pago.
 
 **Pendiente:** validación manual real con STEP de ensambles/subensambles, cotas editables, cortes, vistas de detalle y exportación PDF. Fusión y Cloudflare Pages sujetos a comprobaciones obligatorias.
 
