@@ -1459,7 +1459,7 @@ export class GeneralPdfController {
         // Preserve the parent AUTO scale even if a minimum viewport size is
         // required for selecting/dragging a very narrow end view.
         const pixelPerMmAtOneToOne = this.technicalScale(sheet, 1);
-        const denominator = pixelPerMmAtOne / parentScale;
+        const denominator = pixelPerMmAtOneToOne / parentScale;
         layout.scaleDenominator = denominator >= 1 ? denominator : null;
       }
       layout.showHidden = parentLayout.showHidden;
