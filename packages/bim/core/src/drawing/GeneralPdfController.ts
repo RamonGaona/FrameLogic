@@ -415,6 +415,10 @@ export class GeneralPdfController {
     this.syncSectionSheets();
     const sheet = this.production.sheets.get(sheetId);
     if (!sheet) return false;
+    // Never complete a pending projection on an unintended destination sheet.
+    if (this.pendingProjection && this.pendingProjection.sheetId !== sheetId) {
+      this.cancelProjectedView(false);
+    }
 
     this.activeSheetId = sheetId;
     const sectionView = this.getSectionViews(sheet)[0];
