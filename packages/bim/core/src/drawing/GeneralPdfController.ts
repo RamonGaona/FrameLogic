@@ -82,6 +82,8 @@ interface PlanGeometry {
   readonly width: number;
   readonly height: number;
   readonly segments: readonly PlanSegment[];
+  readonly offsetX?: number;
+  readonly offsetY?: number;
 }
 
 interface SectionSheetViewRuntime {
@@ -104,6 +106,9 @@ interface AssemblySheetViewRuntime {
   width: number;
   height: number;
   segments: readonly PlanSegment[];
+  /** Plane-space offset before the padded view normalization. */
+  offsetX?: number;
+  offsetY?: number;
   resolved: boolean;
   /** Present only on views created by the automatic assembly drawing command. */
   automaticViewCode?: AutomaticViewCode;
@@ -737,6 +742,12 @@ export class GeneralPdfController {
         assemblyName: `DETALLE ${label} · ${request.assemblyName}`,
       }, detail);
       detailView.automaticSupplement = "DETAIL";
+      // The crop is normalized to its own local coordinates. Preserve its
+      // absolute plane-space origin so the depth-buffered image uses the
+      // exact same camera window as the enlarged HLR linework.
+      detailView.offsetX = (sourceGeometry.offsetX ?? 0) + detail.window.x;
+      detailView.offsetY = (sourceGeometry.offsetY ?? 0) + detail.window.y;
+      detailView.assemblyOcclusionExact = sourceGeometry.assemblyOcclusionExact;
       detailView.automaticSectionLabel = label;
       detailView.supplementFraction = station.fraction;
       detailView.sourceViewId = sourceView.id;
@@ -1056,6 +1067,8 @@ export class GeneralPdfController {
       originalWorkPlane: snapshotWorkPlane(request.workPlane),
       width: geometry.width,
       height: geometry.height,
+      offsetX: geometry.offsetX,
+      offsetY: geometry.offsetY,
       segments: geometry.segments.map((segment) => ({ ...segment })),
       resolved: true,
     };
@@ -1172,7 +1185,7 @@ export class GeneralPdfController {
     if (!point) return;
     for (let index = sheet.views.length - 1; index >= 0; index--) {
       const view = sheet.views[index];
-      if (!view || !this.isAssemblyView(view) || view.automaticSupplement) continue;
+      if (!view) continue;
       const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
       if (point.x < layout.x || point.x > layout.x + layout.width
         || point.y < layout.y || point.y > layout.y + layout.height) continue;
@@ -1186,8 +1199,9 @@ export class GeneralPdfController {
 
   private updateViewOrientationPanel(sheet: GeneralSheetRuntime | null): void {
     const panel = this.viewOrientationPanel;
-    const views = sheet?.views.filter((view): view is AssemblySheetViewRuntime =>
-      this.isAssemblyView(view) && !view.automaticSupplement) ?? [];
+    // Render styling applies to normal, physical section and detail Views.
+    // Orientation editing alone is restricted to regular assembly projections.
+    const views = sheet?.views ?? [];
     if (views.length === 0) {
       panel.style.display = "none";
       return;
@@ -1197,14 +1211,16 @@ export class GeneralPdfController {
       '[data-framelogic-view-select="true"]')!;
     const modeSelect = panel.querySelector<HTMLSelectElement>(
       '[data-framelogic-view-orientation="true"]')!;
-    const signature = views.map((view) => view.id + ":" + view.assemblyName).join("|");
+    const signature = views.map((view) => view.id + ":"
+      + (this.isAssemblyView(view) ? view.assemblyName : view.sectionId)).join("|");
     if (viewSelect.dataset["viewSignature"] !== signature) {
       viewSelect.dataset["viewSignature"] = signature;
       viewSelect.replaceChildren();
       for (const [index, view] of views.entries()) {
         const option = document.createElement("option");
         option.value = view.id;
-        option.textContent = `View ${index + 1} · ${view.assemblyName}`;
+        option.textContent = `View ${index + 1} · ${this.isAssemblyView(view)
+          ? view.assemblyName : this.findSection(view.sectionId)?.name ?? "Sección"}`;
         viewSelect.append(option);
       }
     }
@@ -1213,10 +1229,12 @@ export class GeneralPdfController {
     }
     viewSelect.value = this.selectedAssemblyViewId!;
     const selected = views.find((view) => view.id === this.selectedAssemblyViewId)!;
-    const expected = selected.orientationMode ?? "CURRENT";
+    const expected = this.isAssemblyView(selected) ? selected.orientationMode ?? "CURRENT" : "CURRENT";
     if (modeSelect.value !== expected) modeSelect.value = expected;
     viewSelect.disabled = this.orientationChangeInProgress;
-    modeSelect.disabled = this.orientationChangeInProgress;
+    // The 3D assembly orientation choices do not apply to a section View.
+    modeSelect.disabled = this.orientationChangeInProgress
+      || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement);
   }
 
   private async changeSelectedPdfViewOrientation(
@@ -1264,6 +1282,8 @@ export class GeneralPdfController {
       view.workPlane = snapshotWorkPlane(plane);
       view.width = geometry.width;
       view.height = geometry.height;
+      view.offsetX = geometry.offsetX;
+      view.offsetY = geometry.offsetY;
       view.segments = geometry.segments;
       view.resolved = true;
       view.orientationMode = orientationMode;
@@ -1398,8 +1418,7 @@ export class GeneralPdfController {
     const originX = layout.x + (automatic ? 20 : 0) + (innerWidth - drawnWidth) / 2;
     const originY = layout.y + (automatic ? 60 : 20) + (innerHeight - drawnHeight) / 2;
 
-    for (const segment of view.segments) {
-      if (segment.hidden && !layout.showHidden) continue;
+    for (const [segmentIndex, segment] of view.segments.entries()) {
       const x1 = originX + segment.x1 * scale;
       const y1 = originY + drawnHeight - segment.y1 * scale;
       const x2 = originX + segment.x2 * scale;
@@ -1414,6 +1433,17 @@ export class GeneralPdfController {
         this.workspace.svg.append(line);
       } else {
         this.appendLine(x1, y1, x2, y2);
+      }
+      // A View's geometry has a stable identity; dimensions and frames do not.
+      const geometryLine = this.workspace.svg.lastElementChild;
+      if (geometryLine instanceof SVGLineElement) {
+        geometryLine.dataset["framelogicAssemblyViewLine"] = view.id;
+        geometryLine.dataset["framelogicAssemblySegmentIndex"] = String(segmentIndex);
+        geometryLine.dataset["framelogicAssemblyHidden"] = segment.hidden ? "true" : "false";
+        geometryLine.dataset["framelogicAssemblyOriginX"] = String(originX);
+        geometryLine.dataset["framelogicAssemblyOriginY"] = String(originY);
+        geometryLine.dataset["framelogicAssemblyScale"] = String(scale);
+        if (segment.hidden && !layout.showHidden) geometryLine.setAttribute("display", "none");
       }
     }
     if (view.automaticSupplement) {
@@ -1688,6 +1718,7 @@ export class GeneralPdfController {
         });
         if (!geometry) continue;
         candidate.width = geometry.width; candidate.height = geometry.height;
+        candidate.offsetX = geometry.offsetX; candidate.offsetY = geometry.offsetY;
         candidate.segments = geometry.segments;
         candidate.automaticDimensions = candidate.automaticViewCode === "ISO" ? [] : geometry.dimensions;
         candidate.automaticAnchors = geometry.anchors;
@@ -1879,6 +1910,8 @@ export class GeneralPdfController {
     }
     view.width = geometry.width;
     view.height = geometry.height;
+    view.offsetX = geometry.offsetX;
+    view.offsetY = geometry.offsetY;
     view.segments = geometry.segments;
     view.resolved = true;
   }
@@ -1960,6 +1993,8 @@ export class GeneralPdfController {
         x2: segment.x2 - offsetX,
         y2: segment.y2 - offsetY,
       })),
+      offsetX,
+      offsetY,
     };
   }
 
@@ -2040,6 +2075,7 @@ export class GeneralPdfController {
         if (view.instanceIds.length < 1) {
           block.content.append(this.createEmptyRow("Sin instancias"));
         }
+        this.bindTreeViewSelection(block.details, view.id, sheet);
         tree.append(block.details);
         return;
       }
@@ -2055,7 +2091,24 @@ export class GeneralPdfController {
       if (pieces.length < 1) {
         block.content.append(this.createEmptyRow("Sin instancias en el modelo"));
       }
+      this.bindTreeViewSelection(block.details, view.id, sheet);
       tree.append(block.details);
+    });
+  }
+
+  private bindTreeViewSelection(
+    details: HTMLDetailsElement,
+    viewId: string,
+    sheet: GeneralSheetRuntime,
+  ): void {
+    // Selecting VIEWS tree rows updates the shared orientation/render toolbar.
+    details.querySelector("summary")?.addEventListener("click", () => {
+      this.selectedAssemblyViewId = viewId;
+      this.updateViewOrientationPanel(sheet);
+      const viewSelect = this.viewOrientationPanel.querySelector<HTMLSelectElement>(
+        '[data-framelogic-view-select="true"]',
+      );
+      viewSelect?.dispatchEvent(new Event("change"));
     });
   }
 

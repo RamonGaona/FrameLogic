@@ -187,6 +187,9 @@ interface SectionRuntime {
 export interface SheetViewState {
   readonly id: string;
   readonly sectionId: string;
+  /** Persisted display mode belongs to the View in DrawingProduction.sheets. */
+  renderMode?: "BLACK_WHITE" | "VISIBLE_HIDDEN" | "WIREFRAME"
+    | "SOLID" | "SOLID_EDGES" | "MONOCHROME" | "TRANSPARENT";
 }
 
 export interface TitleBlockState {

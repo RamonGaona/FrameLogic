@@ -12,6 +12,27 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.151 — 2026-11-13
+
+### Render independiente y superficies reales en Views de ensamble
+
+- **Orden de render corregido:** el controlador de estilo se instala después de la proyección de ensambles, por lo que ahora encuentra la geometría SVG de cada View.
+- **Selector conectado a «VIEW seleccionada»:** el modo elegido se aplica al identificador de la View activa y se guarda en `DrawingProductionController.sheets[].views[].renderMode`, manteniendo compatibilidad con el snapshot profesional legado, sin modificar la orientación del modelo.
+- **Estilos diferenciados:** líneas visibles, visibles y ocultas, alámbrico, sólido a color, sólido con aristas y sombreado gris; se conserva la compatibilidad con el modo transparente de secciones.
+- **Superficies:** sombreado 3D usando las mallas posicionadas del ensamble y z-buffer independiente de Three.js, con colores por pieza cuando están disponibles y profundidad real. Se mantiene la geometría HLR vectorial para las aristas.
+- **PDF:** imágenes JPEG del sombreado incrustadas como XObjects en el mismo flujo PDF de líneas, cotas y textos; clipping por viewport y guiones para aristas ocultas.
+- **Alineación:** se guarda el desplazamiento de la proyección en coordenadas del plano para mantener el sombreado alineado tras cambiar orientación o regenerar vistas.
+- **Detalles ampliados:** se preserva el desplazamiento absoluto de la ventana de recorte, permitiendo sombreado en los detalles sin sustituir los cortes físicos STEP por falsas secciones.
+- **Árbol VIEWS:** permite activar vistas de ensamble y de sección desde el árbol o el selector superior; los controles no aplicables quedan deshabilitados.
+- **Aristas sobre superficies:** con HLR exacto se conservan aristas vectoriales; con mallas o geometría mixta se dibujan aristas rasterizadas con prueba de profundidad para no mostrar aristas posteriores atravesando caras opacas.
+- **Pruebas nuevas:** modos persistentes por View y estructura binaria de PDF con JPEG y vectores.
+
+**Unidades de cotas STEP:** el valor en papel ahora utiliza directamente las coordenadas milimétricas internas de FrameLogic. Se eliminó una multiplicación heredada por 1000 en `WorkshopDimensionLayout` y se adaptaron las pruebas geométricas a milímetros.
+
+**Alcance y pendientes:** no se afirma todavía rayado real de cortes STEP, HLR exacto de mallas sin B-Rep, ni la mejora completa de la distribución de cotas. El sombreado y detalles recortados requieren comprobación visual en navegador y PDF. Se requiere validación visual en navegador con ensambles reales y comparación PDF/preview. Esta versión no modifica las piezas del espacio modelo.
+
+---
+
 ## v0.1.150 — 2026-11-13
 
 ### Corrección: «Planta · eje propio» girada pese al selector

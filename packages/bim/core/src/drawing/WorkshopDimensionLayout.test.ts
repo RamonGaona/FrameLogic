@@ -14,12 +14,12 @@ const c = (id: string, x: number, y: number, radius: number): AutomaticDimension
 const frame = {
   x: 100, y: 100, width: 480, height: 300,
   originX: 130, originY: 175, drawnWidth: 320, drawnHeight: 175,
-  scale: 100,
+  scale: 0.1,
 };
 const dimensions: EngineeringDimensionInstruction[] = [
-  { mode: "HORIZONTAL", a: p("a", 0, 0), b: p("b", 3, 0), offsetX: 0, offsetY: 0 },
-  { mode: "VERTICAL", a: p("a", 0, 0), b: p("c", 0, 1.5), offsetX: 0, offsetY: 0 },
-  { mode: "DIAMETER", a: c("hole1", 1, 0.75, 0.06), b: c("hole1", 1, 0.75, 0.06),
+  { mode: "HORIZONTAL", a: p("a", 0, 0), b: p("b", 3000, 0), offsetX: 0, offsetY: 0 },
+  { mode: "VERTICAL", a: p("a", 0, 0), b: p("c", 0, 1500), offsetX: 0, offsetY: 0 },
+  { mode: "DIAMETER", a: c("hole1", 1000, 750, 60), b: c("hole1", 1000, 750, 60),
     offsetX: 0, offsetY: 0, quantity: 4 },
 ];
 describe("workshop dimension paper placement", () => {
@@ -52,7 +52,7 @@ describe("workshop dimension paper placement", () => {
     const many: EngineeringDimensionInstruction[] = Array.from({ length: 9 }, (_, i) => ({
       mode: "HORIZONTAL" as const,
       a: p("a"+i, 0, 0),
-      b: p("b"+i, 3, 0), offsetX: 0, offsetY: 0,
+      b: p("b"+i, 3000, 0), offsetX: 0, offsetY: 0,
     }));
     const result = layoutWorkshopDimensions(many, frame);
     expect(result.placed.length).toBeGreaterThan(0);
@@ -61,7 +61,7 @@ describe("workshop dimension paper placement", () => {
     expect(layoutWorkshopDimensions(many, { ...frame, width: -1 }).placed).toEqual([]);
   });
   it("retains readable metric precision", () => {
-    expect(workshopMillimetres(0.00375)).toBe("3.75");
-    expect(workshopMillimetres(-1.23456)).toBe("1234.6");
+    expect(workshopMillimetres(3.75)).toBe("3.75");
+    expect(workshopMillimetres(-1234.56)).toBe("1234.6");
   });
 });
