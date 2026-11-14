@@ -7,8 +7,11 @@ import { inferAssemblyLongitudinalFrame, type OrientationPoint3 } from "./Assemb
 export type AssemblyViewOrientationMode =
   | "CURRENT"
   | "LONGITUDINAL"
+  | "LOCAL_REAR"
   | "LOCAL_TOP"
+  | "LOCAL_BOTTOM"
   | "LOCAL_END"
+  | "LOCAL_END_OPPOSITE"
   | "LOCAL_ISO"
   | "WORLD_FRONT"
   | "WORLD_TOP"
@@ -26,12 +29,14 @@ export const ASSEMBLY_VIEW_ORIENTATION_OPTIONS: readonly (readonly [
 ])[] = [
   ["CURRENT", "Actual / WorkPlane original"],
   ["LONGITUDINAL", "Alzado · eje propio"],
+  ["LOCAL_REAR", "Posterior · eje propio"],
   ["LOCAL_TOP", "Planta · eje propio"],
+  ["LOCAL_BOTTOM", "Inferior · eje propio"],
   ["LOCAL_END", "Extremo · eje propio"],
+  ["LOCAL_END_OPPOSITE", "Extremo opuesto · eje propio"],
   ["LOCAL_ISO", "Isométrica · eje propio"],
   ["WORLD_FRONT", "Alzado · ejes globales"],
   ["WORLD_TOP", "Planta · ejes globales"],
-  ["WORLD_RIGHT", "Lateral · ejes globales"],
   ["WORLD_ISO", "Isométrica · ejes globales"],
 ];
 
@@ -47,6 +52,7 @@ const cross = (a: OrientationPoint3, b: OrientationPoint3): OrientationPoint3 =>
 const normalize = (p: OrientationPoint3): OrientationPoint3 =>
   multiply(p, 1 / Math.hypot(p.x, p.y, p.z));
 
+// Keep WORLD_RIGHT in the resolver for saved projects, but not in the selector.
 const WORLD: Readonly<Record<"WORLD_FRONT" | "WORLD_TOP" | "WORLD_RIGHT" | "WORLD_ISO", AssemblyViewBasis>> = {
   WORLD_FRONT: { xAxis: v(1, 0, 0), yAxis: v(0, 0, 1), normal: v(0, -1, 0) },
   WORLD_TOP: { xAxis: v(1, 0, 0), yAxis: v(0, 1, 0), normal: v(0, 0, 1) },
@@ -80,12 +86,20 @@ export function resolveAssemblyViewBasis(
   const y = normalize(add(preferredUp, multiply(x, -dot(preferredUp, x))));
   const normal = normalize(cross(x, y));
 
+  // An opposite orthographic view must reverse its observing normal and
+  // exactly one in-plane axis to remain right-handed (no mirroring).
   if (mode === "LONGITUDINAL") return { xAxis: x, yAxis: y, normal };
+  if (mode === "LOCAL_REAR")
+    return { xAxis: multiply(x, -1), yAxis: y, normal: multiply(normal, -1) };
   if (mode === "LOCAL_TOP")
     return { xAxis: x, yAxis: multiply(normal, -1), normal: y };
+  if (mode === "LOCAL_BOTTOM")
+    return { xAxis: x, yAxis: normal, normal: multiply(y, -1) };
   if (mode === "LOCAL_END")
     return { xAxis: multiply(normal, -1), yAxis: y, normal: x };
-
+  if (mode === "LOCAL_END_OPPOSITE")
+    return { xAxis: normal, yAxis: y, normal: multiply(x, -1) };
+  if (mode !== "LOCAL_ISO") return null;
   const isoX = normalize(add(x, multiply(normal, -1)));
   const isoN = normalize(add(add(x, y), normal));
   return { xAxis: isoX, yAxis: normalize(cross(isoN, isoX)), normal: isoN };
