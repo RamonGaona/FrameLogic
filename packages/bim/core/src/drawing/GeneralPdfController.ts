@@ -27,6 +27,7 @@ import {
 import { buildAssemblyBom, renderAssemblyBomRow, type AssemblyBomRow } from "./AssemblyBomPlanner";
 import {
   buildSheetAssemblyBom, chooseSheetBomPlacement, sheetBomOverlaps,
+  planSheetBomPages,
   type SheetBomAssembly, type SheetBomPiece, type SheetBomPlacement,
   type SheetBomMode, type SheetBomResult, type SheetBomRect,
 } from "./SheetAssemblyBom";
@@ -3144,25 +3145,24 @@ export class GeneralPdfController {
         + "Ábrelas desde la lista de PDFs; ninguna hoja se duplicó.");
       return;
     }
-    const capacity = Math.floor((565 - 60) / 12.5);
-    const pages = Math.ceil(rows.rows.length / capacity);
+    const pages = planSheetBomPages(rows.rows.length);
     const created: string[] = [];
     const name = this.designModel.assemblies.get(chosen.rootAssemblyId)?.name
       ?? sourceSheet.titleBlock.drawingTitle
       ?? "Ensamble";
-    for (let index = 0; index < pages; index++) {
+    for (const page of pages) {
       const id = crypto.randomUUID();
       const sheet = this.createEmptySheet(id,
-        `BOM completa · ${name} · ${index + 1}/${pages}`);
+        `BOM completa · ${name} · ${page.index}/${page.totalPages}`);
       sheet.titleBlock.drawingTitle = "BOM · " + name;
-      sheet.titleBlock.drawingNumber = `B-${chosen.rootAssemblyId.slice(0, 8)}-${index + 1}`;
+      sheet.titleBlock.drawingNumber = `B-${chosen.rootAssemblyId.slice(0, 8)}-${page.index}`;
       sheet.bomTable = {
         rootAssemblyId: chosen.rootAssemblyId,
         sourceViewId: chosen.sourceViewId,
         mode, x: 55, y: 52, width: 1020, height: 565,
-        pageStart: index * capacity,
-        pageIndex: index + 1,
-        pageCount: pages,
+        pageStart: page.start,
+        pageIndex: page.index,
+        pageCount: page.totalPages,
         generatedFromSheetId: sourceSheetId,
       };
       sheet.hideAutomaticBom = true;
@@ -3173,7 +3173,7 @@ export class GeneralPdfController {
     this.lastTreeSignature = "";
     if (created[0]) this.openSheet(created[0]);
     this.workspace.setStatus(
-      `BOM COMPLETA: ${rows.rows.length} filas en ${pages} hoja(s) PDF, `
+      `BOM COMPLETA: ${rows.rows.length} filas en ${pages.length} hoja(s) PDF, `
       + "sin omitir entradas. Puedes eliminar la tabla de cualquier hoja de forma independiente.",
     );
   }
