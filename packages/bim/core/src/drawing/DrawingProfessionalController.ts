@@ -1246,7 +1246,14 @@ export class DrawingProfessionalController {
     const template = this.state.titleBlockTemplate;
     const x = 728; const y = template === "FABRICATION" ? 652 : 670; const w = 360; const h = template === "FABRICATION" ? 110 : 92;
     const revision = sheet.revisions.at(-1)?.code ?? "0";
-    const scale = sheet.scaleDenominator === null ? "AUTO" : `1:${sheet.scaleDenominator}`;
+    const allScales = new Set(sheet.views.map((view) => {
+      const layout = this.state.viewLayouts.find((entry) => entry.id === view.id);
+      return layout?.scaleDenominator === null || !layout ? "AUTO"
+        : `1:${layout.scaleDenominator}`;
+    }));
+    const scale = allScales.size > 1 ? "VARIAS"
+      : allScales.values().next().value
+        ?? (sheet.scaleDenominator === null ? "AUTO" : `1:${sheet.scaleDenominator}`);
     const unit = this.activeStyle().unit.toLowerCase();
     this.workspace.appendSvgRect(x, y, w, h, "white", "#111", 0.9);
     this.workspace.appendSvgLine(x, y + 28, x + w, y + 28, "#111", 0.55);
