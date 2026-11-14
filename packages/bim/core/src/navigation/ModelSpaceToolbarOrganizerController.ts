@@ -48,6 +48,31 @@ const CATEGORY_LABEL:
   };
 
 
+
+/** Pure command classifier: React-owned buttons are only shown/hidden, never moved. */
+export function classifyModelRibbonControl(
+  label: string, tooltip = "", classes: readonly string[] = [],
+): ToolbarCategory {
+  const text = label.trim().toUpperCase();
+  const combined = text + " " + tooltip.toUpperCase();
+  if (["IFC REFERENCIA", "IMPORTAR PIEZA", "ABRIR PIEZA FRAMELOGIC",
+    "CARGANDO REFERENCIA", "IMPORTANDO PIEZA", "ABRIENDO PIEZA"]
+    .some((word) => combined.includes(word))) return "FILE";
+  if (["POINT", "LINE", "CÍRCULO", "CIRCULO", "CIRCLE", "RECTÁNGULO",
+    "RECTANGULO", "RECTANGLE"].includes(text)) return "DRAW";
+  if (["COPIAR", "UNIR", "STRETCH", "PEDIT", "MOVE", "ROTAR", "TRIM",
+    "PARALELA", "LÍNEA PARALELA", "LINEA PARALELA"].includes(text)
+    || combined.includes("RECORT") || combined.includes("EXTEND")) return "EDIT";
+  if (text === "COTA" || text.startsWith("COTA ") || combined.includes("ACOTAR")
+    || combined.includes("DIMENSION")) return "ANNOTATE";
+  if (text.includes("ORIGEN ←") || text.includes("PUNTO →")
+    || text.includes("LINEA →") || text.includes("LÍNEA →")
+    || text.includes("PREP") || text.includes("CANCELAR INSERCION")) return "PIECE";
+  if (combined.includes("WORKPLANE") || text.startsWith("WP ")
+    || classes.includes("workplane-edit-status")) return "WORKPLANE";
+  return "PIECE";
+}
+
 export class ModelSpaceToolbarOrganizerController {
   private readonly options:
     ModelSpaceToolbarOrganizerOptions;
@@ -584,85 +609,13 @@ export class ModelSpaceToolbarOrganizerController {
     }
   }
 
-  private getCategory(
-    element: HTMLElement,
-  ): ToolbarCategory {
-    const text =
-      (
-        element.textContent
-        ?? ""
-      )
-        .trim()
-        .toUpperCase();
-    const originalTitle =
+  private getCategory(element: HTMLElement): ToolbarCategory {
+    return classifyModelRibbonControl(
+      element.textContent ?? "",
       element instanceof HTMLButtonElement
-        ? element.dataset["toolbarOriginalTitle"]
-          ?? element.title
-        : element.getAttribute("title")
-          ?? "";
-    const combined =
-      `${text} ${originalTitle.toUpperCase()}`;
-
-    if (
-      combined.includes("IFC REFERENCIA")
-      || combined.includes("IMPORTAR PIEZA")
-      || combined.includes("ABRIR PIEZA FRAMELOGIC")
-      || combined.includes("CARGANDO REFERENCIA")
-      || combined.includes("IMPORTANDO PIEZA")
-      || combined.includes("ABRIENDO PIEZA")
-    ) {
-      return "FILE";
-    }
-
-    if (
-      text === "POINT"
-      || text === "LINE"
-      || text === "CÍRCULO"
-      || text === "CIRCULO"
-      || text === "CIRCLE"
-      || text === "RECTÁNGULO"
-      || text === "RECTANGULO"
-      || text === "RECTANGLE"
-    ) {
-      return "DRAW";
-    }
-
-    if (
-      text === "COPIAR"
-      || text === "UNIR"
-      || text === "STRETCH"
-      || text === "PEDIT"
-      || text === "MOVE"
-      || text === "ROTAR"
-      || text === "TRIM"
-      || text === "PARALELA"
-      || text === "LÍNEA PARALELA"
-      || text === "LINEA PARALELA"
-      || combined.includes("RECORT")
-      || combined.includes("EXTEND")
-    ) {
-      return "EDIT";
-    }
-
-    if (text === "COTA" || text.startsWith("COTA ") || combined.includes("ACOTAR")
-      || combined.includes("DIMENSION")) return "ANNOTATE";
-
-    // Preparation controls refer to piece datums, even when their tooltip
-    // mentions WorkPlane; they belong in the Piezas tab.
-    if (text.includes("ORIGEN ←") || text.includes("PUNTO →")
-      || text.includes("LINEA →") || text.includes("LÍNEA →")
-      || text.includes("PREP") || text.includes("CANCELAR INSERCION")) return "PIECE";
-
-    if (
-      combined.includes("WORKPLANE")
-      || text.startsWith("WP ")
-      || element.classList.contains(
-        "workplane-edit-status",
-      )
-    ) {
-      return "WORKPLANE";
-    }
-
-    return "PIECE";
+        ? element.dataset["toolbarOriginalTitle"] ?? element.title
+        : element.getAttribute("title") ?? "",
+      Array.from(element.classList),
+    );
   }
 }
