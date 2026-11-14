@@ -446,6 +446,7 @@ export async function createBimCore(
       drawingProfessional: core.drawingProfessional,
       sectionDrawing: core.sectionDrawing,
       designScene: core.designScene,
+      generalPdf,
     });
 
   const unifiedPdfNavigation =
