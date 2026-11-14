@@ -14,6 +14,7 @@ import { snapDimensionAnchorToView } from "./DrawingDimensionAnchorSnap";
 import { ASSEMBLY_VIEW_ORIENTATION_OPTIONS, resolveAssemblyViewBasis,
   type AssemblyViewOrientationMode, type AssemblyViewBasis } from "./AssemblyViewOrientationControls";
 import { DrawingViewOrientationQueue } from "./DrawingViewOrientationQueue";
+import { DrawingToolbarRibbonController } from "./DrawingToolbarRibbonController";
 import { transitionOrientationDimensions,
   type OrientationDimensionOverrides, type OrientationDimensionSignatures,
 } from "./DrawingOrientationDimensionState";
@@ -340,6 +341,7 @@ export class GeneralPdfController {
   private orientationChangeInProgress = false;
   private readonly orientationQueue = new DrawingViewOrientationQueue();
   private readonly viewOrientationPanel: HTMLDivElement;
+  private readonly drawingRibbon: DrawingToolbarRibbonController;
   private projectionButton: HTMLButtonElement | null = null;
   private pendingProjection: {
     readonly sheetId: string;
@@ -413,6 +415,7 @@ export class GeneralPdfController {
     };
 
     this.viewOrientationPanel = this.createViewOrientationPanel();
+    this.drawingRibbon = new DrawingToolbarRibbonController(this.workspace.overlay, this.viewOrientationPanel);
     this.workspace.svg.addEventListener("pointerdown", this.onSheetBomPointerDown, true);
     this.workspace.svg.addEventListener("pointermove", this.onSheetBomPointerMove, true);
     this.workspace.svg.addEventListener("pointerup", this.onSheetBomPointerUp, true);
