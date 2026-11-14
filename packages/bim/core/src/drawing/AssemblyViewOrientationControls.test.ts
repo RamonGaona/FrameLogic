@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveAssemblyViewBasis } from "./AssemblyViewOrientationControls";
+import { ASSEMBLY_VIEW_ORIENTATION_OPTIONS, resolveAssemblyViewBasis, type AssemblyViewOrientationMode } from "./AssemblyViewOrientationControls";
 
 const rotatedBeam = (angleDegrees: number, length = 10) => {
   const a = angleDegrees * Math.PI / 180;
@@ -94,6 +94,60 @@ describe("PDF View local/global orientations", () => {
     }
     expect(points).toEqual(rotatedBeam(27));
   });
+
+  it("offers all six own orthographic views, local isometric and only three world views", () => {
+    expect(ASSEMBLY_VIEW_ORIENTATION_OPTIONS).toEqual([
+      ["CURRENT", "Actual / WorkPlane original"],
+      ["LONGITUDINAL", "Alzado · eje propio"],
+      ["LOCAL_REAR", "Posterior · eje propio"],
+      ["LOCAL_TOP", "Planta · eje propio"],
+      ["LOCAL_BOTTOM", "Inferior · eje propio"],
+      ["LOCAL_END", "Extremo · eje propio"],
+      ["LOCAL_END_OPPOSITE", "Extremo opuesto · eje propio"],
+      ["LOCAL_ISO", "Isométrica · eje propio"],
+      ["WORLD_FRONT", "Alzado · ejes globales"],
+      ["WORLD_TOP", "Planta · ejes globales"],
+      ["WORLD_ISO", "Isométrica · ejes globales"],
+    ]);
+  });
+
+  it.each([
+    ["LONGITUDINAL", "LOCAL_REAR", "yAxis"],
+    ["LOCAL_TOP", "LOCAL_BOTTOM", "xAxis"],
+    ["LOCAL_END", "LOCAL_END_OPPOSITE", "yAxis"],
+  ] as const)("projects %s and its opposite %s from opposite sides", (frontMode, rearMode, stableAxis) => {
+    const points = rotatedBeam(31);
+    const front = resolveAssemblyViewBasis(frontMode, points)!;
+    const rear = resolveAssemblyViewBasis(rearMode, points)!;
+    expect(dot(front.normal, rear.normal)).toBeCloseTo(-1, 8);
+    expect(dot(front[stableAxis], rear[stableAxis])).toBeCloseTo(1, 8);
+    for (const basis of [front, rear]) {
+      expect(dot(basis.xAxis, basis.yAxis)).toBeCloseTo(0, 8);
+      expect(dot(basis.xAxis, basis.normal)).toBeCloseTo(0, 8);
+      expect(dot(basis.yAxis, basis.normal)).toBeCloseTo(0, 8);
+      expect(dot(cross(basis.xAxis, basis.yAxis), basis.normal)).toBeCloseTo(1, 8);
+    }
+    const asymmetric = { x: 4, y: 2, z: 3 };
+    expect(dot(asymmetric, front.normal)).toBeCloseTo(-dot(asymmetric, rear.normal), 8);
+    expect(points).toEqual(rotatedBeam(31));
+  });
+
+  it("changes repeatedly between rotated assembly own axes and world axes without touching geometry", () => {
+    const points = rotatedBeam(27, 12);
+    const original = JSON.stringify(points);
+    const modes: AssemblyViewOrientationMode[] = [
+      "LONGITUDINAL", "LOCAL_REAR", "LOCAL_TOP", "LOCAL_BOTTOM",
+      "LOCAL_END", "LOCAL_END_OPPOSITE", "LOCAL_ISO",
+      "WORLD_FRONT", "WORLD_TOP", "WORLD_ISO", "LOCAL_TOP", "LOCAL_REAR",
+    ];
+    const frames = modes.map((mode) => resolveAssemblyViewBasis(mode, points));
+    expect(frames.every(Boolean)).toBe(true);
+    expect(frames[2]).toEqual(frames[10]);
+    expect(frames[1]).toEqual(frames[11]);
+    expect(frames[2]).not.toEqual(frames[8]);
+    expect(JSON.stringify(points)).toEqual(original);
+  });
+
   it("keeps world orthographic presets independent of local geometry and rejects undefined own axis", () => {
     const front = resolveAssemblyViewBasis("WORLD_FRONT", []);
     const top = resolveAssemblyViewBasis("WORLD_TOP", []);
