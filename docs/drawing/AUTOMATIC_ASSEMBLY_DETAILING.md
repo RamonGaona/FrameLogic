@@ -28,6 +28,23 @@ permiten asumir interoperabilidad inmediata ni eliminar obligaciones de
 redistribución. En esta etapa no se añade una dependencia nueva ni se copia
 código de FreeCAD, OCCT o los productos comerciales.
 
+## v0.1.150 — Dirección propia sin ajuste a eje global
+
+Se corrigió un defecto introducido en la v0.1.149: al seleccionar
+«Planta · eje propio» con una viga inclinada menos de 8° respecto a
+un eje global, el estimador era redondeado a XYZ y la vista quedaba
+tan torcida como «Planta · ejes globales». El selector ya usa la
+dirección longitudinal PCA completa y sin redondeo para TODAS las
+orientaciones propias; la proyección global conserva su comportamiento
+intencional. No existe transformación del modelo 3D ni alteración de
+geometría física: solo se modifica el sistema de observación de la View.
+
+El test `AssemblyViewOrientationControls.test.ts` contrasta la
+proyección vertical de un perfil ligeramente girado entre las dos
+opciones, incluyendo una placa de anclaje no simétrica. La base
+de dibujo sigue siendo provisional cuando se infiere de mallas y
+necesita validación visual para ensambles reales.
+
 ## v0.1.149 — Cambiar el tipo de vista y alinear el ensamble
 
 La ruta **Enviar a PDF** usaba la orientación del `CadWorkPlaneState`
@@ -37,8 +54,9 @@ automática, no tipo de vista.
 
 Ahora la View nueva utiliza de forma predeterminada **Alzado · eje propio**
 si el estimador longitudinal de FrameLogic reconoce un eje dominante. Para
-miembros casi paralelos a ejes XYZ se evita una pequeña inclinación espuria
-debida a muestras de placas o diferencias de bounding boxes. Si el eje no es
+las vistas propias se conserva la orientación longitudinal exacta propuesta
+por PCA sin redondearla a XYZ, incluso si se desvía pocos grados; las vistas
+globales conservan sus ejes fijos. Si el eje no es
 fiable, se usa **Alzado · ejes globales** y no se atribuye un eje propio.
 
 En **PDF / Paper Space**, usa el panel superior derecho **VIEW seleccionada**:
