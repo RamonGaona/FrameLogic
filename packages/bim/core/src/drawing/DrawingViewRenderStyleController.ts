@@ -537,7 +537,8 @@ export class DrawingViewRenderStyleController {
     exactAssemblyOcclusion = false,
   ): void {
     for (const line of Array.from(this.workspace.svg.querySelectorAll<SVGLineElement>("line"))) {
-      if (line.hasAttribute("data-annotation-id")) continue;
+      if (line.hasAttribute("data-annotation-id")
+        || line.dataset["framelogicBomLine"] === "true") continue;
       const owner = line.dataset["framelogicAssemblyViewLine"];
       if (owner && owner !== viewId) continue;
       if (!owner) {

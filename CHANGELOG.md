@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.154 — 2026-11-13
+
+### BOM independiente por hoja PDF, con ensambles y subensambles
+
+- **BOM POR HOJA PDF** en el árbol VIEWS: seleccionar ensamble o subensamble de origen, elegir "Con subensambles" (jerarquía) o "Solo piezas agrupadas" y utilizar "Insertar BOM", "Actualizar BOM" o "Eliminar BOM".
+- **Tabla editable por PDF:** una tabla BOM vectorial puede añadirse a la hoja abierta, desplazarse desde su cabecera y redimensionarse desde la esquina inferior derecha, conservando el cajetín y sin tapar otras Views. La tabla se exporta con el mismo PDF.
+- **Jerarquía real:** desglosa el ensamble elegido, sus subensambles multinivel y las piezas directamente contenidas en cada nivel. En modo plano agrupa las piezas por definición de todo el subárbol y evita contar dos veces la misma instancia.
+- **Datos verificables:** marca/código de pieza, nombre, cantidad, material, grado y masa solo cuando figuren en el modelo de ingeniería; no se inventan masas ni materiales ni se suman elementos de ensambles ajenos.
+- **Aislamiento:** quitar o insertar BOM afecta únicamente a la hoja seleccionada; no borra piezas, ensambles, Views, cotas ni tablas de otros PDFs. También permite ocultar en una hoja el listado automático anterior.
+- **Persistencia del proyecto:** configuración opcional `bomTable` almacenada por `DrawingProduction.sheets[]` con identificador de ensamble, vista origen, modo y posición/dimensiones. Se mantiene la compatibilidad de snapshots v1 y se actualiza el contenido a partir del modelo sin duplicar registros.
+- **Manejo de espacio y BOM completa:** se impide insertar una tabla donde no existe un rectángulo libre; las filas que no caben se indican explícitamente. El botón **Crear hojas BOM completas** genera hojas PDF adicionales con paginación de todas las piezas y subensambles (40 filas aprox. por hoja), enlazadas al origen e individualmente removibles, sin omitir entradas.
+- **Pruebas:** jerarquía multinivel, ausencia de duplicados, cantidades, falta de datos, pertenencia al ensamble y selección de espacio libre.
+
+**Alcance:** lista técnica preliminar, no lista certificada de compra ni despiece verificado de fabricación. La tabla no altera el modelo ni la geometría.
+
+---
+
 ## v0.1.153 — 2026-11-13
 
 ### Escala individual visible y editable en cada View de Paper Space

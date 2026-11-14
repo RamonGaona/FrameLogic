@@ -209,6 +209,10 @@ export interface RevisionState {
 
 export interface SheetState {
   readonly ownerSectionId: string;
+  /** Optional user-inserted BOM table; independent for every PDF sheet. */
+  bomTable?: import("./SheetAssemblyBom").SheetBomPlacement;
+  /** Explicitly hide legacy automatically generated indexes in just this PDF. */
+  hideAutomaticBom?: boolean;
   size: SheetSize;
   orientation: SheetOrientation;
   scaleDenominator: number | null;

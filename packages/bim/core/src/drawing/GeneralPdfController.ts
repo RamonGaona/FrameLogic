@@ -25,6 +25,12 @@ import {
   type WorkshopDimensionOverride,
 } from "./WorkshopDimensionLayout";
 import { buildAssemblyBom, renderAssemblyBomRow, type AssemblyBomRow } from "./AssemblyBomPlanner";
+import {
+  buildSheetAssemblyBom, chooseSheetBomPlacement, sheetBomOverlaps,
+  planSheetBomPages,
+  type SheetBomAssembly, type SheetBomPiece, type SheetBomPlacement,
+  type SheetBomMode, type SheetBomResult, type SheetBomRect,
+} from "./SheetAssemblyBom";
 
 import type {
   DesignModel,
@@ -165,6 +171,8 @@ interface GeneralSheetRuntime extends Omit<SheetState, "views"> {
   /** The BOM sheet is independent of any single view and paginates large assemblies. */
   bomEntries?: AssemblyBomRow[];
   bomAssemblyId?: string;
+  /** Hide generated index on one sheet when the user explicitly removes its BOM. */
+  hideAutomaticBom?: boolean;
   id?: string;
   name?: string;
   readonly views: GeneralSheetViewRuntime[];
@@ -306,6 +314,17 @@ export class GeneralPdfController {
   private projectionToken = 0;
   private projectionInProgress = false;
   private projectionRefreshInProgress = false;
+  private activeBomDrag: {
+    readonly sheetId: string;
+    readonly pointerId: number;
+    readonly startX: number;
+    readonly startY: number;
+    readonly originalX: number;
+    readonly originalY: number;
+    readonly originalWidth: number;
+    readonly originalHeight: number;
+    readonly action: "MOVE" | "RESIZE";
+  } | null = null;
   private dimensionDrag: {
     readonly viewId: string;
     readonly key: string;
@@ -338,6 +357,10 @@ export class GeneralPdfController {
     };
 
     this.viewOrientationPanel = this.createViewOrientationPanel();
+    this.workspace.svg.addEventListener("pointerdown", this.onSheetBomPointerDown, true);
+    this.workspace.svg.addEventListener("pointermove", this.onSheetBomPointerMove, true);
+    this.workspace.svg.addEventListener("pointerup", this.onSheetBomPointerUp, true);
+    this.workspace.svg.addEventListener("pointercancel", this.onSheetBomPointerUp, true);
     this.workspace.svg.addEventListener("pointerdown", this.onSelectPdfView, true);
     this.workspace.overlay.addEventListener("pointermove", this.onProjectViewPointerMove, true);
     this.workspace.overlay.addEventListener("pointerdown", this.onProjectViewPointerDown, true);
@@ -368,6 +391,10 @@ export class GeneralPdfController {
     if (this.disposed) return;
     this.disposed = true;
     window.clearInterval(this.timer);
+    this.workspace.svg.removeEventListener("pointerdown", this.onSheetBomPointerDown, true);
+    this.workspace.svg.removeEventListener("pointermove", this.onSheetBomPointerMove, true);
+    this.workspace.svg.removeEventListener("pointerup", this.onSheetBomPointerUp, true);
+    this.workspace.svg.removeEventListener("pointercancel", this.onSheetBomPointerUp, true);
     this.workspace.svg.removeEventListener("pointerdown", this.onSelectPdfView, true);
     this.workspace.overlay.removeEventListener("pointermove", this.onProjectViewPointerMove, true);
     this.workspace.overlay.removeEventListener("pointerdown", this.onProjectViewPointerDown, true);
@@ -1894,8 +1921,9 @@ export class GeneralPdfController {
 
     if (!hasSectionView) {
       this.renderGenericTitleBlock(sheet);
-      this.renderAutomaticPartIndex(sheet);
+      if (!sheet.hideAutomaticBom && !sheet.bomTable) this.renderAutomaticPartIndex(sheet);
     }
+    if (sheet.bomTable) this.renderInsertedBomTable(sheet);
     this.updateViewOrientationPanel(sheet);
     this.decorateViewTree();
     this.drawProjectedViewPreview();
@@ -2441,6 +2469,173 @@ export class GeneralPdfController {
     }
   }
 
+  /** Read a model-driven BOM, scoped to the selected assembly or an exact View.
+   * A synthetic one-piece/selection assembly is never promoted to the whole project.
+   */
+  private getSheetBomRows(sheet: GeneralSheetRuntime): SheetBomResult | null {
+    const selection = sheet.bomTable;
+    if (!selection) return null;
+    const source = (selection.sourceViewId
+      ? [...this.production.sheets.values()].flatMap((page) => page.views)
+        .find((view) => view.id === selection.sourceViewId && this.isAssemblyView(view))
+      : undefined);
+    const root = this.designModel.assemblies.get(selection.rootAssemblyId);
+    const isModelSummary = selection.rootAssemblyId === "model:all";
+    const assemblies: SheetBomAssembly[] = root
+      ? this.designModel.assemblies.getAll().map((assembly) => ({
+          id: assembly.id, name: assembly.name,
+          parentAssemblyId: assembly.parentAssemblyId,
+          pieceInstanceIds: assembly.pieceInstanceIds,
+        }))
+      : isModelSummary
+        ? [{ id: "model:all", name: "Piezas del modelo",
+          pieceInstanceIds: this.designModel.pieceInstances.getAll().map((p) => p.id) }]
+        : source && this.isAssemblyView(source) && source.assemblyId === selection.rootAssemblyId
+          ? [{
+              id: selection.rootAssemblyId, name: source.assemblyName,
+              pieceInstanceIds: source.instanceIds,
+            }] : [];
+    if (!assemblies.length) {
+      return { rows: [], totalPieces: 0, missingPieces: [], rootFound: false };
+    }
+    let partIds: readonly string[] = [];
+    try {
+      partIds = root
+        ? this.designModel.getAssemblyPieceIdsDeep(root.id)
+        : isModelSummary
+          ? this.designModel.pieceInstances.getAll().map((p) => p.id)
+          : source && this.isAssemblyView(source) ? source.instanceIds : [];
+    } catch {
+      // A malformed legacy cycle must never take down Paper Space / PDF.
+      return { rows: [], totalPieces: 0, missingPieces: [], rootFound: false };
+    }
+    const parts: Record<string, SheetBomPiece> = {};
+    const marks = { ...(sheet.pieceMarks ?? {}) };
+    for (const instanceId of partIds) {
+      const part = this.designModel.pieceInstances.get(instanceId);
+      if (!part) continue;
+      const definition = this.designModel.pieceDefinitions.get(part.definitionId);
+      const engineering = this.engineeringModel.pieces.get(part.definitionId);
+      const label = definition?.name?.trim()
+        || definition?.code?.trim()
+        || part.name?.trim()
+        || "Pieza sin nombre";
+      // Preserve actual definition codes where no manual/automatic shop mark is assigned.
+      if (!marks[part.definitionId] && definition?.code?.trim()) {
+        marks[part.definitionId] = definition.code.trim();
+      }
+      parts[part.id] = {
+        id: part.id, definitionId: part.definitionId, label,
+        material: engineering?.material?.name, grade: engineering?.material?.grade,
+        unitMassKg: engineering?.physical?.massKg,
+      };
+    }
+    try {
+      return buildSheetAssemblyBom(
+        selection.rootAssemblyId, assemblies, parts, marks, selection.mode);
+    } catch {
+      return { rows: [], totalPieces: 0, missingPieces: [], rootFound: false };
+    }
+  }
+
+  private renderInsertedBomTable(sheet: GeneralSheetRuntime): void {
+    const table = sheet.bomTable;
+    if (!table) return;
+    const result = this.getSheetBomRows(sheet);
+    const { x, y, width, height } = table;
+    if (![x, y, width, height].every(Number.isFinite)
+      || width < 320 || height < 110) return;
+    const root = this.designModel.assemblies.get(table.rootAssemblyId);
+    const source = [...this.production.sheets.values()].flatMap((page) => page.views)
+      .find((view) => view.id === table.sourceViewId && this.isAssemblyView(view));
+    const title = root?.name
+      ?? (source && this.isAssemblyView(source) ? source.assemblyName : undefined)
+      ?? (table.rootAssemblyId === "model:all" ? "Piezas del modelo" : undefined)
+      ?? sheet.titleBlock.drawingTitle;
+    const drawLine = (x1: number, y1: number, x2: number, y2: number): void => {
+      this.appendLine(x1, y1, x2, y2);
+      const element = this.workspace.svg.lastElementChild;
+      if (element instanceof SVGElement) element.dataset["framelogicBomLine"] = "true";
+    };
+    const drawText = (tx: number, ty: number, text: string,
+      size = 8, color = "#222"): void => {
+      const element = this.appendText(tx, ty, text, size, color);
+      element.dataset["framelogicBomText"] = "true";
+    };
+    this.appendRect(x, y, width, height, "#ffffff", "#1a252d", 0.95);
+    drawText(x + 9, y + 15,
+      `BOM · ${String(title ?? "ENSAMBLE").slice(0, 48)} · ${table.mode === "FLAT" ? "PIEZAS" : "JERÁRQUICA"}`,
+      10, "#111");
+    if (result) drawText(x + width - 140, y + 15,
+      `${result.totalPieces} piezas`, 8, "#333");
+    drawLine(x, y + 23, x + width, y + 23);
+    const c = [0.02, 0.10, 0.23, 0.65, 0.73, 0.90].map((v) => x + v * width);
+    drawText(c[0]!, y + 35, "ÍTEM", 8, "#111");
+    drawText(c[1]!, y + 35, "MARCA", 8, "#111");
+    drawText(c[2]!, y + 35, "DESCRIPCIÓN / SUBENSAMBLE", 8, "#111");
+    drawText(c[3]!, y + 35, "CANT.", 8, "#111");
+    drawText(c[4]!, y + 35, "MATERIAL", 8, "#111");
+    drawText(c[5]!, y + 35, "MASA kg", 8, "#111");
+    drawLine(x, y + 40, x + width, y + 40);
+    const lineHeight = 12.5;
+    const available = Math.max(0, Math.floor((height - 60) / lineHeight));
+    const rows = result?.rows ?? [];
+    const pageStart = Math.max(0, Math.trunc(table.pageStart ?? 0));
+    const pageRows = rows.slice(pageStart);
+    for (let i = 0; i < Math.min(available, pageRows.length); i++) {
+      const item = pageRows[i]!;
+      const baseline = y + 53 + i * lineHeight;
+      if (baseline > y + height - 10) break;
+      const indent = "  ".repeat(Math.min(4, item.depth));
+      const label = item.kind === "ASSEMBLY"
+        ? `${indent}[E] ${item.label}` : `${indent}${item.label}`;
+      const material = [item.material, item.grade].filter(Boolean).join(" ");
+      drawText(c[0]!, baseline, String(pageStart + i + 1), 7.8);
+      drawText(c[1]!, baseline, item.mark.slice(0, 10), 7.8);
+      drawText(c[2]!, baseline, label.slice(0, Math.max(10, Math.floor(width * 0.40 / 4.7))), 7.8);
+      drawText(c[3]!, baseline, String(item.quantity), 7.8);
+      drawText(c[4]!, baseline, (material || "Sin dato").slice(0, 18), 7.5);
+      drawText(c[5]!, baseline,
+        item.totalMassKg === undefined ? "—" : item.totalMassKg.toFixed(2), 7.8);
+      drawLine(x + 5, baseline + 3.5, x + width - 5, baseline + 3.5);
+    }
+    drawLine(x, y + height - 14, x + width, y + height - 14);
+    const missing = result?.missingPieces.length ?? 0;
+    const extra = Math.max(0, rows.length - (pageStart + available));
+    const foot = !result?.rootFound
+      ? "BOM sin origen válido: selecciona otro ensamble en VIEWS"
+      : table.pageCount && table.pageCount > 1
+        ? `HOJA BOM ${table.pageIndex ?? 1}/${table.pageCount} · ${Math.min(available, pageRows.length)} filas · ${result.totalPieces} piezas`
+        : extra > 0
+          ? `MOSTRANDO ${Math.min(available, pageRows.length)}/${rows.length} filas · ${extra} sin espacio. Amplía o crea hojas BOM.`
+          : missing > 0
+            ? `AVISO: faltan ${missing} instancias de pieza en el modelo.`
+            : "Valores de material y masa: solo datos declarados en ingeniería.";
+    drawText(x + 8, y + height - 4, foot.slice(0, 105), 7, extra || missing ? "#942b1f" : "#666");
+    const move = document.createElementNS(SVG_NS, "rect");
+    move.setAttribute("x", String(x));
+    move.setAttribute("y", String(y));
+    move.setAttribute("width", String(width));
+    move.setAttribute("height", "21");
+    move.setAttribute("fill", "transparent");
+    move.setAttribute("stroke", "none");
+    move.setAttribute("data-framelogic-bom-action", "MOVE");
+    move.setAttribute("data-framelogic-view-action", "BOM_MOVE");
+    move.style.cursor = "move";
+    this.workspace.svg.append(move);
+    const resize = document.createElementNS(SVG_NS, "rect");
+    resize.setAttribute("x", String(x + width - 11));
+    resize.setAttribute("y", String(y + height - 11));
+    resize.setAttribute("width", "11");
+    resize.setAttribute("height", "11");
+    resize.setAttribute("fill", "#66869b");
+    resize.setAttribute("stroke", "none");
+    resize.setAttribute("data-framelogic-bom-action", "RESIZE");
+    resize.setAttribute("data-framelogic-view-action", "BOM_RESIZE");
+    resize.style.cursor = "nwse-resize";
+    this.workspace.svg.append(resize);
+  }
+
   /** Compact marks/quantities summary, not a certified material takeoff. */
   private renderAutomaticPartIndex(sheet: GeneralSheetRuntime): void {
     if (sheet.bomEntries?.length) {
@@ -2664,6 +2859,7 @@ export class GeneralPdfController {
       ? this.production.sheets.get(sheetId)
       : undefined;
     const tree = this.ensureViewTreePanel();
+    this.syncSheetBomToolbar(sheet ?? null);
     const regenerate = tree.parentElement?.querySelector<HTMLButtonElement>(
       '[data-framelogic-regenerate-assembly="true"]');
     if (regenerate) {
@@ -2683,6 +2879,8 @@ export class GeneralPdfController {
       ? [
           sheetId,
           this.sheetName(sheetId ?? "", sheet),
+          sheet.bomTable
+            ? `BOM:${sheet.bomTable.rootAssemblyId}:${sheet.bomTable.mode}` : "NO_BOM",
           ...sheet.views.map((view, index) =>
             this.isAssemblyView(view)
               ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`
@@ -2777,6 +2975,307 @@ export class GeneralPdfController {
     });
   }
 
+  private sheetBomSourceOptions(sheet: GeneralSheetRuntime): Array<{
+    readonly value: string; readonly rootAssemblyId: string;
+    readonly sourceViewId: string; readonly label: string;
+  }> {
+    const result: Array<{
+      value: string; rootAssemblyId: string; sourceViewId: string; label: string;
+    }> = [];
+    const seen = new Set<string>();
+    const seenRootViews = new Set<string>();
+    const push = (sourceViewId: string, rootAssemblyId: string, label: string): void => {
+      const value = sourceViewId + "|" + rootAssemblyId;
+      if (seen.has(value)) return;
+      seen.add(value);
+      result.push({ value, rootAssemblyId, sourceViewId, label });
+    };
+    for (const [index, view] of sheet.views.entries()) {
+      if (!this.isAssemblyView(view) || view.automaticSupplement) continue;
+      // Repeated orthographic/projected Views of one assembly represent the same
+      // physical BOM scope. Show it once instead of a 4x duplicated menu.
+      if (seenRootViews.has(view.assemblyId)) continue;
+      seenRootViews.add(view.assemblyId);
+      const root = this.designModel.assemblies.get(view.assemblyId);
+      if (root) {
+        push(view.id, root.id, `View ${index + 1} · ${root.name}`);
+        try {
+          for (const id of this.designModel.getAssemblyDescendantIds(root.id)) {
+            const child = this.designModel.assemblies.get(id);
+            if (child) push(view.id, child.id, `  ↳ ${child.name}`);
+          }
+        } catch {
+          // Keep the root selectable; invalid legacy hierarchy requires repair.
+        }
+      } else if (view.instanceIds.length) {
+        push(view.id, view.assemblyId, `View ${index + 1} · ${view.assemblyName}`);
+      }
+    }
+    // On pure section/blank PDF sheets, the user can explicitly select a
+    // project assembly as the BOM source. No automatic global inclusion.
+    if (!result.length) {
+      for (const assembly of this.designModel.assemblies.getAll()) {
+        push("", assembly.id, `Ensamble · ${assembly.name}`);
+      }
+      if (!result.length && this.designModel.pieceInstances.getAll().length) {
+        push("", "model:all", "Piezas del modelo (sin ensamble)");
+      }
+    }
+    return result;
+  }
+
+  private syncSheetBomToolbar(sheet: GeneralSheetRuntime | null): void {
+    const controls = this.workspace.overlay.querySelector<HTMLDivElement>(
+      '[data-framelogic-sheet-bom-controls="true"]');
+    if (!controls) return;
+    controls.style.display = sheet ? "flex" : "none";
+    if (!sheet) return;
+    const sourceSelect = controls.querySelector<HTMLSelectElement>(
+      '[data-framelogic-bom-source="true"]')!;
+    const modeSelect = controls.querySelector<HTMLSelectElement>(
+      '[data-framelogic-bom-mode="true"]')!;
+    const insert = controls.querySelector<HTMLButtonElement>(
+      '[data-framelogic-insert-bom="true"]')!;
+    const remove = controls.querySelector<HTMLButtonElement>(
+      '[data-framelogic-remove-bom="true"]')!;
+    const sources = this.sheetBomSourceOptions(sheet);
+    const signature = sources.map((v) => v.value + ":" + v.label).join(";");
+    if (sourceSelect.dataset["bomSources"] !== signature) {
+      const previous = sourceSelect.value;
+      sourceSelect.dataset["bomSources"] = signature;
+      sourceSelect.replaceChildren();
+      for (const entry of sources) {
+        const option = document.createElement("option");
+        option.value = entry.value;
+        option.textContent = entry.label;
+        sourceSelect.append(option);
+      }
+      if (sources.some((v) => v.value === previous)) sourceSelect.value = previous;
+    }
+    const sheetKey = this.getActiveSheetId() ?? "";
+    if (controls.dataset["framelogicBomSheet"] !== sheetKey) {
+      controls.dataset["framelogicBomSheet"] = sheetKey;
+      if (sheet.bomTable) {
+        const current = sheet.bomTable.sourceViewId + "|" + sheet.bomTable.rootAssemblyId;
+        if (sources.some((v) => v.value === current)) sourceSelect.value = current;
+        modeSelect.value = sheet.bomTable.mode;
+      } else {
+        modeSelect.value = "HIERARCHY";
+      }
+    }
+    insert.disabled = sources.length === 0;
+    insert.textContent = sheet.bomTable ? "Actualizar BOM" : "Insertar BOM";
+    const auto = !sheet.hideAutomaticBom
+      && (Boolean(sheet.bomEntries?.length) || sheet.views.some((view) =>
+        this.isAssemblyView(view) && Boolean(view.automaticViewCode)));
+    remove.disabled = !sheet.bomTable && !auto;
+    sourceSelect.disabled = sources.length === 0;
+  }
+
+  private insertOrUpdateSheetBom(): void {
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    if (!sheet) return;
+    const controls = this.workspace.overlay.querySelector<HTMLDivElement>(
+      '[data-framelogic-sheet-bom-controls="true"]');
+    if (!controls) return;
+    const selected = controls.querySelector<HTMLSelectElement>(
+      '[data-framelogic-bom-source="true"]')!.value;
+    const source = this.sheetBomSourceOptions(sheet).find((v) => v.value === selected);
+    if (!source) {
+      this.workspace.setStatus("BOM: selecciona un ensamble o una View que contenga piezas.");
+      return;
+    }
+    const mode = controls.querySelector<HTMLSelectElement>(
+      '[data-framelogic-bom-mode="true"]')!.value === "FLAT" ? "FLAT" : "HIERARCHY";
+    const previous = sheet.bomTable;
+    sheet.bomTable = {
+      rootAssemblyId: source.rootAssemblyId,
+      sourceViewId: source.sourceViewId,
+      mode,
+      x: previous?.x ?? 0, y: previous?.y ?? 0,
+      width: previous?.width ?? 648, height: previous?.height ?? 152,
+    };
+    const result = this.getSheetBomRows(sheet);
+    if (!result?.rootFound) {
+      sheet.bomTable = previous;
+      this.workspace.setStatus("BOM: el origen ya no existe. No se insertó ninguna tabla.");
+      return;
+    }
+    if (!previous) {
+      const placement = chooseSheetBomPlacement(
+        this.sheetBomObstacles(sheet), result.rows.length);
+      if (!placement) {
+        sheet.bomTable = undefined;
+        this.workspace.setStatus("BOM: no hay espacio libre en esta hoja. "
+          + "Mueve o redimensiona las Views antes de insertar la tabla.");
+        return;
+      }
+      Object.assign(sheet.bomTable, placement);
+    }
+    sheet.hideAutomaticBom = false;
+    this.lastTreeSignature = "";
+    this.workspace.render();
+    this.workspace.setStatus(
+      `BOM ${previous ? "actualizada" : "insertada"} solo en este PDF · `
+      + `${result.totalPieces} piezas · ${result.rows.length} filas. `
+      + "Puedes arrastrar la cabecera de la tabla, ampliarla desde su esquina o quitarla con «Eliminar BOM».",
+    );
+  }
+
+  /** A crowded assembly drawing cannot hold a 40-row material list.
+   * Create full BOM PDF sheets with every row, without silently truncating it.
+   * The normal inline BOM on the source sheet remains independently removable.
+   */
+  private createFullSheetBomPages(): void {
+    const sourceSheetId = this.getActiveSheetId();
+    const sourceSheet = sourceSheetId ? this.production.sheets.get(sourceSheetId) : null;
+    if (!sourceSheetId || !sourceSheet) return;
+    const controls = this.workspace.overlay.querySelector<HTMLDivElement>(
+      '[data-framelogic-sheet-bom-controls="true"]');
+    const value = controls?.querySelector<HTMLSelectElement>(
+      '[data-framelogic-bom-source="true"]')?.value;
+    const chosen = this.sheetBomSourceOptions(sourceSheet).find((s) => s.value === value);
+    if (!chosen) {
+      this.workspace.setStatus("BOM COMPLETA: selecciona el ensamble de origen.");
+      return;
+    }
+    const mode: SheetBomMode = controls?.querySelector<HTMLSelectElement>(
+      '[data-framelogic-bom-mode="true"]')?.value === "FLAT" ? "FLAT" : "HIERARCHY";
+    const previous = sourceSheet.bomTable;
+    sourceSheet.bomTable = {
+      rootAssemblyId: chosen.rootAssemblyId, sourceViewId: chosen.sourceViewId,
+      mode, x: 55, y: 52, width: 1020, height: 565,
+    };
+    let rows: SheetBomResult | null = null;
+    try { rows = this.getSheetBomRows(sourceSheet); }
+    finally { sourceSheet.bomTable = previous; }
+    if (!rows?.rootFound || !rows.rows.length) {
+      this.workspace.setStatus("BOM COMPLETA: el ensamble no contiene piezas o su origen no es válido.");
+      return;
+    }
+    const existing = [...this.production.sheets.entries()].find(([, page]) =>
+      page.bomTable?.generatedFromSheetId === sourceSheetId
+      && page.bomTable.rootAssemblyId === chosen.rootAssemblyId
+      && page.bomTable.mode === mode);
+    if (existing) {
+      this.openSheet(existing[0]);
+      this.workspace.setStatus("Ya existen hojas BOM completas para este origen. "
+        + "Ábrelas desde la lista de PDFs; ninguna hoja se duplicó.");
+      return;
+    }
+    const pages = planSheetBomPages(rows.rows.length);
+    const created: string[] = [];
+    const name = this.designModel.assemblies.get(chosen.rootAssemblyId)?.name
+      ?? sourceSheet.titleBlock.drawingTitle
+      ?? "Ensamble";
+    for (const page of pages) {
+      const id = crypto.randomUUID();
+      const sheet = this.createEmptySheet(id,
+        `BOM completa · ${name} · ${page.index}/${page.totalPages}`);
+      sheet.titleBlock.drawingTitle = "BOM · " + name;
+      sheet.titleBlock.drawingNumber = `B-${chosen.rootAssemblyId.slice(0, 8)}-${page.index}`;
+      sheet.bomTable = {
+        rootAssemblyId: chosen.rootAssemblyId,
+        sourceViewId: chosen.sourceViewId,
+        mode, x: 55, y: 52, width: 1020, height: 565,
+        pageStart: page.start,
+        pageIndex: page.index,
+        pageCount: page.totalPages,
+        generatedFromSheetId: sourceSheetId,
+      };
+      sheet.hideAutomaticBom = true;
+      sheet.pieceMarks = { ...(sourceSheet.pieceMarks ?? {}) };
+      this.production.sheets.set(id, sheet);
+      created.push(id);
+    }
+    this.lastTreeSignature = "";
+    if (created[0]) this.openSheet(created[0]);
+    this.workspace.setStatus(
+      `BOM COMPLETA: ${rows.rows.length} filas en ${pages.length} hoja(s) PDF, `
+      + "sin omitir entradas. Puedes eliminar la tabla de cualquier hoja de forma independiente.",
+    );
+  }
+
+  private removeSheetBom(): void {
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    if (!sheet || (!sheet.bomTable && sheet.hideAutomaticBom)) return;
+    delete sheet.bomTable;
+    sheet.hideAutomaticBom = true;
+    this.lastTreeSignature = "";
+    this.workspace.render();
+    this.workspace.setStatus("BOM eliminada únicamente de este PDF. "
+      + "No se borraron piezas, ensambles, cotas ni otras hojas.");
+  }
+
+  private sheetBomObstacles(sheet: GeneralSheetRuntime): SheetBomRect[] {
+    const occupied = sheet.views.map((view, index) => {
+      const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
+      return { x: layout.x, y: layout.y, width: layout.width, height: layout.height };
+    });
+    // The title block exists on both assembly and SECTION sheets.
+    occupied.push({ x: 728, y: 650, width: 360, height: 112 });
+    return occupied;
+  }
+
+  private readonly onSheetBomPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) return;
+    const target = event.target instanceof Element
+      ? event.target.closest<SVGElement>("[data-framelogic-bom-action]") : null;
+    if (!target) return;
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    const table = sheet?.bomTable;
+    const point = this.workspace.eventToSheetPoint(event);
+    if (!sheetId || !table || !point) return;
+    this.activeBomDrag = {
+      sheetId, pointerId: event.pointerId,
+      action: target.dataset["framelogicBomAction"] === "RESIZE" ? "RESIZE" : "MOVE",
+      startX: point.x, startY: point.y,
+      originalX: table.x, originalY: table.y,
+      originalWidth: table.width, originalHeight: table.height,
+    };
+    try { this.workspace.svg.setPointerCapture(event.pointerId); } catch { /* no capture */ }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private readonly onSheetBomPointerMove = (event: PointerEvent): void => {
+    const drag = this.activeBomDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const sheet = this.production.sheets.get(drag.sheetId);
+    if (!sheet || this.getActiveSheetId() !== drag.sheetId || !sheet.bomTable) {
+      this.activeBomDrag = null;
+      return;
+    }
+    const point = this.workspace.eventToSheetPoint(event);
+    if (!point) return;
+    const dx = point.x - drag.startX, dy = point.y - drag.startY;
+    const current = sheet.bomTable;
+    const proposal = drag.action === "MOVE"
+      ? { x: Math.min(1110 - current.width, Math.max(10, drag.originalX + dx)),
+          y: Math.min(782 - current.height, Math.max(10, drag.originalY + dy)),
+          width: current.width, height: current.height }
+      : { x: current.x, y: current.y,
+          width: Math.min(1100 - current.x, Math.max(400, drag.originalWidth + dx)),
+          height: Math.min(772 - current.y, Math.max(118, drag.originalHeight + dy)) };
+    if (this.sheetBomObstacles(sheet).some((item) =>
+      sheetBomOverlaps(proposal, item))) return;
+    Object.assign(current, proposal);
+    this.workspace.render();
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private readonly onSheetBomPointerUp = (event: PointerEvent): void => {
+    if (!this.activeBomDrag || this.activeBomDrag.pointerId !== event.pointerId) return;
+    this.activeBomDrag = null;
+    try { this.workspace.svg.releasePointerCapture(event.pointerId); } catch { /* no capture */ }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
   private ensureViewTreePanel(): HTMLDivElement {
     let panel = this.workspace.overlay.querySelector<HTMLDivElement>(
       'div[data-framelogic-pdf-view-tree="GENERAL"]',
@@ -2842,7 +3341,56 @@ export class GeneralPdfController {
         this.workspace.render();
         this.workspace.setStatus("COTAS STEP: posiciones restablecidas y etiquetas ocultas recuperadas.");
       });
-      panel.append(header, regenerate, resetDimensions, content);
+      const bomControls = document.createElement("div");
+      bomControls.dataset["framelogicSheetBomControls"] = "true";
+      bomControls.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:8px;"
+        + "border-top:1px solid #365361;border-bottom:1px solid #365361;";
+      const bomTitle = document.createElement("span");
+      bomTitle.textContent = "BOM POR HOJA PDF";
+      bomTitle.style.cssText = "color:#eaf2f7;font-size:10px;font-weight:bold;";
+      const bomSource = document.createElement("select");
+      bomSource.dataset["framelogicBomSource"] = "true";
+      bomSource.title = "Ensamble o subensamble para la lista de materiales de esta hoja";
+      const bomMode = document.createElement("select");
+      bomMode.dataset["framelogicBomMode"] = "true";
+      bomMode.title = "Mostrar jerarquía de ensambles o agrupar solo piezas";
+      for (const [value, title] of [["HIERARCHY", "Con subensambles"],
+        ["FLAT", "Solo piezas agrupadas"]] as const) {
+        const option = document.createElement("option");
+        option.value = value; option.textContent = title;
+        bomMode.append(option);
+      }
+      for (const select of [bomSource, bomMode]) {
+        select.style.cssText = "min-width:0;width:100%;background:#223641;color:#eef6fa;"
+          + "border:1px solid #547183;border-radius:3px;padding:4px;font:11px system-ui;";
+      }
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:flex;gap:5px;";
+      const insert = document.createElement("button");
+      insert.type = "button";
+      insert.textContent = "Insertar BOM";
+      insert.dataset["framelogicInsertBom"] = "true";
+      insert.style.cssText = "flex:1;background:#255a69;color:white;border:1px solid #6e9ab0;"
+        + "border-radius:4px;padding:5px;cursor:pointer;font:11px system-ui;";
+      insert.addEventListener("click", () => this.insertOrUpdateSheetBom());
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Eliminar BOM";
+      remove.dataset["framelogicRemoveBom"] = "true";
+      remove.style.cssText = "flex:1;background:#4b3034;color:white;border:1px solid #925c60;"
+        + "border-radius:4px;padding:5px;cursor:pointer;font:11px system-ui;";
+      remove.addEventListener("click", () => this.removeSheetBom());
+      actions.append(insert, remove);
+      const pages = document.createElement("button");
+      pages.type = "button";
+      pages.textContent = "Crear hojas BOM completas";
+      pages.dataset["framelogicFullBomPages"] = "true";
+      pages.title = "Genera PDFs adicionales con todas las filas si no caben en la tabla insertada";
+      pages.style.cssText = "padding:5px;background:#2c4655;color:#eaf6fa;"
+        + "border:1px solid #607e8d;border-radius:4px;cursor:pointer;font:11px system-ui;";
+      pages.addEventListener("click", () => this.createFullSheetBomPages());
+      bomControls.append(bomTitle, bomSource, bomMode, actions, pages);
+      panel.append(header, regenerate, resetDimensions, bomControls, content);
       this.workspace.overlay.append(panel);
     }
 
