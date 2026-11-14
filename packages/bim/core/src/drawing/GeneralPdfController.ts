@@ -157,6 +157,7 @@ interface AssemblySheetViewRuntime {
     centerX: number; centerY: number; radius: number;
     sourceSignature: string;
     sourceWorkPlane: WorkPlaneSnapshot;
+    fromSection?: boolean;
   };
   /** Relative projection from a piece/assembly parent view (not a physical STEP cut). */
   projectedDirection?: ProjectedViewDirection;
@@ -1840,8 +1841,9 @@ export class GeneralPdfController {
       label, centerX: circle.x, centerY: circle.y, radius: circle.radius,
       sourceSignature: this.detailSourceFingerprint(source),
       sourceWorkPlane: plane,
+      fromSection: !this.isAssemblyView(source),
     };
-    view.renderMode = source.renderMode;
+    view.renderMode = "renderMode" in source ? source.renderMode : undefined;
     view.geometrySignature = this.isAssemblyView(source) ? source.geometrySignature : undefined;
     view.assemblyOcclusionExact = this.isAssemblyView(source) ? source.assemblyOcclusionExact : false;
     view.resolved = true;
@@ -2571,6 +2573,10 @@ export class GeneralPdfController {
       }
     }
     if (view.circularDetail) {
+      if (view.automaticWarnings?.length) {
+        this.appendText(layout.x + 6, layout.y + layout.height - 23,
+          view.automaticWarnings[0]!.slice(0, 76), 8, "#8a241c");
+      }
       this.appendText(layout.x + 6, layout.y + 15,
         "DETALLE " + view.circularDetail.label + " — ESC "
           + formatDrawingViewScale(layout.scaleDenominator), 9, "#12567c");
