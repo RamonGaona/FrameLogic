@@ -307,7 +307,10 @@ export class DrawingExperienceController {
       active?.id ?? null,
     );
 
-    if (this.drawingSelect) {
+    // UnifiedPdfNavigationController is the sole owner of the PDF selector.
+    // The legacy section-only updater otherwise replaces its options every
+    // 300 ms, and the unified controller restores them 250 ms later (flicker).
+    if (this.drawingSelect && shouldSyncLegacyDrawingSelect(this.drawingSelect)) {
       this.syncSelect(
         this.drawingSelect,
         sections,
@@ -425,6 +428,7 @@ export class DrawingExperienceController {
 
   private readonly handleDrawingSelect =
     (): void => {
+      if (this.drawingSelect && !shouldSyncLegacyDrawingSelect(this.drawingSelect)) return;
       const id = this.drawingSelect?.value;
 
       if (!id || !this.activateSection(id)) {
@@ -653,4 +657,11 @@ export class DrawingExperienceController {
       value.toFixed(3),
     ).toString();
   }
+}
+
+/** Never let legacy section navigation overwrite the unified PDF dropdown. */
+export function shouldSyncLegacyDrawingSelect(
+  select: Pick<HTMLSelectElement, "dataset">,
+): boolean {
+  return select.dataset["framelogicUnifiedPdf"] !== "GENERAL_PDF";
 }
