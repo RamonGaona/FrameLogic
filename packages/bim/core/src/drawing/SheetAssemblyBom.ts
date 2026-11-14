@@ -220,3 +220,20 @@ export function chooseSheetBomPlacement(
   }
   return null;
 }
+
+/** Every BOM row must appear on exactly one complete-PDF page. */
+export function planSheetBomPages(
+  totalRows: number, height = 565, lineHeight = 12.5,
+): Array<{ start: number; count: number; index: number; totalPages: number }> {
+  if (!Number.isSafeInteger(totalRows) || totalRows < 0
+    || !Number.isFinite(height) || height <= 60
+    || !Number.isFinite(lineHeight) || lineHeight <= 0) return [];
+  if (totalRows === 0) return [];
+  const capacity = Math.max(1, Math.floor((height - 60) / lineHeight));
+  const totalPages = Math.ceil(totalRows / capacity);
+  return Array.from({ length: totalPages }, (_, index) => {
+    const start = index * capacity;
+    return { start, count: Math.min(capacity, totalRows - start),
+      index: index + 1, totalPages };
+  });
+}
