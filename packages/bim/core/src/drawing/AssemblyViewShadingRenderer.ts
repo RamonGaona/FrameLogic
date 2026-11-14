@@ -21,6 +21,8 @@ export interface ShadedAssemblyRequest {
   readonly pixelWidth: number;
   readonly pixelHeight: number;
   readonly monochrome: boolean;
+  /** Depth-tested mesh edges for mixed/mesh fallbacks lacking exact HLR. */
+  readonly rasterEdges: boolean;
 }
 
 export interface ShadedAssemblyImage {
@@ -66,6 +68,7 @@ export class AssemblyViewShadingRenderer {
     const key = [
       request.viewId, request.geometrySignature ?? "uncached",
       request.instanceIds.join(","), request.monochrome ? "mono" : "color",
+      request.rasterEdges ? "depthEdges" : "noEdges",
       pixelWidth, pixelHeight, request.modelWidth, request.modelHeight,
       request.offsetX, request.offsetY,
       ...Object.values(request.plane.origin), ...Object.values(request.plane.xAxis),
@@ -82,6 +85,7 @@ export class AssemblyViewShadingRenderer {
     scene.add(keyLight);
 
     const disposableMaterials: THREE.Material[] = [];
+    const disposableGeometries: THREE.BufferGeometry[] = [];
     let meshCount = 0;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
@@ -108,6 +112,9 @@ export class AssemblyViewShadingRenderer {
           side: THREE.DoubleSide,
           roughness: 0.82,
           metalness: 0.08,
+          polygonOffset: request.rasterEdges,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1,
         });
         disposableMaterials.push(material);
         const mesh = new THREE.Mesh(child.geometry, material);
@@ -116,6 +123,23 @@ export class AssemblyViewShadingRenderer {
         mesh.frustumCulled = false;
         scene.add(mesh);
         meshCount++;
+        if (request.rasterEdges) {
+          // Unlike the HLR mesh fallback, these edges obey the same depth
+          // buffer as the assembly faces: rear edges cannot cross front faces.
+          const edges = new THREE.EdgesGeometry(child.geometry, 30);
+          disposableGeometries.push(edges);
+          const edgeMaterial = new THREE.LineBasicMaterial({
+            color: "#1b252b", depthTest: true, depthWrite: false,
+            transparent: true, opacity: 0.88,
+          });
+          disposableMaterials.push(edgeMaterial);
+          const wire = new THREE.LineSegments(edges, edgeMaterial);
+          wire.matrixAutoUpdate = false;
+          wire.matrix.copy(child.matrixWorld);
+          wire.frustumCulled = false;
+          wire.renderOrder = 2;
+          scene.add(wire);
+        }
 
         // Bounding-box corners are conservative and sufficient to choose near/far.
         const box = new THREE.Box3().setFromObject(child);
@@ -178,6 +202,7 @@ export class AssemblyViewShadingRenderer {
       return null;
     } finally {
       for (const material of disposableMaterials) material.dispose();
+      for (const geometry of disposableGeometries) geometry.dispose();
       scene.clear();
     }
   }
