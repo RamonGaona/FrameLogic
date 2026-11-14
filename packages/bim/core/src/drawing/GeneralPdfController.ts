@@ -2027,7 +2027,7 @@ export class GeneralPdfController {
     const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
     const source = sheet?.views.find((view) => view.id === this.selectedAssemblyViewId);
     if (!sheetId || !sheet || !source || !this.isAssemblyView(source)
-      || source.automaticSupplement) {
+      || source.automaticSupplement || source.circularDetail) {
       this.workspace.setStatus("PROYECTAR: selecciona una View de pieza o ensamble (no un corte ni detalle).");
       return;
     }
@@ -2175,7 +2175,8 @@ export class GeneralPdfController {
     const sheet = this.production.sheets.get(pending.sheetId);
     const sourceIndex = sheet?.views.findIndex((v) => v.id === pending.sourceViewId) ?? -1;
     const source = sourceIndex < 0 ? null : sheet?.views[sourceIndex];
-    if (!sheet || !source || !this.isAssemblyView(source) || source.automaticSupplement) {
+    if (!sheet || !source || !this.isAssemblyView(source)
+      || source.automaticSupplement || source.circularDetail) {
       this.cancelProjectedView(true);
       return;
     }
@@ -2343,7 +2344,7 @@ export class GeneralPdfController {
     // The 3D assembly orientation choices do not apply to a section View.
     modeSelect.disabled = this.orientationChangeInProgress
       || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement)
-      || Boolean(this.pendingDetail);
+      || Boolean(this.pendingDetail) || Boolean(this.isAssemblyView(selected) && selected.circularDetail);
     if (this.detailButton) {
       this.detailButton.disabled = this.orientationChangeInProgress
         || this.projectionInProgress || Boolean(this.pendingProjection);
@@ -2353,7 +2354,8 @@ export class GeneralPdfController {
     if (this.projectionButton) {
       this.projectionButton.disabled = !this.pendingProjection
         && (this.orientationChangeInProgress || this.projectionInProgress
-          || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement));
+          || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement)
+          || Boolean(selected.circularDetail));
       this.projectionButton.textContent = this.pendingProjection
         ? "Cancelar proyección (Esc)" : "Proyectar View";
       this.projectionButton.style.background = this.pendingProjection ? "#775128" : "#244f65";
@@ -2374,7 +2376,7 @@ export class GeneralPdfController {
     const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
     const view = sheet?.views.find((candidate): candidate is AssemblySheetViewRuntime =>
       this.isAssemblyView(candidate) && candidate.id === this.selectedAssemblyViewId
-      && !candidate.automaticSupplement);
+      && !candidate.automaticSupplement && !candidate.circularDetail);
     if (!view || !sheet) return;
 
     const original = restoreWorkPlane(view.originalWorkPlane ?? view.workPlane);
