@@ -40,6 +40,17 @@ describe("PDF View local/global orientations", () => {
       expect(points).toEqual(rotatedBeam(angle));
     },
   );
+  it("restores own top orientation after switching to world axes without changing geometry", () => {
+    const points = rotatedBeam(7.5, 12);
+    const original = JSON.parse(JSON.stringify(points));
+    const ownBefore = resolveAssemblyViewBasis("LOCAL_TOP", points);
+    const world = resolveAssemblyViewBasis("WORLD_TOP", points);
+    const ownAfter = resolveAssemblyViewBasis("LOCAL_TOP", points);
+    expect(ownAfter).toEqual(ownBefore);
+    expect(ownAfter).not.toEqual(world);
+    expect(points).toEqual(original);
+  });
+
   it("keeps a perfectly world-X member horizontal without artificial rotation", () => {
     const own = resolveAssemblyViewBasis("LOCAL_TOP", rotatedBeam(0));
     expect(own?.xAxis.x).toBeCloseTo(1, 10);
