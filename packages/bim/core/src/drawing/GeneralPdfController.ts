@@ -2855,7 +2855,7 @@ export class GeneralPdfController {
       : rawWidth;
     // The PDF exporter maps the full 1120×792 SVG canvas to the
     // actual paper size. Margins affect placement, not physical scale.
-    const pxPerMm = Math.min(
+    const pxPerMm = Math.max(
       SHEET_WIDTH / paperWidth,
       SHEET_HEIGHT / paperHeight,
     );
