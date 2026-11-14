@@ -453,9 +453,11 @@ export class DrawingViewRenderStyleController {
     monochrome: boolean,
     rasterEdges: boolean,
   ): boolean {
-    // A physical STEP cut or a cropped detail is not a regular 3D projection.
-    // Never invent section faces by rendering the uncut assembly behind it.
-    if (view.automaticSupplement || !view.workPlane || !view.instanceIds?.length) return false;
+    // A physical STEP cut requires true intersection faces and must NEVER be
+    // replaced by rendering the uncut assembly. A DETAIL is a genuine cropped
+    // projection; it can use the source plane plus its stored crop offset.
+    if (view.automaticSupplement === "SECTION" || !view.workPlane
+      || !view.instanceIds?.length) return false;
     const line = this.workspace.svg.querySelector<SVGLineElement>(
       'line[data-framelogic-assembly-view-line="' + view.id + '"]',
     );
