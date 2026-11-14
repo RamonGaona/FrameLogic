@@ -1149,6 +1149,7 @@ export class GeneralPdfController {
         id: crypto.randomUUID(),
         sectionId: section.id,
         kind: "SECTION",
+        renderMode: "SOLID_EDGES",
       }],
       titleBlock: {
         project: "FrameLogic",
@@ -1194,6 +1195,7 @@ export class GeneralPdfController {
       id,
       sectionId: `assembly:${id}`,
       kind: "ASSEMBLY",
+      renderMode: "SOLID_EDGES",
       assemblyId: request.assemblyId,
       assemblyName: request.assemblyName,
       instanceIds: [...request.instanceIds],
@@ -1873,7 +1875,7 @@ export class GeneralPdfController {
       sourceWorkPlane: plane,
       fromSection: !this.isAssemblyView(source),
     };
-    view.renderMode = "renderMode" in source ? source.renderMode : undefined;
+    view.renderMode = source.renderMode ?? "SOLID_EDGES";
     view.geometrySignature = this.isAssemblyView(source) ? source.geometrySignature : undefined;
     view.assemblyOcclusionExact = this.isAssemblyView(source) ? source.assemblyOcclusionExact : false;
     view.resolved = true;
@@ -2241,7 +2243,7 @@ export class GeneralPdfController {
       view.projectedSourceSignature = initialFingerprint;
       view.orientationMode = "CURRENT";
       view.orientationLabel = label;
-      view.renderMode = source.renderMode;
+      view.renderMode = source.renderMode ?? "SOLID_EDGES";
       view.automaticDimensions = direction.startsWith("ISO_") ? [] : projection?.dimensions ?? [];
       view.automaticAnchors = projection?.anchors ?? [];
       view.exactInstances = projection?.exactInstances ?? 0;
