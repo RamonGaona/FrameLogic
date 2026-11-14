@@ -10,6 +10,7 @@ type ToolbarCategory =
   | "FILE"
   | "DRAW"
   | "EDIT"
+  | "ANNOTATE"
   | "WORKPLANE"
   | "PIECE";
 
@@ -19,6 +20,7 @@ const CATEGORY_SEQUENCE:
     "FILE",
     "DRAW",
     "EDIT",
+    "ANNOTATE",
     "WORKPLANE",
     "PIECE",
   ];
@@ -29,6 +31,7 @@ const CATEGORY_ORDER:
     FILE: 10,
     DRAW: 100,
     EDIT: 200,
+    ANNOTATE: 250,
     WORKPLANE: 300,
     PIECE: 400,
   };
@@ -39,10 +42,36 @@ const CATEGORY_LABEL:
     FILE: "Archivo",
     DRAW: "Dibujo CAD",
     EDIT: "Editar",
+    ANNOTATE: "Acotar",
     WORKPLANE: "Plano de trabajo",
     PIECE: "Piezas",
   };
 
+
+
+/** Pure command classifier: React-owned buttons are only shown/hidden, never moved. */
+export function classifyModelRibbonControl(
+  label: string, tooltip = "", classes: readonly string[] = [],
+): ToolbarCategory {
+  const text = label.trim().toUpperCase();
+  const combined = text + " " + tooltip.toUpperCase();
+  if (["IFC REFERENCIA", "IMPORTAR PIEZA", "ABRIR PIEZA FRAMELOGIC",
+    "CARGANDO REFERENCIA", "IMPORTANDO PIEZA", "ABRIENDO PIEZA"]
+    .some((word) => combined.includes(word))) return "FILE";
+  if (["POINT", "LINE", "CÍRCULO", "CIRCULO", "CIRCLE", "RECTÁNGULO",
+    "RECTANGULO", "RECTANGLE"].includes(text)) return "DRAW";
+  if (["COPIAR", "UNIR", "STRETCH", "PEDIT", "MOVE", "ROTAR", "TRIM",
+    "PARALELA", "LÍNEA PARALELA", "LINEA PARALELA"].includes(text)
+    || combined.includes("RECORT") || combined.includes("EXTEND")) return "EDIT";
+  if (text === "COTA" || text.startsWith("COTA ") || combined.includes("ACOTAR")
+    || combined.includes("DIMENSION")) return "ANNOTATE";
+  if (text.includes("ORIGEN ←") || text.includes("PUNTO →")
+    || text.includes("LINEA →") || text.includes("LÍNEA →")
+    || text.includes("PREP") || text.includes("CANCELAR INSERCION")) return "PIECE";
+  if (combined.includes("WORKPLANE") || text.startsWith("WP ")
+    || classes.includes("workplane-edit-status")) return "WORKPLANE";
+  return "PIECE";
+}
 
 export class ModelSpaceToolbarOrganizerController {
   private readonly options:
@@ -62,6 +91,8 @@ export class ModelSpaceToolbarOrganizerController {
 
   private disposed = false;
   private applying = false;
+  private ribbonTabs: HTMLDivElement | null = null;
+  private activeRibbonCategory: ToolbarCategory = "DRAW";
 
   constructor(
     options: ModelSpaceToolbarOrganizerOptions,
@@ -97,16 +128,19 @@ export class ModelSpaceToolbarOrganizerController {
     this.circleButton = null;
     this.rectangleButton = null;
     this.parallelButton = null;
+    this.ribbonTabs?.remove();
+    this.ribbonTabs = null;
 
     const toolbar =
       this.findToolbar();
-    toolbar
-      ?.querySelectorAll(
-        '[data-framelogic-toolbar-category-label="true"]',
-      )
-      .forEach(
-        (element) => element.remove(),
-      );
+    toolbar?.querySelectorAll('[data-framelogic-toolbar-category-label="true"]')
+      .forEach((element) => element.remove());
+    if (toolbar) {
+      delete toolbar.dataset["framelogicModelRibbonActive"];
+      for (const child of Array.from(toolbar.children)) {
+        if (child instanceof HTMLElement) delete child.dataset["framelogicModelRibbonCategory"];
+      }
+    }
   }
 
   private apply(): void {
@@ -129,7 +163,7 @@ export class ModelSpaceToolbarOrganizerController {
       this.ensureRectangleButton(toolbar);
       this.ensureParallelButton(toolbar);
       this.styleToolbar(toolbar);
-      this.ensureCategoryLabels(toolbar);
+      this.ensureRibbonTabs(toolbar);
       this.organizeChildren(toolbar);
     }
     finally {
@@ -364,6 +398,69 @@ export class ModelSpaceToolbarOrganizerController {
     );
   }
 
+  private selectRibbonCategory(category: ToolbarCategory): void {
+    if (this.disposed) return;
+    if (category === "FILE") {
+      const file = document.querySelector<HTMLButtonElement>(
+        '[data-framelogic-file-menu-trigger="true"]',
+      );
+      if (file) {
+        // Use the existing FileMenuController; it owns native file chooser clicks.
+        file.click();
+        return;
+      }
+    }
+    this.activeRibbonCategory = category;
+    const toolbar = this.findToolbar();
+    if (!toolbar) return;
+    toolbar.dataset["framelogicModelRibbonActive"] = category;
+    this.ribbonTabs?.querySelectorAll<HTMLButtonElement>(
+      '[data-framelogic-ribbon-tab]',
+    ).forEach((button) => {
+      const selected = button.dataset["framelogicRibbonTab"] === category;
+      button.setAttribute("aria-selected", String(selected));
+      button.classList.toggle("is-active", selected);
+      button.tabIndex = selected ? 0 : -1;
+    });
+  }
+
+  private ensureRibbonTabs(toolbar: HTMLElement): void {
+    if (this.ribbonTabs?.parentElement === toolbar) return;
+    const tabs = document.createElement("div");
+    tabs.className = "framelogic-ribbon-tabs";
+    tabs.dataset["framelogicModelRibbonTabs"] = "true";
+    tabs.setAttribute("role", "tablist");
+    tabs.setAttribute("aria-label", "Pestañas de Model Space");
+    for (const category of CATEGORY_SEQUENCE) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset["framelogicRibbonTab"] = category;
+      button.setAttribute("role", "tab");
+      button.textContent = category === "DRAW" ? "Dibujar"
+        : category === "EDIT" ? "Modificar"
+        : category === "WORKPLANE" ? "WorkPlane"
+        : CATEGORY_LABEL[category];
+      button.addEventListener("click", () => this.selectRibbonCategory(category));
+      button.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const index = CATEGORY_SEQUENCE.indexOf(category);
+        const next = CATEGORY_SEQUENCE[
+          (index + (event.key === "ArrowRight" ? 1 : -1)
+            + CATEGORY_SEQUENCE.length) % CATEGORY_SEQUENCE.length
+        ]!;
+        this.selectRibbonCategory(next);
+        tabs.querySelector<HTMLButtonElement>(
+          '[data-framelogic-ribbon-tab="' + next + '"]',
+        )?.focus();
+      });
+      tabs.append(button);
+    }
+    this.ribbonTabs = tabs;
+    toolbar.prepend(tabs);
+    this.selectRibbonCategory(this.activeRibbonCategory);
+  }
+
   private ensureCategoryLabels(
     toolbar: HTMLElement,
   ): void {
@@ -430,7 +527,8 @@ export class ModelSpaceToolbarOrganizerController {
           element instanceof HTMLElement
           && element.dataset[
             "framelogicToolbarCategoryLabel"
-          ] !== "true",
+          ] !== "true"
+          && element !== this.ribbonTabs,
       );
 
     const counters:
@@ -438,6 +536,7 @@ export class ModelSpaceToolbarOrganizerController {
         FILE: 0,
         DRAW: 0,
         EDIT: 0,
+        ANNOTATE: 0,
         WORKPLANE: 0,
         PIECE: 0,
       };
@@ -456,6 +555,7 @@ export class ModelSpaceToolbarOrganizerController {
       }
       const category =
         this.getCategory(child);
+      child.dataset["framelogicModelRibbonCategory"] = category;
       const index =
         counters[category]++;
       child.style.order =
@@ -509,70 +609,13 @@ export class ModelSpaceToolbarOrganizerController {
     }
   }
 
-  private getCategory(
-    element: HTMLElement,
-  ): ToolbarCategory {
-    const text =
-      (
-        element.textContent
-        ?? ""
-      )
-        .trim()
-        .toUpperCase();
-    const originalTitle =
+  private getCategory(element: HTMLElement): ToolbarCategory {
+    return classifyModelRibbonControl(
+      element.textContent ?? "",
       element instanceof HTMLButtonElement
-        ? element.dataset["toolbarOriginalTitle"]
-          ?? element.title
-        : element.getAttribute("title")
-          ?? "";
-    const combined =
-      `${text} ${originalTitle.toUpperCase()}`;
-
-    if (
-      combined.includes("IFC REFERENCIA")
-      || combined.includes("IMPORTAR PIEZA")
-      || combined.includes("ABRIR PIEZA FRAMELOGIC")
-      || combined.includes("CARGANDO REFERENCIA")
-      || combined.includes("IMPORTANDO PIEZA")
-      || combined.includes("ABRIENDO PIEZA")
-    ) {
-      return "FILE";
-    }
-
-    if (
-      text === "POINT"
-      || text === "LINE"
-      || text === "CÍRCULO"
-      || text === "CIRCULO"
-      || text === "CIRCLE"
-      || text === "RECTÁNGULO"
-      || text === "RECTANGULO"
-      || text === "RECTANGLE"
-    ) {
-      return "DRAW";
-    }
-
-    if (
-      text === "TRIM"
-      || text === "PARALELA"
-      || text === "LÍNEA PARALELA"
-      || text === "LINEA PARALELA"
-      || combined.includes("RECORT")
-      || combined.includes("EXTEND")
-    ) {
-      return "EDIT";
-    }
-
-    if (
-      combined.includes("WORKPLANE")
-      || text.startsWith("WP ")
-      || element.classList.contains(
-        "workplane-edit-status",
-      )
-    ) {
-      return "WORKPLANE";
-    }
-
-    return "PIECE";
+        ? element.dataset["toolbarOriginalTitle"] ?? element.title
+        : element.getAttribute("title") ?? "",
+      Array.from(element.classList),
+    );
   }
 }

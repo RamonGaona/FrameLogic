@@ -15,6 +15,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.162 — 2026-11-14 (cinta de pestañas Model Space y Paper Space)
+
+### Barras organizadas por pestañas superiores tipo CAD
+
+- **Model Space:** pestañas superiores Archivo, Dibujar, Modificar, Acotar, WorkPlane y Piezas. Los botones existentes se agrupan por actividad sin reconstruirlos ni trasladar los nodos propiedad de React, conservando handlers, selección y edición. Archivo accede al menú ya existente, que mantiene su propia lógica de archivos.
+- **Paper Space:** pestañas Inicio, Vistas, Cotas, Anotar, Hoja y PDF, Revisiones. La barra deja de crecer como tres filas permanentes: se muestra solamente el grupo activo; siguen disponibles escalas, cotas, edición, exportación, revisiones y acotación avanzada.
+- **Views:** el panel de View seleccionada, orientación propia/global, proyección, detalle, escala individual, render y anclajes de cotas se integra en la pestaña Vistas. Se utiliza su nodo real y no se altera el estado de la View.
+- **Accesibilidad:** botones de pestaña con estados ARIA y navegación mediante flechas; los grupos con más controles pueden desplazarse horizontalmente sin superponer el plano.
+- **Compatibilidad:** no cambian las órdenes CAD, el almacenamiento de proyecto ni la representación vectorial de planos. Se conserva el menú Archivo existente y no se incluye ningún servicio de pago.
+- **Pruebas:** nuevas regresiones para clasificación de comandos Model/Paper, compilación y suites existentes de planos; validación visual real en navegador pendiente hasta comprobar.
+- **CI:** conserva la separación Validate / Web build, cancelación por PR y filtro MCP mejorado de v0.1.161.
+
+---
+
 ## v0.1.161 — 2026-11-14 (orientaciones Paper Space)
 
 ### Seis vistas ortogonales con ejes propios y cotas aisladas por proyección
