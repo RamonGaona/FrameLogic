@@ -1612,6 +1612,14 @@ export class GeneralPdfController {
         designModel: this.designModel, designScene: this.designScene,
       });
 
+      // An explicitly rotated projected child becomes independent; it can
+      // continue serving as a parent for projections subsequently taken from it.
+      if (view.projectedDirection) {
+        view.projectedDirection = undefined;
+        view.projectedStandard = undefined;
+        view.projectedSourceSignature = undefined;
+        view.sourceViewId = undefined;
+      }
       if (view.cutReferences?.length || view.detailReferences?.length) {
         view.cutReferences = [];
         view.detailReferences = [];
@@ -1619,7 +1627,8 @@ export class GeneralPdfController {
         // parent view. Prevent stale callouts and diagrams from surviving.
         for (const otherSheet of this.production.sheets.values()) {
           for (const candidate of otherSheet.views) {
-            if (!this.isAssemblyView(candidate) || candidate.sourceViewId !== view.id) continue;
+            if (!this.isAssemblyView(candidate) || candidate.sourceViewId !== view.id
+              || candidate.projectedDirection) continue;
             candidate.geometrySignature = "INVALIDATED_VIEW_ORIENTATION";
             candidate.segments = [];
             candidate.resolved = true;
@@ -1629,6 +1638,9 @@ export class GeneralPdfController {
           }
         }
       }
+      // Reorienting the source must also regenerate all dependent projected
+      // views in their own coordinate systems, preserving sheet placements.
+      await this.refreshProjectedViews(true);
       this.lastTreeSignature = "";
       this.workspace.render();
       this.workspace.setStatus(
@@ -1771,9 +1783,10 @@ export class GeneralPdfController {
     if (view.cutReferences?.length || view.detailReferences?.length) {
       this.renderSectionDetailReferences(view, layout, originX, originY, drawnHeight, scale);
     }
-    const showsDimensions = view.orientationMode
-      ? !view.orientationMode.endsWith("ISO")
-      : Boolean(view.automaticViewCode && view.automaticViewCode !== "ISO");
+    const showsDimensions = view.projectedDirection?.startsWith("ISO_")
+      ? false : view.orientationMode
+        ? !view.orientationMode.endsWith("ISO")
+        : Boolean(view.automaticViewCode && view.automaticViewCode !== "ISO");
     if (showsDimensions) {
       this.renderAssemblyDimensions(view, layout, originX, originY, drawnWidth, drawnHeight, scale);
       if ((index === 0 || view.assemblyId.startsWith("piece:")) && sheet.pieceMarks) {
@@ -2000,6 +2013,90 @@ export class GeneralPdfController {
       if (y > layout.y + layout.height - 22) continue;
       seen.push(y);
       this.appendText(x, y, mark, 9, "#8a241c");
+    }
+  }
+
+
+  /**
+   * Linked projections are regenerated from their PARENT View's current axes,
+   * not from world XYZ. Geometry changes do not move the viewport, alter its
+   * independent render mode or discard dimension text overrides.
+   */
+  private async refreshProjectedViews(force = false): Promise<void> {
+    if (this.disposed || this.projectionRefreshInProgress || this.projectionInProgress) return;
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    if (!sheet || !sheet.views.some((v) =>
+      this.isAssemblyView(v) && Boolean(v.projectedDirection))) return;
+    this.projectionRefreshInProgress = true;
+    let updated = 0;
+    try {
+      for (const child of sheet.views) {
+        if (!this.isAssemblyView(child) || !child.projectedDirection || !child.sourceViewId) continue;
+        const source = sheet.views.find((v) => v.id === child.sourceViewId);
+        if (!source || !this.isAssemblyView(source) || source.automaticSupplement) {
+          child.automaticWarnings = ["Proyección sin View origen: comprueba el plano."];
+          continue;
+        }
+        const standard = child.projectedStandard ?? "ISO_E";
+        const sourceSignature = this.projectedSourceFingerprint(source, standard);
+        const modelSignature = assemblyProjectionSignature({
+          instanceIds: source.instanceIds, designModel: this.designModel,
+          designScene: this.designScene,
+        });
+        if (!force && child.projectedSourceSignature === sourceSignature
+          && child.geometrySignature === modelSignature) continue;
+        const plane = this.projectedWorkPlane(source, child.projectedDirection, standard);
+        if (!plane) {
+          child.automaticWarnings = ["No se puede proyectar: ejes de View origen inválidos."];
+          continue;
+        }
+        try {
+          const projection = await projectAssembly({
+            instanceIds: source.instanceIds, workPlane: plane,
+            designModel: this.designModel, designScene: this.designScene,
+          });
+          const geometry = projection ?? this.buildPlanGeometry(source.instanceIds, plane);
+          if (!geometry) {
+            child.automaticWarnings = ["La proyección no pudo actualizarse: falta geometría."];
+            continue;
+          }
+          if (this.disposed || this.getActiveSheetId() !== sheetId
+            || !sheet.views.includes(source) || !sheet.views.includes(child)
+            || this.projectedSourceFingerprint(source, standard) !== sourceSignature) continue;
+          child.instanceIds = [...source.instanceIds];
+          child.workPlane = snapshotWorkPlane(plane);
+          child.originalWorkPlane = snapshotWorkPlane(plane);
+          child.width = geometry.width;
+          child.height = geometry.height;
+          child.offsetX = geometry.offsetX;
+          child.offsetY = geometry.offsetY;
+          child.segments = geometry.segments;
+          child.resolved = true;
+          child.automaticDimensions = child.projectedDirection.startsWith("ISO_")
+            ? [] : projection?.dimensions ?? [];
+          child.automaticAnchors = projection?.anchors ?? [];
+          child.exactInstances = projection?.exactInstances ?? 0;
+          child.fallbackInstances = projection?.fallbackInstances ?? child.instanceIds.length;
+          child.assemblyOcclusionExact = projection?.assemblyOcclusionExact ?? false;
+          child.automaticWarnings = projection?.warnings ?? [
+            "Malla preliminar: comprueba aristas ocultas y medidas.",
+          ];
+          child.geometrySignature = modelSignature;
+          child.projectedSourceSignature = sourceSignature;
+          updated++;
+        } catch (error) {
+          child.automaticWarnings = ["Error al actualizar proyección: " + String(error)];
+        }
+      }
+      if (updated) {
+        this.lastTreeSignature = "";
+        this.workspace.render();
+        this.workspace.setStatus("PROYECCIONES: " + updated
+          + " View(s) vinculadas actualizadas. Posiciones y estilos conservados.");
+      }
+    } finally {
+      this.projectionRefreshInProgress = false;
     }
   }
 
