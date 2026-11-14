@@ -53,8 +53,8 @@ describe("BOM de ensamble por PDF", () => {
   it("refuses missing assembly IDs and cycles", () => {
     expect(buildSheetAssemblyBom("missing", assemblies, parts).rootFound).toBe(false);
     expect(() => buildSheetAssemblyBom("root", [
-      assemblies[0]!, { ...assemblies[1]!, parentAssemblyId: "grandchild" },
-      assemblies[2]!, { ...assemblies[0]!, parentAssemblyId: "child" },
+      { ...assemblies[0]!, parentAssemblyId: "child" },
+      assemblies[1]!,
     ], parts)).toThrow();
   });
   it("deduplicates repeated instance IDs in corrupted older assemblies", () => {
