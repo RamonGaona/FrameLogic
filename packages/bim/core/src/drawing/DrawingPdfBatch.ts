@@ -54,8 +54,8 @@ export function pdfCanvasPlacement(
   const scalePtPerCanvasUnit = Math.min(widthPt / canvasWidth, heightPt / canvasHeight);
   return {
     scalePtPerCanvasUnit,
-    offsetXPt: (widthPt - canvasWidth * scalePtPerCanvasUnit) / 2,
-    offsetYPt: (heightPt - canvasHeight * scalePtPerCanvasUnit) / 2,
+    offsetXPt: Math.max(0, (widthPt - canvasWidth * scalePtPerCanvasUnit) / 2),
+    offsetYPt: Math.max(0, (heightPt - canvasHeight * scalePtPerCanvasUnit) / 2),
     canvasUnitsPerPaperMm: (72 / 25.4) / scalePtPerCanvasUnit,
   };
 }
