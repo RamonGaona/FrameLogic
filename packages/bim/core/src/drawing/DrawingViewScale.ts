@@ -53,3 +53,59 @@ export function modelToPaperScale(
     || pixelsPerPaperMillimeter <= 0) return null;
   return pixelsPerPaperMillimeter / denominator;
 }
+
+export interface PaperDrawingSegment {
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+}
+export interface PaperDrawingFrame {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Clip projected geometry to its own View frame in paper coordinates.
+ * Preserves the exact requested 1:N scale and prevents enlarged geometry from
+ * crossing into neighbouring Views/the title block. Pure Liang-Barsky clip.
+ */
+export function clipDrawingSegmentToView(
+  segment: PaperDrawingSegment, frame: PaperDrawingFrame,
+): PaperDrawingSegment | null {
+  if (![segment.x1, segment.y1, segment.x2, segment.y2, frame.x, frame.y,
+    frame.width, frame.height].every(Number.isFinite)
+    || frame.width <= 0 || frame.height <= 0) return null;
+  const dx = segment.x2 - segment.x1;
+  const dy = segment.y2 - segment.y1;
+  let start = 0;
+  let end = 1;
+  for (const [p, q] of [
+    [-dx, segment.x1 - frame.x],
+    [dx, frame.x + frame.width - segment.x1],
+    [-dy, segment.y1 - frame.y],
+    [dy, frame.y + frame.height - segment.y1],
+  ] as const) {
+    if (p === 0) {
+      if (q < 0) return null;
+      continue;
+    }
+    const ratio = q / p;
+    if (p < 0) {
+      if (ratio > end) return null;
+      start = Math.max(start, ratio);
+    } else {
+      if (ratio < start) return null;
+      end = Math.min(end, ratio);
+    }
+  }
+  if (end < start) return null;
+  return {
+    x1: segment.x1 + start * dx,
+    y1: segment.y1 + start * dy,
+    x2: segment.x1 + end * dx,
+    y2: segment.y1 + end * dy,
+  };
+}
