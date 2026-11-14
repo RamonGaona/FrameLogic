@@ -10,6 +10,9 @@ import type { EngineeringDimensionInstruction } from "./EngineeringAutoDimension
 export interface WorkshopDimensionOverride {
   readonly dx?: number;
   readonly dy?: number;
+  /** Shift the annotation line relative to anchored geometry, not the measured value. */
+  readonly lineDx?: number;
+  readonly lineDy?: number;
   readonly hidden?: boolean;
 }
 export interface WorkshopDimensionFrame {
@@ -114,6 +117,8 @@ export function layoutWorkshopDimensions(
     if (![ax, bx, ay, by].every(Number.isFinite)) { omitted++; continue; }
     const moveX = Number.isFinite(overrides[key]?.dx) ? overrides[key]!.dx! : 0;
     const moveY = Number.isFinite(overrides[key]?.dy) ? overrides[key]!.dy! : 0;
+    const lineDx = Number.isFinite(overrides[key]?.lineDx) ? overrides[key]!.lineDx! : 0;
+    const lineDy = Number.isFinite(overrides[key]?.lineDy) ? overrides[key]!.lineDy! : 0;
     let found: WorkshopPlacedDimension | null = null;
     const proposed = (x: number, y: number, lines: WorkshopLine[]): boolean => {
       if (!Number.isFinite(x + moveX) || !Number.isFinite(y + moveY)) return false;
@@ -129,7 +134,7 @@ export function layoutWorkshopDimensions(
     if (d.mode === "HORIZONTAL") {
       if (Math.abs(ax - bx) >= 20 && Math.abs(d.a.x - d.b.x) > EPS) {
         for (let lane = 0; lane < 5 && !found; lane++) {
-          const y = frame.originY - 15 - lane * LINE_HEIGHT;
+          const y = frame.originY - 15 - lane * LINE_HEIGHT + lineDy;
           if (y < frame.y + 31) break;
           proposed((ax + bx) / 2, y - 3,
             [segment(ax, ay, ax, y), segment(bx, by, bx, y), segment(ax, y, bx, y)]);
@@ -138,7 +143,7 @@ export function layoutWorkshopDimensions(
     } else if (d.mode === "VERTICAL") {
       if (Math.abs(ay - by) >= 20 && Math.abs(d.a.y - d.b.y) > EPS) {
         for (let lane = 0; lane < 5 && !found; lane++) {
-          const x = frame.originX + frame.drawnWidth + 12 + lane * 13;
+          const x = frame.originX + frame.drawnWidth + 12 + lane * 13 + lineDx;
           if (x > frame.x + frame.width - 23) break;
           // Text is centered above the leader's midpoint on the right.
           proposed(x + 18, (ay + by) / 2,
@@ -148,11 +153,11 @@ export function layoutWorkshopDimensions(
     } else if (d.mode === "DIAMETER" && (d.a.radius ?? 0) > EPS) {
       const bottom = frame.originY + frame.drawnHeight;
       for (let lane = 0; lane < 3 && !found; lane++) {
-        const y = frame.y + frame.height - 26 - lane * LINE_HEIGHT;
+        const y = frame.y + frame.height - 26 - lane * LINE_HEIGHT + lineDy;
         if (y <= bottom + 8) break;
         for (let column = 0; column < 3 && !found; column++) {
           const center = frame.x + 38 + column * Math.max(1, (frame.width - 76) / 2);
-          const x = Math.min(frame.x + frame.width - 38, center);
+          const x = Math.min(frame.x + frame.width - 38, center) + lineDx;
           proposed(x, y, [segment(ax, ay, x, y - 3)]);
         }
       }
