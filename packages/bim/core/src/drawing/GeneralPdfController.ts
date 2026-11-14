@@ -10,6 +10,7 @@ import {
   pickAutomaticDimensionStroke,
   type AutoDimensionIdentity, type AutoDimensionStroke,
 } from "./DrawingAutoDimensionSelection";
+import { snapDimensionAnchorToView } from "./DrawingDimensionAnchorSnap";
 import { ASSEMBLY_VIEW_ORIENTATION_OPTIONS, resolveAssemblyViewBasis,
   type AssemblyViewOrientationMode, type AssemblyViewBasis } from "./AssemblyViewOrientationControls";
 import { DrawingViewOrientationQueue } from "./DrawingViewOrientationQueue";
@@ -379,7 +380,7 @@ export class GeneralPdfController {
     readonly originalY: number;
     readonly lineX: number;
     readonly lineY: number;
-    readonly kind: "TEXT" | "LINE";
+    readonly kind: "TEXT" | "LINE" | "GRIP_A" | "GRIP_B";
     readonly mode: EngineeringDimensionInstruction["mode"];
   } | null = null;
 
@@ -1343,7 +1344,26 @@ export class GeneralPdfController {
     detail.addEventListener("click", () => this.toggleCircularDetail());
     this.detailButton = detail;
     const scale = this.createViewScaleEditor();
-    panel.append(label, viewSelect, modeSelect, project, detail, scale);
+    const removeDimension = document.createElement("button");
+    removeDimension.type = "button";
+    removeDimension.dataset["framelogicDeleteSelectedDimension"] = "true";
+    removeDimension.textContent = "Eliminar cota";
+    removeDimension.title = "Eliminar solamente la cota STEP seleccionada de esta View; recuperable con Restablecer cotas";
+    removeDimension.style.cssText =
+      "display:none;padding:5px 8px;border:1px solid #dc7869;border-radius:4px;"
+      + "background:#802b25;color:white;font:inherit;cursor:pointer;";
+    removeDimension.addEventListener("click", () => this.hideSelectedAutoDimension());
+    const resetReferences = document.createElement("button");
+    resetReferences.type = "button";
+    resetReferences.dataset["framelogicResetSelectedDimensionReferences"] = "true";
+    resetReferences.textContent = "Restaurar puntos";
+    resetReferences.title = "Recuperar los puntos STEP originales de la cota sin eliminarla";
+    resetReferences.style.cssText = removeDimension.style.cssText
+      .replace("display:none", "display:none")
+      .replace("#dc7869", "#73a8be").replace("#802b25", "#244f65");
+    resetReferences.addEventListener("click", () => this.resetSelectedDimensionReferences());
+    panel.append(label, viewSelect, modeSelect, project, detail, scale,
+      resetReferences, removeDimension);
     this.workspace.overlay.append(panel);
     return panel;
   }
@@ -2364,6 +2384,22 @@ export class GeneralPdfController {
     }
     viewSelect.value = this.selectedAssemblyViewId!;
     const selected = views.find((view) => view.id === this.selectedAssemblyViewId)!;
+    const selectedDimView = this.selectedAutoDimension
+      ? this.findAutoDimensionView(this.selectedAutoDimension.viewId) : null;
+    const removeDimension = panel.querySelector<HTMLButtonElement>(
+      '[data-framelogic-delete-selected-dimension="true"]',
+    );
+    if (removeDimension) {
+      removeDimension.style.display = selectedDimView ? "inline-block" : "none";
+    }
+    const resetReferences = panel.querySelector<HTMLButtonElement>(
+      '[data-framelogic-reset-selected-dimension-references="true"]',
+    );
+    if (resetReferences) {
+      const override = selectedDimView?.dimensionOverrides?.[this.selectedAutoDimension?.key ?? ""];
+      resetReferences.style.display = override?.anchorA || override?.anchorB
+        ? "inline-block" : "none";
+    }
     const persisted = this.isAssemblyView(selected) ? selected.orientationMode ?? "CURRENT" : "CURRENT";
     const expected = this.orientationQueue.displayedMode(
       this.getActiveSheetId() ?? "", selected.id, persisted);
@@ -2803,6 +2839,30 @@ export class GeneralPdfController {
       if (selected) {
         text.style.fill = "#d47913";
         text.style.fontWeight = "bold";
+        // Reference grips are selectable, temporary UI only, never part of the PDF.
+        const anchors = dimension.mode === "DIAMETER"
+          ? [["A", dimension.anchorA]] as const
+          : [["A", dimension.anchorA], ["B", dimension.anchorB]] as const;
+        for (const [name, anchor] of anchors) {
+          const grip = document.createElementNS(SVG_NS, "circle");
+          grip.setAttribute("cx", String(anchor.x));
+          grip.setAttribute("cy", String(anchor.y));
+          grip.setAttribute("r", "4.5");
+          grip.setAttribute("fill", "#ffcb47");
+          grip.setAttribute("stroke", "#7b3808");
+          grip.setAttribute("stroke-width", "1.2");
+          grip.dataset["framelogicAutoDimKey"] = dimension.key;
+          grip.dataset["framelogicAutoDimView"] = view.id;
+          grip.dataset["framelogicAutoDimGrip"] = name;
+          grip.setAttribute("data-framelogic-drawing-snap", "true");
+          grip.style.cursor = dimension.mode === "DIAMETER" ? "default" : "crosshair";
+          grip.style.pointerEvents = "auto";
+          grip.setAttribute("aria-label",
+            dimension.mode === "DIAMETER"
+              ? "Centro de la cota diámetro: referencia STEP"
+              : `Origen ${name} de cota STEP: arrastra a otro extremo de arista`);
+          this.workspace.svg.append(grip);
+        }
       }
     }
     if (dimensions.length) {
@@ -2876,16 +2936,24 @@ export class GeneralPdfController {
     if (!source) return;
     const textTarget = event.target instanceof Element
       && Boolean(event.target.closest("text[data-framelogic-auto-dim-key]"));
+    const gripTarget = event.target instanceof Element
+      ? event.target.closest<SVGElement>("[data-framelogic-auto-dim-grip]") : null;
+    const grip = gripTarget?.dataset["framelogicAutoDimGrip"];
     this.dimensionDrag = {
       viewId: hit.viewId, key: hit.key, pointerId: event.pointerId, start,
       originalX: previous?.dx ?? 0, originalY: previous?.dy ?? 0,
       lineX: previous?.lineDx ?? 0, lineY: previous?.lineDy ?? 0,
-      kind: textTarget ? "TEXT" : "LINE", mode: source.mode,
+      kind: source.mode !== "DIAMETER" && grip === "A" ? "GRIP_A"
+        : source.mode !== "DIAMETER" && grip === "B" ? "GRIP_B"
+          : textTarget ? "TEXT" : "LINE",
+      mode: source.mode,
     };
     try { this.workspace.svg.setPointerCapture(event.pointerId); } catch { /* device without capture */ }
+    this.workspace.svg.setAttribute("tabindex", "0");
+    this.workspace.svg.focus({ preventScroll: true });
     this.workspace.render();
     this.workspace.setStatus(
-      "COTA STEP seleccionada: arrastra la línea para mover la cota o el texto para mover su etiqueta; Supr/Borrar elimina solo esta cota.");
+      "COTA STEP: mueve texto o línea, o arrastra A/B a extremos de arista. Usa Eliminar cota o Supr. Puntos amarillos = referencias.");
     event.preventDefault();
     event.stopImmediatePropagation();
   };
@@ -2900,7 +2968,34 @@ export class GeneralPdfController {
     const deltaX = pointer.x - drag.start.x;
     const deltaY = pointer.y - drag.start.y;
     const current = view.dimensionOverrides[drag.key];
-    if (drag.kind === "TEXT") {
+    if (drag.kind === "GRIP_A" || drag.kind === "GRIP_B") {
+      const sheetId = this.getActiveSheetId();
+      const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+      const index = sheet?.views.indexOf(view) ?? -1;
+      if (!sheet || index < 0) return;
+      const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
+      const automatic = Boolean(view.automaticViewCode || view.automaticSupplement);
+      const innerWidth = Math.max(1, layout.width - (automatic ? 90 : 20));
+      const innerHeight = Math.max(1, layout.height - (automatic ? 100 : 34));
+      const scale = layout.scaleDenominator === null
+        ? Math.min(innerWidth / Math.max(view.width, EPSILON),
+          innerHeight / Math.max(view.height, EPSILON))
+        : this.technicalScale(sheet, layout.scaleDenominator);
+      const originX = layout.x + (automatic ? 20 : 0)
+        + (innerWidth - view.width * scale) / 2;
+      const originY = layout.y + (automatic ? 60 : 20)
+        + (innerHeight - view.height * scale) / 2;
+      const snap = snapDimensionAnchorToView(pointer, view.segments, {
+        originX, originY, drawnHeight: view.height * scale, scale,
+      });
+      if (!snap) {
+        this.workspace.setStatus("REFERENCIA: acerca el punto amarillo al extremo de una arista visible.");
+        return;
+      }
+      view.dimensionOverrides[drag.key] = {
+        ...current, [drag.kind === "GRIP_A" ? "anchorA" : "anchorB"]: snap,
+      };
+    } else if (drag.kind === "TEXT") {
       view.dimensionOverrides[drag.key] = {
         ...current,
         dx: Math.max(-110, Math.min(110, drag.originalX + deltaX)),
@@ -2929,6 +3024,18 @@ export class GeneralPdfController {
     event.preventDefault();
     event.stopImmediatePropagation();
   };
+
+  private resetSelectedDimensionReferences(): void {
+    const hit = this.selectedAutoDimension;
+    const view = hit ? this.findAutoDimensionView(hit.viewId) : null;
+    if (!hit || !view) return;
+    const current = view.dimensionOverrides?.[hit.key];
+    if (!current) return;
+    const { anchorA: _a, anchorB: _b, ...rest } = current;
+    view.dimensionOverrides![hit.key] = rest;
+    this.workspace.render();
+    this.workspace.setStatus("COTA: restaurados los dos puntos originales STEP.");
+  }
 
   private hideSelectedAutoDimension(): void {
     const selection = this.selectedAutoDimension;
@@ -2965,8 +3072,10 @@ export class GeneralPdfController {
 
   private readonly onAutoDimensionKeyDown = (event: KeyboardEvent): void => {
     if (!this.selectedAutoDimension || this.workspace.overlay.style.display === "none") return;
+    // Ignore only real text editing. A previously focused dropdown should not
+    // prevent deleting an explicitly selected STEP dimension.
     if (event.target instanceof Element
-      && event.target.closest("input, textarea, select, [contenteditable]")) return;
+      && event.target.closest("input, textarea, [contenteditable]")) return;
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
       event.stopImmediatePropagation();
