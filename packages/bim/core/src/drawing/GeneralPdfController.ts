@@ -2647,9 +2647,11 @@ export class GeneralPdfController {
     const paperHeight = sheet.orientation === "LANDSCAPE"
       ? rawHeight
       : rawWidth;
+    // The PDF exporter maps the full 1120×792 SVG canvas to the
+    // actual paper size. Margins affect placement, not physical scale.
     const pxPerMm = Math.min(
-      (SHEET_WIDTH - 84) / paperWidth,
-      (SHEET_HEIGHT - 84) / paperHeight,
+      SHEET_WIDTH / paperWidth,
+      SHEET_HEIGHT / paperHeight,
     );
     return modelToPaperScale(denominator, pxPerMm) ?? 0;
   }
