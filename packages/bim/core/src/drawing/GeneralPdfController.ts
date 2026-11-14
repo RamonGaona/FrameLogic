@@ -742,6 +742,12 @@ export class GeneralPdfController {
         assemblyName: `DETALLE ${label} · ${request.assemblyName}`,
       }, detail);
       detailView.automaticSupplement = "DETAIL";
+      // The crop is normalized to its own local coordinates. Preserve its
+      // absolute plane-space origin so the depth-buffered image uses the
+      // exact same camera window as the enlarged HLR linework.
+      detailView.offsetX = (sourceGeometry.offsetX ?? 0) + detail.window.x;
+      detailView.offsetY = (sourceGeometry.offsetY ?? 0) + detail.window.y;
+      detailView.assemblyOcclusionExact = sourceGeometry.assemblyOcclusionExact;
       detailView.automaticSectionLabel = label;
       detailView.supplementFraction = station.fraction;
       detailView.sourceViewId = sourceView.id;
