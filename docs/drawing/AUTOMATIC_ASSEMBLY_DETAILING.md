@@ -313,3 +313,13 @@ ensamble real antes de autorizar su fabricación.
 
 **Criterio de entrega actual:** avance utilizable de planificación y
 presentación, todavía no equivalente a planos de taller aprobados.
+
+## v0.1.152 — Crear proyecciones desde una View existente
+
+1. Abre una hoja de Paper Space que contenga una **View de una pieza individual o un ensamble**.
+2. Selecciona la View en el árbol **VIEWS** o desde **VIEW seleccionada**.
+3. Pulsa **Proyectar View**. Mueve el cursor fuera del marco de la View origen: a derecha/izquierda/arriba/abajo para vistas ortográficas, o en diagonal para vistas isométricas.
+4. La previsualización punteada indica la colocación; haz clic en un espacio libre de la hoja. Sigue colocando proyecciones o pulsa **Esc** para salir.
+5. Las nuevas Views se pueden seleccionar, arrastrar, cambiar de render y exportar dentro del mismo PDF. Los ejes y escala provienen de la View origen, respetando **ISO E / ISO A**. Las proyecciones vinculadas se regeneran al cambiar la orientación o geometría de su origen sin mover las piezas.
+
+No es posible derivar un nuevo alzado desde un corte físico A-A/B-B o un detalle recortado sin una política de proyección del volumen de corte; esos casos se bloquean para evitar resultados geométricamente falsos.
