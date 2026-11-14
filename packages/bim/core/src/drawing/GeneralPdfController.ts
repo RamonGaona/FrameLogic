@@ -2973,6 +2973,7 @@ export class GeneralPdfController {
       value: string; rootAssemblyId: string; sourceViewId: string; label: string;
     }> = [];
     const seen = new Set<string>();
+    const seenRootViews = new Set<string>();
     const push = (sourceViewId: string, rootAssemblyId: string, label: string): void => {
       const value = sourceViewId + "|" + rootAssemblyId;
       if (seen.has(value)) return;
@@ -2981,6 +2982,10 @@ export class GeneralPdfController {
     };
     for (const [index, view] of sheet.views.entries()) {
       if (!this.isAssemblyView(view) || view.automaticSupplement) continue;
+      // Repeated orthographic/projected Views of one assembly represent the same
+      // physical BOM scope. Show it once instead of a 4x duplicated menu.
+      if (seenRootViews.has(view.assemblyId)) continue;
+      seenRootViews.add(view.assemblyId);
       const root = this.designModel.assemblies.get(view.assemblyId);
       if (root) {
         push(view.id, root.id, `View ${index + 1} · ${root.name}`);
