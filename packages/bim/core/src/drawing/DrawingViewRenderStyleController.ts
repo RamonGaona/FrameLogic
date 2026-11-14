@@ -541,8 +541,8 @@ export class DrawingViewRenderStyleController {
         if (!inside((x1 + x2) / 2, (y1 + y2) / 2, layout)) continue;
       }
       const hidden = line.dataset["framelogicAssemblyHidden"] === "true";
-      const showHidden = mode === "WIREFRAME" || mode === "VISIBLE_HIDDEN"
-        || (mode === "BLACK_WHITE" && layout.showHidden);
+      // The explicit View render mode overrides legacy sheet-wide showHidden.
+      const showHidden = mode === "WIREFRAME" || mode === "VISIBLE_HIDDEN";
       const hideAll = shaded && (mode === "SOLID" || mode === "MONOCHROME"
         || (mode === "SOLID_EDGES" && !exactAssemblyOcclusion));
       line.setAttribute("display", hideAll || (hidden && !showHidden) ? "none" : "inline");
