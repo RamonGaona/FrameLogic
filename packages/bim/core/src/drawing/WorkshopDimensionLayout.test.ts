@@ -19,7 +19,7 @@ const frame = {
 const dimensions: EngineeringDimensionInstruction[] = [
   { mode: "HORIZONTAL", a: p("a", 0, 0), b: p("b", 3000, 0), offsetX: 0, offsetY: 0 },
   { mode: "VERTICAL", a: p("a", 0, 0), b: p("c", 0, 1500), offsetX: 0, offsetY: 0 },
-  { mode: "DIAMETER", a: c("hole1", 1000, 750, 60), b: c("hole1", 1, 0.75, 0.06),
+  { mode: "DIAMETER", a: c("hole1", 1000, 750, 60), b: c("hole1", 1000, 750, 60),
     offsetX: 0, offsetY: 0, quantity: 4 },
 ];
 describe("workshop dimension paper placement", () => {
