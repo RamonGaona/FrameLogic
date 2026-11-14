@@ -304,6 +304,64 @@ export class DrawingViewRenderStyleController {
     return { label, select };
   }
 
+  private installBatchSaveControls(): {
+    select: HTMLSelectElement;
+    button: HTMLButtonElement;
+    sizeLabel: HTMLSpanElement;
+  } {
+    const toolbar = this.workspace.overlay.firstElementChild as HTMLElement | null;
+    const exportButton = Array.from(toolbar?.querySelectorAll("button") ?? [])
+      .find((button) => button.textContent === "Exportar PDF");
+
+    const sizeLabel = document.createElement("span");
+    sizeLabel.dataset["framelogicPdfSheetFormat"] = "true";
+    sizeLabel.textContent = "A3 · horizontal";
+    sizeLabel.title = "El tamaño de papel y orientación se configuran por hoja (A0–A4)";
+    sizeLabel.style.cssText =
+      "font:11px system-ui;color:#acd3e3;white-space:nowrap;";
+
+    const select = document.createElement("select");
+    select.dataset["framelogicPdfSaveMode"] = "true";
+    select.title = "Modo de guardado de todas las hojas del Paper Space";
+    for (const [value, label] of [
+      ["COMBINED", "Todas en 1 PDF"],
+      ["ZIP", "Todas separadas (ZIP)"],
+    ] as const) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      select.append(option);
+    }
+    select.style.cssText = "padding:5px 6px;border:1px solid #597e91;"
+      + "border-radius:4px;background:#1d303c;color:#eef8fc;font:11px system-ui;"
+      + "max-width:166px;";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Guardar todos";
+    button.dataset["framelogicSaveAllPdf"] = "true";
+    button.title = "Guarda todas las hojas del proyecto con tamaño A0–A4 y orientación propios";
+    button.style.cssText = "padding:5px 8px;border:1px solid #76a5bd;"
+      + "border-radius:4px;background:#255a70;color:#fff;font:11px system-ui;"
+      + "cursor:pointer;white-space:nowrap;";
+    button.addEventListener("click", () => {
+      void this.saveAllPdfSheets(select.value === "ZIP" ? "ZIP" : "COMBINED");
+    });
+
+    if (exportButton) {
+      exportButton.textContent = "Guardar PDF actual";
+      exportButton.title = "Descargar únicamente esta hoja con su tamaño real";
+      exportButton.before(sizeLabel, select, button);
+    } else {
+      toolbar?.append(sizeLabel, select, button);
+    }
+    if (toolbar) {
+      toolbar.style.flexWrap = "wrap";
+      toolbar.style.rowGap = "6px";
+    }
+    return { select, button, sizeLabel };
+  }
+
   private readonly handleViewSelectionChange = (): void => {
     this.selectedViewId = this.viewSelect?.value || null;
     this.syncSelect();
