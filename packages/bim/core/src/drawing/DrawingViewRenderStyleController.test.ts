@@ -3,6 +3,7 @@ import {
   buildPdf,
   isRenderMode,
   restoreDrawingViewModes,
+  resolveDrawingViewRenderMode,
 } from "./DrawingViewRenderStyleController";
 
 describe("Independent drawing View render state", () => {
@@ -20,6 +21,22 @@ describe("Independent drawing View render state", () => {
     expect(modes.has("invalid")).toBe(false);
     modes.set("assembly-front", "MONOCHROME");
     expect(modes.get("assembly-iso")).toBe("SOLID_EDGES");
+  });
+
+  it("round-trips independent View styles through DrawingProduction sheet JSON", () => {
+    const sheet = {
+      ownerSectionId: "assembly", views: [
+        { id: "front", sectionId: "a", renderMode: "BLACK_WHITE" },
+        { id: "iso", sectionId: "b", renderMode: "SOLID_EDGES" },
+        { id: "plan", sectionId: "c", renderMode: "VISIBLE_HIDDEN" },
+      ],
+    };
+    const restored = JSON.parse(JSON.stringify(sheet)) as typeof sheet;
+    const legacy = restoreDrawingViewModes([{ viewId: "iso", mode: "MONOCHROME" }]);
+    expect(restored.views.map((v) => resolveDrawingViewRenderMode(v, legacy)))
+      .toEqual(["BLACK_WHITE", "SOLID_EDGES", "VISIBLE_HIDDEN"]);
+    // Migrated projects with only professional styles retain that setting.
+    expect(resolveDrawingViewRenderMode({ id: "iso" }, legacy)).toBe("MONOCHROME");
   });
 
   it("accepts supported modes while rejecting unknown modes", () => {
