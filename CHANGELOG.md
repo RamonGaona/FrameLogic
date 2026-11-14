@@ -17,7 +17,7 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 ### Render independiente y superficies reales en Views de ensamble
 
 - **Orden de render corregido:** el controlador de estilo se instala después de la proyección de ensambles, por lo que ahora encuentra la geometría SVG de cada View.
-- **Selector conectado a «VIEW seleccionada»:** el modo elegido se aplica al identificador de la View activa, se conserva por View en el snapshot profesional y no modifica la orientación del modelo.
+- **Selector conectado a «VIEW seleccionada»:** el modo elegido se aplica al identificador de la View activa y se guarda en `DrawingProductionController.sheets[].views[].renderMode`, manteniendo compatibilidad con el snapshot profesional legado, sin modificar la orientación del modelo.
 - **Estilos diferenciados:** líneas visibles, visibles y ocultas, alámbrico, sólido a color, sólido con aristas y sombreado gris; se conserva la compatibilidad con el modo transparente de secciones.
 - **Superficies:** sombreado 3D usando las mallas posicionadas del ensamble y z-buffer independiente de Three.js, con colores por pieza cuando están disponibles y profundidad real. Se mantiene la geometría HLR vectorial para las aristas.
 - **PDF:** imágenes JPEG del sombreado incrustadas como XObjects en el mismo flujo PDF de líneas, cotas y textos; clipping por viewport y guiones para aristas ocultas.
