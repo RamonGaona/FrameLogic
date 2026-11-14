@@ -2669,13 +2669,19 @@ export class GeneralPdfController {
           this.sheetName(sheetId ?? "", sheet),
           ...sheet.views.map((view, index) =>
             this.isAssemblyView(view)
-              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}`
-              : `${index}:${view.id}:S:${view.sectionId}:${pieces.map((piece) => piece.id).join(",")}`,
+              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`
+              : `${index}:${view.id}:S:${view.sectionId}:${pieces.map((piece) => piece.id).join(",")}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`,
           ),
         ].join("|")
       : "NO_ACTIVE_SHEET";
     if (signature === this.lastTreeSignature) return;
     this.lastTreeSignature = signature;
+    const previouslyOpen = new Map(
+      Array.from(tree.querySelectorAll<HTMLDetailsElement>(
+        'details[data-framelogic-view-row]',
+      )).map((details) => [details.dataset["framelogicViewRow"], details.open]),
+    );
+    const previousScroll = tree.scrollTop;
     tree.replaceChildren();
 
     if (!sheet) {
@@ -2694,7 +2700,8 @@ export class GeneralPdfController {
           ? sheet.views.findIndex((candidate) => candidate.id === view.sourceViewId) : -1;
         const block = this.createViewDetails(
           `View ${index + 1} · ${view.assemblyName}${view.orientationLabel
-            ? " · " + view.orientationLabel : ""}`,
+            ? " · " + view.orientationLabel : ""} · ${formatDrawingViewScale(
+              this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator)}`,
           view.projectedDirection
             ? `PROYECCIÓN · origen View ${parentIndex >= 0 ? parentIndex + 1 : "?"} · ${view.projectedStandard ?? "ISO E"} · ${view.instanceIds.length} piezas`
             : `ENSAMBLE/PIEZA · ${view.instanceIds.length} instancia${view.instanceIds.length === 1 ? "" : "s"}`,
@@ -2705,6 +2712,11 @@ export class GeneralPdfController {
         if (view.instanceIds.length < 1) {
           block.content.append(this.createEmptyRow("Sin instancias"));
         }
+        const editor = this.createViewScaleEditor(view.id);
+        block.content.prepend(editor);
+        this.syncViewScaleEditor(editor, view.id, sheet);
+        block.details.dataset["framelogicViewRow"] = view.id;
+        block.details.open = previouslyOpen.get(view.id) ?? true;
         this.bindTreeViewSelection(block.details, view.id, sheet);
         tree.append(block.details);
         return;
@@ -2712,7 +2724,8 @@ export class GeneralPdfController {
 
       const section = this.findSection(view.sectionId);
       const block = this.createViewDetails(
-        `View ${index + 1} · ${section?.name ?? "Sección"}`,
+        `View ${index + 1} · ${section?.name ?? "Sección"} · ${formatDrawingViewScale(
+          this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator)}`,
         `SECCIÓN · ${pieces.length} instancias`,
       );
       for (const piece of pieces) {
@@ -2721,9 +2734,15 @@ export class GeneralPdfController {
       if (pieces.length < 1) {
         block.content.append(this.createEmptyRow("Sin instancias en el modelo"));
       }
+      const editor = this.createViewScaleEditor(view.id);
+      block.content.prepend(editor);
+      this.syncViewScaleEditor(editor, view.id, sheet);
+      block.details.dataset["framelogicViewRow"] = view.id;
+      block.details.open = previouslyOpen.get(view.id) ?? true;
       this.bindTreeViewSelection(block.details, view.id, sheet);
       tree.append(block.details);
     });
+    tree.scrollTop = previousScroll;
   }
 
   private bindTreeViewSelection(
