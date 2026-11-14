@@ -24,7 +24,9 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 - **Alineación:** se guarda el desplazamiento de la proyección en coordenadas del plano para mantener el sombreado alineado tras cambiar orientación o regenerar vistas.
 - **Pruebas nuevas:** modos persistentes por View y estructura binaria de PDF con JPEG y vectores.
 
-**Alcance y pendientes:** no se afirma todavía rayado real de cortes STEP, render sólido de los detalles recortados, ocultación exacta de mallas sin B-Rep, ni la corrección de cotas/unidades. Se requiere validación visual en navegador con ensambles reales y comparación PDF/preview. Esta versión no modifica las piezas del espacio modelo.
+**Unidades de cotas STEP:** el valor en papel ahora utiliza directamente las coordenadas milimétricas internas de FrameLogic. Se eliminó una multiplicación heredada por 1000 en `WorkshopDimensionLayout` y se adaptaron las pruebas geométricas a milímetros.
+
+**Alcance y pendientes:** no se afirma todavía rayado real de cortes STEP, render sólido de los detalles recortados, ocultación exacta de mallas sin B-Rep, ni la mejora completa de la distribución de cotas. Se requiere validación visual en navegador con ensambles reales y comparación PDF/preview. Esta versión no modifica las piezas del espacio modelo.
 
 ---
 
