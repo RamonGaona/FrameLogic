@@ -82,6 +82,8 @@ interface PlanGeometry {
   readonly width: number;
   readonly height: number;
   readonly segments: readonly PlanSegment[];
+  readonly offsetX?: number;
+  readonly offsetY?: number;
 }
 
 interface SectionSheetViewRuntime {
@@ -104,6 +106,9 @@ interface AssemblySheetViewRuntime {
   width: number;
   height: number;
   segments: readonly PlanSegment[];
+  /** Plane-space offset before the padded view normalization. */
+  offsetX?: number;
+  offsetY?: number;
   resolved: boolean;
   /** Present only on views created by the automatic assembly drawing command. */
   automaticViewCode?: AutomaticViewCode;
@@ -1056,6 +1061,8 @@ export class GeneralPdfController {
       originalWorkPlane: snapshotWorkPlane(request.workPlane),
       width: geometry.width,
       height: geometry.height,
+      offsetX: geometry.offsetX,
+      offsetY: geometry.offsetY,
       segments: geometry.segments.map((segment) => ({ ...segment })),
       resolved: true,
     };
@@ -1264,6 +1271,8 @@ export class GeneralPdfController {
       view.workPlane = snapshotWorkPlane(plane);
       view.width = geometry.width;
       view.height = geometry.height;
+      view.offsetX = geometry.offsetX;
+      view.offsetY = geometry.offsetY;
       view.segments = geometry.segments;
       view.resolved = true;
       view.orientationMode = orientationMode;
@@ -1398,8 +1407,7 @@ export class GeneralPdfController {
     const originX = layout.x + (automatic ? 20 : 0) + (innerWidth - drawnWidth) / 2;
     const originY = layout.y + (automatic ? 60 : 20) + (innerHeight - drawnHeight) / 2;
 
-    for (const segment of view.segments) {
-      if (segment.hidden && !layout.showHidden) continue;
+    for (const [segmentIndex, segment] of view.segments.entries()) {
       const x1 = originX + segment.x1 * scale;
       const y1 = originY + drawnHeight - segment.y1 * scale;
       const x2 = originX + segment.x2 * scale;
@@ -1414,6 +1422,17 @@ export class GeneralPdfController {
         this.workspace.svg.append(line);
       } else {
         this.appendLine(x1, y1, x2, y2);
+      }
+      // A View's geometry has a stable identity; dimensions and frames do not.
+      const geometryLine = this.workspace.svg.lastElementChild;
+      if (geometryLine instanceof SVGLineElement) {
+        geometryLine.dataset["framelogicAssemblyViewLine"] = view.id;
+        geometryLine.dataset["framelogicAssemblySegmentIndex"] = String(segmentIndex);
+        geometryLine.dataset["framelogicAssemblyHidden"] = segment.hidden ? "true" : "false";
+        geometryLine.dataset["framelogicAssemblyOriginX"] = String(originX);
+        geometryLine.dataset["framelogicAssemblyOriginY"] = String(originY);
+        geometryLine.dataset["framelogicAssemblyScale"] = String(scale);
+        if (segment.hidden && !layout.showHidden) geometryLine.setAttribute("display", "none");
       }
     }
     if (view.automaticSupplement) {
@@ -1688,6 +1707,7 @@ export class GeneralPdfController {
         });
         if (!geometry) continue;
         candidate.width = geometry.width; candidate.height = geometry.height;
+        candidate.offsetX = geometry.offsetX; candidate.offsetY = geometry.offsetY;
         candidate.segments = geometry.segments;
         candidate.automaticDimensions = candidate.automaticViewCode === "ISO" ? [] : geometry.dimensions;
         candidate.automaticAnchors = geometry.anchors;
@@ -1879,6 +1899,8 @@ export class GeneralPdfController {
     }
     view.width = geometry.width;
     view.height = geometry.height;
+    view.offsetX = geometry.offsetX;
+    view.offsetY = geometry.offsetY;
     view.segments = geometry.segments;
     view.resolved = true;
   }
@@ -1960,6 +1982,8 @@ export class GeneralPdfController {
         x2: segment.x2 - offsetX,
         y2: segment.y2 - offsetY,
       })),
+      offsetX,
+      offsetY,
     };
   }
 
