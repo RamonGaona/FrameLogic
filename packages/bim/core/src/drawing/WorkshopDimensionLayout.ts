@@ -8,6 +8,9 @@
 import type { EngineeringDimensionInstruction } from "./EngineeringAutoDimensionPlanner";
 
 export interface WorkshopDimensionOverride {
+  /** Optional STEP-View-local endpoints chosen by snapping to drawn edges. */
+  readonly anchorA?: { readonly x: number; readonly y: number };
+  readonly anchorB?: { readonly x: number; readonly y: number };
   readonly dx?: number;
   readonly dy?: number;
   /** Shift the annotation line relative to anchored geometry, not the measured value. */
@@ -31,6 +34,10 @@ export interface WorkshopLine {
 }
 export interface WorkshopPlacedDimension {
   readonly key: string;
+  /** Drawn witness-line sources. These are the real measured points. */
+  readonly anchorA: { readonly x: number; readonly y: number };
+  readonly anchorB: { readonly x: number; readonly y: number };
+  readonly referenceEdited: boolean;
   readonly label: string;
   readonly labelX: number;
   readonly labelY: number;
@@ -74,10 +81,14 @@ function within(frame: WorkshopDimensionFrame, box: Box): boolean {
 function segment(x1: number, y1: number, x2: number, y2: number): WorkshopLine {
   return { x1, y1, x2, y2 };
 }
-function getLabel(d: EngineeringDimensionInstruction): string {
+function getLabel(
+  d: EngineeringDimensionInstruction,
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): string {
   const mode = d.mode;
-  const span = mode === "HORIZONTAL" ? Math.abs(d.b.x - d.a.x)
-    : mode === "VERTICAL" ? Math.abs(d.b.y - d.a.y)
+  const span = mode === "HORIZONTAL" ? Math.abs(b.x - a.x)
+    : mode === "VERTICAL" ? Math.abs(b.y - a.y)
       : (d.a.radius ?? 0) * 2;
   return mode === "DIAMETER"
     ? `${(d.quantity ?? 1) > 1 ? d.quantity + "× " : ""}Ø${workshopMillimetres(span)}`
@@ -109,11 +120,17 @@ export function layoutWorkshopDimensions(
     if (pending.has(key)) { omitted++; continue; }
     pending.add(key);
     if (overrides[key]?.hidden) continue;
-    const ax = frame.originX + d.a.x * frame.scale;
-    const bx = frame.originX + d.b.x * frame.scale;
-    const ay = frame.originY + frame.drawnHeight - d.a.y * frame.scale;
-    const by = frame.originY + frame.drawnHeight - d.b.y * frame.scale;
-    const label = getLabel(d);
+    const candidateA = overrides[key]?.anchorA;
+    const candidateB = overrides[key]?.anchorB;
+    const valid = (point: typeof candidateA): point is { x: number; y: number } =>
+      Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
+    const a = valid(candidateA) ? candidateA : d.a;
+    const b = valid(candidateB) ? candidateB : d.b;
+    const ax = frame.originX + a.x * frame.scale;
+    const bx = frame.originX + b.x * frame.scale;
+    const ay = frame.originY + frame.drawnHeight - a.y * frame.scale;
+    const by = frame.originY + frame.drawnHeight - b.y * frame.scale;
+    const label = getLabel(d, a, b);
     if (![ax, bx, ay, by].every(Number.isFinite)) { omitted++; continue; }
     const moveX = Number.isFinite(overrides[key]?.dx) ? overrides[key]!.dx! : 0;
     const moveY = Number.isFinite(overrides[key]?.dy) ? overrides[key]!.dy! : 0;
@@ -127,12 +144,14 @@ export function layoutWorkshopDimensions(
       if (Math.abs(moveX) > 0.5 || Math.abs(moveY) > 0.5)
         lines.push(segment(x, y, x + moveX, y + moveY));
       found = { key, mode: d.mode, label,
+        anchorA: { x: ax, y: ay }, anchorB: { x: bx, y: by },
+        referenceEdited: (valid(candidateA) || valid(candidateB)) && d.mode !== "DIAMETER",
         labelX: x + moveX, labelY: y + moveY, lines };
       occupied.push(box);
       return true;
     };
     if (d.mode === "HORIZONTAL") {
-      if (Math.abs(ax - bx) >= 20 && Math.abs(d.a.x - d.b.x) > EPS) {
+      if (Math.abs(ax - bx) >= 20 && Math.abs(a.x - b.x) > EPS) {
         for (let lane = 0; lane < 5 && !found; lane++) {
           const y = frame.originY - 15 - lane * LINE_HEIGHT + lineDy;
           if (y < frame.y + 31) break;
@@ -141,7 +160,7 @@ export function layoutWorkshopDimensions(
         }
       }
     } else if (d.mode === "VERTICAL") {
-      if (Math.abs(ay - by) >= 20 && Math.abs(d.a.y - d.b.y) > EPS) {
+      if (Math.abs(ay - by) >= 20 && Math.abs(a.y - b.y) > EPS) {
         for (let lane = 0; lane < 5 && !found; lane++) {
           const x = frame.originX + frame.drawnWidth + 12 + lane * 13 + lineDx;
           if (x > frame.x + frame.width - 23) break;
