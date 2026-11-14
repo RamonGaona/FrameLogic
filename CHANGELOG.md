@@ -12,6 +12,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.150 — 2026-11-13
+
+### Corrección: «Planta · eje propio» girada pese al selector
+
+- **Causa identificada:** en v0.1.149, `AssemblyViewOrientationControls.resolveAssemblyViewBasis` aplicaba un snap automático de **8°** a ejes XYZ globales. Un ensamble girado, por ejemplo 5–7°, se proyectaba en «Planta · eje propio» usando realmente el eje global y aparecía inclinado, igual que «Planta · ejes globales».
+- **Solución:** las orientaciones «Alzado/Planta/Extremo/Isométrica · eje propio» conservan sin redondeo angular la dirección principal geométrica calculada para el ensamble. Solo las opciones «· ejes globales» usan ejes absolutos. No se modifica ni una pieza 3D ni ninguna referencia geométrica de dimensiones.
+- **Regresiones:** pruebas de orientación local/global con vigas a 0,5°, 3°, 5°, 7,5°, -6° y 12°, además de una placa de anclaje adjunta. Se verifica el eje longitudinal horizontal en la proyección local y su diferencia real frente a la planta mundial.
+
+**Limitaciones:** el eje propio sigue siendo una propuesta obtenida por PCA de la geometría de visualización (no un datum verificado de taller); conjuntos de geometría ambigua pueden requerir seleccionar otra vista. Las cotas aparentemente desproporcionadas de las capturas necesitan una revisión específica de unidades independiente de este ajuste.
+
+---
+
 ## v0.1.149 — 2026-11-13
 
 ### Vistas PDF configurables: orientación por eje propio
