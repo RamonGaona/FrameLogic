@@ -4331,7 +4331,12 @@ export class GeneralPdfController {
         const sheet = sheetId ? this.production.sheets.get(sheetId) : undefined;
         if (!sheet) return;
         for (const candidate of sheet.views) {
-          if (this.isAssemblyView(candidate)) candidate.dimensionOverrides = {};
+          if (this.isAssemblyView(candidate)) {
+            candidate.dimensionOverrides = {};
+            // Reset means all saved projection edits, not only today's orientation.
+            candidate.orientationDimensionOverrides = {};
+            candidate.orientationDimensionSignatures = {};
+          }
         }
         this.lastTreeSignature = "";
         this.workspace.render();
