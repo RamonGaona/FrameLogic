@@ -11,6 +11,7 @@ import type { EngineeringDimensionInstruction } from "./EngineeringAutoDimension
 import {
   DRAWING_VIEW_SCALE_PRESETS, DRAWING_VIEW_CUSTOM_SCALE,
   drawingViewScaleSelection, formatDrawingViewScale, modelToPaperScale,
+  clipDrawingSegmentToView,
   parseDrawingViewScale,
 } from "./DrawingViewScale";
 import {
@@ -1922,10 +1923,19 @@ export class GeneralPdfController {
     const originY = layout.y + (automatic ? 60 : 20) + (innerHeight - drawnHeight) / 2;
 
     for (const [segmentIndex, segment] of view.segments.entries()) {
-      const x1 = originX + segment.x1 * scale;
-      const y1 = originY + drawnHeight - segment.y1 * scale;
-      const x2 = originX + segment.x2 * scale;
-      const y2 = originY + drawnHeight - segment.y2 * scale;
+      // An explicitly enlarged View is cropped at its frame: one View's
+      // geometry must never paint over a different View or the title block.
+      const clipped = clipDrawingSegmentToView({
+        x1: originX + segment.x1 * scale,
+        y1: originY + drawnHeight - segment.y1 * scale,
+        x2: originX + segment.x2 * scale,
+        y2: originY + drawnHeight - segment.y2 * scale,
+      }, {
+        x: layout.x + 2, y: layout.y + 19,
+        width: layout.width - 4, height: layout.height - 39,
+      });
+      if (!clipped) continue;
+      const { x1, y1, x2, y2 } = clipped;
       if (segment.hidden) {
         const line = document.createElementNS(SVG_NS, "line");
         line.setAttribute("x1", String(x1)); line.setAttribute("y1", String(y1));
