@@ -158,6 +158,7 @@ interface AssemblySheetViewRuntime {
     sourceSignature: string;
     sourceWorkPlane: WorkPlaneSnapshot;
     fromSection?: boolean;
+    hidden?: boolean;
   };
   /** Relative projection from a piece/assembly parent view (not a physical STEP cut). */
   projectedDirection?: ProjectedViewDirection;
@@ -1948,7 +1949,8 @@ export class GeneralPdfController {
 
   private renderCircularReferences(sheet: GeneralSheetRuntime): void {
     for (const detail of sheet.views) {
-      if (!this.isAssemblyView(detail) || !detail.circularDetail || !detail.sourceViewId) continue;
+      if (!this.isAssemblyView(detail) || !detail.circularDetail
+        || detail.circularDetail.hidden || !detail.sourceViewId) continue;
       const index = sheet.views.findIndex((view) => view.id === detail.sourceViewId);
       if (index < 0) continue;
       const parent = sheet.views[index]!;
@@ -2527,7 +2529,9 @@ export class GeneralPdfController {
         ? "DETALLE " + candidate.circularDetail.label
         : candidate.assemblyName
           + (candidate.orientationLabel ? " · " + candidate.orientationLabel : "");
-      this.renderAssemblyView(sheet, candidate, layout, index);
+      if (!candidate.circularDetail?.hidden) {
+        this.renderAssemblyView(sheet, candidate, layout, index);
+      }
     });
 
     this.renderCircularReferences(sheet);
@@ -2588,6 +2592,7 @@ export class GeneralPdfController {
         this.workspace.svg.append(line);
       } else {
         this.appendLine(x1, y1, x2, y2);
+        if (segment.cut) this.workspace.svg.lastElementChild?.setAttribute("stroke-width", "1.35");
       }
       // A View's geometry has a stable identity; dimensions and frames do not.
       const geometryLine = this.workspace.svg.lastElementChild;
@@ -3560,7 +3565,7 @@ export class GeneralPdfController {
             ? `BOM:${sheet.bomTable.rootAssemblyId}:${sheet.bomTable.mode}` : "NO_BOM",
           ...sheet.views.map((view, index) =>
             this.isAssemblyView(view)
-              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}:${view.circularDetail?.label ?? ""}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`
+              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}:${view.circularDetail?.label ?? ""}:${view.circularDetail?.hidden ?? false}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`
               : `${index}:${view.id}:S:${view.sectionId}:${pieces.map((piece) => piece.id).join(",")}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`,
           ),
         ].join("|")
@@ -3615,6 +3620,19 @@ export class GeneralPdfController {
         tree.append(block.details);
         rowById.set(view.id, block.details);
         if (view.circularDetail) {
+          const visibleButton = document.createElement("button");
+          visibleButton.type = "button";
+          visibleButton.textContent = view.circularDetail.hidden ? "Mostrar detalle" : "Ocultar detalle";
+          visibleButton.style.cssText = "margin:5px 8px 4px 26px;color:white;background:#275068;border:1px solid #6c93a9;border-radius:4px;padding:4px;";
+          visibleButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (!view.circularDetail) return;
+            view.circularDetail.hidden = !view.circularDetail.hidden;
+            this.lastTreeSignature = "";
+            this.professional.recordDrawingChange?.();
+            this.workspace.render();
+          });
+          block.content.append(visibleButton);
           const deleteButton = document.createElement("button");
           deleteButton.type = "button";
           deleteButton.textContent = "Eliminar detalle";
