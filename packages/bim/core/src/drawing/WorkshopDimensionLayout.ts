@@ -1,7 +1,7 @@
 /**
  * Collision-aware paper placement for automatic STEP workshop dimensions.
  *
- * Millimetres are display units only. Anchors always come from exact 3D
+ * FrameLogic model coordinates are already millimetres. STEP anchors come from exact 3D
  * topology projected to a view (never mesh extents), and manual text offsets
  * are stored separately so regeneration can retain user adjustments.
  */
@@ -43,9 +43,10 @@ const EPS = 1e-9;
 const TEXT_SIZE = 8;
 const LINE_HEIGHT = 12;
 
-export function workshopMillimetres(metres: number): string {
-  if (!Number.isFinite(metres)) return "—";
-  const value = Math.abs(metres) * 1000;
+export function workshopMillimetres(millimetres: number): string {
+  if (!Number.isFinite(millimetres)) return "—";
+  // Do not multiply by 1000: the geometric model is millimetre-native.
+  const value = Math.abs(millimetres);
   return Number(value.toFixed(value < 10 ? 2 : 1)).toString();
 }
 
