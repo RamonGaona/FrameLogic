@@ -324,9 +324,7 @@ export class DrawingViewRenderStyleController {
   }
 
   private modeForView(view: SheetState["views"][number]): DrawingViewRenderMode {
-    return view.renderMode && isRenderMode(view.renderMode)
-      ? view.renderMode
-      : this.styles.get(view.id) ?? "BLACK_WHITE";
+    return resolveDrawingViewRenderMode(view, this.styles);
   }
 
   private decorate(): void {
@@ -721,6 +719,16 @@ export class DrawingViewRenderStyleController {
   }
 }
 
+
+/** View-state persistence takes precedence over legacy professional snapshot modes. */
+export function resolveDrawingViewRenderMode(
+  view: { readonly id: string; readonly renderMode?: string },
+  legacyModes: ReadonlyMap<string, DrawingViewRenderMode> = new Map(),
+): DrawingViewRenderMode {
+  return view.renderMode && isRenderMode(view.renderMode)
+    ? view.renderMode
+    : legacyModes.get(view.id) ?? "BLACK_WHITE";
+}
 
 /** Backwards-compatible hydration of independently saved viewport styles. */
 export function restoreDrawingViewModes(
