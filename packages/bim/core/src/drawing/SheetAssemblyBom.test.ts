@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildSheetAssemblyBom, chooseSheetBomPlacement,
+  buildSheetAssemblyBom, chooseSheetBomPlacement, planSheetBomPages,
   sheetBomOverlaps, type SheetBomAssembly, type SheetBomPiece,
 } from "./SheetAssemblyBom";
 
@@ -64,6 +64,32 @@ describe("BOM de ensamble por PDF", () => {
       parts, {}, "FLAT").rows;
     expect(rows[0]?.quantity).toBe(3);
   });
+  it("paginates every row once in complete BOM PDFs, including large assemblies", () => {
+    for (const total of [1, 40, 41, 85, 121]) {
+      const pages = planSheetBomPages(total);
+      expect(pages.reduce((sum, page) => sum + page.count, 0)).toBe(total);
+      const visited = pages.flatMap((page) =>
+        Array.from({ length: page.count }, (_, i) => page.start + i));
+      expect(visited).toEqual(Array.from({ length: total }, (_, i) => i));
+      expect(pages.every((page) => page.totalPages === pages.length)).toBe(true);
+    }
+    expect(planSheetBomPages(0)).toEqual([]);
+    expect(planSheetBomPages(-1)).toEqual([]);
+  });
+
+  it("persists BOM configuration independently for different PDF sheets", () => {
+    const sheets = [
+      { ownerSectionId: "A", bomTable: { rootAssemblyId: "root", sourceViewId: "v1",
+        mode: "HIERARCHY" as const, x: 55, y: 624, width: 648, height: 142 } },
+      { ownerSectionId: "B", bomTable: { rootAssemblyId: "child", sourceViewId: "v2",
+        mode: "FLAT" as const, x: 55, y: 624, width: 648, height: 142 } },
+    ];
+    const persisted = JSON.parse(JSON.stringify(sheets)) as typeof sheets;
+    delete (persisted[0] as { bomTable?: typeof sheets[number]["bomTable"] }).bomTable;
+    expect(persisted[1]?.bomTable?.rootAssemblyId).toBe("child");
+    expect(sheets[0]?.bomTable?.rootAssemblyId).toBe("root");
+  });
+
   it("finds a blank sheet slot, preserving the frame and title block", () => {
     const title = { x: 728, y: 670, width: 360, height: 92 };
     const placement = chooseSheetBomPlacement([title], 5);
