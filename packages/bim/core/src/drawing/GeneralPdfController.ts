@@ -2043,6 +2043,7 @@ export class GeneralPdfController {
       this.isAssemblyView(v) && Boolean(v.projectedDirection))) return;
     this.projectionRefreshInProgress = true;
     let updated = 0;
+    const checkedSources = new Set<string>();
     try {
       for (const child of sheet.views) {
         if (!this.isAssemblyView(child) || !child.projectedDirection || !child.sourceViewId) continue;
@@ -2052,11 +2053,47 @@ export class GeneralPdfController {
           continue;
         }
         const standard = child.projectedStandard ?? "ISO_E";
-        const sourceSignature = this.projectedSourceFingerprint(source, standard);
         const modelSignature = assemblyProjectionSignature({
           instanceIds: source.instanceIds, designModel: this.designModel,
           designScene: this.designScene,
         });
+        if (!checkedSources.has(source.id)) {
+          checkedSources.add(source.id);
+          // A manually-created source view also needs to reflect changes in
+          // its 3D model, otherwise child views update while the parent remains
+          // stale on the same sheet. Automatic sources use the normal AUTO path.
+          if (!source.automaticViewCode && !source.projectedDirection
+            && source.geometrySignature !== modelSignature) {
+            try {
+              const projection = await projectAssembly({
+                instanceIds: source.instanceIds, workPlane: restoreWorkPlane(source.workPlane),
+                designModel: this.designModel, designScene: this.designScene,
+              });
+              const geometry = projection ?? this.buildPlanGeometry(
+                source.instanceIds, restoreWorkPlane(source.workPlane));
+              if (geometry) {
+                source.width = geometry.width;
+                source.height = geometry.height;
+                source.offsetX = geometry.offsetX;
+                source.offsetY = geometry.offsetY;
+                source.segments = geometry.segments;
+                source.automaticDimensions = source.orientationMode?.endsWith("ISO")
+                  ? [] : projection?.dimensions ?? [];
+                source.automaticAnchors = projection?.anchors ?? [];
+                source.assemblyOcclusionExact = projection?.assemblyOcclusionExact ?? false;
+                source.automaticWarnings = projection?.warnings ?? [
+                  "Proyección de malla derivada: verificar cotas y líneas ocultas.",
+                ];
+                source.geometrySignature = modelSignature;
+                source.resolved = true;
+                updated++;
+              }
+            } catch (error) {
+              source.automaticWarnings = ["Error actualizando View origen: " + String(error)];
+            }
+          }
+        }
+        const sourceSignature = this.projectedSourceFingerprint(source, standard);
         if (!force && child.projectedSourceSignature === sourceSignature
           && child.geometrySignature === modelSignature) continue;
         const plane = this.projectedWorkPlane(source, child.projectedDirection, standard);
