@@ -1,4 +1,9 @@
 import * as THREE from "three";
+import {
+  buildDrawingPdfZip, buildMultiPageDrawingPdf, pdfExportFilename,
+  pdfCanvasPlacement, pdfSheetDimensions, type DrawingPdfPage,
+} from "./DrawingPdfBatch";
+import type { GeneralPdfController } from "./GeneralPdfController";
 import type { DesignSceneController } from "../design/DesignSceneController";
 import {
   AssemblyViewShadingRenderer,
@@ -73,6 +78,7 @@ interface DrawingSnapshotRuntime {
 interface WorkspaceRuntime {
   readonly svg: SVGSVGElement;
   readonly overlay: HTMLDivElement;
+  setStatus(text: string): void;
   snapshot: DrawingSnapshotRuntime | null;
   render(): void;
   buildSnapshot(section: SectionViewDefinition): DrawingSnapshotRuntime;
@@ -113,22 +119,14 @@ interface Options {
   readonly drawingProfessional: DrawingProfessionalController;
   readonly sectionDrawing: SectionDrawingController;
   readonly designScene: DesignSceneController;
+  readonly generalPdf: GeneralPdfController;
 }
 
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const CANVAS_WIDTH = 1120;
 const CANVAS_HEIGHT = 792;
-const SHEET_MM: Record<string, readonly [number, number]> = {
-  A4: [297, 210],
-  A3: [420, 297],
-  A2: [594, 420],
-  A1: [841, 594],
-  A0: [1189, 841],
-};
-
-
-/**
+ /**
  * Estilo de render por viewport para planos de sección/detalle.
  *
  * Each View retains its own style in the project snapshot. For standard
@@ -140,6 +138,11 @@ export class DrawingViewRenderStyleController {
   private readonly production: ProductionRuntime;
   private readonly professional: ProfessionalRuntime;
   private readonly sectionDrawing: SectionDrawingController;
+  private readonly generalPdf: GeneralPdfController;
+  private readonly batchModeSelect: HTMLSelectElement;
+  private readonly batchSaveButton: HTMLButtonElement;
+  private readonly sheetSizeLabel: HTMLSpanElement;
+  private batchSaving = false;
   private readonly baseRender: () => void;
   private readonly baseExportPdf: () => void;
   private readonly baseCreateSnapshot: () => DrawingProfessionalSnapshot;
@@ -158,6 +161,7 @@ export class DrawingViewRenderStyleController {
     this.production = options.drawingProduction as unknown as ProductionRuntime;
     this.professional = options.drawingProfessional as unknown as ProfessionalRuntime;
     this.sectionDrawing = options.sectionDrawing;
+    this.generalPdf = options.generalPdf;
     this.shading = new AssemblyViewShadingRenderer(options.designScene);
     this.viewSelect = this.workspace.overlay.querySelector<HTMLSelectElement>(
       '[data-framelogic-view-select="true"]',
@@ -173,6 +177,10 @@ export class DrawingViewRenderStyleController {
     const toolbarControls = this.installToolbar();
     this.toolbarLabel = toolbarControls.label;
     this.select = toolbarControls.select;
+    const batch = this.installBatchSaveControls();
+    this.batchModeSelect = batch.select;
+    this.batchSaveButton = batch.button;
+    this.sheetSizeLabel = batch.sizeLabel;
     this.viewSelect?.addEventListener("change", this.handleViewSelectionChange);
     this.installPatches();
     this.workspace.svg.addEventListener("pointerdown", this.handlePointerDown, true);
@@ -190,6 +198,9 @@ export class DrawingViewRenderStyleController {
     this.professional.restoreProfessionalSnapshot = this.baseRestoreSnapshot;
     this.toolbarLabel.remove();
     this.select.remove();
+    this.batchModeSelect.remove();
+    this.batchSaveButton.remove();
+    this.sheetSizeLabel.remove();
     this.styles.clear();
   }
 
@@ -197,6 +208,10 @@ export class DrawingViewRenderStyleController {
     this.workspace.render = (): void => {
       this.baseRender();
       this.decorate();
+      const sheet = this.production.getActiveSheet();
+      this.sheetSizeLabel.textContent = sheet
+        ? sheet.size + (sheet.orientation === "PORTRAIT" ? " · vertical" : " · horizontal")
+        : "Sin hoja";
     };
 
     this.professional.createProfessionalSnapshot = (): DrawingProfessionalSnapshot => {
@@ -287,6 +302,64 @@ export class DrawingViewRenderStyleController {
       }
     }
     return { label, select };
+  }
+
+  private installBatchSaveControls(): {
+    select: HTMLSelectElement;
+    button: HTMLButtonElement;
+    sizeLabel: HTMLSpanElement;
+  } {
+    const toolbar = this.workspace.overlay.firstElementChild as HTMLElement | null;
+    const exportButton = Array.from(toolbar?.querySelectorAll("button") ?? [])
+      .find((button) => button.textContent === "Exportar PDF");
+
+    const sizeLabel = document.createElement("span");
+    sizeLabel.dataset["framelogicPdfSheetFormat"] = "true";
+    sizeLabel.textContent = "A3 · horizontal";
+    sizeLabel.title = "El tamaño de papel y orientación se configuran por hoja (A0–A4)";
+    sizeLabel.style.cssText =
+      "font:11px system-ui;color:#acd3e3;white-space:nowrap;";
+
+    const select = document.createElement("select");
+    select.dataset["framelogicPdfSaveMode"] = "true";
+    select.title = "Modo de guardado de todas las hojas del Paper Space";
+    for (const [value, label] of [
+      ["COMBINED", "Todas en 1 PDF"],
+      ["ZIP", "Todas separadas (ZIP)"],
+    ] as const) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      select.append(option);
+    }
+    select.style.cssText = "padding:5px 6px;border:1px solid #597e91;"
+      + "border-radius:4px;background:#1d303c;color:#eef8fc;font:11px system-ui;"
+      + "max-width:166px;";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Guardar todos";
+    button.dataset["framelogicSaveAllPdf"] = "true";
+    button.title = "Guarda todas las hojas del proyecto con tamaño A0–A4 y orientación propios";
+    button.style.cssText = "padding:5px 8px;border:1px solid #76a5bd;"
+      + "border-radius:4px;background:#255a70;color:#fff;font:11px system-ui;"
+      + "cursor:pointer;white-space:nowrap;";
+    button.addEventListener("click", () => {
+      void this.saveAllPdfSheets(select.value === "ZIP" ? "ZIP" : "COMBINED");
+    });
+
+    if (exportButton) {
+      exportButton.textContent = "Guardar PDF actual";
+      exportButton.title = "Descargar únicamente esta hoja con su tamaño real";
+      exportButton.before(sizeLabel, select, button);
+    } else {
+      toolbar?.append(sizeLabel, select, button);
+    }
+    if (toolbar) {
+      toolbar.style.flexWrap = "wrap";
+      toolbar.style.rowGap = "6px";
+    }
+    return { select, button, sizeLabel };
   }
 
   private readonly handleViewSelectionChange = (): void => {
@@ -598,23 +671,21 @@ export class DrawingViewRenderStyleController {
     this.select.value = selected ? this.modeForView(selected) : "BLACK_WHITE";
   }
 
-  private exportStyledPdf(): void {
+  private captureStyledPdfPage(): DrawingPdfPage | null {
     this.workspace.render();
     const sheet = this.production.getActiveSheet();
-    if (!sheet) {
-      this.baseExportPdf();
-      return;
-    }
+    if (!sheet) return null;
 
-    const size = SHEET_MM[sheet.size] ?? SHEET_MM["A3"]!;
-    const [rawW, rawH] = size;
-    const widthMm = sheet.orientation === "LANDSCAPE" ? rawW : rawH;
-    const heightMm = sheet.orientation === "LANDSCAPE" ? rawH : rawW;
-    const widthPt = widthMm * 72 / 25.4;
-    const heightPt = heightMm * 72 / 25.4;
-    const sx = widthPt / CANVAS_WIDTH;
-    const sy = heightPt / CANVAS_HEIGHT;
-    const commands: string[] = ["q", "1 J 1 j"];
+    const { widthPt, heightPt } = pdfSheetDimensions(
+      sheet.size, sheet.orientation);
+    const placement = pdfCanvasPlacement(
+      widthPt, heightPt, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // Use one scale for X/Y; otherwise portrait pages would distort
+    // circles and invalidate true 1:N drawing scales.
+    const sx = placement.scalePtPerCanvasUnit;
+    const sy = placement.scalePtPerCanvasUnit;
+    const commands: string[] = ["q", "1 J 1 j",
+      `1 0 0 1 ${n(placement.offsetXPt)} ${n(-placement.offsetYPt)} cm`];
     const jpegImages: PdfJpegImage[] = [];
 
     for (const child of Array.from(this.workspace.svg.children)) {
@@ -707,16 +778,125 @@ export class DrawingViewRenderStyleController {
       }
     }
     commands.push("Q");
+    return { width: widthPt, height: heightPt,
+      stream: commands.join("\n"), images: jpegImages };
+  }
 
-    const bytes = buildPdf(widthPt, heightPt, commands.join("\n"), jpegImages);
-    const blob = new Blob([bytes], { type: "application/pdf" });
+  private exportStyledPdf(): void {
+    if (this.batchSaving) return;
+    const page = this.captureStyledPdfPage();
+    if (!page) {
+      this.baseExportPdf();
+      return;
+    }
+    const sheet = this.production.getActiveSheet()!;
+    const filename = pdfExportFilename(sheet, 0);
+    this.downloadPdfFile(
+      buildPdf(page.width, page.height, page.stream, page.images),
+      filename, "application/pdf",
+    );
+    this.workspace.setStatus(`PDF guardado: ${filename} · ${sheet.size} · `
+      + (sheet.orientation === "PORTRAIT" ? "vertical" : "horizontal")
+      + ". El tamaño de impresión está definido por la hoja.");
+  }
+
+  private downloadPdfFile(
+    bytes: Uint8Array<ArrayBuffer>,
+    filename: string,
+    mime: string,
+  ): void {
+    const blob = new Blob([bytes], { type: mime });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
-    const revision = sheet.revisions.at(-1)?.code ?? "0";
     anchor.href = url;
-    anchor.download = `${fileSafeName(sheet.titleBlock.drawingNumber || "plano")}_R${revision}.pdf`;
+    anchor.download = filename;
+    anchor.style.display = "none";
+    document.body.append(anchor);
     anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 20_000);
+  }
+
+  private async saveAllPdfSheets(mode: "COMBINED" | "ZIP"): Promise<void> {
+    if (this.batchSaving) return;
+    const originalSheetId = this.generalPdf.getActiveSheetId();
+    if (!originalSheetId) {
+      this.workspace.setStatus("GUARDAR PDF: abre primero Paper Space.");
+      return;
+    }
+    const ids = this.generalPdf.getExportableSheetIds();
+    if (!ids.length) {
+      this.workspace.setStatus("GUARDAR PDF: el proyecto no tiene hojas.");
+      return;
+    }
+
+    const pages: DrawingPdfPage[] = [];
+    const files: Array<{ name: string; bytes: Uint8Array<ArrayBuffer> }> = [];
+    this.batchSaving = true;
+    this.batchSaveButton.disabled = true;
+    this.batchSaveButton.textContent = "Generando…";
+    let error: string | null = null;
+    try {
+      // Export the same Paper Space sheet order shown in the user tree,
+      // and render through the normal 3D-shaded/vector/BOM/section pipeline.
+      // Never silently omit a failed sheet.
+      for (const [index, id] of ids.entries()) {
+        if (!this.generalPdf.openSheet(id)) {
+          throw new Error("No se pudo abrir la hoja " + (index + 1));
+        }
+        const sheet = this.production.getActiveSheet();
+        if (!sheet || sheet.ownerSectionId !== id) {
+          throw new Error("No se encontró la hoja solicitada: " + id);
+        }
+        const page = this.captureStyledPdfPage();
+        if (!page) throw new Error("No se pudo dibujar " + sheet.titleBlock.drawingNumber);
+        if (mode === "COMBINED") {
+          pages.push(page);
+        } else {
+          const filename = pdfExportFilename(sheet, index);
+          files.push({ name: filename,
+            bytes: buildPdf(page.width, page.height, page.stream, page.images) });
+        }
+        this.batchSaveButton.textContent = `${index + 1}/${ids.length}`;
+        if ((index + 1) % 4 === 0) {
+          // Let the browser paint and remain responsive during large projects.
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        }
+      }
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      // Restore the exact document the user was editing, even after failure.
+      if (!this.generalPdf.openSheet(originalSheetId)) {
+        error = (error ? error + " · " : "") + "No se pudo restaurar la hoja original.";
+      }
+      this.batchSaving = false;
+      this.batchSaveButton.disabled = false;
+      this.batchSaveButton.textContent = "Guardar todos";
+    }
+    if (error) {
+      this.workspace.setStatus("GUARDAR PDF: error. " + error
+        + " No se descargó un paquete parcial.");
+      return;
+    }
+    try {
+      if (mode === "COMBINED") {
+        const bytes = buildMultiPageDrawingPdf(pages);
+        this.downloadPdfFile(bytes,
+          `FrameLogic_Planos_Completos_${pages.length}_hojas.pdf`, "application/pdf");
+        this.workspace.setStatus(`Se guardaron ${pages.length} hojas en un PDF multipágina. `
+          + "Cada página conserva su propio tamaño y orientación de papel.");
+      } else {
+        const bytes = buildDrawingPdfZip(files);
+        this.downloadPdfFile(bytes,
+          `FrameLogic_Planos_Individuales_${files.length}_hojas.zip`, "application/zip");
+        this.workspace.setStatus(`Se guardaron ${files.length} PDFs independientes en un ZIP. `
+          + "Cada PDF conserva el tamaño, orientación, escala y cotas de su hoja.");
+      }
+    } catch (cause) {
+      this.workspace.setStatus("GUARDAR PDF: no fue posible crear el paquete. "
+        + (cause instanceof Error ? cause.message : String(cause)));
+    }
   }
 }
 

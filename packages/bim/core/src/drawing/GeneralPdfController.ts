@@ -181,6 +181,7 @@ interface GeneralSheetRuntime extends Omit<SheetState, "views"> {
 interface ProductionRuntime {
   readonly sheets: Map<string, GeneralSheetRuntime>;
   getActiveSheet(): GeneralSheetRuntime | null;
+  syncActiveSheetToolbar(): void;
 }
 
 interface DrawingDocumentRuntime {
@@ -434,6 +435,16 @@ export class GeneralPdfController {
     );
   }
 
+  /** Ordered PDF document pages. Respect the user-edited Paper Space tree,
+   * including BOM and detail sheets, without inferring pages from Model Space.
+   */
+  getExportableSheetIds(): string[] {
+    this.syncSectionSheets();
+    return [...new Set(this.getOrderedEntries()
+      .map((entry) => entry.targetId)
+      .filter((id) => this.production.sheets.has(id)))];
+  }
+
   getActiveSheetId(): string | null {
     if (this.workspace.overlay.style.display === "none") {
       return null;
@@ -473,12 +484,14 @@ export class GeneralPdfController {
       const opened = drawingWorkspace.openActiveSection();
       if (!opened) return false;
       this.workspace.title.textContent = `PDF · ${this.sheetName(sheetId, sheet)}`;
+      this.production.syncActiveSheetToolbar();
       this.workspace.render();
       this.lastTreeSignature = "";
       return true;
     }
 
     this.openSheetWithoutSection(sheetId, sheet);
+    this.production.syncActiveSheetToolbar();
     return true;
   }
 
@@ -2845,7 +2858,7 @@ export class GeneralPdfController {
       : rawWidth;
     // The PDF exporter maps the full 1120×792 SVG canvas to the
     // actual paper size. Margins affect placement, not physical scale.
-    const pxPerMm = Math.min(
+    const pxPerMm = Math.max(
       SHEET_WIDTH / paperWidth,
       SHEET_HEIGHT / paperHeight,
     );

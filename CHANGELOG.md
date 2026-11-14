@@ -12,6 +12,23 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.155 — 2026-11-13
+
+### Guardar planos PDF individuales o todos juntos, respetando el tamaño físico de cada hoja
+
+- **Guardar PDF actual:** el botón de exportación del Paper Space se identifica como «Guardar PDF actual» y genera la hoja activa en un único archivo, con su tamaño y orientación A0/A1/A2/A3/A4 definidos en el plano, cotas, BOM, vistas y renders vectoriales/sombreados.
+- **Guardar todos:** junto al botón de hoja individual se incorpora un selector con los modos **«Todas en 1 PDF»** (archivo multipágina) y **«Todas separadas (ZIP)»** (un PDF por hoja dentro de un ZIP), evitando múltiples descargas bloqueadas por el navegador.
+- **Tamaño y orientación independientes:** un solo PDF combinado admite páginas con distintos `/MediaBox` reales (por ejemplo A3 horizontal, A4 vertical y A1 horizontal). No se fuerza a todas las hojas al tamaño de la primera, ni se sustituye su contenido por una captura rasterizada. Se usa la misma escala de impresión X/Y: en papel vertical se centra el contenido sin estirar círculos ni distancias y se respeta 1:N; un layout de origen horizontal puede dejar márgenes en formato vertical.
+- **PDFs individuales identificables:** cada archivo dentro del ZIP incluye ordinal del plano, número de plano, formato, orientación y revisión. Se respetan los tamaños configurados en DrawingProduction por hoja.
+- **Orden de planos:** se exportan todas las hojas del navegador unificado de Paper Space en el orden visible, incluyendo hojas de BOM, vistas de ensamble, piezas, detalles y secciones.
+- **Estado y errores:** el exportador restaura la hoja que estaba editando el usuario, también ante fallos. Si alguna hoja no puede abrirse/renderizarse, se interrumpe la operación completa y no se descarga un paquete parcial.
+- **Sin servicios ni licencias:** nuevo generador PDF multipágina binario con imágenes JPEG XObjects y geometría SVG vectorial; ZIP tradicional STORE con CRC32 y nombres UTF-8, todo en TypeScript/browser.
+- **Pruebas:** tamaños milimétricos A0–A4 y orientaciones, MediaBox heterogéneos, PDF multipágina con JPEG y vectores, índice binario PDF, ZIP de PDFs separados y nombres únicos estables.
+
+**Nota de aceptación:** se requiere validación visual en navegador y revisión del PDF impreso al 100 % con cotas reales y estilos de sombreado. Los archivos se descargan mediante el navegador, por lo que la carpeta de destino depende de su configuración.
+
+---
+
 ## v0.1.154 — 2026-11-13
 
 ### BOM independiente por hoja PDF, con ensambles y subensambles

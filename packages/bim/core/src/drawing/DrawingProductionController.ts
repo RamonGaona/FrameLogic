@@ -453,12 +453,14 @@ export class DrawingProductionController {
       ["A0", "A0"],
     ]);
     sizeSelect.title = "Tamaño de hoja";
+    sizeSelect.dataset["framelogicPaperSizeSelect"] = "true";
 
     const orientationSelect = this.makeSelect([
       ["LANDSCAPE", "Horizontal"],
       ["PORTRAIT", "Vertical"],
     ]);
     orientationSelect.title = "Orientación de hoja";
+    orientationSelect.dataset["framelogicPaperOrientationSelect"] = "true";
 
     const scaleSelect = this.makeSelect([
       ["AUTO", "Escala AUTO"],
@@ -472,6 +474,7 @@ export class DrawingProductionController {
       ["100", "1:100"],
     ]);
     scaleSelect.title = "Escala del plano";
+    scaleSelect.dataset["framelogicPaperScaleSelect"] = "true";
 
     const hatchButton = this.makeButton("Hatch", "Activar/desactivar hachurado de corte");
     const addViewButton = this.makeButton("+ Vista", "Agregar otra sección a esta hoja");
@@ -567,6 +570,26 @@ export class DrawingProductionController {
     };
   }
 
+  /** The selected Paper Space PDF may change without a SectionDrawing event.
+   * Keep the A0–A4 and portrait/landscape controls bound to that real sheet.
+   */
+  syncActiveSheetToolbar(): void {
+    const sheet = this.getActiveSheet();
+    if (!sheet) return;
+    const size = this.workspace.overlay.querySelector<HTMLSelectElement>(
+      '[data-framelogic-paper-size-select="true"]');
+    const orientation = this.workspace.overlay.querySelector<HTMLSelectElement>(
+      '[data-framelogic-paper-orientation-select="true"]');
+    const scale = this.workspace.overlay.querySelector<HTMLSelectElement>(
+      '[data-framelogic-paper-scale-select="true"]');
+    if (size) size.value = sheet.size;
+    if (orientation) orientation.value = sheet.orientation;
+    const scaleValue = sheet.scaleDenominator === null
+      ? "AUTO" : String(sheet.scaleDenominator);
+    if (scale && Array.from(scale.options).some((option) =>
+      option.value === scaleValue)) scale.value = scaleValue;
+  }
+
   private installExportInterceptor(container: HTMLElement): void {
     const overlay = container.querySelector<HTMLElement>('[data-framelogic-drawing-workspace="true"]');
     const buttons = Array.from(overlay?.querySelectorAll("button") ?? []);
@@ -636,7 +659,7 @@ export class DrawingProductionController {
     const paperH = sheet.orientation === "LANDSCAPE" ? rawH : rawW;
     // The PDF exporter maps the full SVG canvas onto the physical sheet.
     // Do not calculate scale using printable margins (that changes 1:N).
-    const pxPerMm = Math.min(CANVAS_WIDTH / paperW, CANVAS_HEIGHT / paperH);
+    const pxPerMm = Math.max(CANVAS_WIDTH / paperW, CANVAS_HEIGHT / paperH);
     // Model Space is millimetre-native; 1:N means pxPerPaperMm / N.
     const scale = pxPerMm / sheet.scaleDenominator;
     const width = section.width * scale;
