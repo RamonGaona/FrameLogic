@@ -434,6 +434,16 @@ export class GeneralPdfController {
     );
   }
 
+  /** Ordered PDF document pages. Respect the user-edited Paper Space tree,
+   * including BOM and detail sheets, without inferring pages from Model Space.
+   */
+  getExportableSheetIds(): string[] {
+    this.syncSectionSheets();
+    return [...new Set(this.getOrderedEntries()
+      .map((entry) => entry.targetId)
+      .filter((id) => this.production.sheets.has(id)))];
+  }
+
   getActiveSheetId(): string | null {
     if (this.workspace.overlay.style.display === "none") {
       return null;
