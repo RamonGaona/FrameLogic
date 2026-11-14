@@ -205,13 +205,17 @@ export function chooseSheetBomPlacement(
   const width = 648;
   // 120-190 SVG units; more space if the page is genuinely free.
   const height = Math.min(460, Math.max(142, 49 + rows * 13));
-  const candidates: SheetBomRect[] = [
-    { x: 55, y: 624, width, height: Math.min(152, height) },
+  const compact: SheetBomRect = { x: 55, y: 624, width, height: Math.min(152, height) };
+  const expanded: SheetBomRect[] = [
     { x: 55, y: 365, width, height },
     { x: 55, y: 54, width, height },
     { x: 55, y: 54, width: 480, height },
-    { x: 55, y: 624, width: 480, height: Math.min(152, height) },
   ];
+  // Prefer a large enough table if it really can fit every row; on a busy
+  // assembly sheet fall back to the footer slot, visibly reporting overflow.
+  const candidates: SheetBomRect[] = rows > 7
+    ? [...expanded, compact, { x: 55, y: 624, width: 480, height: Math.min(152, height) }]
+    : [compact, ...expanded, { x: 55, y: 624, width: 480, height: Math.min(152, height) }];
   for (const candidate of candidates) {
     if (candidate.x < sheet.x + 10 || candidate.y < sheet.y + 10
       || candidate.x + candidate.width > sheet.x + sheet.width - 10
