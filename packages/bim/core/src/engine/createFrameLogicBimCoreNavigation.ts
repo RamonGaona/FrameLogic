@@ -413,14 +413,6 @@ export async function createBimCore(
       container,
     });
 
-  const drawingViewRenderStyles =
-    new DrawingViewRenderStyleController({
-      drawingWorkspace: core.drawingWorkspace,
-      drawingProduction: core.drawingProduction,
-      drawingProfessional: core.drawingProfessional,
-      sectionDrawing: core.sectionDrawing,
-    });
-
   const drawingModelVisibilityBridge =
     new DrawingModelVisibilityBridgeController({
       designModel: core.designModel,
@@ -443,6 +435,17 @@ export async function createBimCore(
       drawingProfessional: core.drawingProfessional,
       drawingWorkspace: core.drawingWorkspace,
       sectionDrawing: core.sectionDrawing,
+    });
+
+  // Install render styling AFTER GeneralPdf. Otherwise it decorates a
+  // partially built SVG before the assembly geometry exists.
+  const drawingViewRenderStyles =
+    new DrawingViewRenderStyleController({
+      drawingWorkspace: core.drawingWorkspace,
+      drawingProduction: core.drawingProduction,
+      drawingProfessional: core.drawingProfessional,
+      sectionDrawing: core.sectionDrawing,
+      designScene: core.designScene,
     });
 
   const unifiedPdfNavigation =
@@ -729,9 +732,9 @@ export async function createBimCore(
     sectionAxisDragStability.dispose();
     sectionModelInteraction.dispose();
     sectionInstanceTreeBridge.dispose();
+    drawingViewRenderStyles.dispose();
     generalPdf.dispose();
     drawingModelVisibilityBridge.dispose();
-    drawingViewRenderStyles.dispose();
     moveRuler.dispose();
     smartPieceInsertion.dispose();
     unsubscribeReferencePreparation();
