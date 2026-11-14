@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.157 — 2026-11-14 (en validación, rama de desarrollo)
+
+### Optimización de CI y correcciones de Paper Space
+
+- **GitHub Actions:** Validate conserva las regresiones y pruebas de navegador; Web build se centra en generar y verificar el paquete estático y los archivos WASM. Se evita repetir typecheck, automatización, geometría y demás suites completas en ambos workflows.
+- **Concurrencia:** ejecuciones anteriores de un mismo Pull Request se cancelan automáticamente; otros Pull Requests y los despliegues de producción permanecen independientes.
+- **MCP remoto:** una comprobación ligera detecta cambios limitados a la versión raíz y evita instalar dependencias, recompilar y redesplegar el Worker; cambios de código, contratos o dependencias reales siguen activando despliegue. Se añadió una prueba de regresión del filtro.
+- **BOM de hojas PDF:** la columna ÍTEM representa la jerarquía real con numeración 1, 1.1, 1.2, 1.2.1, etc., sin alterar el cómputo físico de piezas ni las marcas. El BOM plano mantiene su numeración consecutiva.
+- **Selector de hoja PDF:** no se reconstruyen opciones mientras el desplegable tiene el foco y se corrige la reconstrucción repetida del estado «Sin PDFs».
+- **Herramientas Paper Space:** barra principal con ajuste de línea para evitar que los controles invadan el área del plano; panel contextual de View debajo de la altura efectiva de esa barra.
+- **Render por View:** las nuevas Views se inicializan en Sólido con aristas, conservando ajustes explícitos y persistentes de Views existentes. El panel flotante de render de Model Space se oculta cuando está abierto Paper Space.
+
+**Pendiente de validación:** checks CI de esta rama, interacción visual del selector y menús en navegador, geometrías STEP y oclusión de aristas entre piezas, edición individual persistente de cotas y mejoras avanzadas del recorte de detalle. No declarar despliegue o fusión hasta verificarlos.
+
+---
+
 ## v0.1.156 — 2026-11-13 (rama de desarrollo; pendiente de aceptación)
 
 ### Vista de detalle circular vectorial por View en Paper Space
