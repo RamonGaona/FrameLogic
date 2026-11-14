@@ -10,6 +10,7 @@ type ToolbarCategory =
   | "FILE"
   | "DRAW"
   | "EDIT"
+  | "ANNOTATE"
   | "WORKPLANE"
   | "PIECE";
 
@@ -19,6 +20,7 @@ const CATEGORY_SEQUENCE:
     "FILE",
     "DRAW",
     "EDIT",
+    "ANNOTATE",
     "WORKPLANE",
     "PIECE",
   ];
@@ -29,6 +31,7 @@ const CATEGORY_ORDER:
     FILE: 10,
     DRAW: 100,
     EDIT: 200,
+    ANNOTATE: 250,
     WORKPLANE: 300,
     PIECE: 400,
   };
@@ -39,6 +42,7 @@ const CATEGORY_LABEL:
     FILE: "Archivo",
     DRAW: "Dibujo CAD",
     EDIT: "Editar",
+    ANNOTATE: "Acotar",
     WORKPLANE: "Plano de trabajo",
     PIECE: "Piezas",
   };
@@ -108,7 +112,7 @@ export class ModelSpaceToolbarOrganizerController {
       .forEach((element) => element.remove());
     if (toolbar) {
       delete toolbar.dataset["framelogicModelRibbonActive"];
-      for (const child of toolbar.children) {
+      for (const child of Array.from(toolbar.children)) {
         if (child instanceof HTMLElement) delete child.dataset["framelogicModelRibbonCategory"];
       }
     }
@@ -507,6 +511,7 @@ export class ModelSpaceToolbarOrganizerController {
         FILE: 0,
         DRAW: 0,
         EDIT: 0,
+        ANNOTATE: 0,
         WORKPLANE: 0,
         PIECE: 0,
       };
@@ -623,7 +628,13 @@ export class ModelSpaceToolbarOrganizerController {
     }
 
     if (
-      text === "TRIM"
+      text === "COPIAR"
+      || text === "UNIR"
+      || text === "STRETCH"
+      || text === "PEDIT"
+      || text === "MOVE"
+      || text === "ROTAR"
+      || text === "TRIM"
       || text === "PARALELA"
       || text === "LÍNEA PARALELA"
       || text === "LINEA PARALELA"
@@ -632,6 +643,15 @@ export class ModelSpaceToolbarOrganizerController {
     ) {
       return "EDIT";
     }
+
+    if (text === "COTA" || text.startsWith("COTA ") || combined.includes("ACOTAR")
+      || combined.includes("DIMENSION")) return "ANNOTATE";
+
+    // Preparation controls refer to piece datums, even when their tooltip
+    // mentions WorkPlane; they belong in the Piezas tab.
+    if (text.includes("ORIGEN ←") || text.includes("PUNTO →")
+      || text.includes("LINEA →") || text.includes("LÍNEA →")
+      || text.includes("PREP") || text.includes("CANCELAR INSERCION")) return "PIECE";
 
     if (
       combined.includes("WORKPLANE")
