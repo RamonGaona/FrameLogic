@@ -2477,23 +2477,29 @@ export class GeneralPdfController {
     const source = sheet.views.find((view) =>
       view.id === selection.sourceViewId && this.isAssemblyView(view));
     const root = this.designModel.assemblies.get(selection.rootAssemblyId);
+    const isModelSummary = selection.rootAssemblyId === "model:all";
     const assemblies: SheetBomAssembly[] = root
       ? this.designModel.assemblies.getAll().map((assembly) => ({
           id: assembly.id, name: assembly.name,
           parentAssemblyId: assembly.parentAssemblyId,
           pieceInstanceIds: assembly.pieceInstanceIds,
         }))
-      : source && this.isAssemblyView(source) && source.assemblyId === selection.rootAssemblyId
-        ? [{
-            id: selection.rootAssemblyId, name: source.assemblyName,
-            pieceInstanceIds: source.instanceIds,
-          }] : [];
+      : isModelSummary
+        ? [{ id: "model:all", name: "Piezas del modelo",
+          pieceInstanceIds: this.designModel.pieceInstances.getAll().map((p) => p.id) }]
+        : source && this.isAssemblyView(source) && source.assemblyId === selection.rootAssemblyId
+          ? [{
+              id: selection.rootAssemblyId, name: source.assemblyName,
+              pieceInstanceIds: source.instanceIds,
+            }] : [];
     if (!assemblies.length) {
       return { rows: [], totalPieces: 0, missingPieces: [], rootFound: false };
     }
     const partIds = root
       ? this.designModel.getAssemblyPieceIdsDeep(root.id)
-      : source && this.isAssemblyView(source) ? source.instanceIds : [];
+      : isModelSummary
+        ? this.designModel.pieceInstances.getAll().map((p) => p.id)
+        : source && this.isAssemblyView(source) ? source.instanceIds : [];
     const parts: Record<string, SheetBomPiece> = {};
     const marks = { ...(sheet.pieceMarks ?? {}) };
     for (const instanceId of partIds) {
@@ -2527,11 +2533,12 @@ export class GeneralPdfController {
     if (![x, y, width, height].every(Number.isFinite)
       || width < 320 || height < 110) return;
     const root = this.designModel.assemblies.get(table.rootAssemblyId);
-    const title = root?.name ?? sheet.views.find((view) =>
-      view.id === table.sourceViewId && this.isAssemblyView(view))?.kind === "ASSEMBLY"
-        ? this.designModel.assemblies.get(table.rootAssemblyId)?.name
-          ?? sheet.titleBlock.drawingTitle
-        : sheet.titleBlock.drawingTitle;
+    const source = sheet.views.find((view) =>
+      view.id === table.sourceViewId && this.isAssemblyView(view));
+    const title = root?.name
+      ?? (source && this.isAssemblyView(source) ? source.assemblyName : undefined)
+      ?? (table.rootAssemblyId === "model:all" ? "Piezas del modelo" : undefined)
+      ?? sheet.titleBlock.drawingTitle;
     const drawLine = (x1: number, y1: number, x2: number, y2: number): void => {
       this.appendLine(x1, y1, x2, y2);
       const element = this.workspace.svg.lastElementChild;
@@ -2835,6 +2842,7 @@ export class GeneralPdfController {
       ? this.production.sheets.get(sheetId)
       : undefined;
     const tree = this.ensureViewTreePanel();
+    this.syncSheetBomToolbar(sheet ?? null);
     const regenerate = tree.parentElement?.querySelector<HTMLButtonElement>(
       '[data-framelogic-regenerate-assembly="true"]');
     if (regenerate) {
@@ -2854,6 +2862,8 @@ export class GeneralPdfController {
       ? [
           sheetId,
           this.sheetName(sheetId ?? "", sheet),
+          sheet.bomTable
+            ? `BOM:${sheet.bomTable.rootAssemblyId}:${sheet.bomTable.mode}` : "NO_BOM",
           ...sheet.views.map((view, index) =>
             this.isAssemblyView(view)
               ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`
@@ -3225,7 +3235,48 @@ export class GeneralPdfController {
         this.workspace.render();
         this.workspace.setStatus("COTAS STEP: posiciones restablecidas y etiquetas ocultas recuperadas.");
       });
-      panel.append(header, regenerate, resetDimensions, content);
+      const bomControls = document.createElement("div");
+      bomControls.dataset["framelogicSheetBomControls"] = "true";
+      bomControls.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:8px;"
+        + "border-top:1px solid #365361;border-bottom:1px solid #365361;";
+      const bomTitle = document.createElement("span");
+      bomTitle.textContent = "BOM POR HOJA PDF";
+      bomTitle.style.cssText = "color:#eaf2f7;font-size:10px;font-weight:bold;";
+      const bomSource = document.createElement("select");
+      bomSource.dataset["framelogicBomSource"] = "true";
+      bomSource.title = "Ensamble o subensamble para la lista de materiales de esta hoja";
+      const bomMode = document.createElement("select");
+      bomMode.dataset["framelogicBomMode"] = "true";
+      bomMode.title = "Mostrar jerarquía de ensambles o agrupar solo piezas";
+      for (const [value, title] of [["HIERARCHY", "Con subensambles"],
+        ["FLAT", "Solo piezas agrupadas"]] as const) {
+        const option = document.createElement("option");
+        option.value = value; option.textContent = title;
+        bomMode.append(option);
+      }
+      for (const select of [bomSource, bomMode]) {
+        select.style.cssText = "min-width:0;width:100%;background:#223641;color:#eef6fa;"
+          + "border:1px solid #547183;border-radius:3px;padding:4px;font:11px system-ui;";
+      }
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:flex;gap:5px;";
+      const insert = document.createElement("button");
+      insert.type = "button";
+      insert.textContent = "Insertar BOM";
+      insert.dataset["framelogicInsertBom"] = "true";
+      insert.style.cssText = "flex:1;background:#255a69;color:white;border:1px solid #6e9ab0;"
+        + "border-radius:4px;padding:5px;cursor:pointer;font:11px system-ui;";
+      insert.addEventListener("click", () => this.insertOrUpdateSheetBom());
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Eliminar BOM";
+      remove.dataset["framelogicRemoveBom"] = "true";
+      remove.style.cssText = "flex:1;background:#4b3034;color:white;border:1px solid #925c60;"
+        + "border-radius:4px;padding:5px;cursor:pointer;font:11px system-ui;";
+      remove.addEventListener("click", () => this.removeSheetBom());
+      actions.append(insert, remove);
+      bomControls.append(bomTitle, bomSource, bomMode, actions);
+      panel.append(header, regenerate, resetDimensions, bomControls, content);
       this.workspace.overlay.append(panel);
     }
 
