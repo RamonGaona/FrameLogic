@@ -95,6 +95,9 @@ describe("BOM de ensamble por PDF", () => {
     const placement = chooseSheetBomPlacement([title], 5);
     expect(placement).toEqual({ x: 55, y: 624, width: 648, height: 142 });
     expect(sheetBomOverlaps(placement!, title)).toBe(false);
+    const expanded = chooseSheetBomPlacement([title], 19);
+    expect(expanded?.height).toBe(49 + 19 * 13);
+    expect(expanded?.y).toBe(365);
     expect(chooseSheetBomPlacement([{ x: 0, y: 0, width: 1120, height: 792 }], 8)).toBeNull();
     expect(sheetBomOverlaps({x: 1,y: 1,width: 10,height: 10},
       {x: 30,y:30,width: 10,height: 10})).toBe(false);
