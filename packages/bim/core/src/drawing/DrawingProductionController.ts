@@ -631,7 +631,8 @@ export class DrawingProductionController {
     const paperW = sheet.orientation === "LANDSCAPE" ? rawW : rawH;
     const paperH = sheet.orientation === "LANDSCAPE" ? rawH : rawW;
     const pxPerMm = Math.min((CANVAS_WIDTH - 2 * PAPER_MARGIN) / paperW, (CANVAS_HEIGHT - 2 * PAPER_MARGIN) / paperH);
-    const scale = (1000 / sheet.scaleDenominator) * pxPerMm;
+    // Model Space is millimetre-native; 1:N means pxPerPaperMm / N.
+    const scale = pxPerMm / sheet.scaleDenominator;
     const width = section.width * scale;
     const height = section.height * scale;
     const maxContentWidth = sheet.views.length > 1 ? (CANVAS_WIDTH - 2 * PAPER_MARGIN) * 0.60 : CANVAS_WIDTH - 2 * PAPER_MARGIN;
