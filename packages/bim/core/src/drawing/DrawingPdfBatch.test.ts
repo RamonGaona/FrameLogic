@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDrawingPdfZip, buildMultiPageDrawingPdf, pdfExportFilename,
-  pdfSheetDimensions,
+  pdfCanvasPlacement, pdfSheetDimensions,
 } from "./DrawingPdfBatch";
 
 const decoder = new TextDecoder("latin1");
@@ -21,6 +21,25 @@ describe("exportación de planos PDF por tamaño real", () => {
         expect(measured.heightPt * 25.4 / 72).toBeCloseTo(measured.heightMm, 10);
       }
     }
+  });
+  it("keeps printed geometry isotropic across A3 landscape and A4 portrait", () => {
+    for (const [size, orientation] of [
+      ["A3", "LANDSCAPE"], ["A4", "PORTRAIT"], ["A2", "PORTRAIT"],
+    ] as const) {
+      const page = pdfSheetDimensions(size, orientation);
+      const placement = pdfCanvasPlacement(page.widthPt, page.heightPt);
+      const physicalMm = 150; // 3000 model mm at 1:20
+      const modelPixels = physicalMm * placement.canvasUnitsPerPaperMm;
+      expect(modelPixels * placement.scalePtPerCanvasUnit * 25.4 / 72)
+        .toBeCloseTo(physicalMm, 8);
+      expect(placement.offsetXPt).toBeGreaterThanOrEqual(0);
+      expect(placement.offsetYPt).toBeGreaterThanOrEqual(0);
+    }
+    const portrait = pdfSheetDimensions("A4", "PORTRAIT");
+    const t = pdfCanvasPlacement(portrait.widthPt, portrait.heightPt);
+    expect(t.offsetYPt).toBeGreaterThan(0);
+    expect(t.offsetXPt).toBeCloseTo(0, 7);
+    expect(() => pdfCanvasPlacement(0, 20)).toThrow();
   });
   it("builds one valid PDF with distinct MediaBoxes, two vector content streams and JPEG", () => {
     const a3 = pdfSheetDimensions("A3", "LANDSCAPE");
