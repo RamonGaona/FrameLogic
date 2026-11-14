@@ -1053,6 +1053,7 @@ export class GeneralPdfController {
       assemblyName: request.assemblyName,
       instanceIds: [...request.instanceIds],
       workPlane: snapshotWorkPlane(request.workPlane),
+      originalWorkPlane: snapshotWorkPlane(request.workPlane),
       width: geometry.width,
       height: geometry.height,
       segments: geometry.segments.map((segment) => ({ ...segment })),
@@ -1429,9 +1430,12 @@ export class GeneralPdfController {
     if (view.cutReferences?.length || view.detailReferences?.length) {
       this.renderSectionDetailReferences(view, layout, originX, originY, drawnHeight, scale);
     }
-    if (view.automaticViewCode && view.automaticViewCode !== "ISO") {
+    const showsDimensions = view.orientationMode
+      ? !view.orientationMode.endsWith("ISO")
+      : Boolean(view.automaticViewCode && view.automaticViewCode !== "ISO");
+    if (showsDimensions) {
       this.renderAssemblyDimensions(view, layout, originX, originY, drawnWidth, drawnHeight, scale);
-      if (index === 0 || view.assemblyId.startsWith("piece:")) {
+      if ((index === 0 || view.assemblyId.startsWith("piece:")) && sheet.pieceMarks) {
         this.renderAssemblyMarks(sheet, view, layout, originX, originY, drawnHeight, scale);
       }
     }
