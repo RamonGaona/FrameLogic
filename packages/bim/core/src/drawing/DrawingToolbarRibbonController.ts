@@ -29,6 +29,9 @@ export function classifyDrawingRibbonControl(
   const hint = plainText(title);
   const keys = dataKeys.map(plainText);
   const both = t + " " + hint;
+  // Sheet identity/navigation stays on Inicio rather than being hidden under export.
+  if (t === "PDF" || t.startsWith("PDF · HOJA") || t.startsWith("PDF - HOJA"))
+    return "INICIO";
   const matches = (...terms: string[]): boolean =>
     terms.some((term) => both.includes(term));
   if (keys.some((key) => /VIEW(SELECT|ORIENTATION|SCALE|RENDER)|PROJECTVIEW|CIRCULARDETAIL/.test(key)))
@@ -136,7 +139,7 @@ export class DrawingToolbarRibbonController {
 
   private classify(): void {
     if (this.disposed) return;
-    for (const child of this.toolbar.children) {
+    for (const child of Array.from(this.toolbar.children)) {
       if (!(child instanceof HTMLElement) || child === this.tabs) continue;
       if (child === this.panel) {
         child.dataset["framelogicPaperRibbonCategory"] = "VISTAS";
