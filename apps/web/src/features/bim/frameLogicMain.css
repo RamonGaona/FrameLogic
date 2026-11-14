@@ -61,3 +61,82 @@ html[data-framelogic-piece-workspace-active="true"] :is(
   display: none !important;
   visibility: hidden !important;
 }
+
+
+/* The same live command elements form an AutoCAD-style tabbed ribbon.
+ * No command is cloned or reparented (especially React-owned controls).
+ * Only the active group's direct children are visible, keeping the drawing
+ * canvas free of multi-row toolbars and preserving keyboard/selection state.
+ */
+.framelogic-ribbon-tabs {
+  display: flex;
+  flex: 0 0 100%;
+  order: -9999 !important;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  border-bottom: 1px solid rgba(138, 168, 186, 0.35);
+  padding: 0 0 4px;
+}
+.framelogic-ribbon-tabs > button {
+  flex: 0 0 auto;
+  min-height: 29px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
+  padding: 5px 12px;
+  background: transparent;
+  color: #bfd2de;
+  font: 600 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+.framelogic-ribbon-tabs > button:hover {
+  background: rgba(105, 157, 190, 0.18);
+  color: #fff;
+}
+.framelogic-ribbon-tabs > button.is-active,
+.framelogic-ribbon-tabs > button[aria-selected="true"] {
+  background: rgba(69, 121, 150, 0.28);
+  color: #fff;
+  border-bottom-color: #70c4ed;
+}
+.framelogic-ribbon-tabs > button:focus-visible {
+  outline: 2px solid #7ed1f7;
+  outline-offset: -2px;
+}
+.bim-toolbar[data-framelogic-model-ribbon-active="FILE"] > [data-framelogic-model-ribbon-category]:not([data-framelogic-model-ribbon-category="FILE"]),
+.bim-toolbar[data-framelogic-model-ribbon-active="DRAW"] > [data-framelogic-model-ribbon-category]:not([data-framelogic-model-ribbon-category="DRAW"]),
+.bim-toolbar[data-framelogic-model-ribbon-active="EDIT"] > [data-framelogic-model-ribbon-category]:not([data-framelogic-model-ribbon-category="EDIT"]),
+.bim-toolbar[data-framelogic-model-ribbon-active="WORKPLANE"] > [data-framelogic-model-ribbon-category]:not([data-framelogic-model-ribbon-category="WORKPLANE"]),
+.bim-toolbar[data-framelogic-model-ribbon-active="PIECE"] > [data-framelogic-model-ribbon-category]:not([data-framelogic-model-ribbon-category="PIECE"]) {
+  display: none !important;
+}
+.bim-toolbar[data-framelogic-model-ribbon-active] > [data-framelogic-toolbar-category-label="true"] {
+  display: none !important;
+}
+[data-framelogic-paper-ribbon-active="INICIO"] > [data-framelogic-paper-ribbon-category]:not([data-framelogic-paper-ribbon-category="INICIO"]),
+[data-framelogic-paper-ribbon-active="VISTAS"] > [data-framelogic-paper-ribbon-category]:not([data-framelogic-paper-ribbon-category="VISTAS"]),
+[data-framelogic-paper-ribbon-active="COTAS"] > [data-framelogic-paper-ribbon-category]:not([data-framelogic-paper-ribbon-category="COTAS"]),
+[data-framelogic-paper-ribbon-active="ANOTAR"] > [data-framelogic-paper-ribbon-category]:not([data-framelogic-paper-ribbon-category="ANOTAR"]),
+[data-framelogic-paper-ribbon-active="HOJA"] > [data-framelogic-paper-ribbon-category]:not([data-framelogic-paper-ribbon-category="HOJA"]),
+[data-framelogic-paper-ribbon-active="REVISION"] > [data-framelogic-paper-ribbon-category]:not([data-framelogic-paper-ribbon-category="REVISION"]) {
+  display: none !important;
+}
+[data-framelogic-paper-ribbon="true"] > [data-framelogic-view-orientation-controls="true"] {
+  flex: 1 1 auto;
+  position: static !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+  box-shadow: none !important;
+  background: rgba(31, 53, 67, 0.8) !important;
+  border: 1px solid rgba(108, 156, 182, 0.48);
+}
+@media (max-width: 700px) {
+  .framelogic-ribbon-tabs > button { padding-inline: 8px; font-size: 11px; }
+  .bim-toolbar[data-framelogic-model-ribbon-active],
+  [data-framelogic-paper-ribbon="true"] { max-width: calc(100vw - 20px) !important; }
+}
