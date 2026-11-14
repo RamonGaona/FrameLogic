@@ -332,6 +332,7 @@ export class GeneralPdfController {
   private projectionToken = 0;
   private projectionInProgress = false;
   private projectionRefreshInProgress = false;
+  private circularSourceRefreshInProgress = false;
   private detailButton: HTMLButtonElement | null = null;
   private pendingDetail: {
     sheetId: string; sourceViewId: string;
@@ -421,6 +422,7 @@ export class GeneralPdfController {
         this.lastAutomaticRefresh = Date.now();
         void this.refreshAutomaticSheets(false);
         void this.refreshProjectedViews();
+        void this.refreshCircularSourceProjections();
       }
     }, 240);
   }
@@ -1701,7 +1703,18 @@ export class GeneralPdfController {
     } else if (pending.phase === "RADIUS") {
       if (!pending.centerPaper) return;
       const transform = this.sourceProjectionTransform(sheet, source, sourceIndex);
+      const layout = this.professional.ensureViewLayout(source.id, source.sectionId, sourceIndex);
       const radiusPaper = point.distanceTo(pending.centerPaper);
+      const maxRadius = Math.min(
+        pending.centerPaper.x - layout.x - 3,
+        layout.x + layout.width - pending.centerPaper.x - 3,
+        pending.centerPaper.y - layout.y - 3,
+        layout.y + layout.height - pending.centerPaper.y - 3,
+      );
+      if (radiusPaper > maxRadius) {
+        this.workspace.setStatus("DETALLE: mantén el círculo dentro del marco de la View origen.");
+        return;
+      }
       const circle = transform
         ? paperCircleToProjection(pending.centerPaper, radiusPaper, transform) : null;
       if (!circle || radiusPaper < 4
@@ -1729,12 +1742,25 @@ export class GeneralPdfController {
       this.isAssemblyView(v) && v.id === drag.detailId);
     const source = sheet?.views.find((v) => v.id === detail?.sourceViewId);
     if (sheet && detail?.circularDetail && source) {
-      if (!detail.segments.length) {
+      const sourceIndex = sheet.views.indexOf(source);
+      const transform = this.sourceProjectionTransform(sheet, source, sourceIndex);
+      const sourceLayout = this.professional.ensureViewLayout(
+        source.id, source.sectionId, sourceIndex);
+      const paper = transform ? projectionCircleToPaper({
+        x: detail.circularDetail.centerX, y: detail.circularDetail.centerY,
+        radius: detail.circularDetail.radius,
+      }, transform) : null;
+      const outside = !paper
+        || paper.x - paper.radius < sourceLayout.x + 2
+        || paper.y - paper.radius < sourceLayout.y + 2
+        || paper.x + paper.radius > sourceLayout.x + sourceLayout.width - 2
+        || paper.y + paper.radius > sourceLayout.y + sourceLayout.height - 2;
+      if (!detail.segments.length || outside) {
         detail.circularDetail.centerX = drag.original.x;
         detail.circularDetail.centerY = drag.original.y;
         detail.circularDetail.radius = drag.original.radius;
         this.rebuildCircularDetail(sheet, detail, source);
-        this.workspace.setStatus("DETALLE: el círculo no puede quedar en una región sin geometría.");
+        this.workspace.setStatus("DETALLE: el círculo debe quedar dentro de la View y contener geometría.");
       } else {
         this.professional.recordDrawingChange?.();
         this.workspace.setStatus("DETALLE " + detail.circularDetail.label + ": referencia y geometría actualizadas.");
@@ -1948,6 +1974,7 @@ export class GeneralPdfController {
       handle.setAttribute("cy", String(center.y));
       handle.setAttribute("r", "5");
       handle.setAttribute("fill", "#12567c");
+      handle.setAttribute("data-framelogic-view-action", "DETAIL_RADIUS");
       handle.dataset["framelogicCircularRef"] = detail.id;
       handle.dataset["framelogicDetailDrag"] = "RADIUS";
       handle.style.cursor = "ew-resize";
@@ -2493,7 +2520,7 @@ export class GeneralPdfController {
         candidate.sectionId,
         index,
       );
-      layout.kind = "ASSEMBLY";
+      layout.kind = candidate.circularDetail ? "DETAIL" : "ASSEMBLY";
       layout.title = candidate.circularDetail
         ? "DETALLE " + candidate.circularDetail.label
         : candidate.assemblyName
@@ -2947,6 +2974,57 @@ export class GeneralPdfController {
       }
     } finally {
       this.projectionRefreshInProgress = false;
+    }
+  }
+
+  /** Keep a manually inserted assembly View current when it has linked details,
+   * using the same STEP/HLR path as projected/automatic Views. */
+  private async refreshCircularSourceProjections(): Promise<void> {
+    if (this.disposed || this.circularSourceRefreshInProgress || this.orientationChangeInProgress) return;
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    if (!sheet) return;
+    const sources = sheet.views.filter((source): source is AssemblySheetViewRuntime =>
+      this.isAssemblyView(source) && !source.circularDetail
+      && !source.automaticViewCode && !source.projectedDirection
+      && sheet.views.some((detail) => this.isAssemblyView(detail)
+        && Boolean(detail.circularDetail) && detail.sourceViewId === source.id));
+    if (!sources.length) return;
+    this.circularSourceRefreshInProgress = true;
+    try {
+      let updated = false;
+      for (const source of sources) {
+        const fingerprint = assemblyProjectionSignature({
+          instanceIds: source.instanceIds,
+          designModel: this.designModel, designScene: this.designScene,
+        });
+        if (fingerprint === source.geometrySignature) continue;
+        const plane = restoreWorkPlane(source.workPlane);
+        const projected = await projectAssembly({
+          instanceIds: source.instanceIds, workPlane: plane,
+          designModel: this.designModel, designScene: this.designScene,
+        });
+        const geometry = projected ?? this.buildPlanGeometry(source.instanceIds, plane);
+        if (!geometry || !sheet.views.includes(source)
+          || this.disposed || this.getActiveSheetId() !== sheetId) continue;
+        source.width = geometry.width;
+        source.height = geometry.height;
+        source.offsetX = geometry.offsetX;
+        source.offsetY = geometry.offsetY;
+        source.segments = geometry.segments;
+        source.automaticDimensions = projected?.dimensions ?? [];
+        source.automaticAnchors = projected?.anchors ?? [];
+        source.assemblyOcclusionExact = projected?.assemblyOcclusionExact ?? false;
+        source.automaticWarnings = projected?.warnings ?? [
+          "Proyección malla preliminar: comprobar aristas ocultas y cotas.",
+        ];
+        source.geometrySignature = fingerprint;
+        source.resolved = true;
+        updated = true;
+      }
+      if (updated) this.workspace.render();
+    } finally {
+      this.circularSourceRefreshInProgress = false;
     }
   }
 
