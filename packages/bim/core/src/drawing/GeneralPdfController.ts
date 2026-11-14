@@ -15,6 +15,7 @@ import { ASSEMBLY_VIEW_ORIENTATION_OPTIONS, resolveAssemblyViewBasis,
   type AssemblyViewOrientationMode, type AssemblyViewBasis } from "./AssemblyViewOrientationControls";
 import { DrawingViewOrientationQueue } from "./DrawingViewOrientationQueue";
 import { DrawingToolbarRibbonController } from "./DrawingToolbarRibbonController";
+import { circularDetailRadiusGrips, circularDetailRadiusFromPointer } from "./DrawingCircularDetailGrips";
 import { transitionOrientationDimensions,
   type OrientationDimensionOverrides, type OrientationDimensionSignatures,
 } from "./DrawingOrientationDimensionState";
@@ -1685,9 +1686,10 @@ export class GeneralPdfController {
       const next = drag.mode === "MOVE"
         ? { x: old.x + (point.x - drag.start.x) / transform.scale,
           y: old.y - (point.y - drag.start.y) / transform.scale, radius: old.radius }
-        : { ...old, radius: Math.hypot(
-          point.x - (transform.originX + old.x * transform.scale),
-          point.y - (transform.originY + transform.drawnHeight - old.y * transform.scale),
+        : { ...old, radius: circularDetailRadiusFromPointer(
+          transform.originX + old.x * transform.scale,
+          transform.originY + transform.drawnHeight - old.y * transform.scale,
+          point.x, point.y,
         ) / transform.scale };
       if (next.radius < 0.001) return;
       detail.circularDetail.centerX = next.x;
@@ -2023,16 +2025,24 @@ export class GeneralPdfController {
       ring.style.pointerEvents = "stroke";
       ring.style.cursor = "move";
       this.workspace.svg.append(ring);
-      const handle = document.createElementNS(SVG_NS, "circle");
-      handle.setAttribute("cx", String(center.x + center.radius));
-      handle.setAttribute("cy", String(center.y));
-      handle.setAttribute("r", "5");
-      handle.setAttribute("fill", "#12567c");
-      handle.setAttribute("data-framelogic-view-action", "DETAIL_RADIUS");
-      handle.dataset["framelogicCircularRef"] = detail.id;
-      handle.dataset["framelogicDetailDrag"] = "RADIUS";
-      handle.style.cursor = "ew-resize";
-      this.workspace.svg.append(handle);
+      // Four handles offer the same radial resize from every cardinal side.
+      // Keep the original marker attributes: the shared drag controller still
+      // validates geometry and bounds before accepting any new radius.
+      for (const grip of circularDetailRadiusGrips(
+        center.x, center.y, center.radius,
+      )) {
+        const handle = document.createElementNS(SVG_NS, "circle");
+        handle.setAttribute("cx", String(grip.x));
+        handle.setAttribute("cy", String(grip.y));
+        handle.setAttribute("r", "5");
+        handle.setAttribute("fill", "#12567c");
+        handle.setAttribute("data-framelogic-view-action", "DETAIL_RADIUS");
+        handle.dataset["framelogicCircularRef"] = detail.id;
+        handle.dataset["framelogicDetailDrag"] = "RADIUS";
+        handle.dataset["framelogicDetailGrip"] = grip.direction;
+        handle.style.cursor = grip.cursor;
+        this.workspace.svg.append(handle);
+      }
       this.appendText(center.x + center.radius + 9, center.y - 9,
         detail.circularDetail.label, 11, "#12567c");
     }

@@ -15,6 +15,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.163 — 2026-11-14 (Detalle circular: cuatro grips)
+
+### Paper Space — eliminar botón duplicado y redimensionar desde cuatro lados
+
+- Se elimina el botón **Detalle** heredado de la barra general de `DrawingProfessionalController`. Permanece el único botón **Detalle** contextual de la View seleccionada, que crea un detalle circular enlazado.
+- Cada referencia de detalle circular tiene cuatro grips **Norte, Este, Sur y Oeste** sobre su contorno para ajustar el radio desde cualquiera de los lados; todas las direcciones conservan un círculo perfecto, el mismo centro y la misma geometría proyectada.
+- El arrastre del borde circular sigue moviendo la referencia completa; el cambio de radio conserva el control existente de límites de la View origen y presencia de geometría, revirtiendo los cambios inválidos.
+- Nuevas pruebas de los cuatro puntos cardinales, radio común, datos geométricos inválidos, presencia del único comando contextual y no regresión de movimiento/validación.
+- Se conserva la cinta de pestañas, el historial de dimensiones, las vistas de detalle y las optimizaciones CI (Validate y Web build sin pruebas duplicadas; sin despliegue MCP por cambios de Paper Space).
+
+---
+
 ## v0.1.162 — 2026-11-14 (cinta de pestañas Model Space y Paper Space)
 
 ### Barras organizadas por pestañas superiores tipo CAD
