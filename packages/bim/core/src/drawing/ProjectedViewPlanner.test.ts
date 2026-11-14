@@ -20,8 +20,8 @@ const rx = (degrees: number): AssemblyViewBasis => {
   };
 };
 const vec = (x: number, y: number, z: number) => ({ x, y, z });
-const dot = (a: typeof vec extends (...args: number[]) => infer R ? R : never,
-  b: typeof a) => a.x*b.x+a.y*b.y+a.z*b.z;
+const dot = (a: ReturnType<typeof vec>, b: ReturnType<typeof vec>) =>
+  a.x*b.x + a.y*b.y + a.z*b.z;
 const cross = (a: ReturnType<typeof vec>, b: ReturnType<typeof vec>) =>
   vec(a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x);
 
