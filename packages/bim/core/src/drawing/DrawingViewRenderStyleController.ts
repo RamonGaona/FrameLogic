@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import {
   buildDrawingPdfZip, buildMultiPageDrawingPdf, pdfExportFilename,
-  pdfSheetDimensions, type DrawingPdfPage,
+  pdfCanvasPlacement, pdfSheetDimensions, type DrawingPdfPage,
 } from "./DrawingPdfBatch";
 import type { GeneralPdfController } from "./GeneralPdfController";
 import type { DesignSceneController } from "../design/DesignSceneController";
@@ -678,9 +678,14 @@ export class DrawingViewRenderStyleController {
 
     const { widthPt, heightPt } = pdfSheetDimensions(
       sheet.size, sheet.orientation);
-    const sx = widthPt / CANVAS_WIDTH;
-    const sy = heightPt / CANVAS_HEIGHT;
-    const commands: string[] = ["q", "1 J 1 j"];
+    const placement = pdfCanvasPlacement(
+      widthPt, heightPt, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // Use one scale for X/Y; otherwise portrait pages would distort
+    // circles and invalidate true 1:N drawing scales.
+    const sx = placement.scalePtPerCanvasUnit;
+    const sy = placement.scalePtPerCanvasUnit;
+    const commands: string[] = ["q", "1 J 1 j",
+      `1 0 0 1 ${n(placement.offsetXPt)} ${n(-placement.offsetYPt)} cm`];
     const jpegImages: PdfJpegImage[] = [];
 
     for (const child of Array.from(this.workspace.svg.children)) {
