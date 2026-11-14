@@ -23,13 +23,45 @@ const cross = (a: { x: number; y: number; z: number },
   });
 
 describe("PDF View local/global orientations", () => {
-  it("makes an X-aligned long member exactly horizontal in the paper even with slight geometry skew", () => {
-    const result = resolveAssemblyViewBasis("LONGITUDINAL", rotatedBeam(5));
-    expect(result?.xAxis.x).toBe(1);
-    expect(result?.xAxis.y).toBe(0);
-    expect(result?.xAxis.z).toBe(0);
-    expect(result?.yAxis.z).toBe(1);
-    expect(result?.normal.y).toBe(-1);
+  it.each([0.5, 3, 5, 7.5, -6, 12])(
+    "aligns a beam rotated %s degrees horizontally in OWN TOP even near XYZ",
+    (angle) => {
+      const points = rotatedBeam(angle);
+      const own = resolveAssemblyViewBasis("LOCAL_TOP", points)!;
+      const global = resolveAssemblyViewBasis("WORLD_TOP", points)!;
+      const a = points[0]!, b = points[4]!; // Same beam corner, opposite ends.
+      const direction = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+      const ownVerticalRun = dot(direction, own.yAxis);
+      const globalVerticalRun = dot(direction, global.yAxis);
+      expect(Math.abs(ownVerticalRun)).toBeLessThan(0.0001);
+      expect(Math.abs(globalVerticalRun)).toBeGreaterThan(0.05);
+      // Projection bases are right-handed and never change source geometry.
+      expect(dot(cross(own.xAxis, own.yAxis), own.normal)).toBeCloseTo(1, 8);
+      expect(points).toEqual(rotatedBeam(angle));
+    },
+  );
+  it("keeps a perfectly world-X member horizontal without artificial rotation", () => {
+    const own = resolveAssemblyViewBasis("LOCAL_TOP", rotatedBeam(0));
+    expect(own?.xAxis.x).toBeCloseTo(1, 10);
+    expect(own?.xAxis.y).toBeCloseTo(0, 10);
+  });
+  it("chooses the long beam direction even with a short anchorage plate near one end", () => {
+    const beam = rotatedBeam(6, 12);
+    const a = 6 * Math.PI / 180;
+    const c = Math.cos(a), s = Math.sin(a);
+    const plate = [-0.15, 0.15].flatMap((x) =>
+      [-0.45, 0.45].flatMap((y) =>
+        [-0.45, 0.45].map((z) => ({
+          x: (6 + x) * c - y * s,
+          y: (6 + x) * s + y * c,
+          z,
+        }))));
+    const own = resolveAssemblyViewBasis("LOCAL_TOP", [...beam, ...plate]);
+    const global = resolveAssemblyViewBasis("WORLD_TOP", [...beam, ...plate]);
+    expect(own).not.toBeNull();
+    const direction = { x: 12 * c, y: 12 * s, z: 0 };
+    expect(Math.abs(dot(direction, own!.yAxis))).toBeLessThan(0.3);
+    expect(Math.abs(dot(direction, global!.yAxis))).toBeGreaterThan(1);
   });
   it("keeps a genuinely rotated beam aligned with its OWN axis, not the world axes", () => {
     const frame = resolveAssemblyViewBasis("LONGITUDINAL", rotatedBeam(37));
