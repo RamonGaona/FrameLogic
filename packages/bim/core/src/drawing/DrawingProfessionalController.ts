@@ -22,6 +22,7 @@ import {
 import type {
   DrawingWorkspaceController,
 } from "./DrawingWorkspaceController";
+import { clipDrawingSegmentToView } from "./DrawingViewScale";
 
 import type {
   DrawingProductionController,
@@ -1162,11 +1163,21 @@ export class DrawingProfessionalController {
       if (segment.hidden && !layout.showHidden) continue;
       const midpoint = new THREE.Vector2((segment.x1 + segment.x2) / 2, (segment.y1 + segment.y2) / 2);
       if (cropRadius && midpoint.distanceTo(new THREE.Vector2(centerX, centerY)) > cropRadius * 1.08) continue;
+      const cropped = clipDrawingSegmentToView({
+        x1: originX + segment.x1 * scale,
+        y1: originY - segment.y1 * scale,
+        x2: originX + segment.x2 * scale,
+        y2: originY - segment.y2 * scale,
+      }, {
+        x: layout.x + 2, y: layout.y + 19,
+        width: layout.width - 4, height: layout.height - 39,
+      });
+      if (!cropped) continue;
       const line = document.createElementNS(SVG_NS, "line");
-      line.setAttribute("x1", String(originX + segment.x1 * scale));
-      line.setAttribute("y1", String(originY - segment.y1 * scale));
-      line.setAttribute("x2", String(originX + segment.x2 * scale));
-      line.setAttribute("y2", String(originY - segment.y2 * scale));
+      line.setAttribute("x1", String(cropped.x1));
+      line.setAttribute("y1", String(cropped.y1));
+      line.setAttribute("x2", String(cropped.x2));
+      line.setAttribute("y2", String(cropped.y2));
       line.setAttribute("stroke", segment.hidden ? "#666" : "#181818");
       line.setAttribute("stroke-width", String(segment.cut ? 1.35 : 0.55));
       if (segment.hidden) line.setAttribute("stroke-dasharray", "5 4");
