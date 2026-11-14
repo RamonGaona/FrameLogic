@@ -9,6 +9,11 @@ import { planSectionStations, cropAssemblyDetail, planSectionDetailSheetSlots,
   type SectionStation, type CroppedAssemblyDetail } from "./AssemblySectionDetailPlanner";
 import type { EngineeringDimensionInstruction } from "./EngineeringAutoDimensionPlanner";
 import {
+  DRAWING_VIEW_SCALE_PRESETS, DRAWING_VIEW_CUSTOM_SCALE,
+  drawingViewScaleSelection, formatDrawingViewScale, modelToPaperScale,
+  parseDrawingViewScale,
+} from "./DrawingViewScale";
+import {
   placeProjectedViewport, projectedViewLabel, projectedViewportOverlaps,
   projectedViewportSize, projectionDirectionFromPointer,
   resolveProjectedViewBasis,
@@ -1219,7 +1224,8 @@ export class GeneralPdfController {
     project.style.cssText = "padding:5px 9px;border:1px solid #73a8be;border-radius:4px;background:#244f65;color:#fff;font:inherit;cursor:pointer;";
     project.addEventListener("click", () => this.toggleProjectedView());
     this.projectionButton = project;
-    panel.append(label, viewSelect, modeSelect, project);
+    const scale = this.createViewScaleEditor();
+    panel.append(label, viewSelect, modeSelect, project, scale);
     this.workspace.overlay.append(panel);
     return panel;
   }
@@ -1561,6 +1567,10 @@ export class GeneralPdfController {
       this.projectionButton.style.background = this.pendingProjection ? "#775128" : "#244f65";
     }
     viewSelect.disabled = this.orientationChangeInProgress || Boolean(this.pendingProjection);
+    const scaleEditor = panel.querySelector<HTMLDivElement>(
+      '[data-framelogic-view-scale-editor="true"]',
+    );
+    if (scaleEditor && sheet) this.syncViewScaleEditor(scaleEditor, selected.id, sheet);
   }
 
   private async changeSelectedPdfViewOrientation(
@@ -2474,7 +2484,7 @@ export class GeneralPdfController {
       (SHEET_WIDTH - 84) / paperWidth,
       (SHEET_HEIGHT - 84) / paperHeight,
     );
-    return (1000 / Math.max(denominator, 1)) * pxPerMm;
+    return modelToPaperScale(denominator, pxPerMm) ?? 0;
   }
 
   private decorateViewTree(): void {
