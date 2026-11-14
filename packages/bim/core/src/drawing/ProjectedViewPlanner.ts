@@ -97,6 +97,7 @@ export function projectedViewLabel(
     case "LEFT": return first ? "Vista lateral derecha" : "Vista lateral izquierda";
     case "UP": return first ? "Vista inferior" : "Vista superior";
     case "DOWN": return first ? "Vista superior" : "Vista inferior";
+    default: return "Isométrica proyectada";
   }
 }
 
