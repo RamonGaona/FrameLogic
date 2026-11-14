@@ -220,10 +220,8 @@ export class DrawingViewRenderStyleController {
       const extension =
         (snapshot as ExtendedProfessionalSnapshot).drawingViewRenderStyles;
       if (extension?.version === 1) {
-        for (const entry of extension.styles) {
-          if (isRenderMode(entry.mode)) {
-            this.styles.set(entry.viewId, entry.mode);
-          }
+        for (const [viewId, mode] of restoreDrawingViewModes(extension.styles)) {
+          this.styles.set(viewId, mode);
         }
       }
       this.workspace.render();
@@ -706,7 +704,18 @@ export class DrawingViewRenderStyleController {
 }
 
 
-function isRenderMode(value: string): value is DrawingViewRenderMode {
+/** Backwards-compatible hydration of independently saved viewport styles. */
+export function restoreDrawingViewModes(
+  entries: readonly { readonly viewId: string; readonly mode: string }[],
+): Map<string, DrawingViewRenderMode> {
+  const modes = new Map<string, DrawingViewRenderMode>();
+  for (const entry of entries) {
+    if (entry.viewId && isRenderMode(entry.mode)) modes.set(entry.viewId, entry.mode);
+  }
+  return modes;
+}
+
+export function isRenderMode(value: string): value is DrawingViewRenderMode {
   return ["BLACK_WHITE", "VISIBLE_HIDDEN", "WIREFRAME", "SOLID", "SOLID_EDGES", "MONOCHROME", "TRANSPARENT"].includes(value);
 }
 
@@ -834,7 +843,7 @@ function fileSafeName(value: string): string {
 }
 
 
-interface PdfJpegImage {
+export interface PdfJpegImage {
   readonly bytes: Uint8Array;
   readonly width: number;
   readonly height: number;
@@ -842,7 +851,7 @@ interface PdfJpegImage {
 
 /** Binary-safe, self-contained PDF: the shaded JPEG and vector edges are in
  * the same page content stream, preserving preview drawing order. */
-function buildPdf(
+export function buildPdf(
   width: number,
   height: number,
   stream: string,
