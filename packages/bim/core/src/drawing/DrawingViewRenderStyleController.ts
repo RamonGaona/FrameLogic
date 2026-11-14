@@ -268,7 +268,11 @@ export class DrawingViewRenderStyleController {
     select.addEventListener("change", () => {
       const viewId = this.activeViewId();
       if (!viewId) return;
-      this.styles.set(viewId, select.value as DrawingViewRenderMode);
+      const mode = select.value as DrawingViewRenderMode;
+      this.styles.set(viewId, mode);
+      // DrawingProduction.sheets is the persisted source of truth.
+      const sheetView = this.production.getActiveSheet()?.views.find((view) => view.id === viewId);
+      if (sheetView) sheetView.renderMode = mode;
       this.workspace.render();
     });
 
@@ -319,6 +323,12 @@ export class DrawingViewRenderStyleController {
     return this.selectedViewId;
   }
 
+  private modeForView(view: SheetState["views"][number]): DrawingViewRenderMode {
+    return view.renderMode && isRenderMode(view.renderMode)
+      ? view.renderMode
+      : this.styles.get(view.id) ?? "BLACK_WHITE";
+  }
+
   private decorate(): void {
     if (this.disposed) return;
     const sheet = this.production.getActiveSheet();
@@ -337,7 +347,7 @@ export class DrawingViewRenderStyleController {
     for (const [index, view] of sheet.views.entries()) {
       const layout = layouts.find((entry) => entry.id === view.id);
       if (!layout) continue;
-      const mode = this.styles.get(view.id) ?? "BLACK_WHITE";
+      const mode = this.modeForView(view);
       if ("kind" in view && view.kind === "ASSEMBLY") {
         const assembly = view as unknown as AssemblyViewRuntime;
         const shaded = (mode === "SOLID" || mode === "SOLID_EDGES" || mode === "MONOCHROME")
@@ -585,9 +595,8 @@ export class DrawingViewRenderStyleController {
   private syncSelect(): void {
     const viewId = this.activeViewId();
     this.select.disabled = !viewId;
-    this.select.value = viewId
-      ? this.styles.get(viewId) ?? "BLACK_WHITE"
-      : "BLACK_WHITE";
+    const selected = this.production.getActiveSheet()?.views.find((view) => view.id === viewId);
+    this.select.value = selected ? this.modeForView(selected) : "BLACK_WHITE";
   }
 
   private exportStyledPdf(): void {
