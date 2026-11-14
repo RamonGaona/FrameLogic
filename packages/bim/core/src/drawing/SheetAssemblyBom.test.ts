@@ -31,6 +31,10 @@ describe("BOM de ensamble por PDF", () => {
       ["ASSEMBLY", "Pletinas", 1, 2],
       ["PIECE", "Placa", 1, 3],
     ]);
+    expect(result.rows.map((row) => row.itemNumber)).toEqual([
+      "1", "1.1", "1.2", "1.2.1", "1.2.2", "1.2.2.1",
+    ]);
+    expect(new Set(result.rows.map((row) => row.itemNumber)).size).toBe(result.rows.length);
     expect(result.rows[1]?.totalMassKg).toBe(4);
     expect(result.rows[3]?.totalMassKg).toBeUndefined();
     expect(result.rows.every((r) => r.label !== "Ajenas")).toBe(true);
@@ -41,9 +45,20 @@ describe("BOM de ensamble por PDF", () => {
     expect(rows.map((r) => [r.kind, r.label, r.quantity])).toEqual([
       ["PIECE", "Placa", 3], ["PIECE", "Viga", 1],
     ]);
+    expect(rows.map((row) => row.itemNumber)).toEqual(["1", "2"]);
     expect(rows[0]?.totalMassKg).toBe(6);
     expect(rows[1]?.totalMassKg).toBeUndefined();
   });
+  it("keeps a root with two distinct direct parts numbered 1, 1.1 and 1.2", () => {
+    const result = buildSheetAssemblyBom("root",
+      [{ id: "root", name: "E1", pieceInstanceIds: ["a1", "b1"] }],
+      parts, { PL: "P10", BEAM: "P20" });
+    expect(result.rows.map((row) => [row.itemNumber, row.mark])).toEqual([
+      ["1", "E1"], ["1.1", "P10"], ["1.2", "P20"],
+    ]);
+    expect(result.totalPieces).toBe(2);
+  });
+
   it("reports deleted parts instead of inventing occurrences or weights", () => {
     const result = buildSheetAssemblyBom("root", assemblies,
       { ...parts, b1: undefined } as unknown as Record<string, SheetBomPiece>, {}, "FLAT");
