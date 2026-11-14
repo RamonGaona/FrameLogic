@@ -14,6 +14,9 @@ import { snapDimensionAnchorToView } from "./DrawingDimensionAnchorSnap";
 import { ASSEMBLY_VIEW_ORIENTATION_OPTIONS, resolveAssemblyViewBasis,
   type AssemblyViewOrientationMode, type AssemblyViewBasis } from "./AssemblyViewOrientationControls";
 import { DrawingViewOrientationQueue } from "./DrawingViewOrientationQueue";
+import { transitionOrientationDimensions,
+  type OrientationDimensionOverrides, type OrientationDimensionSignatures,
+} from "./DrawingOrientationDimensionState";
 import { planSelectedSheetLayout, selectAssemblyScaleDenominator } from "./AutoSheetLayoutPlanner";
 import { assemblyProjectionSignature, projectAssembly, projectAssemblySection,
   type AssemblyLine, type AssemblyMarkAnchor, type AssemblyProjection } from "./AssemblyProjectionEngine";
@@ -147,6 +150,9 @@ interface AssemblySheetViewRuntime {
   /** Persisted exact B-Rep dimension plans; manual annotations live separately. */
   automaticDimensions?: readonly EngineeringDimensionInstruction[];
   dimensionOverrides?: Record<string, WorkshopDimensionOverride>;
+  /** Stored by projection to prevent old A/B points being applied on another side. */
+  orientationDimensionOverrides?: OrientationDimensionOverrides;
+  orientationDimensionSignatures?: OrientationDimensionSignatures;
   automaticAnchors?: readonly AssemblyMarkAnchor[];
   exactInstances?: number;
   fallbackInstances?: number;
@@ -2479,9 +2485,23 @@ export class GeneralPdfController {
       const geometry = projection ?? this.buildPlanGeometry(view.instanceIds, plane);
       if (!geometry) throw new Error("No se encontró geometría 3D proyectable.");
 
+      // Keep 2D A/B edits isolated by orientation. The resulting state is
+      // committed only after projection succeeds, leaving other Views intact.
+      const newGeometrySignature = assemblyProjectionSignature({
+        instanceIds: view.instanceIds,
+        designModel: this.designModel, designScene: this.designScene,
+      });
+      const dimensionState = transitionOrientationDimensions(
+        view, orientationMode,
+        orientationMode.endsWith("ISO") ? [] : projection?.dimensions ?? [],
+        newGeometrySignature,
+      );
       // Do not touch layout x/y/width/height, the original geometry, or
       // manually positioned annotations. Only the View's projection changes.
       view.workPlane = snapshotWorkPlane(plane);
+      view.dimensionOverrides = dimensionState.active;
+      view.orientationDimensionOverrides = dimensionState.saved;
+      view.orientationDimensionSignatures = dimensionState.signatures;
       view.width = geometry.width;
       view.height = geometry.height;
       view.offsetX = geometry.offsetX;
@@ -2496,13 +2516,18 @@ export class GeneralPdfController {
       view.exactInstances = projection?.exactInstances ?? 0;
       view.fallbackInstances = projection?.fallbackInstances ?? view.instanceIds.length;
       view.assemblyOcclusionExact = projection?.assemblyOcclusionExact ?? false;
-      view.automaticWarnings = projection?.warnings ?? [
-        "Vista de malla preliminar: líneas ocultas y cotas no verificadas.",
+      view.automaticWarnings = [
+        ...(projection?.warnings ?? [
+          "Vista de malla preliminar: líneas ocultas y cotas no verificadas.",
+        ]),
+        ...dimensionState.warnings,
       ];
-      view.geometrySignature = assemblyProjectionSignature({
-        instanceIds: view.instanceIds,
-        designModel: this.designModel, designScene: this.designScene,
-      });
+      view.geometrySignature = newGeometrySignature;
+      if (this.selectedAutoDimension?.viewId === view.id
+        && !view.automaticDimensions?.some((d) =>
+          workshopDimensionKey(d) === this.selectedAutoDimension?.key)) {
+        this.selectedAutoDimension = null;
+      }
 
       // An explicitly rotated projected child becomes independent; it can
       // continue serving as a parent for projections subsequently taken from it.
@@ -2537,7 +2562,8 @@ export class GeneralPdfController {
       this.workspace.render();
       this.workspace.setStatus(
         `VIEW: ${view.orientationLabel}. Proyección actualizada sin mover las piezas; `
-        + "las posiciones manuales de la hoja se conservaron.");
+        + "las posiciones manuales de la hoja se conservaron."
+        + (dimensionState.warnings.length ? " " + dimensionState.warnings.join(" ") : ""));
     } catch (error) {
       this.workspace.setStatus("No se pudo cambiar la orientación de la View: " + String(error));
     } finally {
