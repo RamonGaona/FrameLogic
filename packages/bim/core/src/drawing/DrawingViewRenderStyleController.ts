@@ -67,6 +67,7 @@ interface AssemblyViewRuntime {
   readonly geometrySignature?: string;
   readonly assemblyOcclusionExact?: boolean;
   readonly automaticSupplement?: "SECTION" | "DETAIL";
+  readonly circularDetail?: { readonly fromSection?: boolean };
 }
 
 interface DrawingSnapshotRuntime {
@@ -537,7 +538,8 @@ export class DrawingViewRenderStyleController {
     // A physical STEP cut requires true intersection faces and must NEVER be
     // replaced by rendering the uncut assembly. A DETAIL is a genuine cropped
     // projection; it can use the source plane plus its stored crop offset.
-    if (view.automaticSupplement === "SECTION" || !view.workPlane
+    if (view.automaticSupplement === "SECTION"
+      || view.circularDetail?.fromSection || !view.workPlane
       || !view.instanceIds?.length) return false;
     const line = this.workspace.svg.querySelector<SVGLineElement>(
       'line[data-framelogic-assembly-view-line="' + view.id + '"]',
@@ -577,7 +579,15 @@ export class DrawingViewRenderStyleController {
     clipRect.setAttribute("y", String(layout.y));
     clipRect.setAttribute("width", String(layout.width));
     clipRect.setAttribute("height", String(layout.height));
-    clip.append(clipRect);
+    if (view.circularDetail) {
+      const circle = document.createElementNS(SVG_NS, "circle");
+      circle.setAttribute("cx", String(originX + imageWidth / 2));
+      circle.setAttribute("cy", String(originY + imageHeight / 2));
+      circle.setAttribute("r", String(Math.min(imageWidth, imageHeight) / 2));
+      clip.append(circle);
+    } else {
+      clip.append(clipRect);
+    }
     definitions.append(clip);
 
     const image = document.createElementNS(SVG_NS, "image");
@@ -596,6 +606,11 @@ export class DrawingViewRenderStyleController {
     image.dataset["framelogicClipY"] = String(layout.y);
     image.dataset["framelogicClipWidth"] = String(layout.width);
     image.dataset["framelogicClipHeight"] = String(layout.height);
+    if (view.circularDetail) {
+      image.dataset["framelogicClipCircleX"] = String(originX + imageWidth / 2);
+      image.dataset["framelogicClipCircleY"] = String(originY + imageHeight / 2);
+      image.dataset["framelogicClipCircleR"] = String(Math.min(imageWidth, imageHeight) / 2);
+    }
     image.style.pointerEvents = "none";
     this.workspace.svg.insertBefore(definitions, line);
     this.workspace.svg.insertBefore(image, line);
@@ -733,8 +748,36 @@ export class DrawingViewRenderStyleController {
           + Number(image.dataset["framelogicClipHeight"] ?? 0)) * sy;
         const clipW = Number(image.dataset["framelogicClipWidth"] ?? 0) * sx;
         const clipH = Number(image.dataset["framelogicClipHeight"] ?? 0) * sy;
-        commands.push("q", `${n(clipX)} ${n(clipY)} ${n(clipW)} ${n(clipH)} re W n`,
-          `${n(w)} 0 0 ${n(h)} ${n(x)} ${n(y)} cm /${name} Do`, "Q");
+        const circleR = Number(image.dataset["framelogicClipCircleR"]);
+        const circleX = Number(image.dataset["framelogicClipCircleX"]);
+        const circleY = Number(image.dataset["framelogicClipCircleY"]);
+        const circleClip = Number.isFinite(circleR) && circleR > 0
+          && Number.isFinite(circleX) && Number.isFinite(circleY)
+          ? pdfCircularPath(circleX * sx, heightPt - circleY * sy,
+            circleR * sx, circleR * sy) + " W n" : "";
+        commands.push("q", n(clipX) + " " + n(clipY) + " " + n(clipW) + " " + n(clipH) + " re W n");
+        if (circleClip) commands.push(circleClip);
+        commands.push(n(w) + " 0 0 " + n(h) + " " + n(x) + " " + n(y)
+          + " cm /" + name + " Do", "Q");
+      }
+      else if (tag === "circle") {
+        const circle = child as SVGCircleElement;
+        if (circle.hasAttribute("data-framelogic-view-action")) continue;
+        const cx = Number(circle.getAttribute("cx") ?? 0) * sx;
+        const cy = heightPt - Number(circle.getAttribute("cy") ?? 0) * sy;
+        const radius = Number(circle.getAttribute("r") ?? 0);
+        if (!Number.isFinite(cx + cy + radius) || radius <= 0) continue;
+        const path = pdfCircularPath(cx, cy, radius * sx, radius * sy);
+        const stroke = circle.getAttribute("stroke") ?? "none";
+        const fill = circle.getAttribute("fill") ?? "none";
+        if (fill !== "none" && fill !== "transparent") {
+          commands.push(pdfColor(fill, true) + " " + path + " f");
+        }
+        if (stroke !== "none" && stroke !== "transparent") {
+          const weight = Math.max(0.2,
+            Number(circle.getAttribute("stroke-width") ?? 1) * Math.min(sx, sy));
+          commands.push(pdfColor(stroke, false) + " " + n(weight) + " w " + path + " S");
+        }
       }
       else if (tag === "polygon") {
         const polygon = child as SVGPolygonElement;
@@ -1028,6 +1071,18 @@ function pdfColor(value: string, fill: boolean): string {
   return `${n(rgb[0] / 255)} ${n(rgb[1] / 255)} ${n(rgb[2] / 255)} ${fill ? "rg" : "RG"}`;
 }
 
+
+/** Four cubic Bézier arcs approximate a circle as a true PDF vector path. */
+function pdfCircularPath(cx: number, cy: number, rx: number, ry: number): string {
+  const k = 0.5522847498307936;
+  return [
+    n(cx + rx), n(cy), "m",
+    n(cx + rx), n(cy + k * ry), n(cx + k * rx), n(cy + ry), n(cx), n(cy + ry), "c",
+    n(cx - k * rx), n(cy + ry), n(cx - rx), n(cy + k * ry), n(cx - rx), n(cy), "c",
+    n(cx - rx), n(cy - k * ry), n(cx - k * rx), n(cy - ry), n(cx), n(cy - ry), "c",
+    n(cx + k * rx), n(cy - ry), n(cx + rx), n(cy - k * ry), n(cx + rx), n(cy), "c h",
+  ].join(" ");
+}
 
 function n(value: number): string {
   return Number.isFinite(value) ? value.toFixed(3) : "0";
