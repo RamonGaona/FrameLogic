@@ -114,6 +114,8 @@ interface SectionSheetViewRuntime {
   readonly id: string;
   readonly sectionId: string;
   kind?: "SECTION";
+  renderMode?: "BLACK_WHITE" | "VISIBLE_HIDDEN" | "WIREFRAME"
+    | "SOLID" | "SOLID_EDGES" | "MONOCHROME" | "TRANSPARENT";
 }
 
 interface AssemblySheetViewRuntime {
@@ -1149,6 +1151,7 @@ export class GeneralPdfController {
         id: crypto.randomUUID(),
         sectionId: section.id,
         kind: "SECTION",
+        renderMode: "SOLID_EDGES",
       }],
       titleBlock: {
         project: "FrameLogic",
@@ -1194,6 +1197,7 @@ export class GeneralPdfController {
       id,
       sectionId: `assembly:${id}`,
       kind: "ASSEMBLY",
+      renderMode: "SOLID_EDGES",
       assemblyId: request.assemblyId,
       assemblyName: request.assemblyName,
       instanceIds: [...request.instanceIds],
@@ -1873,7 +1877,7 @@ export class GeneralPdfController {
       sourceWorkPlane: plane,
       fromSection: !this.isAssemblyView(source),
     };
-    view.renderMode = "renderMode" in source ? source.renderMode : undefined;
+    view.renderMode = source.renderMode ?? "SOLID_EDGES";
     view.geometrySignature = this.isAssemblyView(source) ? source.geometrySignature : undefined;
     view.assemblyOcclusionExact = this.isAssemblyView(source) ? source.assemblyOcclusionExact : false;
     view.resolved = true;
@@ -2241,7 +2245,7 @@ export class GeneralPdfController {
       view.projectedSourceSignature = initialFingerprint;
       view.orientationMode = "CURRENT";
       view.orientationLabel = label;
-      view.renderMode = source.renderMode;
+      view.renderMode = source.renderMode ?? "SOLID_EDGES";
       view.automaticDimensions = direction.startsWith("ISO_") ? [] : projection?.dimensions ?? [];
       view.automaticAnchors = projection?.anchors ?? [];
       view.exactInstances = projection?.exactInstances ?? 0;
@@ -2308,6 +2312,12 @@ export class GeneralPdfController {
 
   private updateViewOrientationPanel(sheet: GeneralSheetRuntime | null): void {
     const panel = this.viewOrientationPanel;
+    // The main toolbar can wrap onto multiple lines on small screens.
+    // Keep this contextual panel below the actual toolbar height.
+    const toolbar = this.workspace.overlay.firstElementChild;
+    if (toolbar instanceof HTMLElement) {
+      panel.style.top = `${toolbar.offsetHeight + 6}px`;
+    }
     // Render styling applies to normal, physical section and detail Views.
     // Orientation editing alone is restricted to regular assembly projections.
     const views = sheet?.views ?? [];
@@ -3271,7 +3281,7 @@ export class GeneralPdfController {
       const label = item.kind === "ASSEMBLY"
         ? `${indent}[E] ${item.label}` : `${indent}${item.label}`;
       const material = [item.material, item.grade].filter(Boolean).join(" ");
-      drawText(c[0]!, baseline, String(pageStart + i + 1), 7.8);
+      drawText(c[0]!, baseline, item.itemNumber, 7.8);
       drawText(c[1]!, baseline, item.mark.slice(0, 10), 7.8);
       drawText(c[2]!, baseline, label.slice(0, Math.max(10, Math.floor(width * 0.40 / 4.7))), 7.8);
       drawText(c[3]!, baseline, String(item.quantity), 7.8);

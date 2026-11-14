@@ -126,6 +126,7 @@ export class UnifiedPdfNavigationController {
       this.handleSelectChange,
       true,
     );
+    this.pdfSelect?.removeEventListener("blur", this.handleSelectBlur);
     this.tabBar.remove();
     this.restorePdfTreeDock();
     this.workspace.overlay.style.paddingBottom = "";
@@ -207,6 +208,8 @@ export class UnifiedPdfNavigationController {
       this.handleSelectChange,
       true,
     );
+    // Do not destroy an open native dropdown when the PDF list is refreshed.
+    select.addEventListener("blur", this.handleSelectBlur);
   }
 
   private installLabel(): void {
@@ -220,6 +223,10 @@ export class UnifiedPdfNavigationController {
       previous.dataset["framelogicUnifiedPdfLabel"] = "true";
     }
   }
+
+  private readonly handleSelectBlur = (): void => {
+    if (!this.disposed) this.sync();
+  };
 
   private readonly handleSelectChange = (event: Event): void => {
     if (this.disposed) return;
@@ -554,17 +561,18 @@ export class UnifiedPdfNavigationController {
       value: entry.key,
       label: `${index + 1} · ${entry.label}`,
     }));
-    const signature = optionRows
-      .map((row) => `${row.value}:${row.label}`)
-      .join("|");
+    const signature = optionRows.length
+      ? optionRows.map((row) => `${row.value}:${row.label}`).join("|")
+      : ":Sin PDFs";
     const actualSignature = Array.from(select.options)
       .map((option) => `${option.value}:${option.textContent ?? ""}`)
       .join("|");
 
-    if (
+    const focused = document.activeElement === select;
+    if (!focused && (
       select.dataset["framelogicUnifiedPdfSignature"] !== signature
       || actualSignature !== signature
-    ) {
+    )) {
       select.replaceChildren();
       if (optionRows.length < 1) {
         const option = document.createElement("option");
@@ -585,12 +593,13 @@ export class UnifiedPdfNavigationController {
 
     select.disabled = entries.length < 1;
     if (
-      activeKey
+      !focused
+      && activeKey
       && Array.from(select.options).some(
         (option) => option.value === activeKey,
       )
     ) {
-      select.value = activeKey;
+      if (select.value !== activeKey) select.value = activeKey;
     }
   }
 }

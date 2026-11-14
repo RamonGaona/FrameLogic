@@ -951,7 +951,7 @@ export function resolveDrawingViewRenderMode(
 ): DrawingViewRenderMode {
   return view.renderMode && isRenderMode(view.renderMode)
     ? view.renderMode
-    : legacyModes.get(view.id) ?? "BLACK_WHITE";
+    : legacyModes.get(view.id) ?? "SOLID_EDGES";
 }
 
 /** Backwards-compatible hydration of independently saved viewport styles. */

@@ -231,6 +231,10 @@ export class DrawingWorkspaceController {
       "flex";
     toolbar.style.alignItems =
       "center";
+    toolbar.style.flexWrap = "wrap";
+    toolbar.style.flex = "0 0 auto";
+    toolbar.style.minWidth = "0";
+    toolbar.style.boxSizing = "border-box";
     toolbar.style.gap =
       "6px";
     toolbar.style.padding =

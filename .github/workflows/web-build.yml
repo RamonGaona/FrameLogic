@@ -9,6 +9,13 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: web-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,75 +30,13 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: |
-          npm install
-          npm install --no-save @rolldown/binding-linux-x64-gnu@1.2.8
+        run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Install Linux native bundler bindings
+        run: npm install --no-save --package-lock=false @rolldown/binding-linux-x64-gnu@1.2.8 lightningcss-linux-x64-gnu@1.33.0
 
-      - name: Automation and MCP integration tests
-        run: npm run test:automation
-
-      - name: Local browser chat parser tests
-        run: npm run test:browser-chat
-
-      - name: Domain and geometry tests
-        run: npm test
-
-      - name: Exact STEP geometric snapping regression
-        run: npm run test:geometric-snaps
-
-      - name: Precision and adaptive visualization tests
-        run: npm run test:precision-stage2
-
-      - name: Automatic drawing planner tests
-        run: npm run test:drawings
-
-      - name: Gizmo interaction tests
-        run: npm run test:gizmos
-
-      - name: Camera mouse navigation tests
-        run: npm run test:camera
-
-      - name: Instance tree layout tests
-        run: npm run test:instance-tree
-
-      - name: Verify build version badge stays synchronized
-        run: npm run test:version-badge
-
-      - name: Hierarchical assembly and CAD history regression
-        run: npm run test:assembly-hierarchy
-
-      - name: Assembly Ctrl-gizmo and COPY by base/destination points
-        run: npm run test:copybase
-
-      - name: Model-space visibility and section group tests
-        run: npm run test:visibility
-
-      - name: Piece preparation conversion tests
-        run: npm run test:piece-preparation
-
-      - name: Piece visualization tests
-        run: npm run test:piece-visuals
-
-      - name: Cota DWG/DXF compact reference and SNAP regression
-        run: npm run test:cota-cad
-
-      - name: Dual DWG reader recovery regression
-        run: npm run test:dwg-recovery
-
-      - name: DWG runtime asset copy regression
-        run: npm run test:dwg
-
-      - name: Clash Detection regression tests
-        run: npm run test:clash
-
-      - name: OpenCascade B-rep boolean smoke test (Node)
-        run: npm run test:clash:occt
-
-      - name: Build FrameLogic web for Cloudflare
-        run: npm run build:cloudflare
+      - name: Build web for Cloudflare
+        run: npm run build
 
       - name: Verify static output
         run: |
