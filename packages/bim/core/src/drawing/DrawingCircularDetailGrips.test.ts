@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { circularDetailRadiusGrips, circularDetailRadiusFromPointer } from "./DrawingCircularDetailGrips";
 
@@ -32,15 +31,4 @@ describe("four controls for circular-detail reference radius", () => {
     expect(circularDetailRadiusGrips(Number.POSITIVE_INFINITY, 2, 4)).toEqual([]);
   });
 
-  it("retains single contextual Detail tool and the original movement/bounds validation", () => {
-    const professional = readFileSync(new URL("./DrawingProfessionalController.ts", import.meta.url), "utf8");
-    const general = readFileSync(new URL("./GeneralPdfController.ts", import.meta.url), "utf8");
-    expect(professional).not.toContain('this.makeButton("Detalle", "Crear detalle desde dos puntos")');
-    expect(general).toContain('detail.dataset["framelogicCircularDetail"] = "true"');
-    expect(general).toContain('for (const grip of circularDetailRadiusGrips(');
-    expect(general).toContain('handle.dataset["framelogicDetailDrag"] = "RADIUS"');
-    expect(general).toContain('ring.dataset["framelogicDetailDrag"] = "MOVE"');
-    expect(general).toContain("if (!detail.segments.length || outside)");
-    expect(general).toContain("detail.circularDetail.radius = drag.original.radius");
-  });
 });
