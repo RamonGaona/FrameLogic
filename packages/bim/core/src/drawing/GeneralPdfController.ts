@@ -3026,10 +3026,16 @@ export class GeneralPdfController {
       }
       if (sources.some((v) => v.value === previous)) sourceSelect.value = previous;
     }
-    if (sheet.bomTable) {
-      const current = sheet.bomTable.sourceViewId + "|" + sheet.bomTable.rootAssemblyId;
-      if (sources.some((v) => v.value === current)) sourceSelect.value = current;
-      modeSelect.value = sheet.bomTable.mode;
+    const sheetKey = this.getActiveSheetId() ?? "";
+    if (controls.dataset["framelogicBomSheet"] !== sheetKey) {
+      controls.dataset["framelogicBomSheet"] = sheetKey;
+      if (sheet.bomTable) {
+        const current = sheet.bomTable.sourceViewId + "|" + sheet.bomTable.rootAssemblyId;
+        if (sources.some((v) => v.value === current)) sourceSelect.value = current;
+        modeSelect.value = sheet.bomTable.mode;
+      } else {
+        modeSelect.value = "HIERARCHY";
+      }
     }
     insert.disabled = sources.length === 0;
     insert.textContent = sheet.bomTable ? "Actualizar BOM" : "Insertar BOM";
