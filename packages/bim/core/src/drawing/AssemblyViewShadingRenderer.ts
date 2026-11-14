@@ -140,13 +140,14 @@ export class AssemblyViewShadingRenderer {
       const centerY = offsetY + request.modelHeight / 2;
       const span = Math.max(maxZ - minZ, request.modelWidth, request.modelHeight, 1);
       const cameraCenter = origin.clone()
-        .addScaledVector(xAxis, centerX).addScaledVector(yAxis, centerY);
+        .addScaledVector(xAxis, centerX).addScaledVector(yAxis, centerY)
+        .addScaledVector(normal, (minZ + maxZ) / 2);
       const camera = new THREE.OrthographicCamera(
         -request.modelWidth / 2, request.modelWidth / 2,
         request.modelHeight / 2, -request.modelHeight / 2,
         0.1, span * 5 + 10,
       );
-      camera.position.copy(cameraCenter).addScaledVector(normal, maxZ + span + 1);
+      camera.position.copy(cameraCenter).addScaledVector(normal, span + 1);
       camera.up.copy(yAxis);
       camera.lookAt(cameraCenter);
       camera.updateProjectionMatrix();
