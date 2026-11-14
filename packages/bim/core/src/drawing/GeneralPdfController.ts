@@ -3103,6 +3103,81 @@ export class GeneralPdfController {
     );
   }
 
+  /** A crowded assembly drawing cannot hold a 40-row material list.
+   * Create full BOM PDF sheets with every row, without silently truncating it.
+   * The normal inline BOM on the source sheet remains independently removable.
+   */
+  private createFullSheetBomPages(): void {
+    const sourceSheetId = this.getActiveSheetId();
+    const sourceSheet = sourceSheetId ? this.production.sheets.get(sourceSheetId) : null;
+    if (!sourceSheetId || !sourceSheet) return;
+    const controls = this.workspace.overlay.querySelector<HTMLDivElement>(
+      '[data-framelogic-sheet-bom-controls="true"]');
+    const value = controls?.querySelector<HTMLSelectElement>(
+      '[data-framelogic-bom-source="true"]')?.value;
+    const chosen = this.sheetBomSourceOptions(sourceSheet).find((s) => s.value === value);
+    if (!chosen) {
+      this.workspace.setStatus("BOM COMPLETA: selecciona el ensamble de origen.");
+      return;
+    }
+    const mode: SheetBomMode = controls?.querySelector<HTMLSelectElement>(
+      '[data-framelogic-bom-mode="true"]')?.value === "FLAT" ? "FLAT" : "HIERARCHY";
+    const previous = sourceSheet.bomTable;
+    sourceSheet.bomTable = {
+      rootAssemblyId: chosen.rootAssemblyId, sourceViewId: chosen.sourceViewId,
+      mode, x: 55, y: 52, width: 1020, height: 565,
+    };
+    let rows: SheetBomResult | null = null;
+    try { rows = this.getSheetBomRows(sourceSheet); }
+    finally { sourceSheet.bomTable = previous; }
+    if (!rows?.rootFound || !rows.rows.length) {
+      this.workspace.setStatus("BOM COMPLETA: el ensamble no contiene piezas o su origen no es válido.");
+      return;
+    }
+    const existing = [...this.production.sheets.entries()].find(([, page]) =>
+      page.bomTable?.generatedFromSheetId === sourceSheetId
+      && page.bomTable.rootAssemblyId === chosen.rootAssemblyId
+      && page.bomTable.mode === mode);
+    if (existing) {
+      this.openSheet(existing[0]);
+      this.workspace.setStatus("Ya existen hojas BOM completas para este origen. "
+        + "Ábrelas desde la lista de PDFs; ninguna hoja se duplicó.");
+      return;
+    }
+    const capacity = Math.floor((565 - 60) / 12.5);
+    const pages = Math.ceil(rows.rows.length / capacity);
+    const created: string[] = [];
+    const name = this.designModel.assemblies.get(chosen.rootAssemblyId)?.name
+      ?? sourceSheet.titleBlock.drawingTitle
+      ?? "Ensamble";
+    for (let index = 0; index < pages; index++) {
+      const id = crypto.randomUUID();
+      const sheet = this.createEmptySheet(id,
+        `BOM completa · ${name} · ${index + 1}/${pages}`);
+      sheet.titleBlock.drawingTitle = "BOM · " + name;
+      sheet.titleBlock.drawingNumber = `B-${chosen.rootAssemblyId.slice(0, 8)}-${index + 1}`;
+      sheet.bomTable = {
+        rootAssemblyId: chosen.rootAssemblyId,
+        sourceViewId: chosen.sourceViewId,
+        mode, x: 55, y: 52, width: 1020, height: 565,
+        pageStart: index * capacity,
+        pageIndex: index + 1,
+        pageCount: pages,
+        generatedFromSheetId: sourceSheetId,
+      };
+      sheet.hideAutomaticBom = true;
+      sheet.pieceMarks = { ...(sourceSheet.pieceMarks ?? {}) };
+      this.production.sheets.set(id, sheet);
+      created.push(id);
+    }
+    this.lastTreeSignature = "";
+    if (created[0]) this.openSheet(created[0]);
+    this.workspace.setStatus(
+      `BOM COMPLETA: ${rows.rows.length} filas en ${pages} hoja(s) PDF, `
+      + "sin omitir entradas. Puedes eliminar la tabla de cualquier hoja de forma independiente.",
+    );
+  }
+
   private removeSheetBom(): void {
     const sheetId = this.getActiveSheetId();
     const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
@@ -3287,7 +3362,15 @@ export class GeneralPdfController {
         + "border-radius:4px;padding:5px;cursor:pointer;font:11px system-ui;";
       remove.addEventListener("click", () => this.removeSheetBom());
       actions.append(insert, remove);
-      bomControls.append(bomTitle, bomSource, bomMode, actions);
+      const pages = document.createElement("button");
+      pages.type = "button";
+      pages.textContent = "Crear hojas BOM completas";
+      pages.dataset["framelogicFullBomPages"] = "true";
+      pages.title = "Genera PDFs adicionales con todas las filas si no caben en la tabla insertada";
+      pages.style.cssText = "padding:5px;background:#2c4655;color:#eaf6fa;"
+        + "border:1px solid #607e8d;border-radius:4px;cursor:pointer;font:11px system-ui;";
+      pages.addEventListener("click", () => this.createFullSheetBomPages());
+      bomControls.append(bomTitle, bomSource, bomMode, actions, pages);
       panel.append(header, regenerate, resetDimensions, bomControls, content);
       this.workspace.overlay.append(panel);
     }
