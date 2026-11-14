@@ -232,6 +232,9 @@ interface ViewLayoutRuntime {
   width: number;
   height: number;
   scaleDenominator: number | null;
+  cropRadius?: number;
+  cropCenterX?: number;
+  cropCenterY?: number;
   showHidden: boolean;
   locked: boolean;
   title?: string;
@@ -1639,7 +1642,7 @@ export class GeneralPdfController {
       detail.circularDetail.centerX = next.x;
       detail.circularDetail.centerY = next.y;
       detail.circularDetail.radius = next.radius;
-      this.rebuildCircularDetail(sheet, detail, source);
+      this.rebuildCircularDetail(detail, source);
       this.workspace.render();
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -1759,7 +1762,7 @@ export class GeneralPdfController {
         detail.circularDetail.centerX = drag.original.x;
         detail.circularDetail.centerY = drag.original.y;
         detail.circularDetail.radius = drag.original.radius;
-        this.rebuildCircularDetail(sheet, detail, source);
+        this.rebuildCircularDetail(detail, source);
         this.workspace.setStatus("DETALLE: el círculo debe quedar dentro de la View y contener geometría.");
       } else {
         this.professional.recordDrawingChange?.();
@@ -1898,8 +1901,7 @@ export class GeneralPdfController {
   }
 
   private rebuildCircularDetail(
-    sheet: GeneralSheetRuntime, detail: AssemblySheetViewRuntime,
-    source: GeneralSheetViewRuntime,
+    detail: AssemblySheetViewRuntime, source: GeneralSheetViewRuntime,
   ): void {
     const settings = detail.circularDetail;
     if (!settings) return;
@@ -1915,7 +1917,7 @@ export class GeneralPdfController {
       + settings.centerY - settings.radius;
     detail.geometrySignature = this.isAssemblyView(source) ? source.geometrySignature : undefined;
     detail.assemblyOcclusionExact = this.isAssemblyView(source) ? source.assemblyOcclusionExact : false;
-    detail.circularDetail.sourceSignature = this.detailSourceFingerprint(source);
+    settings.sourceSignature = this.detailSourceFingerprint(source);
     detail.resolved = true;
   }
 
@@ -1939,7 +1941,7 @@ export class GeneralPdfController {
         continue;
       }
       if (this.detailSourceFingerprint(source) !== detail.circularDetail.sourceSignature) {
-        this.rebuildCircularDetail(sheet, detail, source);
+        this.rebuildCircularDetail(detail, source);
       }
     }
   }
