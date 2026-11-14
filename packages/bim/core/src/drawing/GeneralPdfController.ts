@@ -1,4 +1,10 @@
 import * as THREE from "three";
+import {
+  cropProjectedDetail, nextCircularDetailLetter,
+  paperCircleToProjection, projectionCircleToPaper,
+  validDetailAncestry,
+  type DetailCircle, type DetailPaperTransform,
+} from "./DrawingDetailViewPlanner";
 import { planSmartAssemblyViews, type AutomaticViewCode } from "./AutoDrawingPlanner";
 import { ASSEMBLY_VIEW_ORIENTATION_OPTIONS, resolveAssemblyViewBasis,
   type AssemblyViewOrientationMode, type AssemblyViewBasis } from "./AssemblyViewOrientationControls";
@@ -94,7 +100,7 @@ interface WorkPlaneSnapshot {
   readonly normal: VectorSnapshot;
 }
 
-interface PlanSegment extends AssemblyLine {}
+interface PlanSegment extends AssemblyLine { readonly cut?: boolean; }
 
 interface PlanGeometry {
   readonly width: number;
@@ -145,6 +151,13 @@ interface AssemblySheetViewRuntime {
   /** Stable source reference; cutting stations are preliminary, not confirmed connections. */
   supplementFraction?: number;
   sourceViewId?: string;
+  /** Interactive vector-circle crop, in the source's LOCAL projected millimetres. */
+  circularDetail?: {
+    label: string;
+    centerX: number; centerY: number; radius: number;
+    sourceSignature: string;
+    sourceWorkPlane: WorkPlaneSnapshot;
+  };
   /** Relative projection from a piece/assembly parent view (not a physical STEP cut). */
   projectedDirection?: ProjectedViewDirection;
   projectedStandard?: ProjectionStandard;
@@ -200,6 +213,8 @@ interface WorkspaceRuntime {
   setTool(tool: "SELECT" | "DIMENSION" | "LABEL" | "TEXT"): void;
   setStatus(message: string): void;
   eventToSheetPoint(event: PointerEvent | MouseEvent): THREE.Vector2 | null;
+  buildSnapshot(section: SectionViewDefinition): { readonly segments: readonly PlanSegment[] };
+  sectionToPaper(section: SectionViewDefinition, x: number, y: number): THREE.Vector2;
 }
 
 interface SectionRuntime {
@@ -228,6 +243,7 @@ interface ProfessionalRuntime {
     index: number,
   ): ViewLayoutRuntime;
   createProfessionalSnapshot(): { readonly state: { readonly projectionStandard: ProjectionStandard } };
+  recordDrawingChange?(): void;
 }
 
 interface LegacyAssemblyPdfViewSnapshot {
@@ -315,6 +331,19 @@ export class GeneralPdfController {
   private projectionToken = 0;
   private projectionInProgress = false;
   private projectionRefreshInProgress = false;
+  private detailButton: HTMLButtonElement | null = null;
+  private pendingDetail: {
+    sheetId: string; sourceViewId: string;
+    phase: "CENTER" | "RADIUS" | "PLACE";
+    centerPaper: THREE.Vector2 | null;
+    radiusPaper: number;
+    circle: DetailCircle | null;
+    point: THREE.Vector2 | null;
+  } | null = null;
+  private detailDrag: {
+    sheetId: string; detailId: string; mode: "MOVE" | "RADIUS";
+    start: THREE.Vector2; original: DetailCircle;
+  } | null = null;
   private activeBomDrag: {
     readonly sheetId: string;
     readonly pointerId: number;
@@ -365,7 +394,11 @@ export class GeneralPdfController {
     this.workspace.svg.addEventListener("pointerdown", this.onSelectPdfView, true);
     this.workspace.overlay.addEventListener("pointermove", this.onProjectViewPointerMove, true);
     this.workspace.overlay.addEventListener("pointerdown", this.onProjectViewPointerDown, true);
+    this.workspace.overlay.addEventListener("pointermove", this.onDetailPointerMove, true);
+    this.workspace.overlay.addEventListener("pointerdown", this.onDetailPointerDown, true);
+    this.workspace.overlay.addEventListener("pointerup", this.onDetailPointerUp, true);
     window.addEventListener("keydown", this.onProjectedViewKeyDown, true);
+    window.addEventListener("keydown", this.onDetailKeyDown, true);
     this.workspace.svg.addEventListener("pointerdown", this.onAutoDimensionDown, true);
     this.workspace.svg.addEventListener("pointermove", this.onAutoDimensionMove, true);
     this.workspace.svg.addEventListener("pointerup", this.onAutoDimensionUp, true);
@@ -373,6 +406,9 @@ export class GeneralPdfController {
     this.workspace.svg.addEventListener("contextmenu", this.onAutoDimensionContextMenu, true);
     this.syncSectionSheets();
     this.timer = window.setInterval(() => {
+      if (this.pendingDetail && this.workspace.overlay.style.display === "none") {
+        this.cancelCircularDetail(false);
+      }
       if (this.pendingProjection && this.workspace.overlay.style.display === "none") {
         this.cancelProjectedView(false);
       }
@@ -399,7 +435,12 @@ export class GeneralPdfController {
     this.workspace.svg.removeEventListener("pointerdown", this.onSelectPdfView, true);
     this.workspace.overlay.removeEventListener("pointermove", this.onProjectViewPointerMove, true);
     this.workspace.overlay.removeEventListener("pointerdown", this.onProjectViewPointerDown, true);
+    this.workspace.overlay.removeEventListener("pointermove", this.onDetailPointerMove, true);
+    this.workspace.overlay.removeEventListener("pointerdown", this.onDetailPointerDown, true);
+    this.workspace.overlay.removeEventListener("pointerup", this.onDetailPointerUp, true);
     window.removeEventListener("keydown", this.onProjectedViewKeyDown, true);
+    window.removeEventListener("keydown", this.onDetailKeyDown, true);
+    this.cancelCircularDetail(false);
     this.cancelProjectedView(false);
     this.viewOrientationPanel.remove();
     this.workspace.svg.removeEventListener("pointerdown", this.onAutoDimensionDown, true);
@@ -1266,8 +1307,16 @@ export class GeneralPdfController {
     project.style.cssText = "padding:5px 9px;border:1px solid #73a8be;border-radius:4px;background:#244f65;color:#fff;font:inherit;cursor:pointer;";
     project.addEventListener("click", () => this.toggleProjectedView());
     this.projectionButton = project;
+    const detail = document.createElement("button");
+    detail.type = "button";
+    detail.textContent = "Detalle";
+    detail.title = "Selecciona una View y dibuja un círculo para crear una ampliación vectorial vinculada";
+    detail.dataset["framelogicCircularDetail"] = "true";
+    detail.style.cssText = project.style.cssText;
+    detail.addEventListener("click", () => this.toggleCircularDetail());
+    this.detailButton = detail;
     const scale = this.createViewScaleEditor();
-    panel.append(label, viewSelect, modeSelect, project, scale);
+    panel.append(label, viewSelect, modeSelect, project, detail, scale);
     this.workspace.overlay.append(panel);
     return panel;
   }
@@ -1384,7 +1433,8 @@ export class GeneralPdfController {
       input.value = current === null ? "" : formatDrawingViewScale(current);
     }
     const disabled = this.orientationChangeInProgress
-      || this.projectionInProgress || Boolean(this.pendingProjection);
+      || this.projectionInProgress || Boolean(this.pendingProjection)
+      || Boolean(this.pendingDetail);
     select.disabled = disabled;
     input.disabled = disabled;
     apply.disabled = disabled;
@@ -1753,7 +1803,14 @@ export class GeneralPdfController {
     viewSelect.disabled = this.orientationChangeInProgress;
     // The 3D assembly orientation choices do not apply to a section View.
     modeSelect.disabled = this.orientationChangeInProgress
-      || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement);
+      || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement)
+      || Boolean(this.pendingDetail);
+    if (this.detailButton) {
+      this.detailButton.disabled = this.orientationChangeInProgress
+        || this.projectionInProgress || Boolean(this.pendingProjection);
+      this.detailButton.textContent = this.pendingDetail ? "Cancelar detalle (Esc)" : "Detalle";
+      this.detailButton.style.background = this.pendingDetail ? "#775128" : "#244f65";
+    }
     if (this.projectionButton) {
       this.projectionButton.disabled = !this.pendingProjection
         && (this.orientationChangeInProgress || this.projectionInProgress
@@ -1762,7 +1819,8 @@ export class GeneralPdfController {
         ? "Cancelar proyección (Esc)" : "Proyectar View";
       this.projectionButton.style.background = this.pendingProjection ? "#775128" : "#244f65";
     }
-    viewSelect.disabled = this.orientationChangeInProgress || Boolean(this.pendingProjection);
+    viewSelect.disabled = this.orientationChangeInProgress
+      || Boolean(this.pendingProjection) || Boolean(this.pendingDetail);
     const scaleEditor = panel.querySelector<HTMLDivElement>(
       '[data-framelogic-view-scale-editor="true"]',
     );
@@ -1891,6 +1949,7 @@ export class GeneralPdfController {
     const sheet = this.production.sheets.get(sheetId);
     if (!sheet) return;
 
+    this.refreshCircularDetails(sheet);
     const hasSectionView = this.getSectionViews(sheet).length > 0;
     if (!hasSectionView) {
       this.appendRect(
@@ -1927,11 +1986,14 @@ export class GeneralPdfController {
         index,
       );
       layout.kind = "ASSEMBLY";
-      layout.title = candidate.assemblyName
-        + (candidate.orientationLabel ? ` · ${candidate.orientationLabel}` : "");
+      layout.title = candidate.circularDetail
+        ? "DETALLE " + candidate.circularDetail.label
+        : candidate.assemblyName
+          + (candidate.orientationLabel ? " · " + candidate.orientationLabel : "");
       this.renderAssemblyView(sheet, candidate, layout, index);
     });
 
+    this.renderCircularReferences(sheet);
     if (!hasSectionView) {
       this.renderGenericTitleBlock(sheet);
       if (!sheet.hideAutomaticBom && !sheet.bomTable) this.renderAutomaticPartIndex(sheet);
@@ -1940,6 +2002,7 @@ export class GeneralPdfController {
     this.updateViewOrientationPanel(sheet);
     this.decorateViewTree();
     this.drawProjectedViewPreview();
+    this.drawCircularDetailPreview();
   }
 
   private renderAssemblyView(
@@ -2001,6 +2064,11 @@ export class GeneralPdfController {
         if (segment.hidden && !layout.showHidden) geometryLine.setAttribute("display", "none");
       }
     }
+    if (view.circularDetail) {
+      this.appendText(layout.x + 6, layout.y + 15,
+        "DETALLE " + view.circularDetail.label + " — ESC "
+          + formatDrawingViewScale(layout.scaleDenominator), 9, "#12567c");
+    }
     if (view.automaticSupplement) {
       if (view.automaticWarnings?.length) {
         this.appendText(layout.x + 6, layout.y + layout.height - 23,
@@ -2060,13 +2128,14 @@ export class GeneralPdfController {
     resize.style.cursor = layout.locked ? "not-allowed" : "nwse-resize";
     this.workspace.svg.append(resize);
 
-    const scaleText = layout.scaleDenominator === null
-      ? "AUTO"
-      : `1:${layout.scaleDenominator}`;
+    const scaleText = formatDrawingViewScale(layout.scaleDenominator);
     this.appendText(
       layout.x + 6,
       layout.y + layout.height - 6,
-      `VIEW ${index + 1} · ${view.assemblyName}${view.orientationLabel ? " · " + view.orientationLabel : ""} · ${scaleText}`,
+      view.circularDetail
+        ? "DETALLE " + view.circularDetail.label + " — ESC " + scaleText
+        : "VIEW " + (index + 1) + " · " + view.assemblyName
+          + (view.orientationLabel ? " · " + view.orientationLabel : "") + " · " + scaleText,
       9,
       "#333",
     );
@@ -2736,6 +2805,9 @@ export class GeneralPdfController {
   }
 
   private ensureAssemblyResolved(view: AssemblySheetViewRuntime): void {
+    // Circular crops contain only source-clipped vectors; NEVER fall back to
+    // a full uncropped assembly when an empty circle is moved.
+    if (view.circularDetail) return;
     if (
       view.resolved
       && view.segments.length > 0
@@ -2896,7 +2968,7 @@ export class GeneralPdfController {
             ? `BOM:${sheet.bomTable.rootAssemblyId}:${sheet.bomTable.mode}` : "NO_BOM",
           ...sheet.views.map((view, index) =>
             this.isAssemblyView(view)
-              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`
+              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}:${view.circularDetail?.label ?? ""}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`
               : `${index}:${view.id}:S:${view.sectionId}:${pieces.map((piece) => piece.id).join(",")}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`,
           ),
         ].join("|")
@@ -2921,15 +2993,18 @@ export class GeneralPdfController {
       return;
     }
 
+    const rowById = new Map<string, HTMLDetailsElement>();
     sheet.views.forEach((view, index) => {
       if (this.isAssemblyView(view)) {
         const parentIndex = view.projectedDirection
           ? sheet.views.findIndex((candidate) => candidate.id === view.sourceViewId) : -1;
         const block = this.createViewDetails(
-          `View ${index + 1} · ${view.assemblyName}${view.orientationLabel
+          `${view.circularDetail ? "DETALLE " + view.circularDetail.label : "View " + (index + 1)} · ${view.assemblyName}${view.orientationLabel
             ? " · " + view.orientationLabel : ""} · ${formatDrawingViewScale(
               this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator)}`,
-          view.projectedDirection
+          view.circularDetail
+            ? "DETALLE CIRCULAR · Origen: " + (view.sourceViewId ?? "?")
+            : view.projectedDirection
             ? `PROYECCIÓN · origen View ${parentIndex >= 0 ? parentIndex + 1 : "?"} · ${view.projectedStandard ?? "ISO E"} · ${view.instanceIds.length} piezas`
             : `ENSAMBLE/PIEZA · ${view.instanceIds.length} instancia${view.instanceIds.length === 1 ? "" : "s"}`,
         );
@@ -2946,6 +3021,18 @@ export class GeneralPdfController {
         block.details.open = previouslyOpen.get(view.id) ?? true;
         this.bindTreeViewSelection(block.details, view.id, sheet);
         tree.append(block.details);
+        rowById.set(view.id, block.details);
+        if (view.circularDetail) {
+          const deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.textContent = "Eliminar detalle";
+          deleteButton.style.cssText = "margin:5px 8px 7px 26px;color:white;background:#643a3a;border:1px solid #926b6b;border-radius:4px;padding:4px;";
+          deleteButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this.removeCircularDetail(view.id);
+          });
+          block.content.append(deleteButton);
+        }
         return;
       }
 
@@ -2968,7 +3055,18 @@ export class GeneralPdfController {
       block.details.open = previouslyOpen.get(view.id) ?? true;
       this.bindTreeViewSelection(block.details, view.id, sheet);
       tree.append(block.details);
+      rowById.set(view.id, block.details);
     });
+    // Use actual nested HTML details, not just a visually indented flat label.
+    for (const view of sheet.views) {
+      if (!this.isAssemblyView(view) || !view.circularDetail || !view.sourceViewId) continue;
+      const childRow = rowById.get(view.id);
+      const parentRow = rowById.get(view.sourceViewId);
+      if (childRow && parentRow && validDetailAncestry(view.sourceViewId, view.id, sheet.views)) {
+        childRow.style.marginLeft = "13px";
+        parentRow.querySelector("div")?.append(childRow);
+      }
+    }
     tree.scrollTop = previousScroll;
   }
 
