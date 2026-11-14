@@ -2498,11 +2498,17 @@ export class GeneralPdfController {
     if (!assemblies.length) {
       return { rows: [], totalPieces: 0, missingPieces: [], rootFound: false };
     }
-    const partIds = root
-      ? this.designModel.getAssemblyPieceIdsDeep(root.id)
-      : isModelSummary
-        ? this.designModel.pieceInstances.getAll().map((p) => p.id)
-        : source && this.isAssemblyView(source) ? source.instanceIds : [];
+    let partIds: readonly string[] = [];
+    try {
+      partIds = root
+        ? this.designModel.getAssemblyPieceIdsDeep(root.id)
+        : isModelSummary
+          ? this.designModel.pieceInstances.getAll().map((p) => p.id)
+          : source && this.isAssemblyView(source) ? source.instanceIds : [];
+    } catch {
+      // A malformed legacy cycle must never take down Paper Space / PDF.
+      return { rows: [], totalPieces: 0, missingPieces: [], rootFound: false };
+    }
     const parts: Record<string, SheetBomPiece> = {};
     const marks = { ...(sheet.pieceMarks ?? {}) };
     for (const instanceId of partIds) {
@@ -2524,8 +2530,12 @@ export class GeneralPdfController {
         unitMassKg: engineering?.physical?.massKg,
       };
     }
-    return buildSheetAssemblyBom(
-      selection.rootAssemblyId, assemblies, parts, marks, selection.mode);
+    try {
+      return buildSheetAssemblyBom(
+        selection.rootAssemblyId, assemblies, parts, marks, selection.mode);
+    } catch {
+      return { rows: [], totalPieces: 0, missingPieces: [], rootFound: false };
+    }
   }
 
   private renderInsertedBomTable(sheet: GeneralSheetRuntime): void {
@@ -2989,9 +2999,13 @@ export class GeneralPdfController {
       const root = this.designModel.assemblies.get(view.assemblyId);
       if (root) {
         push(view.id, root.id, `View ${index + 1} · ${root.name}`);
-        for (const id of this.designModel.getAssemblyDescendantIds(root.id)) {
-          const child = this.designModel.assemblies.get(id);
-          if (child) push(view.id, child.id, `  ↳ ${child.name}`);
+        try {
+          for (const id of this.designModel.getAssemblyDescendantIds(root.id)) {
+            const child = this.designModel.assemblies.get(id);
+            if (child) push(view.id, child.id, `  ↳ ${child.name}`);
+          }
+        } catch {
+          // Keep the root selectable; invalid legacy hierarchy requires repair.
         }
       } else if (view.instanceIds.length) {
         push(view.id, view.assemblyId, `View ${index + 1} · ${view.assemblyName}`);
