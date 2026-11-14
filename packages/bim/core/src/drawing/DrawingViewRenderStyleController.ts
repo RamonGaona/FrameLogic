@@ -497,6 +497,8 @@ export class DrawingViewRenderStyleController {
     const image = document.createElementNS(SVG_NS, "image");
     image.dataset["framelogicRenderStyleFill"] = "true";
     image.dataset["framelogicViewRaster"] = "true";
+    image.dataset["framelogicImageWidth"] = String(shaded.pixelWidth);
+    image.dataset["framelogicImageHeight"] = String(shaded.pixelHeight);
     image.setAttribute("href", shaded.jpegDataUrl);
     image.setAttribute("x", String(originX));
     image.setAttribute("y", String(originY));
@@ -598,8 +600,10 @@ export class DrawingViewRenderStyleController {
     const sx = widthPt / CANVAS_WIDTH;
     const sy = heightPt / CANVAS_HEIGHT;
     const commands: string[] = ["q", "1 J 1 j"];
+    const jpegImages: PdfJpegImage[] = [];
 
     for (const child of Array.from(this.workspace.svg.children)) {
+      if (child.getAttribute("display") === "none") continue;
       if (child.hasAttribute("data-framelogic-drawing-snap")) continue;
       if (child.hasAttribute("data-framelogic-view-action")) continue;
       const tag = child.tagName.toLowerCase();
@@ -611,7 +615,40 @@ export class DrawingViewRenderStyleController {
         const y2 = heightPt - Number(line.getAttribute("y2") ?? 0) * sy;
         const width = Math.max(0.2, Number(line.getAttribute("stroke-width") ?? 1) * Math.min(sx, sy));
         const stroke = pdfColor(line.getAttribute("stroke") ?? "#000000", false);
-        commands.push(`${stroke} ${n(width)} w ${n(x1)} ${n(y1)} m ${n(x2)} ${n(y2)} l S`);
+        const dash = line.getAttribute("stroke-dasharray") ?? "none";
+        const pdfDash = dash === "none" ? "[] 0 d"
+          : "[" + dash.split(/[ ,]+/).map((v) =>
+            n(Math.max(0.1, Number(v) * Math.min(sx, sy)))).join(" ") + "] 0 d";
+        commands.push(`${pdfDash} ${stroke} ${n(width)} w ${n(x1)} ${n(y1)} m ${n(x2)} ${n(y2)} l S`);
+      }
+      else if (tag === "image" && child.hasAttribute("data-framelogic-view-raster")) {
+        const source = child.getAttribute("href") ?? "";
+        const prefix = "data:image/jpeg;base64,";
+        if (!source.startsWith(prefix)) continue;
+        const image = child as SVGImageElement;
+        const raster = atob(source.slice(prefix.length));
+        const bytes = new Uint8Array(raster.length);
+        for (let i = 0; i < raster.length; i++) bytes[i] = raster.charCodeAt(i);
+        const imageWidth = Math.max(1, Math.round(Number(image.getAttribute("width") ?? 0) * 3));
+        const imageHeight = Math.max(1, Math.round(Number(image.getAttribute("height") ?? 0) * 3));
+        // JPEG dimensions are read from the image element's render metadata,
+        // not inferred from page-space units.
+        const widthPx = Number(image.dataset["framelogicImageWidth"]) || imageWidth;
+        const heightPx = Number(image.dataset["framelogicImageHeight"]) || imageHeight;
+        const name = "Im" + (jpegImages.length + 1);
+        jpegImages.push({ bytes, width: widthPx, height: heightPx });
+        const x = Number(image.getAttribute("x") ?? 0) * sx;
+        const yTop = Number(image.getAttribute("y") ?? 0);
+        const w = Number(image.getAttribute("width") ?? 0) * sx;
+        const h = Number(image.getAttribute("height") ?? 0) * sy;
+        const y = heightPt - yTop * sy - h;
+        const clipX = Number(image.dataset["framelogicClipX"] ?? 0) * sx;
+        const clipY = heightPt - (Number(image.dataset["framelogicClipY"] ?? 0)
+          + Number(image.dataset["framelogicClipHeight"] ?? 0)) * sy;
+        const clipW = Number(image.dataset["framelogicClipWidth"] ?? 0) * sx;
+        const clipH = Number(image.dataset["framelogicClipHeight"] ?? 0) * sy;
+        commands.push("q", `${n(clipX)} ${n(clipY)} ${n(clipW)} ${n(clipH)} re W n`,
+          `${n(w)} 0 0 ${n(h)} ${n(x)} ${n(y)} cm /${name} Do`, "Q");
       }
       else if (tag === "polygon") {
         const polygon = child as SVGPolygonElement;
@@ -656,7 +693,7 @@ export class DrawingViewRenderStyleController {
     }
     commands.push("Q");
 
-    const bytes = buildPdf(widthPt, heightPt, commands.join("\n"));
+    const bytes = buildPdf(widthPt, heightPt, commands.join("\n"), jpegImages);
     const blob = new Blob([bytes], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -797,31 +834,76 @@ function fileSafeName(value: string): string {
 }
 
 
+interface PdfJpegImage {
+  readonly bytes: Uint8Array;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Binary-safe, self-contained PDF: the shaded JPEG and vector edges are in
+ * the same page content stream, preserving preview drawing order. */
 function buildPdf(
   width: number,
   height: number,
   stream: string,
+  images: readonly PdfJpegImage[] = [],
 ): Uint8Array<ArrayBuffer> {
   const encoder = new TextEncoder();
-  const streamLength = encoder.encode(stream).length;
-  const objects = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${n(width)} ${n(height)}] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>`,
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    `<< /Length ${streamLength} >>\nstream\n${stream}\nendstream`,
-  ];
-  let pdf = "%PDF-1.4\n";
+  const chunks: Uint8Array[] = [];
   const offsets = [0];
-  for (let index = 0; index < objects.length; index += 1) {
-    offsets.push(encoder.encode(pdf).length);
-    pdf += `${index + 1} 0 obj\n${objects[index]}\nendobj\n`;
+  let position = 0;
+  const append = (value: string | Uint8Array): void => {
+    const bytes = typeof value === "string" ? encoder.encode(value) : value;
+    chunks.push(bytes);
+    position += bytes.length;
+  };
+  const begin = (index: number): void => {
+    offsets.push(position);
+    append(String(index) + " 0 obj\n");
+  };
+  const end = (): void => { append("\nendobj\n"); };
+  const streamBytes = encoder.encode(stream);
+  const xObjects = images.map((_, index) => "/Im" + (index + 1)
+    + " " + (index + 6) + " 0 R").join(" ");
+
+  append("%PDF-1.4\n");
+  begin(1); append("<< /Type /Catalog /Pages 2 0 R >>"); end();
+  begin(2); append("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"); end();
+  begin(3);
+  append("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
+    + n(width) + " " + n(height) + "] /Resources << /Font << /F1 4 0 R >>"
+    + " /XObject << " + xObjects + " >> >> /Contents 5 0 R >>");
+  end();
+  begin(4); append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"); end();
+  begin(5);
+  append("<< /Length " + streamBytes.length + " >>\nstream\n");
+  append(streamBytes);
+  append("\nendstream");
+  end();
+
+  for (const [index, image] of images.entries()) {
+    begin(index + 6);
+    append("<< /Type /XObject /Subtype /Image /Width " + image.width
+      + " /Height " + image.height
+      + " /ColorSpace /DeviceRGB /BitsPerComponent 8"
+      + " /Filter /DCTDecode /Length " + image.bytes.length + " >>\nstream\n");
+    append(image.bytes);
+    append("\nendstream");
+    end();
   }
-  const xrefOffset = encoder.encode(pdf).length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (let index = 1; index < offsets.length; index += 1) {
-    pdf += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+  const xrefOffset = position;
+  append("xref\n0 " + (images.length + 6) + "\n0000000000 65535 f \n");
+  for (const offset of offsets.slice(1)) {
+    append(String(offset).padStart(10, "0") + " 00000 n \n");
   }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return encoder.encode(pdf);
+  append("trailer\n<< /Size " + (images.length + 6)
+    + " /Root 1 0 R >>\nstartxref\n" + xrefOffset + "\n%%EOF");
+
+  const result = new Uint8Array(position);
+  let next = 0;
+  for (const part of chunks) {
+    result.set(part, next);
+    next += part.length;
+  }
+  return result;
 }
