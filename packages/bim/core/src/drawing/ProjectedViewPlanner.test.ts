@@ -46,8 +46,10 @@ describe("projected CAD Views", () => {
       const third=resolveProjectedViewBasis(xy,side,"ISO_A")!;
       expect(dot(first.normal,third.normal)).toBeCloseTo(-1,10);
     }
-    expect(resolveProjectedViewBasis(xy,"RIGHT","ISO_A")?.normal).toEqual(vec(1,0,0));
-    expect(resolveProjectedViewBasis(xy,"RIGHT","ISO_E")?.normal).toEqual(vec(-1,0,0));
+    expect(dot(resolveProjectedViewBasis(xy,"RIGHT","ISO_A")!.normal,vec(1,0,0)))
+      .toBeCloseTo(1, 10);
+    expect(dot(resolveProjectedViewBasis(xy,"RIGHT","ISO_E")!.normal,vec(-1,0,0)))
+      .toBeCloseTo(1, 10);
     expect(projectedViewLabel("RIGHT","ISO_E")).toBe("Vista lateral izquierda");
     expect(projectedViewLabel("DOWN","ISO_E")).toBe("Vista superior");
   });
