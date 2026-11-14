@@ -343,6 +343,9 @@ export class GeneralPdfController {
     this.workspace.svg.addEventListener("contextmenu", this.onAutoDimensionContextMenu, true);
     this.syncSectionSheets();
     this.timer = window.setInterval(() => {
+      if (this.pendingProjection && this.workspace.overlay.style.display === "none") {
+        this.cancelProjectedView(false);
+      }
       this.syncSectionSheets();
       this.decorateViewTree();
       this.normalizeModelSpacePdfRows();
