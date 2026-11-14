@@ -43,6 +43,9 @@ jobs:
       - name: Automation and MCP integration tests
         run: npm run test:automation
 
+      - name: MCP deployment impact regression
+        run: node --test scripts/ci/mcp-deployment-impact.test.mjs
+
       - name: Local browser chat parser tests
         run: npm run test:browser-chat
 
