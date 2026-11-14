@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.152 — 2026-11-13
+
+### Proyectar View a partir de una pieza individual o un ensamble
+
+- **Herramienta «Proyectar View» en Paper Space:** selecciona primero una View de pieza o ensamble. Al activar la herramienta se indica la dirección desplazando el cursor fuera de la View: derecha, izquierda, arriba, abajo, o en diagonal para una proyección isométrica. Se muestra una previsualización punteada y se coloca con un clic; se pueden crear varias proyecciones antes de finalizar con Esc.
+- **Ejes de la View origen:** todas las orientaciones derivan de los ejes locales reales de la View seleccionada, incluso cuando el ensamble esté girado respecto a XYZ. La herramienta no cambia la posición, rotación ni geometría del modelo 3D.
+- **Normas de proyección:** respeta la configuración de primer diedro (ISO E) o tercer diedro (ISO A), invirtiendo la dirección desde la que se observa la pieza cuando corresponde, no el lado de colocación.
+- **Persistencia y vínculo:** cada vista guarda `sourceViewId`, dirección y norma de proyección, su propio render y posición. Una modificación de orientación o geometría de la vista de origen regenera las proyecciones vinculadas conservando su disposición, cotas desplazadas y render individual. Reorientar manualmente una proyección la desvincula de su padre.
+- **Motor y precisión:** utiliza el motor unificado de proyección STEP B-Rep/HLR con información de precisión; la malla de respaldo queda identificada como derivada, sin presentar sus líneas ocultas como HLR exactas. La proyección se integra en la misma hoja, el mismo árbol VIEWS, la exportación PDF y el mismo snapshot de proyecto.
+- **Colocación protegida:** rechaza posiciones fuera de hoja o que se superpongan a View existentes. Si no cabe, permite reorganizar o redimensionar las Views antes de intentarlo nuevamente.
+- **Pruebas geométricas:** bases ortonormales, normas ISO E/A, giro local de 7°, direcciones diagonales, alineación, escala y límites de hoja.
+
+**Pendiente de aceptación visual:** interacción y render de las proyecciones sobre archivos STEP reales con distintos tamaños de ensamble, unidades, orientaciones oblicuas y hojas llenas. Todavía no incluye proyecciones derivadas de cortes físicos o detalles recortados; no debe inventar secciones.
+
+---
+
 ## v0.1.151 — 2026-11-13
 
 ### Render independiente y superficies reales en Views de ensamble
