@@ -1179,7 +1179,7 @@ export class GeneralPdfController {
     if (!point) return;
     for (let index = sheet.views.length - 1; index >= 0; index--) {
       const view = sheet.views[index];
-      if (!view || !this.isAssemblyView(view) || view.automaticSupplement) continue;
+      if (!view || (this.isAssemblyView(view) && view.automaticSupplement)) continue;
       const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
       if (point.x < layout.x || point.x > layout.x + layout.width
         || point.y < layout.y || point.y > layout.y + layout.height) continue;
@@ -1193,8 +1193,8 @@ export class GeneralPdfController {
 
   private updateViewOrientationPanel(sheet: GeneralSheetRuntime | null): void {
     const panel = this.viewOrientationPanel;
-    const views = sheet?.views.filter((view): view is AssemblySheetViewRuntime =>
-      this.isAssemblyView(view) && !view.automaticSupplement) ?? [];
+    const views = sheet?.views.filter((view) =>
+      !this.isAssemblyView(view) || !view.automaticSupplement) ?? [];
     if (views.length === 0) {
       panel.style.display = "none";
       return;
@@ -1204,14 +1204,16 @@ export class GeneralPdfController {
       '[data-framelogic-view-select="true"]')!;
     const modeSelect = panel.querySelector<HTMLSelectElement>(
       '[data-framelogic-view-orientation="true"]')!;
-    const signature = views.map((view) => view.id + ":" + view.assemblyName).join("|");
+    const signature = views.map((view) => view.id + ":"
+      + (this.isAssemblyView(view) ? view.assemblyName : view.sectionId)).join("|");
     if (viewSelect.dataset["viewSignature"] !== signature) {
       viewSelect.dataset["viewSignature"] = signature;
       viewSelect.replaceChildren();
       for (const [index, view] of views.entries()) {
         const option = document.createElement("option");
         option.value = view.id;
-        option.textContent = `View ${index + 1} · ${view.assemblyName}`;
+        option.textContent = `View ${index + 1} · ${this.isAssemblyView(view)
+          ? view.assemblyName : this.findSection(view.sectionId)?.name ?? "Sección"}`;
         viewSelect.append(option);
       }
     }
@@ -1220,10 +1222,11 @@ export class GeneralPdfController {
     }
     viewSelect.value = this.selectedAssemblyViewId!;
     const selected = views.find((view) => view.id === this.selectedAssemblyViewId)!;
-    const expected = selected.orientationMode ?? "CURRENT";
+    const expected = this.isAssemblyView(selected) ? selected.orientationMode ?? "CURRENT" : "CURRENT";
     if (modeSelect.value !== expected) modeSelect.value = expected;
     viewSelect.disabled = this.orientationChangeInProgress;
-    modeSelect.disabled = this.orientationChangeInProgress;
+    // The 3D assembly orientation choices do not apply to a section View.
+    modeSelect.disabled = this.orientationChangeInProgress || !this.isAssemblyView(selected);
   }
 
   private async changeSelectedPdfViewOrientation(
@@ -2064,6 +2067,7 @@ export class GeneralPdfController {
         if (view.instanceIds.length < 1) {
           block.content.append(this.createEmptyRow("Sin instancias"));
         }
+        this.bindTreeViewSelection(block.details, view.id, sheet);
         tree.append(block.details);
         return;
       }
@@ -2079,7 +2083,24 @@ export class GeneralPdfController {
       if (pieces.length < 1) {
         block.content.append(this.createEmptyRow("Sin instancias en el modelo"));
       }
+      this.bindTreeViewSelection(block.details, view.id, sheet);
       tree.append(block.details);
+    });
+  }
+
+  private bindTreeViewSelection(
+    details: HTMLDetailsElement,
+    viewId: string,
+    sheet: GeneralSheetRuntime,
+  ): void {
+    // Selecting VIEWS tree rows updates the shared orientation/render toolbar.
+    details.querySelector("summary")?.addEventListener("click", () => {
+      this.selectedAssemblyViewId = viewId;
+      this.updateViewOrientationPanel(sheet);
+      const viewSelect = this.viewOrientationPanel.querySelector<HTMLSelectElement>(
+        '[data-framelogic-view-select="true"]',
+      );
+      viewSelect?.dispatchEvent(new Event("change"));
     });
   }
 
