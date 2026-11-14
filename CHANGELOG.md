@@ -12,6 +12,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.149 — 2026-11-13
+
+### Vistas PDF configurables: orientación por eje propio
+
+- **Corregida la inclinación en «Enviar a PDF»:** el comando ya no toma por defecto el WorkPlane como dirección de dibujo para un ensamble longitudinal. Detecta su eje principal a partir de la geometría espacial transformada y usa un marco ortonormal propio, con alineación exacta a X/Y/Z global cuando hay una desviación geométrica mínima (menos de 8°). Si no hay eje reconocible, utiliza el alzado global sin inventar orientación.
+- **Selector para la View activa:** un panel contextual en Paper Space permite seleccionar la View y cambiar su tipo entre **alzado longitudinal, planta longitudinal, extremo, isométrica local, alzado global, planta global, lateral global, isométrica global y vista original**. Al pulsar sobre un viewport existente, el selector pasa a actuar sobre esa View.
+- **Cambio solo del plano de proyección:** `GeneralPdfController` reproyecta mediante el motor `projectAssembly` (HLR STEP con fallback explícito) sin modificar las matrices 3D, posición, escala ni el recuadro de las otras Views. La orientación se conserva en el estado persistente de la hoja y se pueden restaurar los ejes originales.
+- **Seguridad y referencias:** no se producen cotas a partir del eje PCA. Las cotas STEP, cuando existen, se recalculan; isométricas no reciben cotas automáticas. Si se reorienta una View de la que dependían cortes o ampliaciones, sus referencias se invalidan para impedir mantener detalles obsoletos.
+- **Pruebas:** regresiones de alineación para miembros casi paralelos a X, miembros inclinados, bases ortonormales locales y selección de ejes globales.
+
+**Pendiente:** verificación visual en un navegador con ensambles reales y comprobación de PDF impreso; el selector no reemplaza una definición de vistas de fabricación certificadas.
+
+---
+
 ## v0.1.148 — 2026-11-13
 
 ### Etapa A (entrega incremental 3): cortes A-A/B-B y ampliaciones vectoriales

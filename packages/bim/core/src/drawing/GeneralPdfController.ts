@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { planSmartAssemblyViews, type AutomaticViewCode } from "./AutoDrawingPlanner";
+import { ASSEMBLY_VIEW_ORIENTATION_OPTIONS, resolveAssemblyViewBasis,
+  type AssemblyViewOrientationMode, type AssemblyViewBasis } from "./AssemblyViewOrientationControls";
 import { planSelectedSheetLayout, selectAssemblyScaleDenominator } from "./AutoSheetLayoutPlanner";
 import { assemblyProjectionSignature, projectAssembly, projectAssemblySection,
   type AssemblyLine, type AssemblyMarkAnchor, type AssemblyProjection } from "./AssemblyProjectionEngine";
@@ -95,7 +97,10 @@ interface AssemblySheetViewRuntime {
   readonly assemblyId: string;
   readonly assemblyName: string;
   instanceIds: string[];
-  readonly workPlane: WorkPlaneSnapshot;
+  workPlane: WorkPlaneSnapshot;
+  originalWorkPlane?: WorkPlaneSnapshot;
+  orientationMode?: AssemblyViewOrientationMode;
+  orientationLabel?: string;
   width: number;
   height: number;
   segments: readonly PlanSegment[];
@@ -262,6 +267,9 @@ export class GeneralPdfController {
   private disposed = false;
   private refreshInProgress = false;
   private lastAutomaticRefresh = 0;
+  private selectedAssemblyViewId: string | null = null;
+  private orientationChangeInProgress = false;
+  private readonly viewOrientationPanel: HTMLDivElement;
   private dimensionDrag: {
     readonly viewId: string;
     readonly key: string;
@@ -293,6 +301,8 @@ export class GeneralPdfController {
       this.renderGeneralViews();
     };
 
+    this.viewOrientationPanel = this.createViewOrientationPanel();
+    this.workspace.svg.addEventListener("pointerdown", this.onSelectPdfView, true);
     this.workspace.svg.addEventListener("pointerdown", this.onAutoDimensionDown, true);
     this.workspace.svg.addEventListener("pointermove", this.onAutoDimensionMove, true);
     this.workspace.svg.addEventListener("pointerup", this.onAutoDimensionUp, true);
@@ -315,6 +325,8 @@ export class GeneralPdfController {
     if (this.disposed) return;
     this.disposed = true;
     window.clearInterval(this.timer);
+    this.workspace.svg.removeEventListener("pointerdown", this.onSelectPdfView, true);
+    this.viewOrientationPanel.remove();
     this.workspace.svg.removeEventListener("pointerdown", this.onAutoDimensionDown, true);
     this.workspace.svg.removeEventListener("pointermove", this.onAutoDimensionMove, true);
     this.workspace.svg.removeEventListener("pointerup", this.onAutoDimensionUp, true);
@@ -791,22 +803,44 @@ export class GeneralPdfController {
       (station.yMin + station.yMax) / 2, width, height);
   }
 
+  /** Right-handed view basis; arbitrary origin does not alter normalized 2D linework. */
+  private createOrientedWorkPlane(
+    original: CadWorkPlaneState,
+    basis: AssemblyViewBasis,
+  ): CadWorkPlaneState {
+    const vector = (p: { readonly x: number; readonly y: number; readonly z: number }) =>
+      new THREE.Vector3(p.x, p.y, p.z);
+    return {
+      mode: original.mode, enabled: true, origin: new THREE.Vector3(),
+      xAxis: vector(basis.xAxis),
+      yAxis: vector(basis.yAxis),
+      normal: vector(basis.normal),
+    };
+  }
+
+  private orientationModeLabel(mode: AssemblyViewOrientationMode): string {
+    return ASSEMBLY_VIEW_ORIENTATION_OPTIONS.find(([key]) => key === mode)?.[1] ?? mode;
+  }
+
   sendAssembly(request: GeneralPdfRequest): boolean {
     if (this.disposed) return false;
-    if (!request.workPlane.enabled) {
-      window.alert(
-        "Activa un WorkPlane antes de enviar el ensamble a PDF. La vista se orienta con los ejes X/Y de ese plano.",
-      );
-      return false;
-    }
     if (request.instanceIds.length < 1) {
       window.alert("El ensamble no contiene piezas.");
       return false;
     }
 
+    // The old «Enviar a PDF» copied the active WorkPlane's projected camera
+    // even for a long beam aligned with the world's X axis. That is why it
+    // looked diagonal in Paper Space. Default to the assembly's own frame;
+    // if geometry does not define a trustworthy long axis, use world FRONT.
+    const samples = this.collectAutomaticViewOrientationPoints(request.instanceIds);
+    const own = resolveAssemblyViewBasis("LONGITUDINAL", samples);
+    const fallback = resolveAssemblyViewBasis("WORLD_FRONT", [])!;
+    const orientationMode: AssemblyViewOrientationMode = own ? "LONGITUDINAL" : "WORLD_FRONT";
+    const plane = this.createOrientedWorkPlane(request.workPlane, own ?? fallback);
     const geometry = this.buildPlanGeometry(
       request.instanceIds,
-      request.workPlane,
+      plane,
     );
     if (!geometry) {
       window.alert(
@@ -861,10 +895,15 @@ export class GeneralPdfController {
     }
 
     const view = this.createAssemblyView(
-      request,
+      { ...request, workPlane: plane },
       geometry,
     );
+    view.originalWorkPlane = snapshotWorkPlane(request.workPlane.enabled
+      ? request.workPlane : plane);
+    view.orientationMode = orientationMode;
+    view.orientationLabel = this.orientationModeLabel(orientationMode);
     sheet.views.push(view);
+    this.selectedAssemblyViewId = view.id;
     const layout = this.professional.ensureViewLayout(
       view.id,
       view.sectionId,
@@ -1014,6 +1053,7 @@ export class GeneralPdfController {
       assemblyName: request.assemblyName,
       instanceIds: [...request.instanceIds],
       workPlane: snapshotWorkPlane(request.workPlane),
+      originalWorkPlane: snapshotWorkPlane(request.workPlane),
       width: geometry.width,
       height: geometry.height,
       segments: geometry.segments.map((segment) => ({ ...segment })),
@@ -1073,6 +1113,207 @@ export class GeneralPdfController {
     return ordered;
   }
 
+  /**
+   * Independent HTML controls stay OUTSIDE the exported SVG. A selected Paper
+   * Space viewport can change projection without rotating or moving 3D parts.
+   */
+  private createViewOrientationPanel(): HTMLDivElement {
+    const panel = document.createElement("div");
+    panel.dataset["framelogicViewOrientationControls"] = "true";
+    Object.assign(panel.style, {
+      position: "absolute", top: "58px", right: "18px", zIndex: "88",
+      display: "none", alignItems: "center", flexWrap: "wrap", gap: "7px",
+      padding: "7px 9px", borderRadius: "5px",
+      background: "rgba(18,29,38,0.96)", color: "#e3f2f8",
+      border: "1px solid #547183", boxShadow: "0 5px 16px rgba(0,0,0,0.3)",
+      font: "11px system-ui,sans-serif",
+    });
+    const label = document.createElement("span");
+    label.textContent = "VIEW seleccionada";
+    label.style.fontWeight = "600";
+    const viewSelect = document.createElement("select");
+    viewSelect.dataset["framelogicViewSelect"] = "true";
+    viewSelect.title = "Seleccionar la View del plano que se quiere orientar";
+    const modeSelect = document.createElement("select");
+    modeSelect.dataset["framelogicViewOrientation"] = "true";
+    modeSelect.title = "Tipo de vista: ejes propios del ensamble o ejes globales";
+    for (const [value, description] of ASSEMBLY_VIEW_ORIENTATION_OPTIONS) {
+      const item = document.createElement("option");
+      item.value = value;
+      item.textContent = description;
+      modeSelect.append(item);
+    }
+    for (const select of [viewSelect, modeSelect]) {
+      Object.assign(select.style, {
+        color: "#e6f1f5", background: "#1b303e",
+        border: "1px solid #5e8496", borderRadius: "4px",
+        padding: "5px", font: "inherit", maxWidth: "210px",
+      });
+    }
+    viewSelect.addEventListener("change", () => {
+      this.selectedAssemblyViewId = viewSelect.value;
+      const sheetId = this.getActiveSheetId();
+      this.updateViewOrientationPanel(sheetId ? this.production.sheets.get(sheetId) ?? null : null);
+    });
+    modeSelect.addEventListener("change", () => {
+      void this.changeSelectedPdfViewOrientation(modeSelect.value as AssemblyViewOrientationMode);
+    });
+    panel.append(label, viewSelect, modeSelect);
+    this.workspace.overlay.append(panel);
+    return panel;
+  }
+
+  /** Any click in a View frame also selects the corresponding toolbar target. */
+  private readonly onSelectPdfView = (event: PointerEvent): void => {
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    if (!sheet) return;
+    const point = this.workspace.eventToSheetPoint(event);
+    if (!point) return;
+    for (let index = sheet.views.length - 1; index >= 0; index--) {
+      const view = sheet.views[index];
+      if (!view || !this.isAssemblyView(view) || view.automaticSupplement) continue;
+      const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
+      if (point.x < layout.x || point.x > layout.x + layout.width
+        || point.y < layout.y || point.y > layout.y + layout.height) continue;
+      if (this.selectedAssemblyViewId !== view.id) {
+        this.selectedAssemblyViewId = view.id;
+        this.updateViewOrientationPanel(sheet);
+      }
+      return;
+    }
+  };
+
+  private updateViewOrientationPanel(sheet: GeneralSheetRuntime | null): void {
+    const panel = this.viewOrientationPanel;
+    const views = sheet?.views.filter((view): view is AssemblySheetViewRuntime =>
+      this.isAssemblyView(view) && !view.automaticSupplement) ?? [];
+    if (views.length === 0) {
+      panel.style.display = "none";
+      return;
+    }
+    panel.style.display = "flex";
+    const viewSelect = panel.querySelector<HTMLSelectElement>(
+      '[data-framelogic-view-select="true"]')!;
+    const modeSelect = panel.querySelector<HTMLSelectElement>(
+      '[data-framelogic-view-orientation="true"]')!;
+    const signature = views.map((view) => view.id + ":" + view.assemblyName).join("|");
+    if (viewSelect.dataset["viewSignature"] !== signature) {
+      viewSelect.dataset["viewSignature"] = signature;
+      viewSelect.replaceChildren();
+      for (const [index, view] of views.entries()) {
+        const option = document.createElement("option");
+        option.value = view.id;
+        option.textContent = `View ${index + 1} · ${view.assemblyName}`;
+        viewSelect.append(option);
+      }
+    }
+    if (!views.some((view) => view.id === this.selectedAssemblyViewId)) {
+      this.selectedAssemblyViewId = views[0]!.id;
+    }
+    viewSelect.value = this.selectedAssemblyViewId!;
+    const selected = views.find((view) => view.id === this.selectedAssemblyViewId)!;
+    const expected = selected.orientationMode ?? "CURRENT";
+    if (modeSelect.value !== expected) modeSelect.value = expected;
+    viewSelect.disabled = this.orientationChangeInProgress;
+    modeSelect.disabled = this.orientationChangeInProgress;
+  }
+
+  private async changeSelectedPdfViewOrientation(
+    orientationMode: AssemblyViewOrientationMode,
+  ): Promise<void> {
+    if (this.orientationChangeInProgress) return;
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    const view = sheet?.views.find((candidate): candidate is AssemblySheetViewRuntime =>
+      this.isAssemblyView(candidate) && candidate.id === this.selectedAssemblyViewId
+      && !candidate.automaticSupplement);
+    if (!view || !sheet) return;
+
+    const original = restoreWorkPlane(view.originalWorkPlane ?? view.workPlane);
+    let plane: CadWorkPlaneState;
+    if (orientationMode === "CURRENT") {
+      plane = original;
+    } else {
+      const basis = resolveAssemblyViewBasis(orientationMode,
+        this.collectAutomaticViewOrientationPoints(view.instanceIds));
+      if (!basis) {
+        this.workspace.setStatus(
+          "No hay un eje longitudinal fiable para esta selección. Usa una vista global "
+          + "o comprueba la geometría y las instancias del ensamble.");
+        this.updateViewOrientationPanel(sheet);
+        return;
+      }
+      plane = this.createOrientedWorkPlane(original, basis);
+    }
+
+    this.orientationChangeInProgress = true;
+    this.updateViewOrientationPanel(sheet);
+    try {
+      // Same projection path used by «Generar planos automáticamente»:
+      // prefer STEP B-Rep/HLR and retain explicitly labelled mesh fallback.
+      const projection = await projectAssembly({
+        instanceIds: view.instanceIds, workPlane: plane,
+        designModel: this.designModel, designScene: this.designScene,
+      });
+      const geometry = projection ?? this.buildPlanGeometry(view.instanceIds, plane);
+      if (!geometry) throw new Error("No se encontró geometría 3D proyectable.");
+
+      // Do not touch layout x/y/width/height, the original geometry, or
+      // manually positioned annotations. Only the View's projection changes.
+      view.workPlane = snapshotWorkPlane(plane);
+      view.width = geometry.width;
+      view.height = geometry.height;
+      view.segments = geometry.segments;
+      view.resolved = true;
+      view.orientationMode = orientationMode;
+      view.orientationLabel = this.orientationModeLabel(orientationMode);
+      view.automaticDimensions = orientationMode.endsWith("ISO")
+        ? [] : projection?.dimensions ?? [];
+      view.automaticAnchors = projection?.anchors ?? [];
+      view.exactInstances = projection?.exactInstances ?? 0;
+      view.fallbackInstances = projection?.fallbackInstances ?? view.instanceIds.length;
+      view.assemblyOcclusionExact = projection?.assemblyOcclusionExact ?? false;
+      view.automaticWarnings = projection?.warnings ?? [
+        "Vista de malla preliminar: líneas ocultas y cotas no verificadas.",
+      ];
+      view.geometrySignature = assemblyProjectionSignature({
+        instanceIds: view.instanceIds,
+        designModel: this.designModel, designScene: this.designScene,
+      });
+
+      if (view.cutReferences?.length || view.detailReferences?.length) {
+        view.cutReferences = [];
+        view.detailReferences = [];
+        // A previously generated section/detail was referred to the OLD
+        // parent view. Prevent stale callouts and diagrams from surviving.
+        for (const otherSheet of this.production.sheets.values()) {
+          for (const candidate of otherSheet.views) {
+            if (!this.isAssemblyView(candidate) || candidate.sourceViewId !== view.id) continue;
+            candidate.geometrySignature = "INVALIDATED_VIEW_ORIENTATION";
+            candidate.segments = [];
+            candidate.resolved = true;
+            candidate.automaticWarnings = [
+              "Vista principal reorientada: generar de nuevo cortes y detalles.",
+            ];
+          }
+        }
+      }
+      this.lastTreeSignature = "";
+      this.workspace.render();
+      this.workspace.setStatus(
+        `VIEW: ${view.orientationLabel}. Proyección actualizada sin mover las piezas; `
+        + "las posiciones manuales de la hoja se conservaron.");
+    } catch (error) {
+      this.workspace.setStatus("No se pudo cambiar la orientación de la View: " + String(error));
+    } finally {
+      this.orientationChangeInProgress = false;
+      const currentId = this.getActiveSheetId();
+      this.updateViewOrientationPanel(currentId
+        ? this.production.sheets.get(currentId) ?? null : null);
+    }
+  }
+
   private renderGeneralViews(): void {
     if (
       this.disposed
@@ -1122,7 +1363,8 @@ export class GeneralPdfController {
         index,
       );
       layout.kind = "ASSEMBLY";
-      layout.title = candidate.assemblyName;
+      layout.title = candidate.assemblyName
+        + (candidate.orientationLabel ? ` · ${candidate.orientationLabel}` : "");
       this.renderAssemblyView(sheet, candidate, layout, index);
     });
 
@@ -1130,6 +1372,7 @@ export class GeneralPdfController {
       this.renderGenericTitleBlock(sheet);
       this.renderAutomaticPartIndex(sheet);
     }
+    this.updateViewOrientationPanel(sheet);
     this.decorateViewTree();
   }
 
@@ -1187,9 +1430,12 @@ export class GeneralPdfController {
     if (view.cutReferences?.length || view.detailReferences?.length) {
       this.renderSectionDetailReferences(view, layout, originX, originY, drawnHeight, scale);
     }
-    if (view.automaticViewCode && view.automaticViewCode !== "ISO") {
+    const showsDimensions = view.orientationMode
+      ? !view.orientationMode.endsWith("ISO")
+      : Boolean(view.automaticViewCode && view.automaticViewCode !== "ISO");
+    if (showsDimensions) {
       this.renderAssemblyDimensions(view, layout, originX, originY, drawnWidth, drawnHeight, scale);
-      if (index === 0 || view.assemblyId.startsWith("piece:")) {
+      if ((index === 0 || view.assemblyId.startsWith("piece:")) && sheet.pieceMarks) {
         this.renderAssemblyMarks(sheet, view, layout, originX, originY, drawnHeight, scale);
       }
     }
@@ -1234,7 +1480,7 @@ export class GeneralPdfController {
     this.appendText(
       layout.x + 6,
       layout.y + layout.height - 6,
-      `VIEW ${index + 1} · ${view.assemblyName} · ${scaleText}`,
+      `VIEW ${index + 1} · ${view.assemblyName}${view.orientationLabel ? " · " + view.orientationLabel : ""} · ${scaleText}`,
       9,
       "#333",
     );

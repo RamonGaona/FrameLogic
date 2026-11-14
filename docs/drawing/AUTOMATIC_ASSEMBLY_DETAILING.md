@@ -28,6 +28,35 @@ permiten asumir interoperabilidad inmediata ni eliminar obligaciones de
 redistribución. En esta etapa no se añade una dependencia nueva ni se copia
 código de FreeCAD, OCCT o los productos comerciales.
 
+## v0.1.149 — Cambiar el tipo de vista y alinear el ensamble
+
+La ruta **Enviar a PDF** usaba la orientación del `CadWorkPlaneState`
+activo. Aunque el perfil estuviera alineado con X en el espacio modelo, podía
+aparecer diagonal en la hoja; el texto **AUTO** del marco significaba escala
+automática, no tipo de vista.
+
+Ahora la View nueva utiliza de forma predeterminada **Alzado · eje propio**
+si el estimador longitudinal de FrameLogic reconoce un eje dominante. Para
+miembros casi paralelos a ejes XYZ se evita una pequeña inclinación espuria
+debida a muestras de placas o diferencias de bounding boxes. Si el eje no es
+fiable, se usa **Alzado · ejes globales** y no se atribuye un eje propio.
+
+En **PDF / Paper Space**, usa el panel superior derecho **VIEW seleccionada**:
+elige la View o haz clic dentro de su recuadro; selecciona **Alzado, Planta,
+Extremo o Isométrica · eje propio**; también están disponibles **Alzado,
+Planta, Lateral e Isométrica · ejes globales** y **Actual / WorkPlane original**
+para recuperar la orientación guardada. Cambiar la View recalcula su
+proyección vectorial usando STEP HLR cuando es posible, conservando los
+tamaños y posiciones manuales de los viewports y sin mover los objetos 3D.
+
+Un cambio de orientación de la View principal invalida cortes o recortes
+dependientes anteriormente generados: hay que reconstruir el paquete para
+evitar referencias geométricas inconsistentes. El selector HTML no forma
+parte del SVG exportado, pero el contenido de la View sí aparece en el PDF.
+
+Las muestras de la geometría de visualización proponen ejes de orientación,
+no datums verificables para cotas ni criterios certificados de taller.
+
 ## v0.1.148 — Cortes A-A/B-B y ampliaciones dentro del PDF
 
 La generación automática del ensamble ya puede agregar **una segunda hoja A3**
