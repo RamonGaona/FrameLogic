@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.158 — 2026-11-14
+
+### Corrección del cambio de orientación de Views en Paper Space
+
+- **Orientación reversible:** se corrige el caso en que, tras seleccionar `Planta · ejes globales`, la selección de otra orientación podía quedar bloqueada mientras se recalculaba STEP/HLR. El selector sigue habilitado para Views elegibles.
+- **Última opción solicitada:** si se elige otra orientación antes de terminar una proyección, se guarda la selección más reciente y se aplica al completar el cálculo en curso. No cambia el eje ni la posición de las piezas del Model Space.
+- **Sin retrocesos visuales:** el desplegable refleja la opción solicitada mientras se calcula; evita restaurar momentáneamente el valor anterior por una sincronización automática.
+- **Pruebas:** cobertura de cola de cambios, independencia entre Views y reversibilidad de ejes propios/globales.
+
+**Validación pendiente de navegador:** probar el menú con ensambles STEP grandes y comprobar que los cambios repetidos finalizan correctamente en la interfaz real.
+
+---
+
 ## v0.1.157 — 2026-11-14 (en validación, rama de desarrollo)
 
 ### Optimización de CI y correcciones de Paper Space

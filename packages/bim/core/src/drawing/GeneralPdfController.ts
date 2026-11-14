@@ -8,6 +8,7 @@ import {
 import { planSmartAssemblyViews, type AutomaticViewCode } from "./AutoDrawingPlanner";
 import { ASSEMBLY_VIEW_ORIENTATION_OPTIONS, resolveAssemblyViewBasis,
   type AssemblyViewOrientationMode, type AssemblyViewBasis } from "./AssemblyViewOrientationControls";
+import { DrawingViewOrientationQueue } from "./DrawingViewOrientationQueue";
 import { planSelectedSheetLayout, selectAssemblyScaleDenominator } from "./AutoSheetLayoutPlanner";
 import { assemblyProjectionSignature, projectAssembly, projectAssemblySection,
   type AssemblyLine, type AssemblyMarkAnchor, type AssemblyProjection } from "./AssemblyProjectionEngine";
@@ -326,6 +327,7 @@ export class GeneralPdfController {
   private lastAutomaticRefresh = 0;
   private selectedAssemblyViewId: string | null = null;
   private orientationChangeInProgress = false;
+  private readonly orientationQueue = new DrawingViewOrientationQueue();
   private readonly viewOrientationPanel: HTMLDivElement;
   private projectionButton: HTMLButtonElement | null = null;
   private pendingProjection: {
@@ -2348,13 +2350,17 @@ export class GeneralPdfController {
     }
     viewSelect.value = this.selectedAssemblyViewId!;
     const selected = views.find((view) => view.id === this.selectedAssemblyViewId)!;
-    const expected = this.isAssemblyView(selected) ? selected.orientationMode ?? "CURRENT" : "CURRENT";
+    const persisted = this.isAssemblyView(selected) ? selected.orientationMode ?? "CURRENT" : "CURRENT";
+    const expected = this.orientationQueue.displayedMode(
+      this.getActiveSheetId() ?? "", selected.id, persisted);
     if (modeSelect.value !== expected) modeSelect.value = expected;
     viewSelect.disabled = this.orientationChangeInProgress;
     // The 3D assembly orientation choices do not apply to a section View.
-    modeSelect.disabled = this.orientationChangeInProgress
-      || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement)
-      || Boolean(this.pendingDetail) || Boolean(this.isAssemblyView(selected) && selected.circularDetail);
+    // Leave the orientation menu usable while STEP/HLR is calculating.
+    // New selections are serialized by orientationQueue (latest request wins).
+    modeSelect.disabled = !this.isAssemblyView(selected)
+      || Boolean(selected.automaticSupplement) || Boolean(this.pendingDetail)
+      || Boolean(this.isAssemblyView(selected) && selected.circularDetail);
     if (this.detailButton) {
       this.detailButton.disabled = this.orientationChangeInProgress
         || this.projectionInProgress || Boolean(this.pendingProjection);
@@ -2381,34 +2387,39 @@ export class GeneralPdfController {
   private async changeSelectedPdfViewOrientation(
     orientationMode: AssemblyViewOrientationMode,
   ): Promise<void> {
-    if (this.orientationChangeInProgress) return;
     const sheetId = this.getActiveSheetId();
     const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
     const view = sheet?.views.find((candidate): candidate is AssemblySheetViewRuntime =>
       this.isAssemblyView(candidate) && candidate.id === this.selectedAssemblyViewId
       && !candidate.automaticSupplement && !candidate.circularDetail);
-    if (!view || !sheet) return;
+    if (!view || !sheet || !sheetId) return;
 
-    const original = restoreWorkPlane(view.originalWorkPlane ?? view.workPlane);
-    let plane: CadWorkPlaneState;
-    if (orientationMode === "CURRENT") {
-      plane = original;
-    } else {
-      const basis = resolveAssemblyViewBasis(orientationMode,
-        this.collectAutomaticViewOrientationPoints(view.instanceIds));
-      if (!basis) {
-        this.workspace.setStatus(
-          "No hay un eje longitudinal fiable para esta selección. Usa una vista global "
-          + "o comprueba la geometría y las instancias del ensamble.");
-        this.updateViewOrientationPanel(sheet);
-        return;
-      }
-      plane = this.createOrientedWorkPlane(original, basis);
+    const request = { sheetId, viewId: view.id, mode: orientationMode };
+    if (!this.orientationQueue.startOrQueue(request)) {
+      this.updateViewOrientationPanel(sheet);
+      this.workspace.setStatus(
+        `VIEW: ${this.orientationModeLabel(orientationMode)} pendiente; se aplicará al finalizar la proyección actual.`);
+      return;
     }
 
     this.orientationChangeInProgress = true;
     this.updateViewOrientationPanel(sheet);
     try {
+      const original = restoreWorkPlane(view.originalWorkPlane ?? view.workPlane);
+      let plane: CadWorkPlaneState;
+      if (orientationMode === "CURRENT") {
+        plane = original;
+      } else {
+        const basis = resolveAssemblyViewBasis(orientationMode,
+          this.collectAutomaticViewOrientationPoints(view.instanceIds));
+        if (!basis) {
+          this.workspace.setStatus(
+            "No hay un eje longitudinal fiable para esta selección. Usa una vista global "
+            + "o comprueba la geometría y las instancias del ensamble.");
+          return;
+        }
+        plane = this.createOrientedWorkPlane(original, basis);
+      }
       // Same projection path used by «Generar planos automáticamente»:
       // prefer STEP B-Rep/HLR and retain explicitly labelled mesh fallback.
       const projection = await projectAssembly({
@@ -2481,9 +2492,16 @@ export class GeneralPdfController {
       this.workspace.setStatus("No se pudo cambiar la orientación de la View: " + String(error));
     } finally {
       this.orientationChangeInProgress = false;
+      const next = this.orientationQueue.complete();
       const currentId = this.getActiveSheetId();
-      this.updateViewOrientationPanel(currentId
-        ? this.production.sheets.get(currentId) ?? null : null);
+      if (next && !this.disposed && currentId === next.sheetId
+        && this.selectedAssemblyViewId === next.viewId) {
+        // Apply the final menu choice even if the previous STEP projection was slow.
+        void this.changeSelectedPdfViewOrientation(next.mode);
+      } else {
+        this.updateViewOrientationPanel(currentId
+          ? this.production.sheets.get(currentId) ?? null : null);
+      }
     }
   }
 
