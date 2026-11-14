@@ -32,7 +32,7 @@ import {
   type ProjectedViewDirection, type ProjectionStandard,
 } from "./ProjectedViewPlanner";
 import {
-  layoutWorkshopDimensions,
+  layoutWorkshopDimensions, workshopDimensionKey,
   type WorkshopDimensionOverride,
 } from "./WorkshopDimensionLayout";
 import { buildAssemblyBom, renderAssemblyBomRow, type AssemblyBomRow } from "./AssemblyBomPlanner";
@@ -377,6 +377,10 @@ export class GeneralPdfController {
     readonly start: THREE.Vector2;
     readonly originalX: number;
     readonly originalY: number;
+    readonly lineX: number;
+    readonly lineY: number;
+    readonly kind: "TEXT" | "LINE";
+    readonly mode: EngineeringDimensionInstruction["mode"];
   } | null = null;
 
   constructor(options: GeneralPdfControllerOptions) {
@@ -2867,14 +2871,21 @@ export class GeneralPdfController {
     this.selectedAutoDimension = hit;
     this.selectedAssemblyViewId = view.id;
     const previous = view.dimensionOverrides?.[hit.key];
+    const source = view.automaticDimensions?.find((item) =>
+      workshopDimensionKey(item) === hit.key);
+    if (!source) return;
+    const textTarget = event.target instanceof Element
+      && Boolean(event.target.closest("text[data-framelogic-auto-dim-key]"));
     this.dimensionDrag = {
       viewId: hit.viewId, key: hit.key, pointerId: event.pointerId, start,
       originalX: previous?.dx ?? 0, originalY: previous?.dy ?? 0,
+      lineX: previous?.lineDx ?? 0, lineY: previous?.lineDy ?? 0,
+      kind: textTarget ? "TEXT" : "LINE", mode: source.mode,
     };
     try { this.workspace.svg.setPointerCapture(event.pointerId); } catch { /* device without capture */ }
     this.workspace.render();
     this.workspace.setStatus(
-      "COTA STEP seleccionada: arrastra para mover el texto; Supr o Borrar elimina solo esta cota. Esc deselecciona.");
+      "COTA STEP seleccionada: arrastra la línea para mover la cota o el texto para mover su etiqueta; Supr/Borrar elimina solo esta cota.");
     event.preventDefault();
     event.stopImmediatePropagation();
   };
@@ -2886,11 +2897,24 @@ export class GeneralPdfController {
     const view = this.findAutoDimensionView(drag.viewId);
     if (!pointer || !view) return;
     view.dimensionOverrides ??= {};
-    view.dimensionOverrides[drag.key] = {
-      ...view.dimensionOverrides[drag.key],
-      dx: Math.max(-110, Math.min(110, drag.originalX + pointer.x - drag.start.x)),
-      dy: Math.max(-65, Math.min(65, drag.originalY + pointer.y - drag.start.y)),
-    };
+    const deltaX = pointer.x - drag.start.x;
+    const deltaY = pointer.y - drag.start.y;
+    const current = view.dimensionOverrides[drag.key];
+    if (drag.kind === "TEXT") {
+      view.dimensionOverrides[drag.key] = {
+        ...current,
+        dx: Math.max(-110, Math.min(110, drag.originalX + deltaX)),
+        dy: Math.max(-65, Math.min(65, drag.originalY + deltaY)),
+      };
+    } else {
+      view.dimensionOverrides[drag.key] = {
+        ...current,
+        lineDx: drag.mode === "HORIZONTAL"
+          ? drag.lineX : Math.max(-110, Math.min(110, drag.lineX + deltaX)),
+        lineDy: drag.mode === "VERTICAL"
+          ? drag.lineY : Math.max(-65, Math.min(65, drag.lineY + deltaY)),
+      };
+    }
     this.workspace.render();
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -2901,7 +2925,7 @@ export class GeneralPdfController {
     this.dimensionDrag = null;
     if (this.workspace.svg.hasPointerCapture(event.pointerId))
       this.workspace.svg.releasePointerCapture(event.pointerId);
-    this.workspace.setStatus("COTA STEP: posición de texto ajustada; medida geométrica intacta.");
+    this.workspace.setStatus("COTA STEP: posición actualizada; medida y anclajes de referencia intactos.");
     event.preventDefault();
     event.stopImmediatePropagation();
   };
