@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { planSmartAssemblyViews, type AutomaticViewCode } from "./AutoDrawingPlanner";
+import { ASSEMBLY_VIEW_ORIENTATION_OPTIONS, resolveAssemblyViewBasis,
+  type AssemblyViewOrientationMode, type AssemblyViewBasis } from "./AssemblyViewOrientationControls";
 import { planSelectedSheetLayout, selectAssemblyScaleDenominator } from "./AutoSheetLayoutPlanner";
 import { assemblyProjectionSignature, projectAssembly, projectAssemblySection,
   type AssemblyLine, type AssemblyMarkAnchor, type AssemblyProjection } from "./AssemblyProjectionEngine";
@@ -95,7 +97,10 @@ interface AssemblySheetViewRuntime {
   readonly assemblyId: string;
   readonly assemblyName: string;
   instanceIds: string[];
-  readonly workPlane: WorkPlaneSnapshot;
+  workPlane: WorkPlaneSnapshot;
+  originalWorkPlane?: WorkPlaneSnapshot;
+  orientationMode?: AssemblyViewOrientationMode;
+  orientationLabel?: string;
   width: number;
   height: number;
   segments: readonly PlanSegment[];
@@ -262,6 +267,9 @@ export class GeneralPdfController {
   private disposed = false;
   private refreshInProgress = false;
   private lastAutomaticRefresh = 0;
+  private selectedAssemblyViewId: string | null = null;
+  private orientationChangeInProgress = false;
+  private readonly viewOrientationPanel: HTMLDivElement;
   private dimensionDrag: {
     readonly viewId: string;
     readonly key: string;
@@ -293,6 +301,8 @@ export class GeneralPdfController {
       this.renderGeneralViews();
     };
 
+    this.viewOrientationPanel = this.createViewOrientationPanel();
+    this.workspace.svg.addEventListener("pointerdown", this.onSelectPdfView, true);
     this.workspace.svg.addEventListener("pointerdown", this.onAutoDimensionDown, true);
     this.workspace.svg.addEventListener("pointermove", this.onAutoDimensionMove, true);
     this.workspace.svg.addEventListener("pointerup", this.onAutoDimensionUp, true);
@@ -315,6 +325,8 @@ export class GeneralPdfController {
     if (this.disposed) return;
     this.disposed = true;
     window.clearInterval(this.timer);
+    this.workspace.svg.removeEventListener("pointerdown", this.onSelectPdfView, true);
+    this.viewOrientationPanel.remove();
     this.workspace.svg.removeEventListener("pointerdown", this.onAutoDimensionDown, true);
     this.workspace.svg.removeEventListener("pointermove", this.onAutoDimensionMove, true);
     this.workspace.svg.removeEventListener("pointerup", this.onAutoDimensionUp, true);
@@ -865,6 +877,7 @@ export class GeneralPdfController {
       geometry,
     );
     sheet.views.push(view);
+    this.selectedAssemblyViewId = view.id;
     const layout = this.professional.ensureViewLayout(
       view.id,
       view.sectionId,
@@ -1122,7 +1135,8 @@ export class GeneralPdfController {
         index,
       );
       layout.kind = "ASSEMBLY";
-      layout.title = candidate.assemblyName;
+      layout.title = candidate.assemblyName
+        + (candidate.orientationLabel ? ` · ${candidate.orientationLabel}` : "");
       this.renderAssemblyView(sheet, candidate, layout, index);
     });
 
@@ -1130,6 +1144,7 @@ export class GeneralPdfController {
       this.renderGenericTitleBlock(sheet);
       this.renderAutomaticPartIndex(sheet);
     }
+    this.updateViewOrientationPanel(sheet);
     this.decorateViewTree();
   }
 
@@ -1234,7 +1249,7 @@ export class GeneralPdfController {
     this.appendText(
       layout.x + 6,
       layout.y + layout.height - 6,
-      `VIEW ${index + 1} · ${view.assemblyName} · ${scaleText}`,
+      `VIEW ${index + 1} · ${view.assemblyName}${view.orientationLabel ? " · " + view.orientationLabel : ""} · ${scaleText}`,
       9,
       "#333",
     );
