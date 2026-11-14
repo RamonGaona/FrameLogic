@@ -39,6 +39,12 @@ describe("Independent drawing View render state", () => {
     expect(resolveDrawingViewRenderMode({ id: "iso" }, legacy)).toBe("MONOCHROME");
   });
 
+  it("defaults new Views to solid with edges without changing existing saved modes", () => {
+    expect(resolveDrawingViewRenderMode({ id: "new" })).toBe("SOLID_EDGES");
+    expect(resolveDrawingViewRenderMode({ id: "old", renderMode: "BLACK_WHITE" }))
+      .toBe("BLACK_WHITE");
+  });
+
   it("accepts supported modes while rejecting unknown modes", () => {
     for (const mode of ["BLACK_WHITE", "VISIBLE_HIDDEN", "WIREFRAME",
       "SOLID", "SOLID_EDGES", "MONOCHROME", "TRANSPARENT"]) {
