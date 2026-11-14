@@ -14,8 +14,19 @@ export function manifestsDiffer(beforeText, afterText, path) {
     const before = JSON.parse(beforeText);
     const after = JSON.parse(afterText);
     if (path === "package.json") {
-      delete before.version;
-      delete after.version;
+      // The Worker uses dependencies and the deployment command. Updating
+      // web/drawing test scripts must not trigger an unrelated MCP release.
+      const deploymentScripts = new Set([
+        "mcp:deploy", "premcp:deploy", "postmcp:deploy",
+        "preinstall", "install", "postinstall", "prepare",
+      ]);
+      for (const manifest of [before, after]) {
+        delete manifest.version;
+        if (manifest.scripts) {
+          manifest.scripts = Object.fromEntries(Object.entries(manifest.scripts)
+            .filter(([name]) => deploymentScripts.has(name)));
+        }
+      }
     } else if (path === "package-lock.json") {
       delete before.version;
       delete after.version;
@@ -33,8 +44,7 @@ export function affectsMcpDeployment(paths, readAt) {
   for (const path of paths) {
     if (path.startsWith("apps/mcp/")
       || path.startsWith("packages/contracts/")
-      || path === ".github/workflows/mcp-deploy.yml"
-      || path === "scripts/ci/mcp-deployment-impact.mjs") return true;
+      || path === ".github/workflows/mcp-deploy.yml") return true;
     if (path === "package.json" || path === "package-lock.json") {
       if (manifestsDiffer(readAt("before", path), readAt("after", path), path)) return true;
     }

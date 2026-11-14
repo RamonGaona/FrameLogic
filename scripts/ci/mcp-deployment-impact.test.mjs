@@ -30,3 +30,32 @@ test("unrelated drawing changes do not deploy MCP", () => {
   assert.equal(affectsMcpDeployment(["packages/bim/core/src/drawing/GeneralPdfController.ts"], () => null), false);
   assert.equal(manifestsDiffer("{", "{}", "package.json"), true);
 });
+
+test("drawing tests and version changes are not MCP runtime changes", () => {
+  const before = JSON.stringify({
+    name: "framelogic", version: "0.1.160",
+    scripts: { "test:drawings": "vitest old", build: "vite build", "mcp:deploy": "wrangler deploy" },
+  });
+  const after = JSON.stringify({
+    name: "framelogic", version: "0.1.161",
+    scripts: { "test:drawings": "vitest with new tests", build: "vite build", "mcp:deploy": "wrangler deploy" },
+  });
+  assert.equal(manifestsDiffer(before, after, "package.json"), false);
+  assert.equal(affectsMcpDeployment(["package.json",
+    "packages/bim/core/src/drawing/AssemblyViewOrientationControls.ts",
+    "scripts/ci/mcp-deployment-impact.mjs"], (which) =>
+      which === "before" ? before : after), false);
+});
+
+test("MCP deployment scripts and installation lifecycle scripts still trigger worker checks", () => {
+  const base = { version: "0.1.161", scripts: {
+    "mcp:deploy": "wrangler deploy", postinstall: "node setup.js",
+  } };
+  assert.equal(manifestsDiffer(JSON.stringify(base), JSON.stringify({
+    ...base, scripts: { ...base.scripts, "mcp:deploy": "wrangler deploy --new-option" },
+  }), "package.json"), true);
+  assert.equal(manifestsDiffer(JSON.stringify(base), JSON.stringify({
+    ...base, scripts: { ...base.scripts, postinstall: "node another-setup.js" },
+  }), "package.json"), true);
+  assert.equal(affectsMcpDeployment([".github/workflows/mcp-deploy.yml"], () => null), true);
+});
