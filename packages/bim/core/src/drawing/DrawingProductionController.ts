@@ -618,7 +618,7 @@ export class DrawingProductionController {
       autoDimensionScope: "ASSEMBLY",
       autoDimensionArrangement: "BASELINE",
       autoDimensionDetail: "ALL",
-      views: [{ id: crypto.randomUUID(), sectionId: section.id }],
+      views: [{ id: crypto.randomUUID(), sectionId: section.id, renderMode: "SOLID_EDGES" }],
       titleBlock: {
         project: "FrameLogic",
         drawingTitle: section.name,
