@@ -388,6 +388,11 @@ export class DrawingProfessionalController {
     downloadBlob(lines.join("\n"), "application/dxf", this.currentFileName("dxf"));
   }
 
+  /** Commit a Paper Space edit immediately, including linked-detail changes. */
+  recordDrawingChange(): void {
+    this.trackHistory();
+  }
+
   undo(): void {
     const target = this.undoStack.pop();
     if (!target) return;

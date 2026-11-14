@@ -1,4 +1,10 @@
 import * as THREE from "three";
+import {
+  cropProjectedDetail, nextCircularDetailLetter,
+  paperCircleToProjection, projectionCircleToPaper,
+  validDetailAncestry,
+  type DetailCircle, type DetailPaperTransform,
+} from "./DrawingDetailViewPlanner";
 import { planSmartAssemblyViews, type AutomaticViewCode } from "./AutoDrawingPlanner";
 import { ASSEMBLY_VIEW_ORIENTATION_OPTIONS, resolveAssemblyViewBasis,
   type AssemblyViewOrientationMode, type AssemblyViewBasis } from "./AssemblyViewOrientationControls";
@@ -94,7 +100,7 @@ interface WorkPlaneSnapshot {
   readonly normal: VectorSnapshot;
 }
 
-interface PlanSegment extends AssemblyLine {}
+interface PlanSegment extends AssemblyLine { readonly cut?: boolean; }
 
 interface PlanGeometry {
   readonly width: number;
@@ -145,6 +151,15 @@ interface AssemblySheetViewRuntime {
   /** Stable source reference; cutting stations are preliminary, not confirmed connections. */
   supplementFraction?: number;
   sourceViewId?: string;
+  /** Interactive vector-circle crop, in the source's LOCAL projected millimetres. */
+  circularDetail?: {
+    label: string;
+    centerX: number; centerY: number; radius: number;
+    sourceSignature: string;
+    sourceWorkPlane: WorkPlaneSnapshot;
+    fromSection?: boolean;
+    hidden?: boolean;
+  };
   /** Relative projection from a piece/assembly parent view (not a physical STEP cut). */
   projectedDirection?: ProjectedViewDirection;
   projectedStandard?: ProjectionStandard;
@@ -200,6 +215,8 @@ interface WorkspaceRuntime {
   setTool(tool: "SELECT" | "DIMENSION" | "LABEL" | "TEXT"): void;
   setStatus(message: string): void;
   eventToSheetPoint(event: PointerEvent | MouseEvent): THREE.Vector2 | null;
+  buildSnapshot(section: SectionViewDefinition): { readonly segments: readonly PlanSegment[] };
+  sectionToPaper(section: SectionViewDefinition, x: number, y: number): THREE.Vector2;
 }
 
 interface SectionRuntime {
@@ -216,6 +233,9 @@ interface ViewLayoutRuntime {
   width: number;
   height: number;
   scaleDenominator: number | null;
+  cropRadius?: number;
+  cropCenterX?: number;
+  cropCenterY?: number;
   showHidden: boolean;
   locked: boolean;
   title?: string;
@@ -228,6 +248,7 @@ interface ProfessionalRuntime {
     index: number,
   ): ViewLayoutRuntime;
   createProfessionalSnapshot(): { readonly state: { readonly projectionStandard: ProjectionStandard } };
+  recordDrawingChange?(): void;
 }
 
 interface LegacyAssemblyPdfViewSnapshot {
@@ -315,6 +336,20 @@ export class GeneralPdfController {
   private projectionToken = 0;
   private projectionInProgress = false;
   private projectionRefreshInProgress = false;
+  private circularSourceRefreshInProgress = false;
+  private detailButton: HTMLButtonElement | null = null;
+  private pendingDetail: {
+    sheetId: string; sourceViewId: string;
+    phase: "CENTER" | "RADIUS" | "PLACE";
+    centerPaper: THREE.Vector2 | null;
+    radiusPaper: number;
+    circle: DetailCircle | null;
+    point: THREE.Vector2 | null;
+  } | null = null;
+  private detailDrag: {
+    sheetId: string; detailId: string; mode: "MOVE" | "RADIUS";
+    start: THREE.Vector2; original: DetailCircle;
+  } | null = null;
   private activeBomDrag: {
     readonly sheetId: string;
     readonly pointerId: number;
@@ -365,7 +400,11 @@ export class GeneralPdfController {
     this.workspace.svg.addEventListener("pointerdown", this.onSelectPdfView, true);
     this.workspace.overlay.addEventListener("pointermove", this.onProjectViewPointerMove, true);
     this.workspace.overlay.addEventListener("pointerdown", this.onProjectViewPointerDown, true);
+    this.workspace.overlay.addEventListener("pointermove", this.onDetailPointerMove, true);
+    this.workspace.overlay.addEventListener("pointerdown", this.onDetailPointerDown, true);
+    this.workspace.overlay.addEventListener("pointerup", this.onDetailPointerUp, true);
     window.addEventListener("keydown", this.onProjectedViewKeyDown, true);
+    window.addEventListener("keydown", this.onDetailKeyDown, true);
     this.workspace.svg.addEventListener("pointerdown", this.onAutoDimensionDown, true);
     this.workspace.svg.addEventListener("pointermove", this.onAutoDimensionMove, true);
     this.workspace.svg.addEventListener("pointerup", this.onAutoDimensionUp, true);
@@ -373,6 +412,9 @@ export class GeneralPdfController {
     this.workspace.svg.addEventListener("contextmenu", this.onAutoDimensionContextMenu, true);
     this.syncSectionSheets();
     this.timer = window.setInterval(() => {
+      if (this.pendingDetail && this.workspace.overlay.style.display === "none") {
+        this.cancelCircularDetail(false);
+      }
       if (this.pendingProjection && this.workspace.overlay.style.display === "none") {
         this.cancelProjectedView(false);
       }
@@ -384,6 +426,7 @@ export class GeneralPdfController {
         this.lastAutomaticRefresh = Date.now();
         void this.refreshAutomaticSheets(false);
         void this.refreshProjectedViews();
+        void this.refreshCircularSourceProjections();
       }
     }, 240);
   }
@@ -399,7 +442,12 @@ export class GeneralPdfController {
     this.workspace.svg.removeEventListener("pointerdown", this.onSelectPdfView, true);
     this.workspace.overlay.removeEventListener("pointermove", this.onProjectViewPointerMove, true);
     this.workspace.overlay.removeEventListener("pointerdown", this.onProjectViewPointerDown, true);
+    this.workspace.overlay.removeEventListener("pointermove", this.onDetailPointerMove, true);
+    this.workspace.overlay.removeEventListener("pointerdown", this.onDetailPointerDown, true);
+    this.workspace.overlay.removeEventListener("pointerup", this.onDetailPointerUp, true);
     window.removeEventListener("keydown", this.onProjectedViewKeyDown, true);
+    window.removeEventListener("keydown", this.onDetailKeyDown, true);
+    this.cancelCircularDetail(false);
     this.cancelProjectedView(false);
     this.viewOrientationPanel.remove();
     this.workspace.svg.removeEventListener("pointerdown", this.onAutoDimensionDown, true);
@@ -1266,8 +1314,16 @@ export class GeneralPdfController {
     project.style.cssText = "padding:5px 9px;border:1px solid #73a8be;border-radius:4px;background:#244f65;color:#fff;font:inherit;cursor:pointer;";
     project.addEventListener("click", () => this.toggleProjectedView());
     this.projectionButton = project;
+    const detail = document.createElement("button");
+    detail.type = "button";
+    detail.textContent = "Detalle";
+    detail.title = "Selecciona una View y dibuja un círculo para crear una ampliación vectorial vinculada";
+    detail.dataset["framelogicCircularDetail"] = "true";
+    detail.style.cssText = project.style.cssText;
+    detail.addEventListener("click", () => this.toggleCircularDetail());
+    this.detailButton = detail;
     const scale = this.createViewScaleEditor();
-    panel.append(label, viewSelect, modeSelect, project, scale);
+    panel.append(label, viewSelect, modeSelect, project, detail, scale);
     this.workspace.overlay.append(panel);
     return panel;
   }
@@ -1384,7 +1440,8 @@ export class GeneralPdfController {
       input.value = current === null ? "" : formatDrawingViewScale(current);
     }
     const disabled = this.orientationChangeInProgress
-      || this.projectionInProgress || Boolean(this.pendingProjection);
+      || this.projectionInProgress || Boolean(this.pendingProjection)
+      || Boolean(this.pendingDetail);
     select.disabled = disabled;
     input.disabled = disabled;
     apply.disabled = disabled;
@@ -1427,6 +1484,538 @@ export class GeneralPdfController {
     );
   }
 
+
+  /** Two clicks define a model-space circle; the third places an independent View. */
+  private toggleCircularDetail(): void {
+    if (this.pendingDetail) { this.cancelCircularDetail(true); return; }
+    if (this.pendingProjection || this.projectionInProgress || this.orientationChangeInProgress) return;
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    const source = sheet?.views.find((view) => view.id === this.selectedAssemblyViewId);
+    if (!sheetId || !sheet || !source) {
+      this.workspace.setStatus("DETALLE: selecciona primero una View en el PDF.");
+      return;
+    }
+    if (this.isAssemblyView(source) && source.automaticSupplement === "SECTION" && !source.segments.length) {
+      this.workspace.setStatus("DETALLE: el corte de origen aún no contiene geometría.");
+      return;
+    }
+    this.workspace.setTool("SELECT");
+    this.pendingDetail = {
+      sheetId, sourceViewId: source.id, phase: "CENTER",
+      centerPaper: null, radiusPaper: 0, circle: null, point: null,
+    };
+    this.workspace.svg.style.cursor = "crosshair";
+    this.updateViewOrientationPanel(sheet);
+    this.workspace.setStatus("DETALLE: clic en el centro del área de la View. Esc cancela.");
+  }
+
+  private cancelCircularDetail(notify: boolean): void {
+    this.pendingDetail = null;
+    this.detailDrag = null;
+    this.workspace.svg.style.cursor = "";
+    this.workspace.svg.querySelector('[data-framelogic-detail-preview="true"]')?.remove();
+    if (this.disposed) return;
+    const id = this.getActiveSheetId();
+    this.updateViewOrientationPanel(id ? this.production.sheets.get(id) ?? null : null);
+    if (notify) this.workspace.setStatus("DETALLE: comando cancelado sin crear vistas.");
+  }
+
+  private readonly onDetailKeyDown = (event: KeyboardEvent): void => {
+    if (!this.pendingDetail || event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    this.cancelCircularDetail(true);
+  };
+
+  private getCircularSourcePlane(source: GeneralSheetViewRuntime): WorkPlaneSnapshot | null {
+    if (this.isAssemblyView(source)) return source.workPlane;
+    const section = this.findSection(source.sectionId);
+    if (!section) return null;
+    return {
+      mode: "CUSTOM", enabled: true,
+      origin: section.origin, xAxis: section.xAxis,
+      yAxis: section.yAxis, normal: section.normal,
+    };
+  }
+
+  private sourceProjectionTransform(
+    sheet: GeneralSheetRuntime, source: GeneralSheetViewRuntime, index: number,
+  ): DetailPaperTransform | null {
+    const layout = this.professional.ensureViewLayout(source.id, source.sectionId, index);
+    if (this.isAssemblyView(source)) {
+      const automatic = Boolean(source.automaticViewCode || source.automaticSupplement);
+      const padX = automatic ? 90 : 20;
+      const padY = automatic ? 100 : 34;
+      const innerWidth = Math.max(1, layout.width - padX);
+      const innerHeight = Math.max(1, layout.height - padY);
+      const scale = layout.scaleDenominator === null
+        ? Math.min(innerWidth / Math.max(source.width, EPSILON),
+          innerHeight / Math.max(source.height, EPSILON))
+        : this.technicalScale(sheet, layout.scaleDenominator);
+      const drawnWidth = source.width * scale;
+      const drawnHeight = source.height * scale;
+      if (!(scale > 0)) return null;
+      return {
+        originX: layout.x + (automatic ? 20 : 0) + (innerWidth - drawnWidth) / 2,
+        originY: layout.y + (automatic ? 60 : 20) + (innerHeight - drawnHeight) / 2,
+        drawnHeight, scale,
+      };
+    }
+    const section = this.findSection(source.sectionId);
+    if (!section) return null;
+    if (index === 0) {
+      const zero = this.workspace.sectionToPaper(section, 0, 0);
+      const unit = this.workspace.sectionToPaper(section, 1, 0);
+      const scale = unit.x - zero.x;
+      if (!Number.isFinite(scale) || scale <= 0) return null;
+      return {
+        originX: zero.x, originY: zero.y - section.height * scale,
+        drawnHeight: section.height * scale, scale,
+      };
+    }
+    const cropRadius = layout.kind === "DETAIL" ? layout.cropRadius : undefined;
+    const cx = layout.cropCenterX ?? section.width / 2;
+    const cy = layout.cropCenterY ?? section.height / 2;
+    const modelWidth = cropRadius ? 2 * cropRadius : section.width;
+    const modelHeight = cropRadius ? 2 * cropRadius : section.height;
+    const scale = layout.scaleDenominator === null
+      ? Math.min((layout.width - 20) / Math.max(modelWidth, EPSILON),
+        (layout.height - 28) / Math.max(modelHeight, EPSILON))
+      : this.technicalScale(sheet, layout.scaleDenominator);
+    if (!(scale > 0)) return null;
+    return {
+      originX: layout.x + layout.width / 2 - cx * scale,
+      originY: layout.y + layout.height / 2 + cy * scale - section.height * scale,
+      drawnHeight: section.height * scale, scale,
+    };
+  }
+
+  private sourceDetailSegments(source: GeneralSheetViewRuntime): readonly PlanSegment[] {
+    if (this.isAssemblyView(source)) {
+      this.ensureAssemblyResolved(source);
+      return source.segments;
+    }
+    const section = this.findSection(source.sectionId);
+    return section ? this.workspace.buildSnapshot(section).segments : [];
+  }
+
+  private detailSourceFingerprint(source: GeneralSheetViewRuntime): string {
+    if (this.isAssemblyView(source)) {
+      return JSON.stringify([source.id, source.geometrySignature,
+        source.width, source.height, source.offsetX, source.offsetY,
+        source.workPlane, source.circularDetail?.centerX,
+        source.circularDetail?.centerY, source.circularDetail?.radius,
+        source.segments.length]);
+    }
+    const section = this.findSection(source.sectionId);
+    const instanceIds = this.designModel.pieceInstances.getAll().map((instance) => instance.id);
+    return JSON.stringify([source.id, section, assemblyProjectionSignature({
+      instanceIds, designModel: this.designModel, designScene: this.designScene,
+    })]);
+  }
+
+  private readonly onDetailPointerMove = (event: PointerEvent): void => {
+    if (!(event.target instanceof Node) || !this.workspace.svg.contains(event.target)) return;
+    const point = this.workspace.eventToSheetPoint(event);
+    if (!point) return;
+    if (this.detailDrag) {
+      const drag = this.detailDrag;
+      const sheet = this.production.sheets.get(drag.sheetId);
+      const detail = sheet?.views.find((v): v is AssemblySheetViewRuntime =>
+        this.isAssemblyView(v) && v.id === drag.detailId);
+      const source = sheet?.views.find((v) => v.id === detail?.sourceViewId);
+      const index = source ? sheet!.views.indexOf(source) : -1;
+      if (!sheet || !detail?.circularDetail || !source || index < 0) {
+        this.detailDrag = null; return;
+      }
+      const transform = this.sourceProjectionTransform(sheet, source, index);
+      if (!transform) return;
+      const old = drag.original;
+      const next = drag.mode === "MOVE"
+        ? { x: old.x + (point.x - drag.start.x) / transform.scale,
+          y: old.y - (point.y - drag.start.y) / transform.scale, radius: old.radius }
+        : { ...old, radius: Math.hypot(
+          point.x - (transform.originX + old.x * transform.scale),
+          point.y - (transform.originY + transform.drawnHeight - old.y * transform.scale),
+        ) / transform.scale };
+      if (next.radius < 0.001) return;
+      detail.circularDetail.centerX = next.x;
+      detail.circularDetail.centerY = next.y;
+      detail.circularDetail.radius = next.radius;
+      this.rebuildCircularDetail(detail, source);
+      this.workspace.render();
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    const pending = this.pendingDetail;
+    if (!pending) return;
+    pending.point = point;
+    if (pending.phase === "RADIUS" && pending.centerPaper) {
+      pending.radiusPaper = point.distanceTo(pending.centerPaper);
+    }
+    this.drawCircularDetailPreview();
+  };
+
+  private readonly onDetailPointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0 || !(event.target instanceof Element)) return;
+    const reference = event.target.closest<SVGElement>('[data-framelogic-circular-ref]');
+    if (!this.pendingDetail && reference) {
+      const sheetId = this.getActiveSheetId();
+      const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+      const detailId = reference.dataset["framelogicCircularRef"];
+      const detail = sheet?.views.find((view): view is AssemblySheetViewRuntime =>
+        this.isAssemblyView(view) && view.id === detailId);
+      const point = this.workspace.eventToSheetPoint(event);
+      if (!sheetId || !detail?.circularDetail || !point) return;
+      this.detailDrag = {
+        sheetId, detailId: detail.id,
+        mode: reference.dataset["framelogicDetailDrag"] === "RADIUS" ? "RADIUS" : "MOVE",
+        start: point.clone(),
+        original: {
+          x: detail.circularDetail.centerX, y: detail.circularDetail.centerY,
+          radius: detail.circularDetail.radius,
+        },
+      };
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    const pending = this.pendingDetail;
+    if (!pending || !this.workspace.svg.contains(event.target)) return;
+    const sheet = this.production.sheets.get(pending.sheetId);
+    const sourceIndex = sheet?.views.findIndex((v) => v.id === pending.sourceViewId) ?? -1;
+    const source = sourceIndex >= 0 ? sheet!.views[sourceIndex] : null;
+    const point = this.workspace.eventToSheetPoint(event);
+    if (!sheet || !source || !point || this.getActiveSheetId() !== pending.sheetId) {
+      this.cancelCircularDetail(true); return;
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (pending.phase === "CENTER") {
+      const layout = this.professional.ensureViewLayout(source.id, source.sectionId, sourceIndex);
+      if (point.x < layout.x || point.x > layout.x + layout.width
+        || point.y < layout.y || point.y > layout.y + layout.height) {
+        this.workspace.setStatus("DETALLE: indica el centro dentro de la View seleccionada.");
+        return;
+      }
+      pending.centerPaper = point.clone();
+      pending.radiusPaper = 0;
+      pending.phase = "RADIUS";
+      this.workspace.setStatus("DETALLE: mueve el cursor y haz clic para confirmar el radio.");
+    } else if (pending.phase === "RADIUS") {
+      if (!pending.centerPaper) return;
+      const transform = this.sourceProjectionTransform(sheet, source, sourceIndex);
+      const layout = this.professional.ensureViewLayout(source.id, source.sectionId, sourceIndex);
+      const radiusPaper = point.distanceTo(pending.centerPaper);
+      const maxRadius = Math.min(
+        pending.centerPaper.x - layout.x - 3,
+        layout.x + layout.width - pending.centerPaper.x - 3,
+        pending.centerPaper.y - layout.y - 3,
+        layout.y + layout.height - pending.centerPaper.y - 3,
+      );
+      if (radiusPaper > maxRadius) {
+        this.workspace.setStatus("DETALLE: mantén el círculo dentro del marco de la View origen.");
+        return;
+      }
+      const circle = transform
+        ? paperCircleToProjection(pending.centerPaper, radiusPaper, transform) : null;
+      if (!circle || radiusPaper < 4
+        || !cropProjectedDetail(this.sourceDetailSegments(source), circle)) {
+        this.workspace.setStatus("DETALLE: el círculo debe incluir geometría vectorial y tener un radio mayor.");
+        return;
+      }
+      pending.circle = circle;
+      pending.radiusPaper = radiusPaper;
+      pending.phase = "PLACE";
+      pending.point = point.clone();
+      this.workspace.setStatus("DETALLE: coloca la nueva View en un área libre del PDF; Esc cancela.");
+    } else if (pending.circle) {
+      this.placeCircularDetail(sheet, source, sourceIndex, pending.circle, point);
+    }
+    this.drawCircularDetailPreview();
+  };
+
+  private readonly onDetailPointerUp = (event: PointerEvent): void => {
+    const drag = this.detailDrag;
+    if (!drag) return;
+    this.detailDrag = null;
+    const sheet = this.production.sheets.get(drag.sheetId);
+    const detail = sheet?.views.find((v): v is AssemblySheetViewRuntime =>
+      this.isAssemblyView(v) && v.id === drag.detailId);
+    const source = sheet?.views.find((v) => v.id === detail?.sourceViewId);
+    if (sheet && detail?.circularDetail && source) {
+      const sourceIndex = sheet.views.indexOf(source);
+      const transform = this.sourceProjectionTransform(sheet, source, sourceIndex);
+      const sourceLayout = this.professional.ensureViewLayout(
+        source.id, source.sectionId, sourceIndex);
+      const paper = transform ? projectionCircleToPaper({
+        x: detail.circularDetail.centerX, y: detail.circularDetail.centerY,
+        radius: detail.circularDetail.radius,
+      }, transform) : null;
+      const outside = !paper
+        || paper.x - paper.radius < sourceLayout.x + 2
+        || paper.y - paper.radius < sourceLayout.y + 2
+        || paper.x + paper.radius > sourceLayout.x + sourceLayout.width - 2
+        || paper.y + paper.radius > sourceLayout.y + sourceLayout.height - 2;
+      if (!detail.segments.length || outside) {
+        detail.circularDetail.centerX = drag.original.x;
+        detail.circularDetail.centerY = drag.original.y;
+        detail.circularDetail.radius = drag.original.radius;
+        this.rebuildCircularDetail(detail, source);
+        this.workspace.setStatus("DETALLE: el círculo debe quedar dentro de la View y contener geometría.");
+      } else {
+        this.professional.recordDrawingChange?.();
+        this.workspace.setStatus("DETALLE " + detail.circularDetail.label + ": referencia y geometría actualizadas.");
+      }
+      this.workspace.render();
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
+  private circularGhostSize(
+    sheet: GeneralSheetRuntime, circle: DetailCircle,
+  ): { width: number; height: number } {
+    const diameter = 2 * circle.radius * this.technicalScale(sheet, 5);
+    const edge = Math.min(340, Math.max(150, diameter + 44));
+    return { width: edge, height: edge + 16 };
+  }
+
+  private drawCircularDetailPreview(): void {
+    this.workspace.svg.querySelector('[data-framelogic-detail-preview="true"]')?.remove();
+    const pending = this.pendingDetail;
+    if (!pending || this.getActiveSheetId() !== pending.sheetId) return;
+    const group = document.createElementNS(SVG_NS, "g");
+    group.dataset["framelogicDetailPreview"] = "true";
+    group.style.pointerEvents = "none";
+    const stroke = "#1482ab";
+    if (pending.phase === "RADIUS" && pending.centerPaper && pending.radiusPaper > 0) {
+      const circle = document.createElementNS(SVG_NS, "circle");
+      circle.setAttribute("cx", String(pending.centerPaper.x));
+      circle.setAttribute("cy", String(pending.centerPaper.y));
+      circle.setAttribute("r", String(pending.radiusPaper));
+      circle.setAttribute("fill", "rgba(40,110,180,0.06)");
+      circle.setAttribute("stroke", stroke);
+      circle.setAttribute("stroke-width", "1.8");
+      circle.setAttribute("stroke-dasharray", "6 4");
+      group.append(circle);
+    }
+    if (pending.phase === "PLACE" && pending.point && pending.circle) {
+      const sheet = this.production.sheets.get(pending.sheetId);
+      if (sheet) {
+        const size = this.circularGhostSize(sheet, pending.circle);
+        const frame = document.createElementNS(SVG_NS, "rect");
+        frame.setAttribute("x", String(pending.point.x - size.width / 2));
+        frame.setAttribute("y", String(pending.point.y - size.height / 2));
+        frame.setAttribute("width", String(size.width));
+        frame.setAttribute("height", String(size.height));
+        frame.setAttribute("fill", "rgba(30,140,190,0.08)");
+        frame.setAttribute("stroke", stroke);
+        frame.setAttribute("stroke-dasharray", "8 5");
+        group.append(frame);
+      }
+    }
+    this.workspace.svg.append(group);
+  }
+
+  private placeCircularDetail(
+    sheet: GeneralSheetRuntime, source: GeneralSheetViewRuntime,
+    sourceIndex: number, circle: DetailCircle, point: THREE.Vector2,
+  ): void {
+    const geometry = cropProjectedDetail(this.sourceDetailSegments(source), circle);
+    const plane = this.getCircularSourcePlane(source);
+    if (!geometry || !plane) {
+      this.workspace.setStatus("DETALLE: no hay geometría proyectada en esta zona.");
+      return;
+    }
+    const size = this.circularGhostSize(sheet, circle);
+    const placement = {
+      x: point.x - size.width / 2, y: point.y - size.height / 2,
+      width: size.width, height: size.height,
+    };
+    const occupied = sheet.views.map((v, i) =>
+      this.professional.ensureViewLayout(v.id, v.sectionId, i));
+    if (!this.getSectionViews(sheet).length) occupied.push({
+      id: "TITLE_BLOCK", sectionId: "", kind: "ASSEMBLY",
+      x: 728, y: 670, width: 360, height: 92,
+      scaleDenominator: null, showHidden: false, locked: true,
+    });
+    if (placement.x < 3 || placement.y < 3
+      || placement.x + placement.width > SHEET_WIDTH - 3
+      || placement.y + placement.height > SHEET_HEIGHT - 3
+      || projectedViewportOverlaps(placement, occupied)) {
+      this.workspace.setStatus("DETALLE: el marco se superpone o queda fuera de la hoja. Elige un espacio libre.");
+      return;
+    }
+    const label = nextCircularDetailLetter(sheet.views.flatMap((view) =>
+      this.isAssemblyView(view) && view.circularDetail ? [view.circularDetail.label] : []));
+    const workPlane = restoreWorkPlane(plane);
+    const sourceOffsetX = this.isAssemblyView(source) ? source.offsetX ?? 0 : 0;
+    const sourceOffsetY = this.isAssemblyView(source) ? source.offsetY ?? 0 : 0;
+    const instanceIds = this.isAssemblyView(source) ? source.instanceIds
+      : this.designModel.pieceInstances.getAll().map((item) => item.id);
+    const title = this.isAssemblyView(source) ? source.assemblyName
+      : this.findSection(source.sectionId)?.name ?? "Sección";
+    const view = this.createAssemblyView({
+      assemblyId: this.isAssemblyView(source) ? source.assemblyId : "section:" + source.sectionId,
+      assemblyName: title, instanceIds, workPlane,
+    }, {
+      ...geometry,
+      offsetX: sourceOffsetX + geometry.offsetX,
+      offsetY: sourceOffsetY + geometry.offsetY,
+    });
+    view.sourceViewId = source.id;
+    view.circularDetail = {
+      label, centerX: circle.x, centerY: circle.y, radius: circle.radius,
+      sourceSignature: this.detailSourceFingerprint(source),
+      sourceWorkPlane: plane,
+      fromSection: !this.isAssemblyView(source),
+    };
+    view.renderMode = "renderMode" in source ? source.renderMode : undefined;
+    view.geometrySignature = this.isAssemblyView(source) ? source.geometrySignature : undefined;
+    view.assemblyOcclusionExact = this.isAssemblyView(source) ? source.assemblyOcclusionExact : false;
+    view.resolved = true;
+    if (!validDetailAncestry(source.id, view.id, [...sheet.views, view])) {
+      this.workspace.setStatus("DETALLE: dependencia circular de Views rechazada.");
+      return;
+    }
+    sheet.views.push(view);
+    const layout = this.professional.ensureViewLayout(view.id, view.sectionId, sheet.views.length - 1);
+    layout.kind = "DETAIL";
+    layout.title = "DETALLE " + label;
+    layout.x = placement.x;
+    layout.y = placement.y;
+    layout.width = placement.width;
+    layout.height = placement.height;
+    layout.scaleDenominator = 5;
+    const sourceLayout = this.professional.ensureViewLayout(source.id, source.sectionId, sourceIndex);
+    layout.showHidden = sourceLayout.showHidden;
+    this.selectedAssemblyViewId = view.id;
+    this.cancelCircularDetail(false);
+    this.lastTreeSignature = "";
+    this.professional.recordDrawingChange?.();
+    this.workspace.render();
+    this.workspace.setStatus("DETALLE " + label + " creado a escala 1:5. "
+      + "La View padre conserva su escala; puedes editar centro/radio y cambiar la escala.");
+  }
+
+  private rebuildCircularDetail(
+    detail: AssemblySheetViewRuntime, source: GeneralSheetViewRuntime,
+  ): void {
+    const settings = detail.circularDetail;
+    if (!settings) return;
+    const geometry = cropProjectedDetail(this.sourceDetailSegments(source), {
+      x: settings.centerX, y: settings.centerY, radius: settings.radius,
+    });
+    detail.width = settings.radius * 2;
+    detail.height = settings.radius * 2;
+    detail.segments = geometry?.segments ?? [];
+    detail.offsetX = (this.isAssemblyView(source) ? source.offsetX ?? 0 : 0)
+      + settings.centerX - settings.radius;
+    detail.offsetY = (this.isAssemblyView(source) ? source.offsetY ?? 0 : 0)
+      + settings.centerY - settings.radius;
+    detail.geometrySignature = this.isAssemblyView(source) ? source.geometrySignature : undefined;
+    detail.assemblyOcclusionExact = this.isAssemblyView(source) ? source.assemblyOcclusionExact : false;
+    settings.sourceSignature = this.detailSourceFingerprint(source);
+    detail.resolved = true;
+  }
+
+  /** Reclip only changed dependent Details. No full-sheet OCCT call on mouse move. */
+  private refreshCircularDetails(sheet: GeneralSheetRuntime): void {
+    const details = sheet.views.filter((view): view is AssemblySheetViewRuntime =>
+      this.isAssemblyView(view) && Boolean(view.circularDetail));
+    for (const detail of details) {
+      const source = sheet.views.find((view) => view.id === detail.sourceViewId);
+      if (!source || !detail.circularDetail || !validDetailAncestry(
+        source.id, detail.id, sheet.views)) {
+        detail.segments = [];
+        detail.automaticWarnings = ["DETALLE: View origen inexistente o dependencia circular."];
+        continue;
+      }
+      const sourcePlane = this.getCircularSourcePlane(source);
+      if (!sourcePlane || JSON.stringify(sourcePlane) !==
+        JSON.stringify(detail.circularDetail.sourceWorkPlane)) {
+        detail.segments = [];
+        detail.automaticWarnings = ["DETALLE: orientación del origen modificada; crea otra referencia."];
+        continue;
+      }
+      if (this.detailSourceFingerprint(source) !== detail.circularDetail.sourceSignature) {
+        this.rebuildCircularDetail(detail, source);
+      }
+    }
+  }
+
+  private renderCircularReferences(sheet: GeneralSheetRuntime): void {
+    for (const detail of sheet.views) {
+      if (!this.isAssemblyView(detail) || !detail.circularDetail
+        || detail.circularDetail.hidden || !detail.sourceViewId) continue;
+      const index = sheet.views.findIndex((view) => view.id === detail.sourceViewId);
+      if (index < 0) continue;
+      const parent = sheet.views[index]!;
+      const transform = this.sourceProjectionTransform(sheet, parent, index);
+      if (!transform) continue;
+      const center = projectionCircleToPaper({
+        x: detail.circularDetail.centerX, y: detail.circularDetail.centerY,
+        radius: detail.circularDetail.radius,
+      }, transform);
+      if (![center.x, center.y, center.radius].every(Number.isFinite)) continue;
+      const ring = document.createElementNS(SVG_NS, "circle");
+      ring.setAttribute("cx", String(center.x));
+      ring.setAttribute("cy", String(center.y));
+      ring.setAttribute("r", String(center.radius));
+      ring.setAttribute("fill", "none");
+      ring.setAttribute("stroke", "#12567c");
+      ring.setAttribute("stroke-width", "1.6");
+      ring.dataset["framelogicCircularRef"] = detail.id;
+      ring.dataset["framelogicDetailDrag"] = "MOVE";
+      ring.style.pointerEvents = "stroke";
+      ring.style.cursor = "move";
+      this.workspace.svg.append(ring);
+      const handle = document.createElementNS(SVG_NS, "circle");
+      handle.setAttribute("cx", String(center.x + center.radius));
+      handle.setAttribute("cy", String(center.y));
+      handle.setAttribute("r", "5");
+      handle.setAttribute("fill", "#12567c");
+      handle.setAttribute("data-framelogic-view-action", "DETAIL_RADIUS");
+      handle.dataset["framelogicCircularRef"] = detail.id;
+      handle.dataset["framelogicDetailDrag"] = "RADIUS";
+      handle.style.cursor = "ew-resize";
+      this.workspace.svg.append(handle);
+      this.appendText(center.x + center.radius + 9, center.y - 9,
+        detail.circularDetail.label, 11, "#12567c");
+    }
+  }
+
+  private removeCircularDetail(detailId: string): void {
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    if (!sheet) return;
+    const target = sheet.views.find((view) =>
+      this.isAssemblyView(view) && view.id === detailId && Boolean(view.circularDetail));
+    if (!target) return;
+    const removed = new Set([detailId]);
+    // A nested detail cannot outlive its parent detail.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const view of sheet.views) {
+        if (this.isAssemblyView(view) && view.circularDetail && view.sourceViewId
+          && removed.has(view.sourceViewId) && !removed.has(view.id)) {
+          removed.add(view.id); changed = true;
+        }
+      }
+    }
+    sheet.views.splice(0, sheet.views.length,
+      ...sheet.views.filter((view) => !removed.has(view.id)));
+    if (removed.has(this.selectedAssemblyViewId ?? "")) this.selectedAssemblyViewId = null;
+    this.lastTreeSignature = "";
+    this.professional.recordDrawingChange?.();
+    this.workspace.render();
+    this.workspace.setStatus("DETALLE eliminado sin modificar la View de origen ni el modelo.");
+  }
+
   /** Inventor/Advance Steel-style projected drawing: select the source View,
    * move outside its frame, choose a side/corner, and click to place. */
   private toggleProjectedView(): void {
@@ -1438,7 +2027,7 @@ export class GeneralPdfController {
     const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
     const source = sheet?.views.find((view) => view.id === this.selectedAssemblyViewId);
     if (!sheetId || !sheet || !source || !this.isAssemblyView(source)
-      || source.automaticSupplement) {
+      || source.automaticSupplement || source.circularDetail) {
       this.workspace.setStatus("PROYECTAR: selecciona una View de pieza o ensamble (no un corte ni detalle).");
       return;
     }
@@ -1586,7 +2175,8 @@ export class GeneralPdfController {
     const sheet = this.production.sheets.get(pending.sheetId);
     const sourceIndex = sheet?.views.findIndex((v) => v.id === pending.sourceViewId) ?? -1;
     const source = sourceIndex < 0 ? null : sheet?.views[sourceIndex];
-    if (!sheet || !source || !this.isAssemblyView(source) || source.automaticSupplement) {
+    if (!sheet || !source || !this.isAssemblyView(source)
+      || source.automaticSupplement || source.circularDetail) {
       this.cancelProjectedView(true);
       return;
     }
@@ -1753,16 +2343,25 @@ export class GeneralPdfController {
     viewSelect.disabled = this.orientationChangeInProgress;
     // The 3D assembly orientation choices do not apply to a section View.
     modeSelect.disabled = this.orientationChangeInProgress
-      || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement);
+      || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement)
+      || Boolean(this.pendingDetail) || Boolean(this.isAssemblyView(selected) && selected.circularDetail);
+    if (this.detailButton) {
+      this.detailButton.disabled = this.orientationChangeInProgress
+        || this.projectionInProgress || Boolean(this.pendingProjection);
+      this.detailButton.textContent = this.pendingDetail ? "Cancelar detalle (Esc)" : "Detalle";
+      this.detailButton.style.background = this.pendingDetail ? "#775128" : "#244f65";
+    }
     if (this.projectionButton) {
       this.projectionButton.disabled = !this.pendingProjection
         && (this.orientationChangeInProgress || this.projectionInProgress
-          || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement));
+          || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement)
+          || Boolean(selected.circularDetail));
       this.projectionButton.textContent = this.pendingProjection
         ? "Cancelar proyección (Esc)" : "Proyectar View";
       this.projectionButton.style.background = this.pendingProjection ? "#775128" : "#244f65";
     }
-    viewSelect.disabled = this.orientationChangeInProgress || Boolean(this.pendingProjection);
+    viewSelect.disabled = this.orientationChangeInProgress
+      || Boolean(this.pendingProjection) || Boolean(this.pendingDetail);
     const scaleEditor = panel.querySelector<HTMLDivElement>(
       '[data-framelogic-view-scale-editor="true"]',
     );
@@ -1777,7 +2376,7 @@ export class GeneralPdfController {
     const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
     const view = sheet?.views.find((candidate): candidate is AssemblySheetViewRuntime =>
       this.isAssemblyView(candidate) && candidate.id === this.selectedAssemblyViewId
-      && !candidate.automaticSupplement);
+      && !candidate.automaticSupplement && !candidate.circularDetail);
     if (!view || !sheet) return;
 
     const original = restoreWorkPlane(view.originalWorkPlane ?? view.workPlane);
@@ -1891,6 +2490,7 @@ export class GeneralPdfController {
     const sheet = this.production.sheets.get(sheetId);
     if (!sheet) return;
 
+    this.refreshCircularDetails(sheet);
     const hasSectionView = this.getSectionViews(sheet).length > 0;
     if (!hasSectionView) {
       this.appendRect(
@@ -1926,12 +2526,17 @@ export class GeneralPdfController {
         candidate.sectionId,
         index,
       );
-      layout.kind = "ASSEMBLY";
-      layout.title = candidate.assemblyName
-        + (candidate.orientationLabel ? ` · ${candidate.orientationLabel}` : "");
-      this.renderAssemblyView(sheet, candidate, layout, index);
+      layout.kind = candidate.circularDetail ? "DETAIL" : "ASSEMBLY";
+      layout.title = candidate.circularDetail
+        ? "DETALLE " + candidate.circularDetail.label
+        : candidate.assemblyName
+          + (candidate.orientationLabel ? " · " + candidate.orientationLabel : "");
+      if (!candidate.circularDetail?.hidden) {
+        this.renderAssemblyView(sheet, candidate, layout, index);
+      }
     });
 
+    this.renderCircularReferences(sheet);
     if (!hasSectionView) {
       this.renderGenericTitleBlock(sheet);
       if (!sheet.hideAutomaticBom && !sheet.bomTable) this.renderAutomaticPartIndex(sheet);
@@ -1940,6 +2545,7 @@ export class GeneralPdfController {
     this.updateViewOrientationPanel(sheet);
     this.decorateViewTree();
     this.drawProjectedViewPreview();
+    this.drawCircularDetailPreview();
   }
 
   private renderAssemblyView(
@@ -1988,6 +2594,7 @@ export class GeneralPdfController {
         this.workspace.svg.append(line);
       } else {
         this.appendLine(x1, y1, x2, y2);
+        if (segment.cut) this.workspace.svg.lastElementChild?.setAttribute("stroke-width", "1.35");
       }
       // A View's geometry has a stable identity; dimensions and frames do not.
       const geometryLine = this.workspace.svg.lastElementChild;
@@ -2000,6 +2607,15 @@ export class GeneralPdfController {
         geometryLine.dataset["framelogicAssemblyScale"] = String(scale);
         if (segment.hidden && !layout.showHidden) geometryLine.setAttribute("display", "none");
       }
+    }
+    if (view.circularDetail) {
+      if (view.automaticWarnings?.length) {
+        this.appendText(layout.x + 6, layout.y + layout.height - 23,
+          view.automaticWarnings[0]!.slice(0, 76), 8, "#8a241c");
+      }
+      this.appendText(layout.x + 6, layout.y + 15,
+        "DETALLE " + view.circularDetail.label + " — ESC "
+          + formatDrawingViewScale(layout.scaleDenominator), 9, "#12567c");
     }
     if (view.automaticSupplement) {
       if (view.automaticWarnings?.length) {
@@ -2060,13 +2676,14 @@ export class GeneralPdfController {
     resize.style.cursor = layout.locked ? "not-allowed" : "nwse-resize";
     this.workspace.svg.append(resize);
 
-    const scaleText = layout.scaleDenominator === null
-      ? "AUTO"
-      : `1:${layout.scaleDenominator}`;
+    const scaleText = formatDrawingViewScale(layout.scaleDenominator);
     this.appendText(
       layout.x + 6,
       layout.y + layout.height - 6,
-      `VIEW ${index + 1} · ${view.assemblyName}${view.orientationLabel ? " · " + view.orientationLabel : ""} · ${scaleText}`,
+      view.circularDetail
+        ? "DETALLE " + view.circularDetail.label + " — ESC " + scaleText
+        : "VIEW " + (index + 1) + " · " + view.assemblyName
+          + (view.orientationLabel ? " · " + view.orientationLabel : "") + " · " + scaleText,
       9,
       "#333",
     );
@@ -2366,6 +2983,57 @@ export class GeneralPdfController {
       }
     } finally {
       this.projectionRefreshInProgress = false;
+    }
+  }
+
+  /** Keep a manually inserted assembly View current when it has linked details,
+   * using the same STEP/HLR path as projected/automatic Views. */
+  private async refreshCircularSourceProjections(): Promise<void> {
+    if (this.disposed || this.circularSourceRefreshInProgress || this.orientationChangeInProgress) return;
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    if (!sheet) return;
+    const sources = sheet.views.filter((source): source is AssemblySheetViewRuntime =>
+      this.isAssemblyView(source) && !source.circularDetail
+      && !source.automaticViewCode && !source.projectedDirection
+      && sheet.views.some((detail) => this.isAssemblyView(detail)
+        && Boolean(detail.circularDetail) && detail.sourceViewId === source.id));
+    if (!sources.length) return;
+    this.circularSourceRefreshInProgress = true;
+    try {
+      let updated = false;
+      for (const source of sources) {
+        const fingerprint = assemblyProjectionSignature({
+          instanceIds: source.instanceIds,
+          designModel: this.designModel, designScene: this.designScene,
+        });
+        if (fingerprint === source.geometrySignature) continue;
+        const plane = restoreWorkPlane(source.workPlane);
+        const projected = await projectAssembly({
+          instanceIds: source.instanceIds, workPlane: plane,
+          designModel: this.designModel, designScene: this.designScene,
+        });
+        const geometry = projected ?? this.buildPlanGeometry(source.instanceIds, plane);
+        if (!geometry || !sheet.views.includes(source)
+          || this.disposed || this.getActiveSheetId() !== sheetId) continue;
+        source.width = geometry.width;
+        source.height = geometry.height;
+        source.offsetX = geometry.offsetX;
+        source.offsetY = geometry.offsetY;
+        source.segments = geometry.segments;
+        source.automaticDimensions = projected?.dimensions ?? [];
+        source.automaticAnchors = projected?.anchors ?? [];
+        source.assemblyOcclusionExact = projected?.assemblyOcclusionExact ?? false;
+        source.automaticWarnings = projected?.warnings ?? [
+          "Proyección malla preliminar: comprobar aristas ocultas y cotas.",
+        ];
+        source.geometrySignature = fingerprint;
+        source.resolved = true;
+        updated = true;
+      }
+      if (updated) this.workspace.render();
+    } finally {
+      this.circularSourceRefreshInProgress = false;
     }
   }
 
@@ -2736,6 +3404,9 @@ export class GeneralPdfController {
   }
 
   private ensureAssemblyResolved(view: AssemblySheetViewRuntime): void {
+    // Circular crops contain only source-clipped vectors; NEVER fall back to
+    // a full uncropped assembly when an empty circle is moved.
+    if (view.circularDetail) return;
     if (
       view.resolved
       && view.segments.length > 0
@@ -2896,7 +3567,7 @@ export class GeneralPdfController {
             ? `BOM:${sheet.bomTable.rootAssemblyId}:${sheet.bomTable.mode}` : "NO_BOM",
           ...sheet.views.map((view, index) =>
             this.isAssemblyView(view)
-              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`
+              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}:${view.circularDetail?.label ?? ""}:${view.circularDetail?.hidden ?? false}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`
               : `${index}:${view.id}:S:${view.sectionId}:${pieces.map((piece) => piece.id).join(",")}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`,
           ),
         ].join("|")
@@ -2921,15 +3592,18 @@ export class GeneralPdfController {
       return;
     }
 
+    const rowById = new Map<string, HTMLDetailsElement>();
     sheet.views.forEach((view, index) => {
       if (this.isAssemblyView(view)) {
         const parentIndex = view.projectedDirection
           ? sheet.views.findIndex((candidate) => candidate.id === view.sourceViewId) : -1;
         const block = this.createViewDetails(
-          `View ${index + 1} · ${view.assemblyName}${view.orientationLabel
+          `${view.circularDetail ? "DETALLE " + view.circularDetail.label : "View " + (index + 1)} · ${view.assemblyName}${view.orientationLabel
             ? " · " + view.orientationLabel : ""} · ${formatDrawingViewScale(
               this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator)}`,
-          view.projectedDirection
+          view.circularDetail
+            ? "DETALLE CIRCULAR · Origen: " + (view.sourceViewId ?? "?")
+            : view.projectedDirection
             ? `PROYECCIÓN · origen View ${parentIndex >= 0 ? parentIndex + 1 : "?"} · ${view.projectedStandard ?? "ISO E"} · ${view.instanceIds.length} piezas`
             : `ENSAMBLE/PIEZA · ${view.instanceIds.length} instancia${view.instanceIds.length === 1 ? "" : "s"}`,
         );
@@ -2946,6 +3620,31 @@ export class GeneralPdfController {
         block.details.open = previouslyOpen.get(view.id) ?? true;
         this.bindTreeViewSelection(block.details, view.id, sheet);
         tree.append(block.details);
+        rowById.set(view.id, block.details);
+        if (view.circularDetail) {
+          const visibleButton = document.createElement("button");
+          visibleButton.type = "button";
+          visibleButton.textContent = view.circularDetail.hidden ? "Mostrar detalle" : "Ocultar detalle";
+          visibleButton.style.cssText = "margin:5px 8px 4px 26px;color:white;background:#275068;border:1px solid #6c93a9;border-radius:4px;padding:4px;";
+          visibleButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (!view.circularDetail) return;
+            view.circularDetail.hidden = !view.circularDetail.hidden;
+            this.lastTreeSignature = "";
+            this.professional.recordDrawingChange?.();
+            this.workspace.render();
+          });
+          block.content.append(visibleButton);
+          const deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.textContent = "Eliminar detalle";
+          deleteButton.style.cssText = "margin:5px 8px 7px 26px;color:white;background:#643a3a;border:1px solid #926b6b;border-radius:4px;padding:4px;";
+          deleteButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this.removeCircularDetail(view.id);
+          });
+          block.content.append(deleteButton);
+        }
         return;
       }
 
@@ -2968,7 +3667,18 @@ export class GeneralPdfController {
       block.details.open = previouslyOpen.get(view.id) ?? true;
       this.bindTreeViewSelection(block.details, view.id, sheet);
       tree.append(block.details);
+      rowById.set(view.id, block.details);
     });
+    // Use actual nested HTML details, not just a visually indented flat label.
+    for (const view of sheet.views) {
+      if (!this.isAssemblyView(view) || !view.circularDetail || !view.sourceViewId) continue;
+      const childRow = rowById.get(view.id);
+      const parentRow = rowById.get(view.sourceViewId);
+      if (childRow && parentRow && validDetailAncestry(view.sourceViewId, view.id, sheet.views)) {
+        childRow.style.marginLeft = "13px";
+        parentRow.querySelector<HTMLDivElement>(":scope > div")?.append(childRow);
+      }
+    }
     tree.scrollTop = previousScroll;
   }
 

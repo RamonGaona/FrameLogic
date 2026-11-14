@@ -12,6 +12,22 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.156 — 2026-11-13 (rama de desarrollo; pendiente de aceptación)
+
+### Vista de detalle circular vectorial por View en Paper Space
+
+- **Herramienta Detalle:** seleccionar la View origen, indicar con dos clics el centro y radio del círculo, previsualizar y colocar el nuevo marco sobre un espacio libre. Escape cancela sin crear detalles.
+- **Recorte geométrico analítico:** los segmentos proyectados del origen se intersectan matemáticamente con el círculo en el plano local 2D. Se conserva el estado de líneas visibles, ocultas y aristas de corte, sin duplicar el ensamblaje ni convertirlo en una captura de pantalla. Las piezas STEP utilizan las líneas producidas por el motor existente OCCT/HLR. El recorte no representa un corte físico del sólido.
+- **View independiente:** cada detalle mantiene escala, marco, estilo y ubicación propios; se crea a 1:5 y puede cambiar a escalas normalizadas, personalizadas y ampliaciones 2:1 o 5:1. La escala de la View origen no se modifica.
+- **Vinculación y etiquetado:** círculos vectoriales A/B/C en su View fuente, vista rotulada «DETALLE A — ESC 1:5», árbol VIEWS con dependencia visual anidada y botón Eliminar detalle. Arrastrar el aro mueve el centro y su control derecho modifica el radio, actualizando únicamente los segmentos del detalle.
+- **Actualización y datos:** el estado del círculo se guarda dentro de la View y viaja en los snapshots existentes de Paper Space, con su fuente y orientación. El historial de documentación registra cambios de forma inmediata. Los detalles de una View con ejes incompatiblemente reorientados se invalidan en lugar de mostrar geometría errónea; se rechazan dependencias circulares y ubicaciones que se solapan.
+- **PDF:** se exportan los círculos de referencia como trazados vectoriales y se aplica máscara circular a los renderizados sombreados, tanto en la hoja activa como en el flujo de exportación por lotes.
+- **Pruebas:** recorte analítico de segmentos, preservación de atributos HLR, transformaciones papel-modelo, radios y centros, referencias y dependencias, y compatibilidad con escalas mayores que 1:1.
+
+**Pendiente:** completar validaciones de interfaz con ensambles grandes y archivos STEP/sección, verificar detalles encadenados y exportación con sombreado en navegador/lector PDF, y confirmar CI y despliegue antes de dar por cerrada la versión. Los detalles originados en una sección se representan por sus segmentos de sección, sin rellenar caras de corte como sólidos.
+
+---
+
 ## v0.1.155 — 2026-11-13
 
 ### Guardar planos PDF individuales o todos juntos, respetando el tamaño físico de cada hoja

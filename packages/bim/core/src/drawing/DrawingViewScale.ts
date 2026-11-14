@@ -5,31 +5,32 @@
  * occupy one paper millimetre; the View must not inherit its neighbours' scale.
  */
 export const DRAWING_VIEW_SCALE_PRESETS = [
-  1, 2, 2.5, 5, 10, 15, 20, 25, 50, 75, 100, 150, 200, 250, 500, 1000,
+  0.2, 0.5, 1, 2, 2.5, 5, 10, 15, 20, 25, 50, 75, 100, 150, 200, 250, 500, 1000,
 ] as const;
 export const DRAWING_VIEW_CUSTOM_SCALE = "CUSTOM";
 export const DRAWING_VIEW_AUTO_SCALE = "AUTO";
 export const DRAWING_VIEW_MAX_DENOMINATOR = 1_000_000;
 
-/** Parses a denominator, `1:20`, or AUTO. undefined means invalid. */
+/** Numeric values are 1:N denominators; N:1 enlargements store N as 1/N. */
 export function parseDrawingViewScale(
   text: string,
 ): number | null | undefined {
   const normalized = text.trim().replace(",", ".");
   if (normalized.toUpperCase() === "AUTO") return null;
-  const match = /^(?:1\s*:\s*)?(?:\d+(?:\.\d*)?|\.\d+)$/.exec(normalized);
+  const numeric = "(?:\\d+(?:\\.\\d*)?|\\.\\d+)";
+  const match = new RegExp("^(" + numeric + ")(?:\\s*:\\s*(" + numeric + "))?$").exec(normalized);
   if (!match) return undefined;
-  const denominator = Number(normalized.replace(/^1\s*:\s*/, ""));
-  return Number.isFinite(denominator)
-    && denominator >= 1
-    && denominator <= DRAWING_VIEW_MAX_DENOMINATOR
-    ? denominator
-    : undefined;
+  const first = Number(match[1]);
+  const second = match[2] === undefined ? undefined : Number(match[2]);
+  const denominator = second === undefined ? first : second / first;
+  return Number.isFinite(denominator) && denominator >= 0.000001
+    && denominator <= DRAWING_VIEW_MAX_DENOMINATOR ? denominator : undefined;
 }
 
 export function formatDrawingViewScale(denominator: number | null): string {
   if (denominator === null) return "AUTO";
-  if (!Number.isFinite(denominator) || denominator < 1) return "AUTO";
+  if (!Number.isFinite(denominator) || denominator <= 0) return "AUTO";
+  if (denominator < 1) return String(Number((1 / denominator).toFixed(6))) + ":1";
   return "1:" + String(Number(denominator.toFixed(6)));
 }
 
@@ -48,7 +49,7 @@ export function modelToPaperScale(
   denominator: number,
   pixelsPerPaperMillimeter: number,
 ): number | null {
-  if (!Number.isFinite(denominator) || denominator < 1
+  if (!Number.isFinite(denominator) || denominator < 0.000001
     || !Number.isFinite(pixelsPerPaperMillimeter)
     || pixelsPerPaperMillimeter <= 0) return null;
   return pixelsPerPaperMillimeter / denominator;
