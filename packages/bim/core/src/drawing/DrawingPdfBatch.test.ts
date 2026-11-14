@@ -81,6 +81,10 @@ describe("exportación de planos PDF por tamaño real", () => {
     expect(data.getUint16(last + 10, true)).toBe(2);
     expect(decoder.decode(zipped)).toContain("Ensamble_A3_HORIZONTAL.pdf");
     expect(decoder.decode(zipped)).toContain("Pieza_A4_VERTICAL.pdf");
+    const crcExample = buildDrawingPdfZip([
+      { name: "crc.pdf", bytes: new TextEncoder().encode("123456789") },
+    ]);
+    expect(new DataView(crcExample.buffer).getUint32(14, true)).toBe(0xcbf43926);
     expect(() => buildDrawingPdfZip([])).toThrow();
     expect(() => buildDrawingPdfZip([
       { name: "x.pdf", bytes: fileA }, { name: "x.pdf", bytes: fileB },
