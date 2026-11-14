@@ -1112,6 +1112,207 @@ export class GeneralPdfController {
     return ordered;
   }
 
+  /**
+   * Independent HTML controls stay OUTSIDE the exported SVG. A selected Paper
+   * Space viewport can change projection without rotating or moving 3D parts.
+   */
+  private createViewOrientationPanel(): HTMLDivElement {
+    const panel = document.createElement("div");
+    panel.dataset["framelogicViewOrientationControls"] = "true";
+    Object.assign(panel.style, {
+      position: "absolute", top: "58px", right: "18px", zIndex: "88",
+      display: "none", alignItems: "center", flexWrap: "wrap", gap: "7px",
+      padding: "7px 9px", borderRadius: "5px",
+      background: "rgba(18,29,38,0.96)", color: "#e3f2f8",
+      border: "1px solid #547183", boxShadow: "0 5px 16px rgba(0,0,0,0.3)",
+      font: "11px system-ui,sans-serif",
+    });
+    const label = document.createElement("span");
+    label.textContent = "VIEW seleccionada";
+    label.style.fontWeight = "600";
+    const viewSelect = document.createElement("select");
+    viewSelect.dataset["framelogicViewSelect"] = "true";
+    viewSelect.title = "Seleccionar la View del plano que se quiere orientar";
+    const modeSelect = document.createElement("select");
+    modeSelect.dataset["framelogicViewOrientation"] = "true";
+    modeSelect.title = "Tipo de vista: ejes propios del ensamble o ejes globales";
+    for (const [value, description] of ASSEMBLY_VIEW_ORIENTATION_OPTIONS) {
+      const item = document.createElement("option");
+      item.value = value;
+      item.textContent = description;
+      modeSelect.append(item);
+    }
+    for (const select of [viewSelect, modeSelect]) {
+      Object.assign(select.style, {
+        color: "#e6f1f5", background: "#1b303e",
+        border: "1px solid #5e8496", borderRadius: "4px",
+        padding: "5px", font: "inherit", maxWidth: "210px",
+      });
+    }
+    viewSelect.addEventListener("change", () => {
+      this.selectedAssemblyViewId = viewSelect.value;
+      const sheetId = this.getActiveSheetId();
+      this.updateViewOrientationPanel(sheetId ? this.production.sheets.get(sheetId) ?? null : null);
+    });
+    modeSelect.addEventListener("change", () => {
+      void this.changeSelectedPdfViewOrientation(modeSelect.value as AssemblyViewOrientationMode);
+    });
+    panel.append(label, viewSelect, modeSelect);
+    this.workspace.overlay.append(panel);
+    return panel;
+  }
+
+  /** Any click in a View frame also selects the corresponding toolbar target. */
+  private readonly onSelectPdfView = (event: PointerEvent): void => {
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    if (!sheet) return;
+    const point = this.workspace.eventToSheetPoint(event);
+    if (!point) return;
+    for (let index = sheet.views.length - 1; index >= 0; index--) {
+      const view = sheet.views[index];
+      if (!view || !this.isAssemblyView(view) || view.automaticSupplement) continue;
+      const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
+      if (point.x < layout.x || point.x > layout.x + layout.width
+        || point.y < layout.y || point.y > layout.y + layout.height) continue;
+      if (this.selectedAssemblyViewId !== view.id) {
+        this.selectedAssemblyViewId = view.id;
+        this.updateViewOrientationPanel(sheet);
+      }
+      return;
+    }
+  };
+
+  private updateViewOrientationPanel(sheet: GeneralSheetRuntime | null): void {
+    const panel = this.viewOrientationPanel;
+    const views = sheet?.views.filter((view): view is AssemblySheetViewRuntime =>
+      this.isAssemblyView(view) && !view.automaticSupplement) ?? [];
+    if (views.length === 0) {
+      panel.style.display = "none";
+      return;
+    }
+    panel.style.display = "flex";
+    const viewSelect = panel.querySelector<HTMLSelectElement>(
+      '[data-framelogic-view-select="true"]')!;
+    const modeSelect = panel.querySelector<HTMLSelectElement>(
+      '[data-framelogic-view-orientation="true"]')!;
+    const signature = views.map((view) => view.id + ":" + view.assemblyName).join("|");
+    if (viewSelect.dataset["viewSignature"] !== signature) {
+      viewSelect.dataset["viewSignature"] = signature;
+      viewSelect.replaceChildren();
+      for (const [index, view] of views.entries()) {
+        const option = document.createElement("option");
+        option.value = view.id;
+        option.textContent = `View ${index + 1} · ${view.assemblyName}`;
+        viewSelect.append(option);
+      }
+    }
+    if (!views.some((view) => view.id === this.selectedAssemblyViewId)) {
+      this.selectedAssemblyViewId = views[0]!.id;
+    }
+    viewSelect.value = this.selectedAssemblyViewId!;
+    const selected = views.find((view) => view.id === this.selectedAssemblyViewId)!;
+    const expected = selected.orientationMode ?? "CURRENT";
+    if (modeSelect.value !== expected) modeSelect.value = expected;
+    viewSelect.disabled = this.orientationChangeInProgress;
+    modeSelect.disabled = this.orientationChangeInProgress;
+  }
+
+  private async changeSelectedPdfViewOrientation(
+    orientationMode: AssemblyViewOrientationMode,
+  ): Promise<void> {
+    if (this.orientationChangeInProgress) return;
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    const view = sheet?.views.find((candidate): candidate is AssemblySheetViewRuntime =>
+      this.isAssemblyView(candidate) && candidate.id === this.selectedAssemblyViewId
+      && !candidate.automaticSupplement);
+    if (!view || !sheet) return;
+
+    const original = restoreWorkPlane(view.originalWorkPlane ?? view.workPlane);
+    let plane: CadWorkPlaneState;
+    if (orientationMode === "CURRENT") {
+      plane = original;
+    } else {
+      const basis = resolveAssemblyViewBasis(orientationMode,
+        this.collectAutomaticViewOrientationPoints(view.instanceIds));
+      if (!basis) {
+        this.workspace.setStatus(
+          "No hay un eje longitudinal fiable para esta selección. Usa una vista global "
+          + "o comprueba la geometría y las instancias del ensamble.");
+        this.updateViewOrientationPanel(sheet);
+        return;
+      }
+      plane = this.createOrientedWorkPlane(original, basis);
+    }
+
+    this.orientationChangeInProgress = true;
+    this.updateViewOrientationPanel(sheet);
+    try {
+      // Same projection path used by «Generar planos automáticamente»:
+      // prefer STEP B-Rep/HLR and retain explicitly labelled mesh fallback.
+      const projection = await projectAssembly({
+        instanceIds: view.instanceIds, workPlane: plane,
+        designModel: this.designModel, designScene: this.designScene,
+      });
+      const geometry = projection ?? this.buildPlanGeometry(view.instanceIds, plane);
+      if (!geometry) throw new Error("No se encontró geometría 3D proyectable.");
+
+      // Do not touch layout x/y/width/height, the original geometry, or
+      // manually positioned annotations. Only the View's projection changes.
+      view.workPlane = snapshotWorkPlane(plane);
+      view.width = geometry.width;
+      view.height = geometry.height;
+      view.segments = geometry.segments;
+      view.resolved = true;
+      view.orientationMode = orientationMode;
+      view.orientationLabel = this.orientationModeLabel(orientationMode);
+      view.automaticDimensions = orientationMode.endsWith("ISO")
+        ? [] : projection?.dimensions ?? [];
+      view.automaticAnchors = projection?.anchors ?? [];
+      view.exactInstances = projection?.exactInstances ?? 0;
+      view.fallbackInstances = projection?.fallbackInstances ?? view.instanceIds.length;
+      view.assemblyOcclusionExact = projection?.assemblyOcclusionExact ?? false;
+      view.automaticWarnings = projection?.warnings ?? [
+        "Vista de malla preliminar: líneas ocultas y cotas no verificadas.",
+      ];
+      view.geometrySignature = assemblyProjectionSignature({
+        instanceIds: view.instanceIds,
+        designModel: this.designModel, designScene: this.designScene,
+      });
+
+      if (view.cutReferences?.length || view.detailReferences?.length) {
+        view.cutReferences = [];
+        view.detailReferences = [];
+        // A previously generated section/detail was referred to the OLD
+        // parent view. Prevent stale callouts and diagrams from surviving.
+        for (const otherSheet of this.production.sheets.values()) {
+          for (const candidate of otherSheet.views) {
+            if (!this.isAssemblyView(candidate) || candidate.sourceViewId !== view.id) continue;
+            candidate.geometrySignature = "INVALIDATED_VIEW_ORIENTATION";
+            candidate.segments = [];
+            candidate.resolved = true;
+            candidate.automaticWarnings = [
+              "Vista principal reorientada: generar de nuevo cortes y detalles.",
+            ];
+          }
+        }
+      }
+      this.lastTreeSignature = "";
+      this.workspace.render();
+      this.workspace.setStatus(
+        `VIEW: ${view.orientationLabel}. Proyección actualizada sin mover las piezas; `
+        + "las posiciones manuales de la hoja se conservaron.");
+    } catch (error) {
+      this.workspace.setStatus("No se pudo cambiar la orientación de la View: " + String(error));
+    } finally {
+      this.orientationChangeInProgress = false;
+      const currentId = this.getActiveSheetId();
+      this.updateViewOrientationPanel(currentId
+        ? this.production.sheets.get(currentId) ?? null : null);
+    }
+  }
+
   private renderGeneralViews(): void {
     if (
       this.disposed
