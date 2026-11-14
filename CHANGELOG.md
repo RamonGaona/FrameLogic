@@ -22,7 +22,7 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 - **Datos verificables:** marca/código de pieza, nombre, cantidad, material, grado y masa solo cuando figuren en el modelo de ingeniería; no se inventan masas ni materiales ni se suman elementos de ensambles ajenos.
 - **Aislamiento:** quitar o insertar BOM afecta únicamente a la hoja seleccionada; no borra piezas, ensambles, Views, cotas ni tablas de otros PDFs. También permite ocultar en una hoja el listado automático anterior.
 - **Persistencia del proyecto:** configuración opcional `bomTable` almacenada por `DrawingProduction.sheets[]` con identificador de ensamble, vista origen, modo y posición/dimensiones. Se mantiene la compatibilidad de snapshots v1 y se actualiza el contenido a partir del modelo sin duplicar registros.
-- **Manejo de espacio:** se impide insertar una tabla donde no existe un rectángulo libre; las filas que no caben se indican explícitamente (no se muestran cantidades incompletas como si fueran la BOM completa).
+- **Manejo de espacio y BOM completa:** se impide insertar una tabla donde no existe un rectángulo libre; las filas que no caben se indican explícitamente. El botón **Crear hojas BOM completas** genera hojas PDF adicionales con paginación de todas las piezas y subensambles (40 filas aprox. por hoja), enlazadas al origen e individualmente removibles, sin omitir entradas.
 - **Pruebas:** jerarquía multinivel, ausencia de duplicados, cantidades, falta de datos, pertenencia al ensamble y selección de espacio libre.
 
 **Alcance:** lista técnica preliminar, no lista certificada de compra ni despiece verificado de fabricación. La tabla no altera el modelo ni la geometría.
