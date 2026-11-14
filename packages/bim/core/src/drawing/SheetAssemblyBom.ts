@@ -15,6 +15,11 @@ export interface SheetBomPlacement {
   y: number;
   width: number;
   height: number;
+  /** Optional slice for a full multi-page BOM; regular inserts show from row 0. */
+  pageStart?: number;
+  pageIndex?: number;
+  pageCount?: number;
+  generatedFromSheetId?: string;
 }
 export interface SheetBomAssembly {
   readonly id: string;
