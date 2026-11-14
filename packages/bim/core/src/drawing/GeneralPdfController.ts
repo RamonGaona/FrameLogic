@@ -25,6 +25,11 @@ import {
   type WorkshopDimensionOverride,
 } from "./WorkshopDimensionLayout";
 import { buildAssemblyBom, renderAssemblyBomRow, type AssemblyBomRow } from "./AssemblyBomPlanner";
+import {
+  buildSheetAssemblyBom, chooseSheetBomPlacement, sheetBomOverlaps,
+  type SheetBomAssembly, type SheetBomPiece, type SheetBomPlacement,
+  type SheetBomMode, type SheetBomResult, type SheetBomRect,
+} from "./SheetAssemblyBom";
 
 import type {
   DesignModel,
@@ -165,6 +170,8 @@ interface GeneralSheetRuntime extends Omit<SheetState, "views"> {
   /** The BOM sheet is independent of any single view and paginates large assemblies. */
   bomEntries?: AssemblyBomRow[];
   bomAssemblyId?: string;
+  /** Hide generated index on one sheet when the user explicitly removes its BOM. */
+  hideAutomaticBom?: boolean;
   id?: string;
   name?: string;
   readonly views: GeneralSheetViewRuntime[];
@@ -306,6 +313,14 @@ export class GeneralPdfController {
   private projectionToken = 0;
   private projectionInProgress = false;
   private projectionRefreshInProgress = false;
+  private activeBomDrag: {
+    readonly sheetId: string;
+    readonly pointerId: number;
+    readonly startX: number;
+    readonly startY: number;
+    readonly originalX: number;
+    readonly originalY: number;
+  } | null = null;
   private dimensionDrag: {
     readonly viewId: string;
     readonly key: string;
@@ -338,6 +353,10 @@ export class GeneralPdfController {
     };
 
     this.viewOrientationPanel = this.createViewOrientationPanel();
+    this.workspace.svg.addEventListener("pointerdown", this.onSheetBomPointerDown, true);
+    this.workspace.svg.addEventListener("pointermove", this.onSheetBomPointerMove, true);
+    this.workspace.svg.addEventListener("pointerup", this.onSheetBomPointerUp, true);
+    this.workspace.svg.addEventListener("pointercancel", this.onSheetBomPointerUp, true);
     this.workspace.svg.addEventListener("pointerdown", this.onSelectPdfView, true);
     this.workspace.overlay.addEventListener("pointermove", this.onProjectViewPointerMove, true);
     this.workspace.overlay.addEventListener("pointerdown", this.onProjectViewPointerDown, true);
@@ -368,6 +387,10 @@ export class GeneralPdfController {
     if (this.disposed) return;
     this.disposed = true;
     window.clearInterval(this.timer);
+    this.workspace.svg.removeEventListener("pointerdown", this.onSheetBomPointerDown, true);
+    this.workspace.svg.removeEventListener("pointermove", this.onSheetBomPointerMove, true);
+    this.workspace.svg.removeEventListener("pointerup", this.onSheetBomPointerUp, true);
+    this.workspace.svg.removeEventListener("pointercancel", this.onSheetBomPointerUp, true);
     this.workspace.svg.removeEventListener("pointerdown", this.onSelectPdfView, true);
     this.workspace.overlay.removeEventListener("pointermove", this.onProjectViewPointerMove, true);
     this.workspace.overlay.removeEventListener("pointerdown", this.onProjectViewPointerDown, true);
@@ -1894,8 +1917,9 @@ export class GeneralPdfController {
 
     if (!hasSectionView) {
       this.renderGenericTitleBlock(sheet);
-      this.renderAutomaticPartIndex(sheet);
+      if (!sheet.hideAutomaticBom && !sheet.bomTable) this.renderAutomaticPartIndex(sheet);
     }
+    if (sheet.bomTable) this.renderInsertedBomTable(sheet);
     this.updateViewOrientationPanel(sheet);
     this.decorateViewTree();
     this.drawProjectedViewPreview();
