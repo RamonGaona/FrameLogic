@@ -2308,6 +2308,12 @@ export class GeneralPdfController {
 
   private updateViewOrientationPanel(sheet: GeneralSheetRuntime | null): void {
     const panel = this.viewOrientationPanel;
+    // The main toolbar can wrap onto multiple lines on small screens.
+    // Keep this contextual panel below the actual toolbar height.
+    const toolbar = this.workspace.overlay.firstElementChild;
+    if (toolbar instanceof HTMLElement) {
+      panel.style.top = `${toolbar.offsetHeight + 6}px`;
+    }
     // Render styling applies to normal, physical section and detail Views.
     // Orientation editing alone is restricted to regular assembly projections.
     const views = sheet?.views ?? [];
