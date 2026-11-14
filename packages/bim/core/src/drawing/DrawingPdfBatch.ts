@@ -35,6 +35,31 @@ export function pdfSheetDimensions(
   };
 }
 
+/** Uniform PDF mapping: never stretch a geometric dimension or circle when
+ * a landscape SVG page is exported onto portrait paper. The unavailable
+ * dimension becomes a real blank margin, preserving accurate print scale.
+ */
+export function pdfCanvasPlacement(
+  widthPt: number, heightPt: number,
+  canvasWidth = 1120, canvasHeight = 792,
+): {
+  readonly scalePtPerCanvasUnit: number;
+  readonly offsetXPt: number;
+  readonly offsetYPt: number;
+  readonly canvasUnitsPerPaperMm: number;
+} {
+  if (![widthPt, heightPt, canvasWidth, canvasHeight].every(
+    (value) => Number.isFinite(value) && value > 0,
+  )) throw new Error("Dimensiones de plano no válidas.");
+  const scalePtPerCanvasUnit = Math.min(widthPt / canvasWidth, heightPt / canvasHeight);
+  return {
+    scalePtPerCanvasUnit,
+    offsetXPt: (widthPt - canvasWidth * scalePtPerCanvasUnit) / 2,
+    offsetYPt: (heightPt - canvasHeight * scalePtPerCanvasUnit) / 2,
+    canvasUnitsPerPaperMm: (72 / 25.4) / scalePtPerCanvasUnit,
+  };
+}
+
 export function buildMultiPageDrawingPdf(
   pages: readonly DrawingPdfPage[],
 ): Uint8Array<ArrayBuffer> {
