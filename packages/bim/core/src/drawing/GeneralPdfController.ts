@@ -474,6 +474,7 @@ export class GeneralPdfController {
     window.removeEventListener("keydown", this.onDetailKeyDown, true);
     this.cancelCircularDetail(false);
     this.cancelProjectedView(false);
+    this.drawingRibbon.dispose();
     this.viewOrientationPanel.remove();
     this.workspace.svg.removeEventListener("pointerdown", this.onAutoDimensionDown, true);
     this.workspace.svg.removeEventListener("pointermove", this.onAutoDimensionMove, true);
