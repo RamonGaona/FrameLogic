@@ -1,4 +1,9 @@
 import * as THREE from "three";
+import type { DesignSceneController } from "../design/DesignSceneController";
+import {
+  AssemblyViewShadingRenderer,
+  type DrawingPlaneSnapshot,
+} from "./AssemblyViewShadingRenderer";
 
 import type {
   DrawingProfessionalController,
@@ -26,8 +31,11 @@ import type {
 
 export type DrawingViewRenderMode =
   | "BLACK_WHITE"
+  | "VISIBLE_HIDDEN"
   | "WIREFRAME"
   | "SOLID"
+  | "SOLID_EDGES"
+  | "MONOCHROME"
   | "TRANSPARENT";
 
 
@@ -41,6 +49,19 @@ interface DrawingSegmentRuntime {
   readonly hidden?: boolean;
 }
 
+
+interface AssemblyViewRuntime {
+  readonly id: string;
+  readonly kind: "ASSEMBLY";
+  readonly instanceIds: readonly string[];
+  readonly workPlane: DrawingPlaneSnapshot;
+  readonly width: number;
+  readonly height: number;
+  readonly offsetX?: number;
+  readonly offsetY?: number;
+  readonly geometrySignature?: string;
+  readonly automaticSupplement?: "SECTION" | "DETAIL";
+}
 
 interface DrawingSnapshotRuntime {
   readonly section: SectionViewDefinition;
@@ -90,6 +111,7 @@ interface Options {
   readonly drawingProduction: DrawingProductionController;
   readonly drawingProfessional: DrawingProfessionalController;
   readonly sectionDrawing: SectionDrawingController;
+  readonly designScene: DesignSceneController;
 }
 
 
@@ -108,9 +130,9 @@ const SHEET_MM: Record<string, readonly [number, number]> = {
 /**
  * Estilo de render por viewport para planos de sección/detalle.
  *
- * B/N conserva el HLR vectorial exacto. SOLID y TRANSPARENT añaden relleno
- * sobre los lazos realmente cortados por la sección; WIREFRAME conserva solo
- * lectura lineal. El estado se incorpora al snapshot profesional del proyecto.
+ * Each View retains its own style in the project snapshot. For standard
+ * assembly views, shaded faces are rendered from 3D geometry with a z-buffer
+ * rather than inventing surfaces from HLR lines. Edges remain vectorial.
  */
 export class DrawingViewRenderStyleController {
   private readonly workspace: WorkspaceRuntime;
@@ -123,6 +145,9 @@ export class DrawingViewRenderStyleController {
   private readonly baseRestoreSnapshot:
     (snapshot: DrawingProfessionalSnapshot) => void;
   private readonly styles = new Map<string, DrawingViewRenderMode>();
+  private readonly shading: AssemblyViewShadingRenderer;
+  private readonly toolbarLabel: HTMLSpanElement;
+  private readonly viewSelect: HTMLSelectElement | null;
   private readonly select: HTMLSelectElement;
   private selectedViewId: string | null = null;
   private disposed = false;
@@ -132,6 +157,10 @@ export class DrawingViewRenderStyleController {
     this.production = options.drawingProduction as unknown as ProductionRuntime;
     this.professional = options.drawingProfessional as unknown as ProfessionalRuntime;
     this.sectionDrawing = options.sectionDrawing;
+    this.shading = new AssemblyViewShadingRenderer(options.designScene);
+    this.viewSelect = this.workspace.overlay.querySelector<HTMLSelectElement>(
+      '[data-framelogic-view-select="true"]',
+    );
 
     this.baseRender = this.workspace.render.bind(options.drawingWorkspace);
     this.baseExportPdf = this.production.exportPdf.bind(options.drawingProduction);
@@ -140,7 +169,10 @@ export class DrawingViewRenderStyleController {
     this.baseRestoreSnapshot =
       this.professional.restoreProfessionalSnapshot.bind(options.drawingProfessional);
 
-    this.select = this.installToolbar();
+    const toolbarControls = this.installToolbar();
+    this.toolbarLabel = toolbarControls.label;
+    this.select = toolbarControls.select;
+    this.viewSelect?.addEventListener("change", this.handleViewSelectionChange);
     this.installPatches();
     this.workspace.svg.addEventListener("pointerdown", this.handlePointerDown, true);
   }
@@ -149,11 +181,13 @@ export class DrawingViewRenderStyleController {
     if (this.disposed) return;
     this.disposed = true;
     this.workspace.svg.removeEventListener("pointerdown", this.handlePointerDown, true);
+    this.viewSelect?.removeEventListener("change", this.handleViewSelectionChange);
+    this.shading.dispose();
     this.workspace.render = this.baseRender;
     this.production.exportPdf = this.baseExportPdf;
     this.professional.createProfessionalSnapshot = this.baseCreateSnapshot;
     this.professional.restoreProfessionalSnapshot = this.baseRestoreSnapshot;
-    this.select.previousElementSibling?.remove();
+    this.toolbarLabel.remove();
     this.select.remove();
     this.styles.clear();
   }
@@ -200,8 +234,10 @@ export class DrawingViewRenderStyleController {
     };
   }
 
-  private installToolbar(): HTMLSelectElement {
-    const toolbar = this.workspace.overlay.firstElementChild as HTMLElement | null;
+  private installToolbar(): { label: HTMLSpanElement; select: HTMLSelectElement } {
+    const toolbar = this.workspace.overlay.querySelector<HTMLElement>(
+      '[data-framelogic-view-orientation-controls="true"]',
+    ) ?? this.workspace.overlay.firstElementChild as HTMLElement | null;
     const label = document.createElement("span");
     label.textContent = "Render vista";
     label.style.opacity = "0.72";
@@ -217,10 +253,13 @@ export class DrawingViewRenderStyleController {
       font: "inherit",
     });
     for (const [value, text] of [
-      ["BLACK_WHITE", "Blanco y negro"],
-      ["SOLID", "Sólido"],
+      ["BLACK_WHITE", "Líneas visibles"],
+      ["VISIBLE_HIDDEN", "Visibles y ocultas"],
       ["WIREFRAME", "Alámbrico"],
-      ["TRANSPARENT", "Transparente"],
+      ["SOLID", "Sólido a color"],
+      ["SOLID_EDGES", "Sólido con aristas"],
+      ["MONOCHROME", "Sombreado gris"],
+      ["TRANSPARENT", "Transparente (sección)"],
     ] as const) {
       const option = document.createElement("option");
       option.value = value;
@@ -244,14 +283,20 @@ export class DrawingViewRenderStyleController {
         toolbar.append(label, select);
       }
     }
-    return select;
+    return { label, select };
   }
+
+  private readonly handleViewSelectionChange = (): void => {
+    this.selectedViewId = this.viewSelect?.value || null;
+    this.syncSelect();
+  };
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
     const target = event.target instanceof Element
       ? event.target.closest<SVGElement>("[data-framelogic-view-id]")
       : null;
-    const viewId = target?.getAttribute("data-framelogic-view-id");
+    const viewId = this.viewSelect?.value
+      || target?.getAttribute("data-framelogic-view-id");
     if (!viewId) return;
     this.selectedViewId = viewId;
     this.syncSelect();
@@ -260,10 +305,12 @@ export class DrawingViewRenderStyleController {
   private activeViewId(): string | null {
     const sheet = this.production.getActiveSheet();
     if (!sheet) return null;
-    if (
-      this.selectedViewId
-      && sheet.views.some((view) => view.id === this.selectedViewId)
-    ) {
+    const fromOrientation = this.viewSelect?.value;
+    if (fromOrientation && sheet.views.some((view) => view.id === fromOrientation)) {
+      this.selectedViewId = fromOrientation;
+      return fromOrientation;
+    }
+    if (this.selectedViewId && sheet.views.some((view) => view.id === this.selectedViewId)) {
       return this.selectedViewId;
     }
     const primary =
@@ -535,7 +582,7 @@ export class DrawingViewRenderStyleController {
 
 
 function isRenderMode(value: string): value is DrawingViewRenderMode {
-  return ["BLACK_WHITE", "WIREFRAME", "SOLID", "TRANSPARENT"].includes(value);
+  return ["BLACK_WHITE", "VISIBLE_HIDDEN", "WIREFRAME", "SOLID", "SOLID_EDGES", "MONOCHROME", "TRANSPARENT"].includes(value);
 }
 
 
