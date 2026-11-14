@@ -803,22 +803,44 @@ export class GeneralPdfController {
       (station.yMin + station.yMax) / 2, width, height);
   }
 
+  /** Right-handed view basis; arbitrary origin does not alter normalized 2D linework. */
+  private createOrientedWorkPlane(
+    original: CadWorkPlaneState,
+    basis: AssemblyViewBasis,
+  ): CadWorkPlaneState {
+    const vector = (p: { readonly x: number; readonly y: number; readonly z: number }) =>
+      new THREE.Vector3(p.x, p.y, p.z);
+    return {
+      mode: original.mode, enabled: true, origin: new THREE.Vector3(),
+      xAxis: vector(basis.xAxis),
+      yAxis: vector(basis.yAxis),
+      normal: vector(basis.normal),
+    };
+  }
+
+  private orientationModeLabel(mode: AssemblyViewOrientationMode): string {
+    return ASSEMBLY_VIEW_ORIENTATION_OPTIONS.find(([key]) => key === mode)?.[1] ?? mode;
+  }
+
   sendAssembly(request: GeneralPdfRequest): boolean {
     if (this.disposed) return false;
-    if (!request.workPlane.enabled) {
-      window.alert(
-        "Activa un WorkPlane antes de enviar el ensamble a PDF. La vista se orienta con los ejes X/Y de ese plano.",
-      );
-      return false;
-    }
     if (request.instanceIds.length < 1) {
       window.alert("El ensamble no contiene piezas.");
       return false;
     }
 
+    // The old «Enviar a PDF» copied the active WorkPlane's projected camera
+    // even for a long beam aligned with the world's X axis. That is why it
+    // looked diagonal in Paper Space. Default to the assembly's own frame;
+    // if geometry does not define a trustworthy long axis, use world FRONT.
+    const samples = this.collectAutomaticViewOrientationPoints(request.instanceIds);
+    const own = resolveAssemblyViewBasis("LONGITUDINAL", samples);
+    const fallback = resolveAssemblyViewBasis("WORLD_FRONT", [])!;
+    const orientationMode: AssemblyViewOrientationMode = own ? "LONGITUDINAL" : "WORLD_FRONT";
+    const plane = this.createOrientedWorkPlane(request.workPlane, own ?? fallback);
     const geometry = this.buildPlanGeometry(
       request.instanceIds,
-      request.workPlane,
+      plane,
     );
     if (!geometry) {
       window.alert(
@@ -873,9 +895,13 @@ export class GeneralPdfController {
     }
 
     const view = this.createAssemblyView(
-      request,
+      { ...request, workPlane: plane },
       geometry,
     );
+    view.originalWorkPlane = snapshotWorkPlane(request.workPlane.enabled
+      ? request.workPlane : plane);
+    view.orientationMode = orientationMode;
+    view.orientationLabel = this.orientationModeLabel(orientationMode);
     sheet.views.push(view);
     this.selectedAssemblyViewId = view.id;
     const layout = this.professional.ensureViewLayout(
