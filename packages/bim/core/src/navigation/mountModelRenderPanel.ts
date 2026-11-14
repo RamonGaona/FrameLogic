@@ -14,5 +14,14 @@ export function mountModelRenderPanel(
     zIndex: "2147481500",
     pointerEvents: "auto",
   });
+  panel.dataset["framelogicModelRenderPanel"] = "true";
+  // Model Space controls must never float on top of a Paper Space View.
+  if (!document.getElementById("framelogic-model-render-visibility")) {
+    const rule = document.createElement("style");
+    rule.id = "framelogic-model-render-visibility";
+    rule.textContent = `body:has([data-framelogic-drawing-workspace="true"][style*="display: flex"]) 
+      [data-framelogic-model-render-panel="true"] { display: none !important; }`;
+    document.head.append(rule);
+  }
   body.appendChild(panel);
 }
