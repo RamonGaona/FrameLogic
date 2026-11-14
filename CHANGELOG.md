@@ -12,6 +12,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.160 — 2026-11-14 (en revisión)
+
+### Cotas de taller — selección, eliminación fiable y edición de puntos de referencia
+
+- Una cota STEP seleccionada muestra **dos puntos amarillos A/B** donde parten las líneas testigo, tomados de la proyección de las referencias geométricas originales. Las cotas de diámetro muestran un centro informativo; la reasignación de diámetros continúa pendiente.
+- **Eliminar cota** aparece en el panel contextual cuando hay una cota STEP seleccionada. Es una acción explícita independiente del foco del teclado. Supr/Backspace funciona al seleccionar una cota en el SVG; no altera documentos de otras Views.
+- Los grips A/B de cotas lineales se pueden arrastrar a **extremos de aristas proyectadas**, con tolerancia de SNAP. El cambio se conserva como override de la View, la cota vuelve a medirse desde sus dos puntos en milímetros y el modelo STEP permanece intacto.
+- El botón **Restaurar puntos** recupera las dos referencias originales. Las marcas y botones de edición no se incluyen en el PDF exportado.
+- Nuevas pruebas de selección geométrica de extremos, recálculo de longitud y supresión individual.
+- **Pendiente:** prueba de interacción visual en Firefox/Chrome y Undo/Redo completo de estas ediciones.
+
+---
+
 ## v0.1.159 — 2026-11-14 (correcciones Paper Space)
 
 - **Selector de hoja sin parpadeo:** `DrawingExperienceController` deja de reemplazar las opciones del selector PDF que pertenece a `UnifiedPdfNavigationController`. Se elimina el conflicto entre los dos intervalos de sincronización, conservando la navegación de secciones cuando no existe selector unificado.
