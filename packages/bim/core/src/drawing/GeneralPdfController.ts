@@ -1185,7 +1185,7 @@ export class GeneralPdfController {
     if (!point) return;
     for (let index = sheet.views.length - 1; index >= 0; index--) {
       const view = sheet.views[index];
-      if (!view || (this.isAssemblyView(view) && view.automaticSupplement)) continue;
+      if (!view) continue;
       const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
       if (point.x < layout.x || point.x > layout.x + layout.width
         || point.y < layout.y || point.y > layout.y + layout.height) continue;
@@ -1199,8 +1199,9 @@ export class GeneralPdfController {
 
   private updateViewOrientationPanel(sheet: GeneralSheetRuntime | null): void {
     const panel = this.viewOrientationPanel;
-    const views = sheet?.views.filter((view) =>
-      !this.isAssemblyView(view) || !view.automaticSupplement) ?? [];
+    // Render styling applies to normal, physical section and detail Views.
+    // Orientation editing alone is restricted to regular assembly projections.
+    const views = sheet?.views ?? [];
     if (views.length === 0) {
       panel.style.display = "none";
       return;
@@ -1232,7 +1233,8 @@ export class GeneralPdfController {
     if (modeSelect.value !== expected) modeSelect.value = expected;
     viewSelect.disabled = this.orientationChangeInProgress;
     // The 3D assembly orientation choices do not apply to a section View.
-    modeSelect.disabled = this.orientationChangeInProgress || !this.isAssemblyView(selected);
+    modeSelect.disabled = this.orientationChangeInProgress
+      || !this.isAssemblyView(selected) || Boolean(selected.automaticSupplement);
   }
 
   private async changeSelectedPdfViewOrientation(
