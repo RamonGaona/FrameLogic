@@ -181,6 +181,7 @@ interface GeneralSheetRuntime extends Omit<SheetState, "views"> {
 interface ProductionRuntime {
   readonly sheets: Map<string, GeneralSheetRuntime>;
   getActiveSheet(): GeneralSheetRuntime | null;
+  syncActiveSheetToolbar(): void;
 }
 
 interface DrawingDocumentRuntime {
@@ -483,12 +484,14 @@ export class GeneralPdfController {
       const opened = drawingWorkspace.openActiveSection();
       if (!opened) return false;
       this.workspace.title.textContent = `PDF · ${this.sheetName(sheetId, sheet)}`;
+      this.production.syncActiveSheetToolbar();
       this.workspace.render();
       this.lastTreeSignature = "";
       return true;
     }
 
     this.openSheetWithoutSection(sheetId, sheet);
+    this.production.syncActiveSheetToolbar();
     return true;
   }
 
