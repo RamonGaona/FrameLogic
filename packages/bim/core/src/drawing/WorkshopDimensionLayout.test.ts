@@ -48,6 +48,29 @@ describe("workshop dimension paper placement", () => {
     expect(changed.placed.some((p) => p.key === other)).toBe(false);
     expect(changed.placed.find((p) => p.key === key)!.lines).toHaveLength(4);
   });
+  it("moves a dimension line without changing its original geometric anchor", () => {
+    const original = layoutWorkshopDimensions(dimensions, frame).placed;
+    const horizontalKey = workshopDimensionKey(dimensions[0]!);
+    const verticalKey = workshopDimensionKey(dimensions[1]!);
+    const changed = layoutWorkshopDimensions(dimensions, frame, {
+      [horizontalKey]: { lineDy: -12 },
+      [verticalKey]: { lineDx: 14 },
+    }).placed;
+    const originalHorizontal = original.find((d) => d.key === horizontalKey)!;
+    const movedHorizontal = changed.find((d) => d.key === horizontalKey)!;
+    const originalVertical = original.find((d) => d.key === verticalKey)!;
+    const movedVertical = changed.find((d) => d.key === verticalKey)!;
+    expect(movedHorizontal.labelY).toBeCloseTo(originalHorizontal.labelY - 12);
+    expect(movedVertical.labelX).toBeCloseTo(originalVertical.labelX + 14);
+    // Witness lines remain anchored at exact projected STEP points.
+    expect(movedHorizontal.lines[0]?.x1).toBe(originalHorizontal.lines[0]?.x1);
+    expect(movedHorizontal.lines[0]?.y1).toBe(originalHorizontal.lines[0]?.y1);
+    expect(movedVertical.lines[0]?.x1).toBe(originalVertical.lines[0]?.x1);
+    expect(movedVertical.lines[0]?.y1).toBe(originalVertical.lines[0]?.y1);
+    expect(movedHorizontal.label).toBe("3000");
+    expect(movedVertical.label).toBe(originalVertical.label);
+  });
+
   it("omits crowded labels rather than overlapping text in the same gutter", () => {
     const many: EngineeringDimensionInstruction[] = Array.from({ length: 9 }, (_, i) => ({
       mode: "HORIZONTAL" as const,

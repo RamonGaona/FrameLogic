@@ -12,6 +12,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.159 — 2026-11-14 (correcciones Paper Space)
+
+- **Selector de hoja sin parpadeo:** `DrawingExperienceController` deja de reemplazar las opciones del selector PDF que pertenece a `UnifiedPdfNavigationController`. Se elimina el conflicto entre los dos intervalos de sincronización, conservando la navegación de secciones cuando no existe selector unificado.
+- **Cotas STEP seleccionables:** clic sobre texto **o cerca de líneas** de cualquier View de ensamble, no solo las creadas con «Vistas auto». Resaltado visual de la cota elegida sin alterar los colores exportados al PDF.
+- **Mover cotas individualmente:** arrastrar el texto desplaza su etiqueta; arrastrar la línea desplaza la cota y prolonga sus líneas testigo desde los puntos originales. El valor físico y sus anclajes STEP no cambian.
+- **Eliminar una cota:** usar **Supr**, **Backspace**, botón **Borrar** o clic derecho en la cota seleccionada. Se conserva una supresión por clave en `dimensionOverrides` de esa View para no regenerar involuntariamente la cota. «Restablecer cotas» permite recuperarla.
+- **Compatibilidad:** anotaciones y cotas manuales continúan con su selección/edición existentes; otras Views no se modifican. Añadidas regresiones para pertenencia del desplegable, selección de líneas y movimiento de líneas/anclajes.
+
+**Pendiente de validación visual:** interacción real en Firefox/Chrome, zoom extremo y cotas superpuestas; Undo/Redo de cotas automáticas sigue pendiente de revisión.
+
+---
+
 ## v0.1.158 — 2026-11-14
 
 ### Corrección del cambio de orientación de Views en Paper Space
