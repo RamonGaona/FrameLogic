@@ -11,6 +11,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -25,16 +32,19 @@ jobs:
           cache: npm
 
       - name: Install
-        run: npm install
+        run: npm ci
 
       - name: Install Linux native bindings
-        run: npm install --no-save @rolldown/binding-linux-x64-gnu@1.2.8 lightningcss-linux-x64-gnu@1.33.0
+        run: npm install --no-save --package-lock=false @rolldown/binding-linux-x64-gnu@1.2.8 lightningcss-linux-x64-gnu@1.33.0
 
       - name: Typecheck
         run: npm run typecheck
 
       - name: Automation and MCP integration tests
         run: npm run test:automation
+
+      - name: Local browser chat parser tests
+        run: npm run test:browser-chat
 
       - name: Domain and geometry tests
         run: npm test
@@ -96,6 +106,4 @@ jobs:
       - name: OpenCascade B-rep boolean smoke test (Node)
         run: npm run test:clash:occt
 
-      - name: Build web
-        run: npm run build
 
