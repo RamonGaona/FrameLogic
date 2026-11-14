@@ -518,7 +518,6 @@ export class DrawingProfessionalController {
     });
 
     const styleButton = this.makeButton("DIMSTYLE", "Editar estilo de cotas");
-    const detailButton = this.makeButton("Detalle", "Crear detalle desde dos puntos");
     const cloudButton = this.makeButton("Nube rev", "Dibujar nube de revisión");
     const managerButton = this.makeButton("Secciones", "Administrador de secciones");
     const hiddenButton = this.makeButton("Ocultas", "Mostrar/ocultar líneas ocultas en la vista activa");
@@ -526,10 +525,6 @@ export class DrawingProfessionalController {
     const dxfButton = this.makeButton("DXF", "Exportar hoja como DXF 2D");
 
     styleButton.addEventListener("click", () => this.editDimensionStyle(unitSelect, precisionSelect));
-    detailButton.addEventListener("click", () => {
-      this.detailCapture = { first: null };
-      this.workspace.setStatus("DETALLE: selecciona centro y luego radio.");
-    });
     cloudButton.addEventListener("click", () => {
       this.revisionCloudStart = null;
       this.workspace.setStatus("NUBE REV: selecciona dos esquinas.");
@@ -549,7 +544,7 @@ export class DrawingProfessionalController {
     svgButton.addEventListener("click", () => this.exportSvg());
     dxfButton.addEventListener("click", () => this.exportDxf());
 
-    for (const control of [snapSelect, unitSelect, precisionSelect, projectionSelect, arrangeButton, styleButton, detailButton, cloudButton, managerButton, hiddenButton, svgButton, dxfButton]) {
+    for (const control of [snapSelect, unitSelect, precisionSelect, projectionSelect, arrangeButton, styleButton, cloudButton, managerButton, hiddenButton, svgButton, dxfButton]) {
       toolbar.append(control);
       this.controls.push(control);
     }
