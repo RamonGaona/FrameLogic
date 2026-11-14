@@ -59,10 +59,13 @@ const WORLD: Readonly<Record<"WORLD_FRONT" | "WORLD_TOP" | "WORLD_RIGHT" | "WORL
 };
 
 /**
- * A nearly X/Y/Z-aligned beam must be exactly horizontal on paper.
- * Small projected skew from plates or unequal mesh sampling must not rotate
- * an otherwise world-axis-aligned long member. Rotated assemblies keep their
- * genuine own-axis PCA basis instead.
+ * Local projections always use the true geometry-derived longitudinal axis.
+ * In v0.1.149 an 8-degree snap to XYZ incorrectly made LOCAL_TOP identical to
+ * WORLD_TOP for slightly rotated beams (e.g. a 5-7 degree truss). World
+ * alignment belongs ONLY to explicit WORLD_* options; never override a local
+ * direction because it happens to be close to a global axis.
+ *
+ * PCA determines view direction, not manufacturing datums or dimensions.
  */
 export function resolveAssemblyViewBasis(
   mode: AssemblyViewOrientationMode,
@@ -72,14 +75,7 @@ export function resolveAssemblyViewBasis(
   if (mode in WORLD) return WORLD[mode as keyof typeof WORLD];
   const estimated = inferAssemblyLongitudinalFrame(points);
   if (!estimated) return null;
-  let x = estimated.xAxis;
-  const snapThreshold = Math.cos(8 * Math.PI / 180);
-  for (const axis of [v(1, 0, 0), v(0, 1, 0), v(0, 0, 1)]) {
-    if (Math.abs(dot(x, axis)) >= snapThreshold) {
-      x = multiply(axis, dot(x, axis) < 0 ? -1 : 1);
-      break;
-    }
-  }
+  const x = estimated.xAxis;
   const preferredUp = Math.abs(x.z) < 0.95 ? v(0, 0, 1) : v(0, 1, 0);
   const y = normalize(add(preferredUp, multiply(x, -dot(preferredUp, x))));
   const normal = normalize(cross(x, y));
