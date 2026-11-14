@@ -6,6 +6,10 @@ import {
   type DetailCircle, type DetailPaperTransform,
 } from "./DrawingDetailViewPlanner";
 import { planSmartAssemblyViews, type AutomaticViewCode } from "./AutoDrawingPlanner";
+import {
+  pickAutomaticDimensionStroke,
+  type AutoDimensionIdentity, type AutoDimensionStroke,
+} from "./DrawingAutoDimensionSelection";
 import { ASSEMBLY_VIEW_ORIENTATION_OPTIONS, resolveAssemblyViewBasis,
   type AssemblyViewOrientationMode, type AssemblyViewBasis } from "./AssemblyViewOrientationControls";
 import { DrawingViewOrientationQueue } from "./DrawingViewOrientationQueue";
@@ -365,6 +369,7 @@ export class GeneralPdfController {
     readonly originalHeight: number;
     readonly action: "MOVE" | "RESIZE";
   } | null = null;
+  private selectedAutoDimension: AutoDimensionIdentity | null = null;
   private dimensionDrag: {
     readonly viewId: string;
     readonly key: string;
@@ -414,6 +419,8 @@ export class GeneralPdfController {
     this.workspace.svg.addEventListener("pointerup", this.onAutoDimensionUp, true);
     this.workspace.svg.addEventListener("pointercancel", this.onAutoDimensionUp, true);
     this.workspace.svg.addEventListener("contextmenu", this.onAutoDimensionContextMenu, true);
+    this.workspace.overlay.addEventListener("click", this.onAutoDimensionDeleteClick, true);
+    window.addEventListener("keydown", this.onAutoDimensionKeyDown, true);
     this.syncSectionSheets();
     this.timer = window.setInterval(() => {
       if (this.pendingDetail && this.workspace.overlay.style.display === "none") {
@@ -459,6 +466,9 @@ export class GeneralPdfController {
     this.workspace.svg.removeEventListener("pointerup", this.onAutoDimensionUp, true);
     this.workspace.svg.removeEventListener("pointercancel", this.onAutoDimensionUp, true);
     this.workspace.svg.removeEventListener("contextmenu", this.onAutoDimensionContextMenu, true);
+    this.workspace.overlay.removeEventListener("click", this.onAutoDimensionDeleteClick, true);
+    window.removeEventListener("keydown", this.onAutoDimensionKeyDown, true);
+    this.selectedAutoDimension = null;
     this.dimensionDrag = null;
     this.workspace.render = this.baseWorkspaceRender;
     this.workspace.overlay
@@ -2765,8 +2775,14 @@ export class GeneralPdfController {
       originX, originY, drawnWidth, drawnHeight, scale,
     }, view.dimensionOverrides);
     for (const dimension of result.placed) {
+      const selected = this.selectedAutoDimension?.viewId === view.id
+        && this.selectedAutoDimension.key === dimension.key;
       for (const line of dimension.lines) {
-        this.appendDimensionLine(line.x1, line.y1, line.x2, line.y2);
+        const element = this.appendDimensionLine(line.x1, line.y1, line.x2, line.y2);
+        element.dataset["framelogicAutoDimView"] = view.id;
+        element.dataset["framelogicAutoDimKey"] = dimension.key;
+        // CSS-only highlight: PDF export reads the unchanged SVG stroke attributes.
+        if (selected) element.style.stroke = "#d47913";
       }
       // Left-aligned text makes the SVG renderer and simple PDF export
       // agree: that exporter does not support SVG text-anchor="middle".
@@ -2777,9 +2793,13 @@ export class GeneralPdfController {
       );
       text.setAttribute("data-framelogic-auto-dim-view", view.id);
       text.setAttribute("data-framelogic-auto-dim-key", dimension.key);
-      text.setAttribute("aria-label", `Cota ${dimension.label} mm. Arrastra para reubicar, clic derecho para ocultar.`);
+      text.setAttribute("aria-label", `Cota ${dimension.label} mm. Clic para seleccionar, arrastra para mover texto y Supr/Borrar para eliminarla.`);
       text.style.cursor = "move";
       text.style.pointerEvents = "auto";
+      if (selected) {
+        text.style.fill = "#d47913";
+        text.style.fontWeight = "bold";
+      }
     }
     if (dimensions.length) {
       this.appendText(layout.x + 5, layout.y + 15,
@@ -2791,13 +2811,14 @@ export class GeneralPdfController {
     }
   }
 
-  private appendDimensionLine(x1: number, y1: number, x2: number, y2: number): void {
+  private appendDimensionLine(x1: number, y1: number, x2: number, y2: number): SVGLineElement {
     const line = document.createElementNS(SVG_NS, "line");
     line.setAttribute("x1", String(x1)); line.setAttribute("y1", String(y1));
     line.setAttribute("x2", String(x2)); line.setAttribute("y2", String(y2));
     line.setAttribute("stroke", "#12567c"); line.setAttribute("stroke-width", "0.65");
     line.style.pointerEvents = "none";
     this.workspace.svg.append(line);
+    return line;
   }
 
 
@@ -2805,26 +2826,55 @@ export class GeneralPdfController {
     const sheetId = this.getActiveSheetId();
     const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
     const candidate = sheet?.views.find((v) => v.id === viewId);
-    return candidate && this.isAssemblyView(candidate) && candidate.automaticViewCode
-      ? candidate : null;
+    // Manual, projected and auto-generated assembly Views all own STEP dimensions.
+    // Restricting this to automaticViewCode made most real View cotas unselectable.
+    return candidate && this.isAssemblyView(candidate) ? candidate : null;
+  }
+
+  private pickAutomaticDimension(event: PointerEvent | MouseEvent): AutoDimensionIdentity | null {
+    const element = event.target instanceof Element ? event.target : null;
+    // Existing handwritten/manual dimension annotations retain their own selection.
+    if (element?.closest("[data-annotation-id]")) return null;
+    const direct = element?.closest<SVGElement>("[data-framelogic-auto-dim-key]");
+    const viewId = direct?.dataset["framelogicAutoDimView"];
+    const key = direct?.dataset["framelogicAutoDimKey"];
+    if (viewId && key) return { viewId, key };
+    const point = this.workspace.eventToSheetPoint(event);
+    if (!point) return null;
+    const strokes: AutoDimensionStroke[] = Array.from(
+      this.workspace.svg.querySelectorAll<SVGLineElement>("line[data-framelogic-auto-dim-key]"),
+    ).map((line) => ({
+      viewId: line.dataset["framelogicAutoDimView"] ?? "",
+      key: line.dataset["framelogicAutoDimKey"] ?? "",
+      x1: Number(line.getAttribute("x1")), y1: Number(line.getAttribute("y1")),
+      x2: Number(line.getAttribute("x2")), y2: Number(line.getAttribute("y2")),
+    }));
+    return pickAutomaticDimensionStroke(point, strokes);
   }
 
   private readonly onAutoDimensionDown = (event: PointerEvent): void => {
     if (event.button !== 0 || this.disposed) return;
-    const target = event.target instanceof Element
-      ? event.target.closest<SVGTextElement>("[data-framelogic-auto-dim-key]") : null;
-    const viewId = target?.getAttribute("data-framelogic-auto-dim-view");
-    const key = target?.getAttribute("data-framelogic-auto-dim-key");
+    // No interception while the user is placing manual dimensions, labels or text.
+    if ((this.workspace as unknown as { tool: string }).tool !== "SELECT") return;
+    const hit = this.pickAutomaticDimension(event);
+    if (!hit) {
+      this.selectedAutoDimension = null;
+      return;
+    }
     const start = this.workspace.eventToSheetPoint(event);
-    if (!viewId || !key || !start) return;
-    const view = this.findAutoDimensionView(viewId);
-    if (!view) return;
-    const previous = view.dimensionOverrides?.[key];
+    const view = this.findAutoDimensionView(hit.viewId);
+    if (!start || !view) return;
+    this.selectedAutoDimension = hit;
+    this.selectedAssemblyViewId = view.id;
+    const previous = view.dimensionOverrides?.[hit.key];
     this.dimensionDrag = {
-      viewId, key, pointerId: event.pointerId, start,
+      viewId: hit.viewId, key: hit.key, pointerId: event.pointerId, start,
       originalX: previous?.dx ?? 0, originalY: previous?.dy ?? 0,
     };
     try { this.workspace.svg.setPointerCapture(event.pointerId); } catch { /* device without capture */ }
+    this.workspace.render();
+    this.workspace.setStatus(
+      "COTA STEP seleccionada: arrastra para mover el texto; Supr o Borrar elimina solo esta cota. Esc deselecciona.");
     event.preventDefault();
     event.stopImmediatePropagation();
   };
@@ -2856,19 +2906,55 @@ export class GeneralPdfController {
     event.stopImmediatePropagation();
   };
 
-  private readonly onAutoDimensionContextMenu = (event: MouseEvent): void => {
-    const target = event.target instanceof Element
-      ? event.target.closest<SVGTextElement>("[data-framelogic-auto-dim-key]") : null;
-    const viewId = target?.getAttribute("data-framelogic-auto-dim-view");
-    const key = target?.getAttribute("data-framelogic-auto-dim-key");
-    const view = viewId ? this.findAutoDimensionView(viewId) : null;
-    if (!view || !key) return;
+  private hideSelectedAutoDimension(): void {
+    const selection = this.selectedAutoDimension;
+    const view = selection ? this.findAutoDimensionView(selection.viewId) : null;
+    if (!selection || !view) return;
     view.dimensionOverrides ??= {};
-    view.dimensionOverrides[key] = { ...view.dimensionOverrides[key], hidden: true };
+    view.dimensionOverrides[selection.key] = {
+      ...view.dimensionOverrides[selection.key], hidden: true,
+    };
+    this.selectedAutoDimension = null;
+    this.dimensionDrag = null;
     this.workspace.render();
-    this.workspace.setStatus("COTA STEP ocultada. Usa 'Restablecer cotas' para recuperarla.");
+    this.workspace.setStatus(
+      "COTA STEP eliminada solo de esta View. La medida original no cambia; Restablecer cotas la recupera.");
+  }
+
+  private readonly onAutoDimensionContextMenu = (event: MouseEvent): void => {
+    const hit = this.pickAutomaticDimension(event);
+    if (!hit || !this.findAutoDimensionView(hit.viewId)) return;
+    this.selectedAutoDimension = hit;
+    this.hideSelectedAutoDimension();
     event.preventDefault();
     event.stopImmediatePropagation();
+  };
+
+  private readonly onAutoDimensionDeleteClick = (event: MouseEvent): void => {
+    if (!this.selectedAutoDimension) return;
+    const button = event.target instanceof Element ? event.target.closest("button") : null;
+    if (button?.textContent?.trim() !== "Borrar") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    this.hideSelectedAutoDimension();
+  };
+
+  private readonly onAutoDimensionKeyDown = (event: KeyboardEvent): void => {
+    if (!this.selectedAutoDimension || this.workspace.overlay.style.display === "none") return;
+    if (event.target instanceof Element
+      && event.target.closest("input, textarea, select, [contenteditable]")) return;
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.hideSelectedAutoDimension();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.selectedAutoDimension = null;
+      this.dimensionDrag = null;
+      this.workspace.render();
+      this.workspace.setStatus("COTA STEP: selección cancelada.");
+    }
   };
 
   private renderAssemblyMarks(
