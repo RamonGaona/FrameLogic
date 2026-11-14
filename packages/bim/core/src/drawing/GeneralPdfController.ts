@@ -9,6 +9,12 @@ import { planSectionStations, cropAssemblyDetail, planSectionDetailSheetSlots,
   type SectionStation, type CroppedAssemblyDetail } from "./AssemblySectionDetailPlanner";
 import type { EngineeringDimensionInstruction } from "./EngineeringAutoDimensionPlanner";
 import {
+  DRAWING_VIEW_SCALE_PRESETS, DRAWING_VIEW_CUSTOM_SCALE,
+  drawingViewScaleSelection, formatDrawingViewScale, modelToPaperScale,
+  clipDrawingSegmentToView,
+  parseDrawingViewScale,
+} from "./DrawingViewScale";
+import {
   placeProjectedViewport, projectedViewLabel, projectedViewportOverlaps,
   projectedViewportSize, projectionDirectionFromPointer,
   resolveProjectedViewBasis,
@@ -1175,6 +1181,7 @@ export class GeneralPdfController {
     panel.dataset["framelogicViewOrientationControls"] = "true";
     Object.assign(panel.style, {
       position: "absolute", top: "58px", right: "18px", zIndex: "88",
+      maxWidth: "calc(100% - 305px)", minWidth: "220px",
       display: "none", alignItems: "center", flexWrap: "wrap", gap: "7px",
       padding: "7px 9px", borderRadius: "5px",
       background: "rgba(18,29,38,0.96)", color: "#e3f2f8",
@@ -1219,11 +1226,166 @@ export class GeneralPdfController {
     project.style.cssText = "padding:5px 9px;border:1px solid #73a8be;border-radius:4px;background:#244f65;color:#fff;font:inherit;cursor:pointer;";
     project.addEventListener("click", () => this.toggleProjectedView());
     this.projectionButton = project;
-    panel.append(label, viewSelect, modeSelect, project);
+    const scale = this.createViewScaleEditor();
+    panel.append(label, viewSelect, modeSelect, project, scale);
     this.workspace.overlay.append(panel);
     return panel;
   }
 
+
+  /**
+   * A scale editor exists in the selected-View toolbar and independently in
+   * EVERY VIEWS tree row. The shared target is always a View ID, never a sheet.
+   */
+  private createViewScaleEditor(fixedViewId?: string): HTMLDivElement {
+    const root = document.createElement("div");
+    root.dataset["framelogicViewScaleEditor"] = "true";
+    if (fixedViewId) root.dataset["framelogicScaleViewId"] = fixedViewId;
+    root.style.cssText = fixedViewId
+      ? "display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:4px 8px 7px 26px;"
+      : "display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding-left:7px;border-left:1px solid #547183;";
+    const caption = document.createElement("span");
+    caption.textContent = fixedViewId ? "Escala" : "Escala de View";
+    caption.title = "Escala individual de esta View; no modifica las demás Views ni la escala de la hoja";
+    caption.style.cssText = "color:#bcd2dd;font-weight:600;white-space:nowrap;";
+    const select = document.createElement("select");
+    select.dataset["framelogicViewScale"] = "true";
+    select.title = "Escala de la View individual: AUTO, normalizada o personalizada";
+    const options: Array<readonly [string, string]> = [
+      ["AUTO", "AUTO"],
+      ...DRAWING_VIEW_SCALE_PRESETS.map((denominator) =>
+        [String(denominator), formatDrawingViewScale(denominator)] as const),
+      [DRAWING_VIEW_CUSTOM_SCALE, "Personalizada…"],
+    ];
+    for (const [value, label] of options) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      select.append(option);
+    }
+    select.style.cssText = "padding:4px 5px;max-width:128px;border-radius:4px;"
+      + "border:1px solid #5e8496;background:#1b303e;color:#f0f7fa;font:inherit;";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.inputMode = "decimal";
+    input.autocomplete = "off";
+    input.dataset["framelogicViewScaleCustom"] = "true";
+    input.title = "Denominador personalizado: 15, 1:15 o 1:17,5. Pulsa Enter o Aplicar.";
+    input.placeholder = "1:15";
+    input.setAttribute("aria-label", "Escala personalizada de la View (1:N)");
+    input.style.cssText = "display:none;width:68px;min-width:0;padding:4px;"
+      + "border-radius:4px;border:1px solid #5e8496;background:#1b303e;color:#f0f7fa;font:inherit;";
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.textContent = "Aplicar";
+    apply.dataset["framelogicApplyViewScale"] = "true";
+    apply.title = "Aplicar únicamente a esta View";
+    apply.style.cssText = "display:none;padding:4px 6px;border:1px solid #73a8be;"
+      + "border-radius:4px;background:#244f65;color:white;cursor:pointer;font:inherit;";
+    const getViewId = (): string | null => fixedViewId ?? this.selectedAssemblyViewId;
+    const commit = (value: string): void => {
+      const viewId = getViewId();
+      if (viewId) this.applyIndividualViewScale(viewId, value);
+    };
+    select.addEventListener("change", () => {
+      if (select.value === DRAWING_VIEW_CUSTOM_SCALE) {
+        input.style.display = "inline-block";
+        apply.style.display = "inline-block";
+        if (!input.value.trim() || input.value.trim() === "AUTO") {
+          const viewId = getViewId();
+          const sheetId = this.getActiveSheetId();
+          const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+          const index = sheet?.views.findIndex((view) => view.id === viewId) ?? -1;
+          const view = index >= 0 ? sheet?.views[index] : null;
+          const denominator = view ? this.professional.ensureViewLayout(
+            view.id, view.sectionId, index).scaleDenominator : null;
+          input.value = denominator === null ? "1:15" : formatDrawingViewScale(denominator);
+        }
+        input.focus();
+      } else {
+        commit(select.value);
+      }
+    });
+    apply.addEventListener("click", () => commit(input.value));
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        commit(input.value);
+      }
+    });
+    root.append(caption, select, input, apply);
+    return root;
+  }
+
+  private syncViewScaleEditor(
+    editor: HTMLDivElement, viewId: string, sheet: GeneralSheetRuntime,
+  ): void {
+    const index = sheet.views.findIndex((view) => view.id === viewId);
+    if (index < 0) return;
+    const view = sheet.views[index]!;
+    const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
+    const select = editor.querySelector<HTMLSelectElement>(
+      '[data-framelogic-view-scale="true"]')!;
+    const input = editor.querySelector<HTMLInputElement>(
+      '[data-framelogic-view-scale-custom="true"]')!;
+    const apply = editor.querySelector<HTMLButtonElement>(
+      '[data-framelogic-apply-view-scale="true"]')!;
+    const option = drawingViewScaleSelection(layout.scaleDenominator);
+    const selectionChanged = editor.dataset["currentViewId"] !== viewId;
+    editor.dataset["currentViewId"] = viewId;
+    if (selectionChanged || select.value !== option) select.value = option;
+    const isCustom = select.value === DRAWING_VIEW_CUSTOM_SCALE;
+    input.style.display = isCustom ? "inline-block" : "none";
+    apply.style.display = isCustom ? "inline-block" : "none";
+    // Repeated re-renders must never discard an unfinished custom value.
+    if (selectionChanged || document.activeElement !== input) {
+      const current = layout.scaleDenominator;
+      input.value = current === null ? "" : formatDrawingViewScale(current);
+    }
+    const disabled = this.orientationChangeInProgress
+      || this.projectionInProgress || Boolean(this.pendingProjection);
+    select.disabled = disabled;
+    input.disabled = disabled;
+    apply.disabled = disabled;
+  }
+
+  private applyIndividualViewScale(viewId: string, input: string): void {
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    const index = sheet?.views.findIndex((view) => view.id === viewId) ?? -1;
+    if (!sheet || index < 0) return;
+    const denominator = parseDrawingViewScale(input);
+    if (denominator === undefined) {
+      this.workspace.setStatus(
+        "ESCALA VIEW: valor inválido. Escribe AUTO, 1:20 o un denominador entre 1 y 1000000.",
+      );
+      return;
+    }
+    const view = sheet.views[index]!;
+    const layout = this.professional.ensureViewLayout(view.id, view.sectionId, index);
+    if (layout.scaleDenominator === denominator) return;
+    layout.scaleDenominator = denominator;
+    this.lastTreeSignature = "";
+    // Do not mutate sheet.scaleDenominator or any other View's layout.
+    this.workspace.render();
+    const name = this.isAssemblyView(view) ? view.assemblyName
+      : this.findSection(view.sectionId)?.name ?? "Sección";
+    let warning = "";
+    if (denominator !== null && this.isAssemblyView(view)) {
+      const paddingX = view.automaticViewCode || view.automaticSupplement ? 90 : 20;
+      const paddingY = view.automaticViewCode || view.automaticSupplement ? 100 : 34;
+      const displayScale = this.technicalScale(sheet, denominator);
+      if (view.width * displayScale > layout.width - paddingX
+        || view.height * displayScale > layout.height - paddingY) {
+        warning = " La geometría excede el marco: amplía esta View o elige una escala menor.";
+      }
+    }
+    this.workspace.setStatus(
+      `ESCALA: View ${index + 1} · ${name} → ${formatDrawingViewScale(denominator)}.`
+      + " Las otras Views, las cotas reales y el modelo 3D no cambiaron." + warning,
+    );
+  }
 
   /** Inventor/Advance Steel-style projected drawing: select the source View,
    * move outside its frame, choose a side/corner, and click to place. */
@@ -1561,6 +1723,10 @@ export class GeneralPdfController {
       this.projectionButton.style.background = this.pendingProjection ? "#775128" : "#244f65";
     }
     viewSelect.disabled = this.orientationChangeInProgress || Boolean(this.pendingProjection);
+    const scaleEditor = panel.querySelector<HTMLDivElement>(
+      '[data-framelogic-view-scale-editor="true"]',
+    );
+    if (scaleEditor && sheet) this.syncViewScaleEditor(scaleEditor, selected.id, sheet);
   }
 
   private async changeSelectedPdfViewOrientation(
@@ -1758,10 +1924,19 @@ export class GeneralPdfController {
     const originY = layout.y + (automatic ? 60 : 20) + (innerHeight - drawnHeight) / 2;
 
     for (const [segmentIndex, segment] of view.segments.entries()) {
-      const x1 = originX + segment.x1 * scale;
-      const y1 = originY + drawnHeight - segment.y1 * scale;
-      const x2 = originX + segment.x2 * scale;
-      const y2 = originY + drawnHeight - segment.y2 * scale;
+      // An explicitly enlarged View is cropped at its frame: one View's
+      // geometry must never paint over a different View or the title block.
+      const clipped = clipDrawingSegmentToView({
+        x1: originX + segment.x1 * scale,
+        y1: originY + drawnHeight - segment.y1 * scale,
+        x2: originX + segment.x2 * scale,
+        y2: originY + drawnHeight - segment.y2 * scale,
+      }, {
+        x: layout.x + 2, y: layout.y + 19,
+        width: layout.width - 4, height: layout.height - 39,
+      });
+      if (!clipped) continue;
+      const { x1, y1, x2, y2 } = clipped;
       if (segment.hidden) {
         const line = document.createElementNS(SVG_NS, "line");
         line.setAttribute("x1", String(x1)); line.setAttribute("y1", String(y1));
@@ -2309,11 +2484,14 @@ export class GeneralPdfController {
     const width = 360;
     const height = 92;
     const revision = sheet.revisions.at(-1)?.code ?? "0";
-    const scale = sheet.views.some((v) => this.isAssemblyView(v) && v.automaticSupplement)
+    const viewScales = new Set(sheet.views.map((view, index) =>
+      formatDrawingViewScale(this.professional.ensureViewLayout(
+        view.id, view.sectionId, index).scaleDenominator)));
+    const scale = viewScales.size > 1
+      || sheet.views.some((v) => this.isAssemblyView(v) && v.automaticSupplement)
       ? "VARIAS"
-      : sheet.scaleDenominator === null
-      ? "AUTO"
-      : `1:${sheet.scaleDenominator}`;
+      : viewScales.values().next().value
+        ?? formatDrawingViewScale(sheet.scaleDenominator);
     this.appendRect(x, y, width, height, "white", "#111", 0.9);
     this.appendLine(x, y + 28, x + width, y + 28);
     this.appendLine(x + 238, y, x + 238, y + height);
@@ -2470,11 +2648,13 @@ export class GeneralPdfController {
     const paperHeight = sheet.orientation === "LANDSCAPE"
       ? rawHeight
       : rawWidth;
+    // The PDF exporter maps the full 1120×792 SVG canvas to the
+    // actual paper size. Margins affect placement, not physical scale.
     const pxPerMm = Math.min(
-      (SHEET_WIDTH - 84) / paperWidth,
-      (SHEET_HEIGHT - 84) / paperHeight,
+      SHEET_WIDTH / paperWidth,
+      SHEET_HEIGHT / paperHeight,
     );
-    return (1000 / Math.max(denominator, 1)) * pxPerMm;
+    return modelToPaperScale(denominator, pxPerMm) ?? 0;
   }
 
   private decorateViewTree(): void {
@@ -2505,13 +2685,19 @@ export class GeneralPdfController {
           this.sheetName(sheetId ?? "", sheet),
           ...sheet.views.map((view, index) =>
             this.isAssemblyView(view)
-              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}`
-              : `${index}:${view.id}:S:${view.sectionId}:${pieces.map((piece) => piece.id).join(",")}`,
+              ? `${index}:${view.id}:A:${view.assemblyId}:${view.instanceIds.join(",")}:${view.orientationLabel ?? ""}:${view.projectedDirection ?? ""}:${view.sourceViewId ?? ""}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`
+              : `${index}:${view.id}:S:${view.sectionId}:${pieces.map((piece) => piece.id).join(",")}:${this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator ?? "AUTO"}`,
           ),
         ].join("|")
       : "NO_ACTIVE_SHEET";
     if (signature === this.lastTreeSignature) return;
     this.lastTreeSignature = signature;
+    const previouslyOpen = new Map(
+      Array.from(tree.querySelectorAll<HTMLDetailsElement>(
+        'details[data-framelogic-view-row]',
+      )).map((details) => [details.dataset["framelogicViewRow"], details.open]),
+    );
+    const previousScroll = tree.scrollTop;
     tree.replaceChildren();
 
     if (!sheet) {
@@ -2530,7 +2716,8 @@ export class GeneralPdfController {
           ? sheet.views.findIndex((candidate) => candidate.id === view.sourceViewId) : -1;
         const block = this.createViewDetails(
           `View ${index + 1} · ${view.assemblyName}${view.orientationLabel
-            ? " · " + view.orientationLabel : ""}`,
+            ? " · " + view.orientationLabel : ""} · ${formatDrawingViewScale(
+              this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator)}`,
           view.projectedDirection
             ? `PROYECCIÓN · origen View ${parentIndex >= 0 ? parentIndex + 1 : "?"} · ${view.projectedStandard ?? "ISO E"} · ${view.instanceIds.length} piezas`
             : `ENSAMBLE/PIEZA · ${view.instanceIds.length} instancia${view.instanceIds.length === 1 ? "" : "s"}`,
@@ -2541,6 +2728,11 @@ export class GeneralPdfController {
         if (view.instanceIds.length < 1) {
           block.content.append(this.createEmptyRow("Sin instancias"));
         }
+        const editor = this.createViewScaleEditor(view.id);
+        block.content.prepend(editor);
+        this.syncViewScaleEditor(editor, view.id, sheet);
+        block.details.dataset["framelogicViewRow"] = view.id;
+        block.details.open = previouslyOpen.get(view.id) ?? true;
         this.bindTreeViewSelection(block.details, view.id, sheet);
         tree.append(block.details);
         return;
@@ -2548,7 +2740,8 @@ export class GeneralPdfController {
 
       const section = this.findSection(view.sectionId);
       const block = this.createViewDetails(
-        `View ${index + 1} · ${section?.name ?? "Sección"}`,
+        `View ${index + 1} · ${section?.name ?? "Sección"} · ${formatDrawingViewScale(
+          this.professional.ensureViewLayout(view.id, view.sectionId, index).scaleDenominator)}`,
         `SECCIÓN · ${pieces.length} instancias`,
       );
       for (const piece of pieces) {
@@ -2557,9 +2750,15 @@ export class GeneralPdfController {
       if (pieces.length < 1) {
         block.content.append(this.createEmptyRow("Sin instancias en el modelo"));
       }
+      const editor = this.createViewScaleEditor(view.id);
+      block.content.prepend(editor);
+      this.syncViewScaleEditor(editor, view.id, sheet);
+      block.details.dataset["framelogicViewRow"] = view.id;
+      block.details.open = previouslyOpen.get(view.id) ?? true;
       this.bindTreeViewSelection(block.details, view.id, sheet);
       tree.append(block.details);
     });
+    tree.scrollTop = previousScroll;
   }
 
   private bindTreeViewSelection(

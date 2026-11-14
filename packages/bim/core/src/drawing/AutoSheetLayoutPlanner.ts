@@ -91,8 +91,10 @@ export function planSelectedSheetLayout(
 /** Choose an ISO-preferred 1:n scale that fits the A3 layout without cropping. */
 export function selectAssemblyScaleDenominator(modelScale: number): number | null {
   if (!Number.isFinite(modelScale) || modelScale <= 0) return null;
-  const pxPerMm = Math.min((1120 - 84) / 420, (792 - 84) / 297);
-  const required = 1000 * pxPerMm / modelScale;
+  // The 1120×792 SVG is exported to the full 420×297 mm A3 page.
+  const pxPerMm = Math.min(1120 / 420, 792 / 297);
+  // modelScale is pixels per MODEL millimetre (millimetre-native CAD).
+  const required = pxPerMm / modelScale;
   return [1, 2, 2.5, 5, 10, 20, 25, 50, 75, 100, 150, 200, 250, 500, 1000, 2000, 5000]
     .find((denominator) => denominator + 1e-9 >= required) ?? null;
 }

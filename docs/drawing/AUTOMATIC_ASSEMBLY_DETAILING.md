@@ -323,3 +323,7 @@ presentación, todavía no equivalente a planos de taller aprobados.
 5. Las nuevas Views se pueden seleccionar, arrastrar, cambiar de render y exportar dentro del mismo PDF. Los ejes y escala provienen de la View origen, respetando **ISO E / ISO A**. Las proyecciones vinculadas se regeneran al cambiar la orientación o geometría de su origen sin mover las piezas.
 
 No es posible derivar un nuevo alzado desde un corte físico A-A/B-B o un detalle recortado sin una política de proyección del volumen de corte; esos casos se bloquean para evitar resultados geométricamente falsos.
+
+## v0.1.153 — Escala individual de Views
+
+En **Paper Space** puedes ajustar la escala individual de cualquier View de pieza, ensamble, sección o detalle. Selecciona la View y busca **Escala de View** en el panel superior, o abre su entrada en el árbol **VIEWS** y cambia su propia escala. Las opciones incluyen AUTO, 1:1, 1:2, 1:2,5, 1:5, 1:10, 1:15, 1:20, 1:25, 1:50, 1:75, 1:100, 1:150, 1:200, 1:250, 1:500, 1:1000 y Personalizada. En Personalizada escribe `1:17,5` o `17.5` y confirma con **Enter** o **Aplicar**. La escala afecta exclusivamente a la View seleccionada y se guarda con el proyecto. Puedes tener, por ejemplo, alzado de ensamble 1:20 y detalle 1:2 en la misma hoja. Las cotas conservan su valor real. Las Views proyectadas heredan la escala inicial, pero después se ajustan independientemente. Si cambias a una escala demasiado grande, amplía el marco o elige otra escala. Cuando hay escalas diferentes, el cajetín indica **ESC VARIAS**.

@@ -22,6 +22,7 @@ import {
 import type {
   DrawingWorkspaceController,
 } from "./DrawingWorkspaceController";
+import { clipDrawingSegmentToView } from "./DrawingViewScale";
 
 import type {
   DrawingProductionController,
@@ -681,11 +682,16 @@ export class DrawingProfessionalController {
     if (!owner || section.id !== owner.sectionId) return this.basePaperTransform(section);
     const layout = this.ensureViewLayout(owner.id, owner.sectionId, 0);
     const originalScale = sheet.scaleDenominator;
-    if (layout.scaleDenominator !== null) sheet.scaleDenominator = layout.scaleDenominator;
-    const base = this.basePaperTransform(section);
-    sheet.scaleDenominator = originalScale;
+    let base: PaperTransformRuntime;
+    try {
+      sheet.scaleDenominator = layout.scaleDenominator;
+      base = this.basePaperTransform(section);
+    } finally {
+      sheet.scaleDenominator = originalScale;
+    }
     const scale = layout.scaleDenominator === null
-      ? Math.min(layout.width / Math.max(section.width, 1e-9), layout.height / Math.max(section.height, 1e-9))
+      ? Math.min(layout.width / Math.max(section.width, 1e-9),
+        layout.height / Math.max(section.height, 1e-9))
       : base.scale;
     const width = section.width * scale;
     const height = section.height * scale;
@@ -1134,7 +1140,22 @@ export class DrawingProfessionalController {
     const centerY = layout.cropCenterY ?? section.height / 2;
     const modelWidth = cropRadius ? cropRadius * 2 : section.width;
     const modelHeight = cropRadius ? cropRadius * 2 : section.height;
-    const scale = Math.min((layout.width - 20) / Math.max(modelWidth, 1e-9), (layout.height - 28) / Math.max(modelHeight, 1e-9));
+    // Section and DETAIL viewports must honor their own 1:N denominator,
+    // rather than always auto-fitting independently of the View toolbar.
+    let scale = Math.min(
+      (layout.width - 20) / Math.max(modelWidth, 1e-9),
+      (layout.height - 28) / Math.max(modelHeight, 1e-9),
+    );
+    const sheet = this.production.getActiveSheet();
+    if (sheet && layout.scaleDenominator !== null) {
+      const old = sheet.scaleDenominator;
+      try {
+        sheet.scaleDenominator = layout.scaleDenominator;
+        scale = this.basePaperTransform(section).scale;
+      } finally {
+        sheet.scaleDenominator = old;
+      }
+    }
     const originX = layout.x + layout.width / 2 - centerX * scale;
     const originY = layout.y + layout.height / 2 + centerY * scale;
 
@@ -1142,11 +1163,21 @@ export class DrawingProfessionalController {
       if (segment.hidden && !layout.showHidden) continue;
       const midpoint = new THREE.Vector2((segment.x1 + segment.x2) / 2, (segment.y1 + segment.y2) / 2);
       if (cropRadius && midpoint.distanceTo(new THREE.Vector2(centerX, centerY)) > cropRadius * 1.08) continue;
+      const cropped = clipDrawingSegmentToView({
+        x1: originX + segment.x1 * scale,
+        y1: originY - segment.y1 * scale,
+        x2: originX + segment.x2 * scale,
+        y2: originY - segment.y2 * scale,
+      }, {
+        x: layout.x + 2, y: layout.y + 19,
+        width: layout.width - 4, height: layout.height - 39,
+      });
+      if (!cropped) continue;
       const line = document.createElementNS(SVG_NS, "line");
-      line.setAttribute("x1", String(originX + segment.x1 * scale));
-      line.setAttribute("y1", String(originY - segment.y1 * scale));
-      line.setAttribute("x2", String(originX + segment.x2 * scale));
-      line.setAttribute("y2", String(originY - segment.y2 * scale));
+      line.setAttribute("x1", String(cropped.x1));
+      line.setAttribute("y1", String(cropped.y1));
+      line.setAttribute("x2", String(cropped.x2));
+      line.setAttribute("y2", String(cropped.y2));
       line.setAttribute("stroke", segment.hidden ? "#666" : "#181818");
       line.setAttribute("stroke-width", String(segment.cut ? 1.35 : 0.55));
       if (segment.hidden) line.setAttribute("stroke-dasharray", "5 4");
@@ -1215,7 +1246,14 @@ export class DrawingProfessionalController {
     const template = this.state.titleBlockTemplate;
     const x = 728; const y = template === "FABRICATION" ? 652 : 670; const w = 360; const h = template === "FABRICATION" ? 110 : 92;
     const revision = sheet.revisions.at(-1)?.code ?? "0";
-    const scale = sheet.scaleDenominator === null ? "AUTO" : `1:${sheet.scaleDenominator}`;
+    const allScales = new Set(sheet.views.map((view) => {
+      const layout = this.state.viewLayouts.find((entry) => entry.id === view.id);
+      return layout?.scaleDenominator === null || !layout ? "AUTO"
+        : `1:${layout.scaleDenominator}`;
+    }));
+    const scale = allScales.size > 1 ? "VARIAS"
+      : allScales.values().next().value
+        ?? (sheet.scaleDenominator === null ? "AUTO" : `1:${sheet.scaleDenominator}`);
     const unit = this.activeStyle().unit.toLowerCase();
     this.workspace.appendSvgRect(x, y, w, h, "white", "#111", 0.9);
     this.workspace.appendSvgLine(x, y + 28, x + w, y + 28, "#111", 0.55);
