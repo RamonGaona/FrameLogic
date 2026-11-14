@@ -9,6 +9,12 @@ import { planSectionStations, cropAssemblyDetail, planSectionDetailSheetSlots,
   type SectionStation, type CroppedAssemblyDetail } from "./AssemblySectionDetailPlanner";
 import type { EngineeringDimensionInstruction } from "./EngineeringAutoDimensionPlanner";
 import {
+  placeProjectedViewport, projectedViewLabel, projectedViewportOverlaps,
+  projectedViewportSize, projectionDirectionFromPointer,
+  resolveProjectedViewBasis,
+  type ProjectedViewDirection, type ProjectionStandard,
+} from "./ProjectedViewPlanner";
+import {
   layoutWorkshopDimensions,
   type WorkshopDimensionOverride,
 } from "./WorkshopDimensionLayout";
@@ -127,6 +133,13 @@ interface AssemblySheetViewRuntime {
   /** Stable source reference; cutting stations are preliminary, not confirmed connections. */
   supplementFraction?: number;
   sourceViewId?: string;
+  /** Relative projection from a piece/assembly parent view (not a physical STEP cut). */
+  projectedDirection?: ProjectedViewDirection;
+  projectedStandard?: ProjectionStandard;
+  projectedSourceSignature?: string;
+  /** Each view stores its own render mode, even when inherited at creation. */
+  renderMode?: "BLACK_WHITE" | "VISIBLE_HIDDEN" | "WIREFRAME"
+    | "SOLID" | "SOLID_EDGES" | "MONOCHROME" | "TRANSPARENT";
   cutReferences?: readonly (SectionStation & { readonly targetSheet: string })[];
   detailReferences?: readonly ({
     readonly label: string;
@@ -199,6 +212,7 @@ interface ProfessionalRuntime {
     sectionId: string,
     index: number,
   ): ViewLayoutRuntime;
+  createProfessionalSnapshot(): { readonly state: { readonly projectionStandard: ProjectionStandard } };
 }
 
 interface LegacyAssemblyPdfViewSnapshot {
@@ -275,6 +289,17 @@ export class GeneralPdfController {
   private selectedAssemblyViewId: string | null = null;
   private orientationChangeInProgress = false;
   private readonly viewOrientationPanel: HTMLDivElement;
+  private projectionButton: HTMLButtonElement | null = null;
+  private pendingProjection: {
+    readonly sheetId: string;
+    readonly sourceViewId: string;
+    point: THREE.Vector2 | null;
+    direction: ProjectedViewDirection | null;
+    readonly token: number;
+  } | null = null;
+  private projectionToken = 0;
+  private projectionInProgress = false;
+  private projectionRefreshInProgress = false;
   private dimensionDrag: {
     readonly viewId: string;
     readonly key: string;
@@ -308,6 +333,9 @@ export class GeneralPdfController {
 
     this.viewOrientationPanel = this.createViewOrientationPanel();
     this.workspace.svg.addEventListener("pointerdown", this.onSelectPdfView, true);
+    this.workspace.overlay.addEventListener("pointermove", this.onProjectViewPointerMove, true);
+    this.workspace.overlay.addEventListener("pointerdown", this.onProjectViewPointerDown, true);
+    window.addEventListener("keydown", this.onProjectedViewKeyDown, true);
     this.workspace.svg.addEventListener("pointerdown", this.onAutoDimensionDown, true);
     this.workspace.svg.addEventListener("pointermove", this.onAutoDimensionMove, true);
     this.workspace.svg.addEventListener("pointerup", this.onAutoDimensionUp, true);
@@ -322,6 +350,7 @@ export class GeneralPdfController {
       if (Date.now() - this.lastAutomaticRefresh > 2800) {
         this.lastAutomaticRefresh = Date.now();
         void this.refreshAutomaticSheets(false);
+        void this.refreshProjectedViews();
       }
     }, 240);
   }
@@ -331,6 +360,10 @@ export class GeneralPdfController {
     this.disposed = true;
     window.clearInterval(this.timer);
     this.workspace.svg.removeEventListener("pointerdown", this.onSelectPdfView, true);
+    this.workspace.overlay.removeEventListener("pointermove", this.onProjectViewPointerMove, true);
+    this.workspace.overlay.removeEventListener("pointerdown", this.onProjectViewPointerDown, true);
+    window.removeEventListener("keydown", this.onProjectedViewKeyDown, true);
+    this.cancelProjectedView(false);
     this.viewOrientationPanel.remove();
     this.workspace.svg.removeEventListener("pointerdown", this.onAutoDimensionDown, true);
     this.workspace.svg.removeEventListener("pointermove", this.onAutoDimensionMove, true);
