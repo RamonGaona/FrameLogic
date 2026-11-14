@@ -37,9 +37,12 @@ export interface ShadedAssemblyImage {
  */
 export class AssemblyViewShadingRenderer {
   private renderer: THREE.WebGLRenderer | null = null;
+  private readonly designScene: DesignSceneController;
   private readonly cache = new Map<string, ShadedAssemblyImage>();
 
-  constructor(private readonly designScene: DesignSceneController) {}
+  constructor(designScene: DesignSceneController) {
+    this.designScene = designScene;
+  }
 
   dispose(): void {
     this.cache.clear();
