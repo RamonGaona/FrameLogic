@@ -70,9 +70,10 @@ describe("selected assembly view sheet layout", () => {
     }
   });
   it("selects a standard denominator, or reports it cannot fit", () => {
-    expect(selectAssemblyScaleDenominator(150)).toBe(20);
+    expect(selectAssemblyScaleDenominator(0.15)).toBe(20);
+    expect(selectAssemblyScaleDenominator(150)).toBe(1);
     expect(selectAssemblyScaleDenominator(Number.NaN)).toBeNull();
-    expect(selectAssemblyScaleDenominator(0.01)).toBeNull();
+    expect(selectAssemblyScaleDenominator(0.000001)).toBeNull();
     expect(planSelectedSheetLayout([source[0]!, source[0]!], "ISO_E")).toEqual([]);
   });
 });
