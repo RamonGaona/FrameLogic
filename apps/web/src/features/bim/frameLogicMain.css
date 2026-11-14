@@ -111,6 +111,7 @@ html[data-framelogic-piece-workspace-active="true"] :is(
 .bim-toolbar[data-framelogic-model-ribbon-active="FILE"] > [data-framelogic-model-ribbon-category]:not([data-framelogic-model-ribbon-category="FILE"]),
 .bim-toolbar[data-framelogic-model-ribbon-active="DRAW"] > [data-framelogic-model-ribbon-category]:not([data-framelogic-model-ribbon-category="DRAW"]),
 .bim-toolbar[data-framelogic-model-ribbon-active="EDIT"] > [data-framelogic-model-ribbon-category]:not([data-framelogic-model-ribbon-category="EDIT"]),
+.bim-toolbar[data-framelogic-model-ribbon-active="ANNOTATE"] > [data-framelogic-model-ribbon-category]:not([data-framelogic-model-ribbon-category="ANNOTATE"]),
 .bim-toolbar[data-framelogic-model-ribbon-active="WORKPLANE"] > [data-framelogic-model-ribbon-category]:not([data-framelogic-model-ribbon-category="WORKPLANE"]),
 .bim-toolbar[data-framelogic-model-ribbon-active="PIECE"] > [data-framelogic-model-ribbon-category]:not([data-framelogic-model-ribbon-category="PIECE"]) {
   display: none !important;
