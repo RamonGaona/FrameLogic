@@ -1181,6 +1181,7 @@ export class GeneralPdfController {
     panel.dataset["framelogicViewOrientationControls"] = "true";
     Object.assign(panel.style, {
       position: "absolute", top: "58px", right: "18px", zIndex: "88",
+      maxWidth: "calc(100% - 305px)", minWidth: "220px",
       display: "none", alignItems: "center", flexWrap: "wrap", gap: "7px",
       padding: "7px 9px", borderRadius: "5px",
       background: "rgba(18,29,38,0.96)", color: "#e3f2f8",
