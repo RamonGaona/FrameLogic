@@ -1217,6 +1217,266 @@ export class GeneralPdfController {
     return panel;
   }
 
+
+  /** Inventor/Advance Steel-style projected drawing: select the source View,
+   * move outside its frame, choose a side/corner, and click to place. */
+  private toggleProjectedView(): void {
+    if (this.pendingProjection) {
+      this.cancelProjectedView(true);
+      return;
+    }
+    const sheetId = this.getActiveSheetId();
+    const sheet = sheetId ? this.production.sheets.get(sheetId) : null;
+    const source = sheet?.views.find((view) => view.id === this.selectedAssemblyViewId);
+    if (!sheetId || !sheet || !source || !this.isAssemblyView(source)
+      || source.automaticSupplement) {
+      this.workspace.setStatus("PROYECTAR: selecciona una View de pieza o ensamble (no un corte ni detalle).");
+      return;
+    }
+    if (this.orientationChangeInProgress || this.projectionInProgress) return;
+    this.workspace.setTool("SELECT");
+    this.pendingProjection = {
+      sheetId, sourceViewId: source.id, point: null, direction: null,
+      token: ++this.projectionToken,
+    };
+    this.workspace.svg.style.cursor = "crosshair";
+    this.updateViewOrientationPanel(sheet);
+    const standard = this.professional.createProfessionalSnapshot().state.projectionStandard;
+    this.workspace.setStatus("PROYECTAR VIEW · " + standard
+      + ": mueve el cursor arriba/abajo/izquierda/derecha (diagonal = isométrica), "
+      + "haz clic para colocar. Repite para otras vistas; Esc cancela.");
+  }
+
+  private cancelProjectedView(notify: boolean): void {
+    if (!this.pendingProjection) return;
+    this.pendingProjection = null;
+    this.projectionToken++;
+    this.workspace.svg.style.cursor = "";
+    this.workspace.svg.querySelector('[data-framelogic-project-preview="true"]')?.remove();
+    if (this.disposed) return;
+    const sheetId = this.getActiveSheetId();
+    this.updateViewOrientationPanel(sheetId ? this.production.sheets.get(sheetId) ?? null : null);
+    if (notify) this.workspace.setStatus("Proyección cancelada. No se modificó el modelo.");
+  }
+
+  private readonly onProjectedViewKeyDown = (event: KeyboardEvent): void => {
+    if (!this.pendingProjection || event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    this.cancelProjectedView(true);
+  };
+
+  private readonly onProjectViewPointerMove = (event: PointerEvent): void => {
+    const pending = this.pendingProjection;
+    if (!pending || this.projectionInProgress) return;
+    if (!(event.target instanceof Node) || !this.workspace.svg.contains(event.target)) return;
+    const point = this.workspace.eventToSheetPoint(event);
+    if (!point) return;
+    const sheet = this.production.sheets.get(pending.sheetId);
+    const sourceIndex = sheet?.views.findIndex((view) => view.id === pending.sourceViewId) ?? -1;
+    const source = sourceIndex >= 0 ? sheet?.views[sourceIndex] : null;
+    if (!source) { this.cancelProjectedView(true); return; }
+    const sourceLayout = this.professional.ensureViewLayout(source.id, source.sectionId, sourceIndex);
+    const direction = projectionDirectionFromPointer(sourceLayout, point);
+    const changedDirection = direction !== pending.direction;
+    pending.point = point;
+    pending.direction = direction;
+    this.drawProjectedViewPreview();
+    if (changedDirection && direction) {
+      this.workspace.setStatus("PROYECTAR · " + projectedViewLabel(direction,
+        this.professional.createProfessionalSnapshot().state.projectionStandard)
+        + " · Clic para colocar, Esc para salir.");
+    }
+  };
+
+  private readonly onProjectViewPointerDown = (event: PointerEvent): void => {
+    const pending = this.pendingProjection;
+    if (!pending || this.projectionInProgress || event.button !== 0) return;
+    if (!(event.target instanceof Node) || !this.workspace.svg.contains(event.target)) return;
+    const point = this.workspace.eventToSheetPoint(event);
+    if (!point) return;
+    const sheet = this.production.sheets.get(pending.sheetId);
+    const sourceIndex = sheet?.views.findIndex((view) => view.id === pending.sourceViewId) ?? -1;
+    const source = sourceIndex >= 0 ? sheet?.views[sourceIndex] : null;
+    if (!source) { this.cancelProjectedView(true); return; }
+    const sourceLayout = this.professional.ensureViewLayout(source.id, source.sectionId, sourceIndex);
+    const direction = projectionDirectionFromPointer(sourceLayout, point);
+    // Avoid activating MOVE/RESIZE of another viewport while placing a projection.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (!direction) {
+      this.workspace.setStatus("PROYECTAR: mueve el cursor fuera de la View origen para indicar una dirección.");
+      return;
+    }
+    void this.createProjectedView(pending, point, direction);
+  };
+
+  private drawProjectedViewPreview(): void {
+    this.workspace.svg.querySelector('[data-framelogic-project-preview="true"]')?.remove();
+    const pending = this.pendingProjection;
+    if (!pending || !pending.point || !pending.direction) return;
+    const sheet = this.production.sheets.get(pending.sheetId);
+    if (!sheet || this.getActiveSheetId() !== pending.sheetId) return;
+    const sourceIndex = sheet.views.findIndex((view) => view.id === pending.sourceViewId);
+    if (sourceIndex < 0) return;
+    const source = sheet.views[sourceIndex]!;
+    const layout = this.professional.ensureViewLayout(source.id, source.sectionId, sourceIndex);
+    const ghostSize = { width: Math.max(100, layout.width * 0.58),
+      height: Math.max(95, layout.height * 0.58) };
+    const ghost = placeProjectedViewport(layout, ghostSize, pending.direction, pending.point,
+      { width: SHEET_WIDTH, height: SHEET_HEIGHT });
+    const group = document.createElementNS(SVG_NS, "g");
+    group.dataset["framelogicProjectPreview"] = "true";
+    group.style.pointerEvents = "none";
+    const x = ghost?.x ?? pending.point.x - ghostSize.width / 2;
+    const y = ghost?.y ?? pending.point.y - ghostSize.height / 2;
+    const frame = document.createElementNS(SVG_NS, "rect");
+    for (const [name, value] of Object.entries({
+      x, y, width: ghostSize.width, height: ghostSize.height,
+    })) frame.setAttribute(name, String(value));
+    frame.setAttribute("fill", ghost ? "rgba(25,115,160,0.10)" : "rgba(172,53,41,0.12)");
+    frame.setAttribute("stroke", ghost ? "#167ea5" : "#b32f25");
+    frame.setAttribute("stroke-dasharray", "8 5");
+    frame.setAttribute("stroke-width", "1.8");
+    const caption = document.createElementNS(SVG_NS, "text");
+    caption.setAttribute("x", String(x + 6));
+    caption.setAttribute("y", String(y + 18));
+    caption.setAttribute("font-size", "11");
+    caption.setAttribute("fill", ghost ? "#12668b" : "#a42722");
+    caption.textContent = projectedViewLabel(pending.direction,
+      this.professional.createProfessionalSnapshot().state.projectionStandard);
+    group.append(frame, caption);
+    this.workspace.svg.append(group);
+  }
+
+  private projectedSourceFingerprint(
+    source: AssemblySheetViewRuntime, standard: ProjectionStandard,
+  ): string {
+    return JSON.stringify([source.id, source.workPlane, source.instanceIds, standard]);
+  }
+
+  private projectedWorkPlane(
+    source: AssemblySheetViewRuntime,
+    direction: ProjectedViewDirection, standard: ProjectionStandard,
+  ): CadWorkPlaneState | null {
+    const basis = resolveProjectedViewBasis(source.workPlane, direction, standard);
+    if (!basis) return null;
+    const vector = (v: { readonly x: number; readonly y: number; readonly z: number }) =>
+      new THREE.Vector3(v.x, v.y, v.z);
+    return {
+      mode: source.workPlane.mode, enabled: true, origin: vector(source.workPlane.origin),
+      xAxis: vector(basis.xAxis), yAxis: vector(basis.yAxis), normal: vector(basis.normal),
+    };
+  }
+
+  private async createProjectedView(
+    pending: NonNullable<GeneralPdfController["pendingProjection"]>,
+    point: THREE.Vector2, direction: ProjectedViewDirection,
+  ): Promise<void> {
+    if (this.projectionInProgress || this.disposed) return;
+    const sheet = this.production.sheets.get(pending.sheetId);
+    const sourceIndex = sheet?.views.findIndex((v) => v.id === pending.sourceViewId) ?? -1;
+    const source = sourceIndex < 0 ? null : sheet?.views[sourceIndex];
+    if (!sheet || !source || !this.isAssemblyView(source) || source.automaticSupplement) {
+      this.cancelProjectedView(true);
+      return;
+    }
+    const standard = this.professional.createProfessionalSnapshot().state.projectionStandard;
+    const plane = this.projectedWorkPlane(source, direction, standard);
+    if (!plane) {
+      this.workspace.setStatus("PROYECTAR: ejes inválidos en la View origen. Selecciona una vista ortogonal.");
+      return;
+    }
+    const initialFingerprint = this.projectedSourceFingerprint(source, standard);
+    this.projectionInProgress = true;
+    this.workspace.setStatus("PROYECTAR: calculando geometría STEP/HLR de la nueva vista…");
+    try {
+      const projection = await projectAssembly({
+        instanceIds: source.instanceIds, workPlane: plane,
+        designModel: this.designModel, designScene: this.designScene,
+      });
+      const geometry = projection ?? this.buildPlanGeometry(source.instanceIds, plane);
+      if (!geometry) throw new Error("No hay geometría proyectable en esta dirección.");
+      if (this.disposed || pending !== this.pendingProjection
+        || this.getActiveSheetId() !== pending.sheetId
+        || !sheet.views.includes(source)
+        || this.projectedSourceFingerprint(source, standard) !== initialFingerprint) return;
+
+      const parentLayout = this.professional.ensureViewLayout(source.id, source.sectionId, sourceIndex);
+      const paddingX = source.automaticViewCode || source.automaticSupplement ? 90 : 20;
+      const paddingY = source.automaticViewCode || source.automaticSupplement ? 100 : 34;
+      const parentScale = parentLayout.scaleDenominator === null
+        ? Math.min(
+          Math.max(1, parentLayout.width - paddingX) / Math.max(source.width, EPSILON),
+          Math.max(1, parentLayout.height - paddingY) / Math.max(source.height, EPSILON),
+        ) : this.technicalScale(sheet, parentLayout.scaleDenominator);
+      const size = projectedViewportSize(parentLayout, source, geometry, parentScale);
+      if (!size) throw new Error("No se pudo calcular la escala de la vista.");
+      const placement = placeProjectedViewport(parentLayout, size, direction, point,
+        { width: SHEET_WIDTH, height: SHEET_HEIGHT });
+      if (!placement) throw new Error("La proyección no cabe en esa posición. "
+        + "Reorganiza la hoja o acerca el cursor a otra zona libre.");
+      const usedLayouts = sheet.views.map((v, i) =>
+        this.professional.ensureViewLayout(v.id, v.sectionId, i));
+      if (projectedViewportOverlaps(placement, usedLayouts)) {
+        throw new Error("La nueva View se superpone con otra. Busca una zona libre para colocarla.");
+      }
+
+      const label = projectedViewLabel(direction, standard);
+      const view = this.createAssemblyView({
+        assemblyId: source.assemblyId, assemblyName: source.assemblyName,
+        instanceIds: source.instanceIds, workPlane: plane,
+      }, geometry);
+      view.sourceViewId = source.id;
+      view.projectedDirection = direction;
+      view.projectedStandard = standard;
+      view.projectedSourceSignature = initialFingerprint;
+      view.orientationMode = "CURRENT";
+      view.orientationLabel = label;
+      view.renderMode = source.renderMode;
+      view.automaticDimensions = direction.startsWith("ISO_") ? [] : projection?.dimensions ?? [];
+      view.automaticAnchors = projection?.anchors ?? [];
+      view.exactInstances = projection?.exactInstances ?? 0;
+      view.fallbackInstances = projection?.fallbackInstances ?? source.instanceIds.length;
+      view.assemblyOcclusionExact = projection?.assemblyOcclusionExact ?? false;
+      view.automaticWarnings = projection?.warnings ?? [
+        "Proyección de malla derivada: verificar aristas ocultas y dimensiones.",
+      ];
+      view.geometrySignature = assemblyProjectionSignature({
+        instanceIds: source.instanceIds,
+        designModel: this.designModel, designScene: this.designScene,
+      });
+      sheet.views.push(view);
+      const layout = this.professional.ensureViewLayout(view.id, view.sectionId, sheet.views.length - 1);
+      layout.kind = "ASSEMBLY";
+      layout.title = source.assemblyName + " · " + label;
+      layout.x = placement.x;
+      layout.y = placement.y;
+      layout.width = placement.width;
+      layout.height = placement.height;
+      layout.scaleDenominator = parentLayout.scaleDenominator;
+      if (parentLayout.scaleDenominator === null) {
+        // Preserve the parent AUTO scale even if a minimum viewport size is
+        // required for selecting/dragging a very narrow end view.
+        const pixelPerMmAtOneToOne = this.technicalScale(sheet, 1);
+        const denominator = pixelPerMmAtOne / parentScale;
+        layout.scaleDenominator = denominator >= 1 ? denominator : null;
+      }
+      layout.showHidden = parentLayout.showHidden;
+      pending.point = null;
+      pending.direction = null;
+      this.lastTreeSignature = "";
+      this.workspace.render();
+      this.workspace.setStatus("VIEW creada: " + label + " · " + standard
+        + ". Vinculada a " + source.assemblyName
+        + "; mueve el cursor para otra proyección o pulsa Esc para terminar.");
+    } catch (error) {
+      this.workspace.setStatus("PROYECTAR: " + String(error));
+    } finally {
+      this.projectionInProgress = false;
+    }
+  }
+
   /** Any click in a View frame also selects the corresponding toolbar target. */
   private readonly onSelectPdfView = (event: PointerEvent): void => {
     const sheetId = this.getActiveSheetId();
