@@ -209,6 +209,8 @@ export interface RevisionState {
 
 export interface SheetState {
   readonly ownerSectionId: string;
+  /** Optional user-inserted BOM table; independent for every PDF sheet. */
+  bomTable?: import("./SheetAssemblyBom").SheetBomPlacement;
   size: SheetSize;
   orientation: SheetOrientation;
   scaleDenominator: number | null;
