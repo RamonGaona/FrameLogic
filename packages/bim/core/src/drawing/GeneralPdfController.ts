@@ -2483,11 +2483,14 @@ export class GeneralPdfController {
     const width = 360;
     const height = 92;
     const revision = sheet.revisions.at(-1)?.code ?? "0";
-    const scale = sheet.views.some((v) => this.isAssemblyView(v) && v.automaticSupplement)
+    const viewScales = new Set(sheet.views.map((view, index) =>
+      formatDrawingViewScale(this.professional.ensureViewLayout(
+        view.id, view.sectionId, index).scaleDenominator)));
+    const scale = viewScales.size > 1
+      || sheet.views.some((v) => this.isAssemblyView(v) && v.automaticSupplement)
       ? "VARIAS"
-      : sheet.scaleDenominator === null
-      ? "AUTO"
-      : `1:${sheet.scaleDenominator}`;
+      : viewScales.values().next().value
+        ?? formatDrawingViewScale(sheet.scaleDenominator);
     this.appendRect(x, y, width, height, "white", "#111", 0.9);
     this.appendLine(x, y + 28, x + width, y + 28);
     this.appendLine(x + 238, y, x + 238, y + height);
