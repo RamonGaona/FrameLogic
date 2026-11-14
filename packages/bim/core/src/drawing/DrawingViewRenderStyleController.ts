@@ -60,6 +60,7 @@ interface AssemblyViewRuntime {
   readonly offsetX?: number;
   readonly offsetY?: number;
   readonly geometrySignature?: string;
+  readonly assemblyOcclusionExact?: boolean;
   readonly automaticSupplement?: "SECTION" | "DETAIL";
 }
 
@@ -340,9 +341,11 @@ export class DrawingViewRenderStyleController {
       if ("kind" in view && view.kind === "ASSEMBLY") {
         const assembly = view as unknown as AssemblyViewRuntime;
         const shaded = (mode === "SOLID" || mode === "SOLID_EDGES" || mode === "MONOCHROME")
-          ? this.renderAssemblyShading(assembly, layout, mode === "MONOCHROME")
+          ? this.renderAssemblyShading(assembly, layout, mode === "MONOCHROME",
+            mode === "SOLID_EDGES" && !assembly.assemblyOcclusionExact)
           : false;
-        this.styleViewportLines(layout, mode, view.id, shaded);
+        this.styleViewportLines(layout, mode, view.id, shaded,
+          Boolean(assembly.assemblyOcclusionExact));
         continue;
       }
 
@@ -448,6 +451,7 @@ export class DrawingViewRenderStyleController {
     view: AssemblyViewRuntime,
     layout: DrawingViewLayoutState,
     monochrome: boolean,
+    rasterEdges: boolean,
   ): boolean {
     // A physical STEP cut or a cropped detail is not a regular 3D projection.
     // Never invent section faces by rendering the uncut assembly behind it.
@@ -476,6 +480,7 @@ export class DrawingViewRenderStyleController {
       pixelWidth: imageWidth * 3,
       pixelHeight: imageHeight * 3,
       monochrome,
+      rasterEdges,
     });
     if (!shaded) return false;
 
@@ -519,6 +524,7 @@ export class DrawingViewRenderStyleController {
     mode: DrawingViewRenderMode,
     viewId: string,
     shaded: boolean,
+    exactAssemblyOcclusion = false,
   ): void {
     for (const line of Array.from(this.workspace.svg.querySelectorAll<SVGLineElement>("line"))) {
       if (line.hasAttribute("data-annotation-id")) continue;
@@ -537,7 +543,8 @@ export class DrawingViewRenderStyleController {
       const hidden = line.dataset["framelogicAssemblyHidden"] === "true";
       const showHidden = mode === "WIREFRAME" || mode === "VISIBLE_HIDDEN"
         || (mode === "BLACK_WHITE" && layout.showHidden);
-      const hideAll = shaded && (mode === "SOLID" || mode === "MONOCHROME");
+      const hideAll = shaded && (mode === "SOLID" || mode === "MONOCHROME"
+        || (mode === "SOLID_EDGES" && !exactAssemblyOcclusion));
       line.setAttribute("display", hideAll || (hidden && !showHidden) ? "none" : "inline");
       if (hidden && showHidden && mode !== "WIREFRAME") {
         line.setAttribute("stroke-dasharray", "4 3");
