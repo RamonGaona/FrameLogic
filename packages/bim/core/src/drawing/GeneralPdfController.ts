@@ -1422,6 +1422,15 @@ export class GeneralPdfController {
         + "Reorganiza la hoja o acerca el cursor a otra zona libre.");
       const usedLayouts = sheet.views.map((v, i) =>
         this.professional.ensureViewLayout(v.id, v.sectionId, i));
+      if (!sheet.views.some((v) => !this.isAssemblyView(v))) {
+        // The generic title block is not a View and must be treated as
+        // occupied paper when validating any new projected viewport.
+        usedLayouts.push({
+          id: "TITLE_BLOCK", sectionId: "", kind: "ASSEMBLY",
+          x: 728, y: 670, width: 360, height: 92,
+          scaleDenominator: null, showHidden: false, locked: true,
+        });
+      }
       if (projectedViewportOverlaps(placement, usedLayouts)) {
         throw new Error("La nueva View se superpone con otra. Busca una zona libre para colocarla.");
       }
