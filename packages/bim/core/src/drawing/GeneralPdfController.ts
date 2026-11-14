@@ -3656,7 +3656,7 @@ export class GeneralPdfController {
       const parentRow = rowById.get(view.sourceViewId);
       if (childRow && parentRow && validDetailAncestry(view.sourceViewId, view.id, sheet.views)) {
         childRow.style.marginLeft = "13px";
-        parentRow.querySelector("div")?.append(childRow);
+        parentRow.querySelector<HTMLDivElement>(":scope > div")?.append(childRow);
       }
     }
     tree.scrollTop = previousScroll;
