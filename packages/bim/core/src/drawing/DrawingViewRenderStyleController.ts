@@ -337,19 +337,27 @@ export class DrawingViewRenderStyleController {
 
     for (const [index, view] of sheet.views.entries()) {
       const layout = layouts.find((entry) => entry.id === view.id);
-      const section = this.sectionDrawing
-        .getSections()
-        .find((entry) => entry.id === view.sectionId);
-      if (!layout || !section) continue;
-
+      if (!layout) continue;
       const mode = this.styles.get(view.id) ?? "BLACK_WHITE";
+      if ("kind" in view && view.kind === "ASSEMBLY") {
+        const assembly = view as unknown as AssemblyViewRuntime;
+        const shaded = (mode === "SOLID" || mode === "SOLID_EDGES" || mode === "MONOCHROME")
+          ? this.renderAssemblyShading(assembly, layout, mode === "MONOCHROME")
+          : false;
+        this.styleViewportLines(layout, mode, view.id, shaded);
+        continue;
+      }
+
+      const section = this.sectionDrawing.getSections()
+        .find((entry) => entry.id === view.sectionId);
+      if (!section) continue;
       if (mode === "SOLID" || mode === "TRANSPARENT") {
         const snapshot = index === 0 && this.workspace.snapshot?.section.id === section.id
-          ? this.workspace.snapshot
-          : this.workspace.buildSnapshot(section);
-        this.renderCutFills(snapshot, layout, index === 0, mode);
+          ? this.workspace.snapshot : this.workspace.buildSnapshot(section);
+        this.renderCutFills(snapshot, layout, index === 0,
+          mode === "SOLID" ? "SOLID" : "TRANSPARENT");
       }
-      this.styleViewportLines(layout, mode);
+      this.styleViewportLines(layout, mode, view.id, false);
     }
 
     this.syncSelect();
@@ -438,34 +446,114 @@ export class DrawingViewRenderStyleController {
     return points.some((point) => Math.hypot(point.x - cx, point.y - cy) <= radius);
   }
 
+  private renderAssemblyShading(
+    view: AssemblyViewRuntime,
+    layout: DrawingViewLayoutState,
+    monochrome: boolean,
+  ): boolean {
+    // A physical STEP cut or a cropped detail is not a regular 3D projection.
+    // Never invent section faces by rendering the uncut assembly behind it.
+    if (view.automaticSupplement || !view.workPlane || !view.instanceIds?.length) return false;
+    const line = this.workspace.svg.querySelector<SVGLineElement>(
+      'line[data-framelogic-assembly-view-line="' + view.id + '"]',
+    );
+    if (!line) return false;
+    const originX = Number(line.dataset["framelogicAssemblyOriginX"]);
+    const originY = Number(line.dataset["framelogicAssemblyOriginY"]);
+    const scale = Number(line.dataset["framelogicAssemblyScale"]);
+    if (![originX, originY, scale].every(Number.isFinite) || !(scale > 0)) return false;
+    const imageWidth = view.width * scale;
+    const imageHeight = view.height * scale;
+    if (!(imageWidth > 0 && imageHeight > 0)) return false;
+
+    const shaded = this.shading.render({
+      viewId: view.id,
+      instanceIds: view.instanceIds,
+      plane: view.workPlane,
+      modelWidth: view.width,
+      modelHeight: view.height,
+      offsetX: view.offsetX,
+      offsetY: view.offsetY,
+      geometrySignature: view.geometrySignature,
+      pixelWidth: imageWidth * 3,
+      pixelHeight: imageHeight * 3,
+      monochrome,
+    });
+    if (!shaded) return false;
+
+    const clipId = "framelogic-render-clip-" + view.id.replace(/[^a-zA-Z0-9_-]/g, "");
+    const definitions = document.createElementNS(SVG_NS, "defs");
+    definitions.dataset["framelogicRenderStyleFill"] = "true";
+    const clip = document.createElementNS(SVG_NS, "clipPath");
+    clip.id = clipId;
+    const clipRect = document.createElementNS(SVG_NS, "rect");
+    clipRect.setAttribute("x", String(layout.x));
+    clipRect.setAttribute("y", String(layout.y));
+    clipRect.setAttribute("width", String(layout.width));
+    clipRect.setAttribute("height", String(layout.height));
+    clip.append(clipRect);
+    definitions.append(clip);
+
+    const image = document.createElementNS(SVG_NS, "image");
+    image.dataset["framelogicRenderStyleFill"] = "true";
+    image.dataset["framelogicViewRaster"] = "true";
+    image.setAttribute("href", shaded.jpegDataUrl);
+    image.setAttribute("x", String(originX));
+    image.setAttribute("y", String(originY));
+    image.setAttribute("width", String(imageWidth));
+    image.setAttribute("height", String(imageHeight));
+    image.setAttribute("preserveAspectRatio", "none");
+    image.setAttribute("clip-path", "url(#" + clipId + ")");
+    image.dataset["framelogicClipX"] = String(layout.x);
+    image.dataset["framelogicClipY"] = String(layout.y);
+    image.dataset["framelogicClipWidth"] = String(layout.width);
+    image.dataset["framelogicClipHeight"] = String(layout.height);
+    image.style.pointerEvents = "none";
+    this.workspace.svg.insertBefore(definitions, line);
+    this.workspace.svg.insertBefore(image, line);
+    return true;
+  }
+
   private styleViewportLines(
     layout: DrawingViewLayoutState,
     mode: DrawingViewRenderMode,
+    viewId: string,
+    shaded: boolean,
   ): void {
     for (const line of Array.from(this.workspace.svg.querySelectorAll<SVGLineElement>("line"))) {
       if (line.hasAttribute("data-annotation-id")) continue;
-      const x1 = Number(line.getAttribute("x1") ?? 0);
-      const y1 = Number(line.getAttribute("y1") ?? 0);
-      const x2 = Number(line.getAttribute("x2") ?? 0);
-      const y2 = Number(line.getAttribute("y2") ?? 0);
-      const mx = (x1 + x2) / 2;
-      const my = (y1 + y2) / 2;
-      if (!inside(mx, my, layout)) continue;
-
-      if (mode === "WIREFRAME") {
+      const owner = line.dataset["framelogicAssemblyViewLine"];
+      if (owner && owner !== viewId) continue;
+      if (!owner) {
+        // Section-only legacy geometry has no View tag. Never recolor generic
+        // lines, dimension guides or frames on a mixed assembly sheet.
+        if (this.workspace.svg.querySelector('[data-framelogic-assembly-view-line]')) continue;
+        const x1 = Number(line.getAttribute("x1") ?? 0);
+        const y1 = Number(line.getAttribute("y1") ?? 0);
+        const x2 = Number(line.getAttribute("x2") ?? 0);
+        const y2 = Number(line.getAttribute("y2") ?? 0);
+        if (!inside((x1 + x2) / 2, (y1 + y2) / 2, layout)) continue;
+      }
+      const hidden = line.dataset["framelogicAssemblyHidden"] === "true";
+      const showHidden = mode === "WIREFRAME" || mode === "VISIBLE_HIDDEN"
+        || (mode === "BLACK_WHITE" && layout.showHidden);
+      const hideAll = shaded && (mode === "SOLID" || mode === "MONOCHROME");
+      line.setAttribute("display", hideAll || (hidden && !showHidden) ? "none" : "inline");
+      if (hidden && showHidden && mode !== "WIREFRAME") {
+        line.setAttribute("stroke-dasharray", "4 3");
+        line.setAttribute("stroke", "#777777");
+        line.setAttribute("stroke-width", "0.6");
+      } else if (mode === "WIREFRAME") {
+        line.setAttribute("stroke-dasharray", "none");
         line.setAttribute("stroke", "#343b3f");
         line.setAttribute("stroke-width", "0.52");
-        line.setAttribute("opacity", "1");
-      }
-      else if (mode === "SOLID") {
-        line.setAttribute("stroke", "#20272b");
-        line.setAttribute("opacity", "0.9");
-      }
-      else if (mode === "TRANSPARENT") {
+      } else if (mode === "SOLID_EDGES" && shaded) {
+        line.setAttribute("stroke", "#1b252b");
+        line.setAttribute("stroke-width", "0.75");
+      } else if (mode === "TRANSPARENT") {
         line.setAttribute("stroke", "#64747c");
         line.setAttribute("opacity", "0.72");
-      }
-      else {
+      } else {
         line.setAttribute("opacity", "1");
       }
     }
