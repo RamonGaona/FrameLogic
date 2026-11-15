@@ -1,9 +1,17 @@
-# Catálogo JSON de FrameLogic (v0.1.166)
+# Catálogo JSON universal de FrameLogic (v0.1.167)
 
 La pestaña **Configuración → Base de datos** muestra el archivo `DBFrameLogic.json`
-en una tabla de registros, con celdas tipo Excel. El usuario puede consultar
-sin desbloquear. Solo el **candado general en la cabecera de Configuración**
-habilita cambios; se comparte con las demás pestañas.
+en un listado vertical de códigos y una tabla **Propiedad / Valor**. La tabla
+recorre recursivamente cualquier grupo, objeto o lista y expone todos los
+valores JSON, sin establecer columnas rígidas. Solo **`codigo`** es
+obligatorio. El usuario consulta sin desbloquear; el **candado general**
+de la cabecera habilita la edición para todas las pestañas.
+
+Cada código puede tener propiedades y subdivisiones completamente distintas
+de los demás. En modo editor, se pueden cambiar valores directamente, o
+utilizar **Editar estructura JSON** para agregar, modificar o quitar cualquier
+grupo, lista o campo adicional. La actualización modifica el JSON en memoria
+y **Guardar JSON** lo escribe al archivo local si el navegador tiene permiso.
 
 ## Archivo local inicial
 
@@ -21,10 +29,10 @@ Contenido inicial:
 ```
 
 Para añadir códigos, usa **+ Agregar fila** en modo editor. Cada registro
-contiene código, nombre, familia, ruta, peso, longitud y tarifa.
-El código es obligatorio y único (sin distinguir mayúsculas).
-Peso, longitud y tarifa son números no negativos o `null` cuando no se
-conocen; las unidades y moneda siguen pendientes de definir.
+exige un código único (sin distinguir mayúsculas). **Todos los demás campos
+son opcionales y libres**: pueden existir grupos, listas, objetos, números
+positivos o negativos, textos, booleanos y valores `null`. No se presupone
+una unidad ni moneda; dependen de las propiedades que defina cada empresa.
 
 ## Candado general, por ahora sin credenciales
 
