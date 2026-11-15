@@ -549,7 +549,7 @@ export function FrameLogicCatalogSettings({
 
       {catalog && (
         <div className="fl-catalog-base-path" data-framelogic-catalog-base-path="true">
-          <label htmlFor="fl-catalog-base-path-input">Ruta base de recursos (ruta_base)</label>
+          <label htmlFor="fl-catalog-base-path-input">Ruta base (ruta_base)</label>
           <input id="fl-catalog-base-path-input" type="text" spellCheck={false}
             placeholder="Ej.: D:\\Documents\\FrameLogic\\Recursos"
             value={catalog.ruta_base ?? ""}
@@ -561,9 +561,9 @@ export function FrameLogicCatalogSettings({
               setDirty(true);
               setError("");
             }} />
-          <small>Se guarda en la raíz del JSON, fuera de cada código. Solo acorta la
-            presentación de rutas que estén dentro de esta carpeta; no cambia
-            las rutas originales ni concede acceso a archivos del equipo.</small>
+          <small>Esta ruta se guarda una sola vez, en la raíz del JSON. Cada pieza
+            almacena únicamente su ruta final o relativa, sin añadirle ni quitarle
+            texto automáticamente. Otra función podrá unir ambas rutas cuando lo necesite.</small>
         </div>
       )}
 
@@ -583,7 +583,6 @@ export function FrameLogicCatalogSettings({
           onSelect={setSelectedRow}
           onCellEdit={editCell}
           onRecordReplace={replaceRecord}
-          rutaBase={catalog.ruta_base}
         />
       ) : (
         <div className="fl-catalog-empty">
