@@ -192,6 +192,86 @@ export function updateCatalogField(
   return update(record, 0) as CatalogRecord;
 }
 
+/**
+ * Builds a new code from the UNION of subdivisions found in every existing
+ * record, rather than copying the values of a single record.
+ *
+ * Empty strings remain editable as text; numerical, boolean and null leaves
+ * start at null so no weight, cost, dimension or approval is invented.
+ * Objects and arrays preserve all nested property paths and list positions.
+ */
+function emptyCatalogTemplate(value: CatalogValue): CatalogValue {
+  if (Array.isArray(value)) return value.map(emptyCatalogTemplate);
+  if (value !== null && typeof value === "object") {
+    const result: Record<string, CatalogValue> = {};
+    for (const [key, child] of Object.entries(value)) {
+      result[key] = emptyCatalogTemplate(child);
+    }
+    return result;
+  }
+  return typeof value === "string" ? "" : null;
+}
+
+function isCatalogObject(value: CatalogValue): value is Record<string, CatalogValue> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Combine compatible paths without destroying nested fields from either code. */
+function mergeCatalogTemplate(
+  current: CatalogValue, incoming: CatalogValue, path: string,
+): CatalogValue {
+  if (Array.isArray(current) && Array.isArray(incoming)) {
+    return Array.from({ length: Math.max(current.length, incoming.length) }, (_, index) => {
+      if (index >= current.length) return incoming[index]!;
+      if (index >= incoming.length) return current[index]!;
+      return mergeCatalogTemplate(current[index]!, incoming[index]!, path + "[" + index + "]");
+    });
+  }
+  if (isCatalogObject(current) && isCatalogObject(incoming)) {
+    const result: Record<string, CatalogValue> = { ...current };
+    for (const [key, value] of Object.entries(incoming)) {
+      result[key] = Object.prototype.hasOwnProperty.call(result, key)
+        ? mergeCatalogTemplate(result[key]!, value, path + "." + key)
+        : value;
+    }
+    return result;
+  }
+  // A subdivision must not silently lose fields if two records disagree
+  // about whether the very same path is an object or an array.
+  if ((Array.isArray(current) && isCatalogObject(incoming))
+    || (isCatalogObject(current) && Array.isArray(incoming))) {
+    throw new Error("Subdivisión incompatible (objeto/lista) en «" + path
+      + "». Revisa los códigos existentes antes de crear la pieza.");
+  }
+  // Prefer structured paths over a scalar so no nested subdivision is lost.
+  if (Array.isArray(current) || isCatalogObject(current)) return current;
+  if (Array.isArray(incoming) || isCatalogObject(incoming)) return incoming;
+  return typeof current === "string" || typeof incoming === "string" ? "" : null;
+}
+
+/** Only the new codigo is mandatory; all other fields are an empty union. */
+export function createCatalogRecordFromExisting(
+  records: readonly CatalogRecord[], code: string,
+): CatalogRecord {
+  const normalizedCode = code.trim();
+  if (!normalizedCode) throw new Error("Escribe el código de la nueva pieza.");
+  if (normalizedCode.length > 256) throw new Error("El código supera 256 caracteres.");
+  if (records.some((record) => record.codigo.toLocaleUpperCase()
+    === normalizedCode.toLocaleUpperCase())) {
+    throw new Error("Código duplicado: " + normalizedCode);
+  }
+  const template: Record<string, CatalogValue> = {};
+  for (const record of records) {
+    for (const [key, value] of Object.entries(record)) {
+      if (key === "codigo") continue;
+      const empty = emptyCatalogTemplate(value);
+      template[key] = Object.prototype.hasOwnProperty.call(template, key)
+        ? mergeCatalogTemplate(template[key]!, empty, key) : empty;
+    }
+  }
+  return normalizeCatalogRecord({ codigo: normalizedCode, ...template });
+}
+
 /** User-entered raw JSON can introduce any new subdivision, no fixed fields. */
 export function parseCatalogRecordEditor(text: string): CatalogRecord {
   let value: unknown;
