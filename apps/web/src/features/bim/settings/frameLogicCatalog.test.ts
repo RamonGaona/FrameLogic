@@ -328,7 +328,9 @@ describe("JSON catalog for FrameLogic parts", () => {
         { codigo: "B", referencias: { ruta: "sub/archivo.dxf" } },
       ],
     };
-    const result = parseFrameLogicCatalog(serializeFrameLogicCatalog(data));
+    const result = parseFrameLogicCatalog(serializeFrameLogicCatalog({
+      ...data, version: 1 as const,
+    }));
     expect(result.registros[0]?.ruta).toBe("pieza.step");
     expect(result.registros[1]?.referencias).toEqual({ ruta: "sub/archivo.dxf" });
   });
