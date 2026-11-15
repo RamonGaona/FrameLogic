@@ -1,4 +1,4 @@
-# Catálogo JSON universal de FrameLogic (v0.1.170)
+# Catálogo JSON universal de FrameLogic (v0.1.171)
 
 La pestaña **Configuración → Base de datos** muestra el archivo `DBFrameLogic.json`
 en un listado vertical de códigos y una tabla **Propiedad / Valor**. La tabla
@@ -21,6 +21,34 @@ de borrarlo. Los decimales admiten punto o coma y los negativos son válidos.
 Un valor numérico vacío se conserva como `null`, nunca como cero.
 El campo obligatorio `codigo` siempre debe permanecer como texto.
 
+## Ruta base global y ruta relativa por pieza
+
+El JSON puede contener **una sola** propiedad `ruta_base` en su raíz, separada
+de `registros`. Cada pieza guarda **únicamente la parte final o relativa** de
+su propia ruta (`ruta`, o cualquier otro nombre de propiedad de archivo):
+
+```json
+{
+  "version": 1,
+  "ruta_base": "D:\\Documents\\FrameLogic\\Recursos",
+  "registros": [
+    {"codigo": "REC3002", "ruta": "Perfiles\\REC3002.step"},
+    {"codigo": "PL-ANCLA-450", "ruta": "Placas\\ANCLA-450.step"}
+  ]
+}
+```
+
+La ventana Configuración → Base de datos muestra `ruta_base` en una línea
+**fuera** del cuadro de lectura por código. Solo se modifica con el candado
+general abierto. Dentro de cada código se muestra **exactamente** la parte
+relativa que tiene el JSON. FrameLogic **no recorta, completa, modifica ni
+concatena las rutas** al consultar, editar o guardar. Una función posterior
+podrá combinar ambas partes al utilizar un archivo.
+
+Los archivos existentes sin `ruta_base` siguen funcionando. No se reescriben
+ni se convierten automáticamente sus rutas actuales; el usuario puede
+adaptarlas manualmente.
+
 ## Archivo local inicial
 
 Guardar una copia con este nombre y ubicación en Windows:
@@ -32,6 +60,7 @@ Contenido inicial:
 ```json
 {
   "version": 1,
+  "ruta_base": "",
   "registros": []
 }
 ```
