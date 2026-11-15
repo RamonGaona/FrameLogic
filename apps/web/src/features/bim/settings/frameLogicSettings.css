@@ -1,0 +1,170 @@
+/* Unified settings window shared by Model Space and Paper Space.
+   All names are scoped; none change CAD viewport or exported SVG/PDF. */
+.fl-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(3, 10, 16, 0.72);
+  box-sizing: border-box;
+}
+.fl-settings-window {
+  width: min(840px, 100%);
+  height: min(630px, calc(100dvh - 36px));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid #537185;
+  border-radius: 10px;
+  background: #182630;
+  color: #ecf4f8;
+  box-shadow: 0 24px 80px rgba(0,0,0,.55);
+  font: 13px/1.5 system-ui, sans-serif;
+  overflow: hidden;
+}
+.fl-settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 17px 22px;
+  border-bottom: 1px solid #3a5260;
+  background: #12202a;
+}
+.fl-settings-header h2 { font-size: 19px; margin: 2px 0 0; font-weight: 650; }
+.fl-settings-eyebrow { font-size: 10px; letter-spacing: .1em; color: #91b0c1; font-weight: 700; }
+.fl-settings-close {
+  border: 1px solid #526c79;
+  border-radius: 5px;
+  color: #e9f6ff;
+  background: #29404e;
+  font-size: 22px;
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+}
+.fl-settings-layout { display: flex; flex: 1 1 auto; min-height: 0; }
+.fl-settings-nav {
+  flex: 0 0 184px;
+  background: #14222c;
+  border-right: 1px solid #3a5260;
+  padding: 12px 8px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.fl-settings-nav button {
+  font: 600 12px system-ui, sans-serif;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+  padding: 12px 13px;
+  text-align: left;
+  color: #c7d8e0;
+  background: transparent;
+  cursor: pointer;
+}
+.fl-settings-nav button:hover { background: #27404f; }
+.fl-settings-nav button.is-active {
+  background: #2a495b;
+  border-left-color: #70c4ed;
+  color: #fff;
+}
+.fl-settings-content { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 18px 24px; }
+.fl-settings-content h3 { margin: 0 0 4px; font-size: 18px; font-weight: 650; }
+.fl-settings-intro { color: #b4cad5; margin: 0 0 22px; }
+.fl-settings-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 15px 0;
+  border-top: 1px solid #38505b;
+  cursor: pointer;
+}
+.fl-settings-field strong { display: block; font-size: 13px; }
+.fl-settings-field small { display: block; color: #aec5d2; font-size: 12px; margin-top: 3px; max-width: 520px; }
+.fl-settings-field input { flex-shrink: 0; width: 19px; height: 19px; accent-color: #65b2d6; cursor: pointer; }
+.fl-settings-info { border: 1px solid #3c5868; background: #203340; border-radius: 6px; padding: 13px 16px; margin-bottom: 13px; }
+.fl-settings-info strong { color: #ecf4f8; }
+.fl-settings-info p { margin: 6px 0 0; color: #bdd1da; }
+.fl-settings-reset {
+  padding: 8px 12px;
+  border: 1px solid #719bad;
+  border-radius: 4px;
+  background: #284456;
+  color: white;
+  cursor: pointer;
+}
+.fl-settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #3a5260;
+  padding: 11px 22px;
+  background: #12202a;
+}
+.fl-settings-footer span { color: #a8c5d3; font-size: 11px; }
+.fl-settings-footer button {
+  border: 1px solid #74afcf;
+  background: #285772;
+  color: #fff;
+  border-radius: 4px;
+  padding: 8px 20px;
+  cursor: pointer;
+}
+.fl-settings-window button:focus-visible,
+.fl-settings-window input:focus-visible {
+  outline: 2px solid #86d5f5;
+  outline-offset: 2px;
+}
+.framelogic-ribbon-tabs > button[data-framelogic-settings-trigger="true"] {
+  margin-left: auto;
+  border: 1px solid #507489;
+  border-radius: 4px;
+  color: #e3f0f6;
+  background: #253b48;
+  font-weight: 650;
+}
+html[data-framelogic-compact-ribbon="true"] :is(
+  .framelogic-ribbon-tabs > button,
+  .bim-toolbar > button,
+  [data-framelogic-paper-ribbon="true"] > button,
+  [data-framelogic-paper-ribbon="true"] > select
+) {
+  min-height: 26px !important;
+  padding: 3px 6px !important;
+  font-size: 11px !important;
+}
+html[data-framelogic-reduce-motion="true"] :is(
+  .fl-settings-window,
+  .framelogic-ribbon-tabs,
+  .framelogic-ribbon-tabs > button
+) { transition: none !important; animation: none !important; }
+html[data-framelogic-show-view-cube="false"] .view-cube-container { display: none !important; }
+html[data-framelogic-show-detail-grips="false"] [data-framelogic-detail-drag="RADIUS"] {
+  display: none !important;
+  pointer-events: none !important;
+}
+@media(max-width: 650px) {
+  .fl-settings-backdrop { padding: 8px; }
+  .fl-settings-window { height: calc(100dvh - 16px); }
+  .fl-settings-layout { flex-direction: column; }
+  .fl-settings-nav {
+    flex: 0 0 auto;
+    flex-direction: row;
+    border-right: 0;
+    border-bottom: 1px solid #3a5260;
+    overflow-x: auto;
+    padding: 7px;
+  }
+  .fl-settings-nav button { flex-shrink: 0; padding: 9px; }
+  .fl-settings-content { padding: 14px; }
+  .fl-settings-header { padding: 10px 14px; }
+  .fl-settings-footer { padding: 10px 14px; }
+}
