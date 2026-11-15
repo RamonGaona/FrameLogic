@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { FrameLogicUniversalCatalogGrid } from "./FrameLogicUniversalCatalogGrid";
+import { writeAuthorizedCatalogFile } from "./catalogFileWriter";
 import {
   forgetCatalogFileHandle,
   queryCatalogReadPermission,
   requestCatalogReadPermission,
-  requestCatalogWritePermission,
-  restoreCatalogFileHandle,
+   restoreCatalogFileHandle,
   storeCatalogFileHandle,
   type CatalogFileHandle,
 } from "./catalogFileHandleStore";
@@ -461,13 +461,6 @@ export function FrameLogicCatalogSettings({
     setBusy(true);
     try {
       let handle = fileHandle;
-      // A persisted read-only handle may need explicit write authorization.
-      // Ask from this Save button gesture, never during automatic restore.
-      if (handle && !await requestCatalogWritePermission(handle)) {
-        setError("No se concedió permiso para escribir en DBFrameLogic.json.");
-        return;
-      }
-      if (!canWrite(authGeneration)) throw new Error("La autorización de edición ha caducado.");
       if (!handle) {
         const picker = window as CatalogPickerWindow;
         if (picker.showSaveFilePicker) {
@@ -484,23 +477,10 @@ export function FrameLogicCatalogSettings({
         }
       }
       if (!canWrite(authGeneration)) throw new Error("La autorización de edición ha caducado.");
-      if (handle === fileHandle && readText !== null) {
-        const currentText = await (await handle.getFile()).text();
-        if (currentText !== readText) {
-          throw new Error("El JSON cambió fuera de FrameLogic. Ábrelo de nuevo antes de sobrescribir.");
-        }
-      }
-      if (!canWrite(authGeneration)) throw new Error("La autorización de edición ha caducado.");
-      const writer = await handle.createWritable();
-      try {
-        if (!canWrite(authGeneration)) throw new Error("La autorización de edición ha caducado.");
-        await writer.write(json);
-        if (!canWrite(authGeneration)) throw new Error("La autorización de edición ha caducado.");
-        await writer.close();
-      } catch (cause) {
-        try { await writer.abort?.(); } catch { /* Already closed */ }
-        throw cause;
-      }
+      await writeAuthorizedCatalogFile(
+        handle, json, handle === fileHandle ? readText : null,
+        () => canWrite(authGeneration),
+      );
       setFileHandle(handle);
       const localRoute = isWebRoute(route) ? CATALOG_LOCAL_FILE_PATH : route;
       if (isWebRoute(route)) rememberRoute(localRoute);
