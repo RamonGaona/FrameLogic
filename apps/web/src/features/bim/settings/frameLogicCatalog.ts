@@ -41,7 +41,7 @@ const ITERATIONS = 210_000;
 export const EMPTY_CATALOG_RECORD: CatalogRecord = { codigo: "" };
 
 export function blankCatalog(): FrameLogicCatalog {
-  return { version: 1, registros: [] };
+  return { version: 1, ruta_base: "", registros: [] };
 }
 
 /** Reject unsupported runtime values rather than silently discarding fields. */
@@ -100,13 +100,16 @@ export function normalizeFrameLogicCatalog(value: unknown): FrameLogicCatalog {
     if (codes.has(key)) throw new Error("Código duplicado: " + record.codigo);
     codes.add(key);
   }
-  const catalog: FrameLogicCatalog = { version: 1, registros: records };
+  let rutaBase: string | undefined;
   if (obj.ruta_base !== undefined) {
     if (typeof obj.ruta_base !== "string" || obj.ruta_base.length > MAX_TEXT) {
       throw new Error("«ruta_base» debe ser texto (una ruta de carpeta).");
     }
-    catalog.ruta_base = obj.ruta_base;
+    rutaBase = obj.ruta_base;
   }
+  const catalog: FrameLogicCatalog = rutaBase === undefined
+    ? { version: 1, registros: records }
+    : { version: 1, ruta_base: rutaBase, registros: records };
   // Keep legacy verifier metadata for backward compatibility; the global
   // editor lock is still temporary and never authorizes server writes.
   if (obj.admin !== undefined) {
