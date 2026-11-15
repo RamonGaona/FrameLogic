@@ -15,6 +15,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.165 — 2026-11-15 (catálogo de piezas JSON en Configuración)
+
+### Nueva pestaña Base de datos
+
+- **Configuración → Base de datos** abre un catálogo JSON de códigos, con listado, búsqueda, ficha y campos editables **Código, Nombre, Familia, Ruta, Peso, Longitud y Tarifa**. Código obligatorio y único, numéricos opcionales no negativos.
+- **Origen:** casilla de ruta o URL HTTPS para leer un catálogo remoto común, selector de archivo JSON local (con opción de escritura directa mediante File System Access API cuando el navegador lo permita) y botón para crear un JSON nuevo. El catálogo inicial compartido vacío se sirve desde `/data/framelogic-catalog.json`; no se imponen moneda ni unidades.
+- **Modo lector y modo administrador:** misma ventana; el formulario está desactivado en consulta. Para editar se define inicialmente una clave de al menos 12 caracteres o se ingresa la existente. La clave en texto plano no se almacena: se guarda un verificador PBKDF2-SHA256 con sal aleatoria en el JSON, únicamente como bloqueo de interfaz.
+- **Edición:** agregar, seleccionar, modificar o eliminar código; aplicar ficha y guardar JSON. Se valida la estructura del archivo, duplicados, tipos, tamaño y modificación externa del archivo antes de sobrescribir. Se permite descargar copia.
+- **Restricciones de seguridad y persistencia:** la URL pública es solo lectura. La edición local no publica cambios al servidor ni a otros usuarios; una escritura realmente compartida y protegida requiere una API con autenticación/autorización en servidor. La contraseña del JSON no protege archivos frente a quien tenga acceso directo de escritura. Nunca se incluyen contraseñas predeterminadas o tokens en el frontend.
+- **Regresiones:** pruebas de esquema JSON, datos numéricos, códigos duplicados, URLs inseguras, hash y verificación de claves, conexión con la ventana existente y controles de edición. Se preservan `Validate`, `Web build`, Cloudflare Pages y el filtro MCP sin nuevos servicios de pago.
+
+**Pendiente futuro:** autenticación de servidor y edición simultánea compartida; elección de unidades/moneda; vinculación de código a las piezas del modelo.
+
+---
+
 ## v0.1.164 — 2026-11-14 (centro de configuración con pestañas)
 
 ### Ventana de configuración única para Model y Paper Space
