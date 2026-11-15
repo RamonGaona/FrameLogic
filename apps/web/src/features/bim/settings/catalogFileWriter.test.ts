@@ -56,7 +56,7 @@ describe("authorized local JSON persistence", () => {
     let unlocked = true;
     h.requestPermission.mockImplementationOnce(async () => {
       unlocked = false;
-      return "granted";
+      return "granted" as const;
     });
     await expect(writeAuthorizedCatalogFile(h.handle, "x", "antes", () => unlocked))
       .rejects.toThrow(/caducado/);
