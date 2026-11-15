@@ -509,7 +509,7 @@ export function FrameLogicCatalogSettings({
           automáticamente si el navegador conserva el permiso; si no, aparecerá
           «Autorizar acceso». La ruta es solo una referencia, no concede acceso al disco.
           También puedes utilizar una URL HTTPS, por ejemplo {CATALOG_DEFAULT_URL}.</small>
-        {handleNotice && <small role="status" className="fl-catalog-handle-notice">{handleNotice}</small>
+        {handleNotice && <small role="status" className="fl-catalog-handle-notice">{handleNotice}</small>}
       </div>
 
       {error && <div role="alert" className="fl-catalog-alert is-error">{error}</div>}
