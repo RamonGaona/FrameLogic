@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { FrameLogicUniversalCatalogGrid } from "./FrameLogicUniversalCatalogGrid";
 import {
   blankCatalog,
   CATALOG_DEFAULT_URL,
@@ -11,6 +12,9 @@ import {
   parseFrameLogicCatalog,
   resolveCatalogUrl,
   serializeFrameLogicCatalog,
+  updateCatalogField,
+  type CatalogPath,
+  type CatalogValue,
   type CatalogRecord,
   type FrameLogicCatalog,
 } from "./frameLogicCatalog";
@@ -44,22 +48,7 @@ const JSON_FILE_TYPES = [{
   accept: { "application/json": [".json"] },
 }];
 
-const COLUMNS = [
-  ["codigo", "Código"],
-  ["nombre", "Nombre"],
-  ["familia", "Familia"],
-  ["ruta", "Ruta"],
-  ["peso", "Peso"],
-  ["longitud", "Longitud"],
-  ["tarifa", "Tarifa"],
-] as const;
-
-type CatalogField = (typeof COLUMNS)[number][0];
 type SourceKind = "remote" | "local" | "new";
-
-function isNumeric(field: CatalogField): field is "peso" | "longitud" | "tarifa" {
-  return field === "peso" || field === "longitud" || field === "tarifa";
-}
 
 function isWebRoute(value: string): boolean {
   return /^(https?:\/\/|\/)/i.test(value.trim());
@@ -156,7 +145,7 @@ export function FrameLogicCatalogSettings({
     setSource(kind);
     setFileName(name);
     setFileHandle(handle);
-    setSelectedRow(null);
+    setSelectedRow(data.registros.length ? 0 : null);
     setDirty(false);
     setFilter("");
     setError("");
@@ -259,17 +248,35 @@ export function FrameLogicCatalogSettings({
     setMessage("Nuevo DBFrameLogic.json. Añade códigos y pulsa «Guardar JSON» para elegir dónde guardarlo.");
   };
 
-  const editCell = (index: number, field: CatalogField, input: string) => {
+  const editCell = (index: number, path: CatalogPath, value: CatalogValue) => {
     if (!unlocked) return;
-    setCatalog((current) => {
-      if (!current || !current.registros[index]) return current;
-      const value = isNumeric(field) ? (input.trim() === "" ? null : Number(input)) : input;
-      const records = [...current.registros];
-      records[index] = { ...records[index]!, [field]: value };
-      return { ...current, registros: records };
-    });
-    setDirty(true);
-    setError("");
+    try {
+      setCatalog((current) => {
+        if (!current || !current.registros[index]) return current;
+        const records = [...current.registros];
+        records[index] = updateCatalogField(records[index]!, path, value);
+        return { ...current, registros: records };
+      });
+      setDirty(true);
+      setError("");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
+  const replaceRecord = (index: number, record: CatalogRecord) => {
+    if (!unlocked || !catalog) return;
+    try {
+      const records = [...catalog.registros];
+      records[index] = record;
+      const normalized = normalizeFrameLogicCatalog({ ...catalog, registros: records });
+      setCatalog(normalized);
+      setDirty(true);
+      setError("");
+      setMessage("Estructura del código actualizada en memoria. Guarda JSON para conservarla.");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
   };
 
   const addRow = () => {
@@ -361,9 +368,8 @@ export function FrameLogicCatalogSettings({
 
   const matches = catalog?.registros.map((record, index) => ({ record, index }))
     .filter(({ record }) => {
-      const q = filter.trim().toLocaleLowerCase();
-      return !q || COLUMNS.filter(([field]) => !isNumeric(field))
-        .some(([field]) => String(record[field]).toLocaleLowerCase().includes(q));
+      const text = filter.trim().toLocaleLowerCase();
+      return !text || JSON.stringify(record).toLocaleLowerCase().includes(text);
     }) ?? [];
 
   return (
@@ -425,51 +431,26 @@ export function FrameLogicCatalogSettings({
         Buscar códigos y propiedades
         <input id="fl-catalog-search-input" type="search" value={filter}
           onChange={(event) => setFilter(event.currentTarget.value)}
-          placeholder="Buscar código, nombre, familia, ruta…" />
+          placeholder="Buscar cualquier código, campo o valor anidado…" />
       </label>
 
-      <div className="fl-catalog-table-wrap fl-catalog-excel-scroll">
-        <table className="fl-catalog-table fl-catalog-excel" aria-label="Base de datos de códigos">
-          <thead><tr>
-            <th className="fl-catalog-row-number">#</th>
-            {COLUMNS.map(([field, label]) => <th key={field}>{label}</th>)}
-          </tr></thead>
-          <tbody>
-            {matches.map(({ record, index }) => (
-              <tr key={index} className={selectedRow === index ? "is-selected" : ""}
-                onClick={() => setSelectedRow(index)}>
-                <td className="fl-catalog-row-number">{index + 1}</td>
-                {COLUMNS.map(([field, label]) => (
-                  <td key={field}>
-                    {unlocked ? (
-                      <input className="fl-catalog-cell-input"
-                        aria-label={label + " fila " + (index + 1)}
-                        type={isNumeric(field) ? "number" : "text"}
-                        min={isNumeric(field) ? "0" : undefined}
-                        step={isNumeric(field) ? "any" : undefined}
-                        value={record[field] ?? ""}
-                        onChange={(event) => editCell(index, field, event.currentTarget.value)}
-                        onFocus={() => setSelectedRow(index)}
-                        title={String(record[field] ?? "")} />
-                    ) : (
-                      <span className="fl-catalog-cell-text" title={String(record[field] ?? "")}>
-                        {record[field] ?? "—"}
-                      </span>
-                    )}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {!matches.length && <tr><td colSpan={8} className="fl-catalog-empty-cell">
-              {catalog
-                ? catalog.registros.length ? "No se encontraron códigos." : "No hay códigos todavía."
-                : "Selecciona el archivo DBFrameLogic.json para ver o editar el catálogo."}
-            </td></tr>}
-          </tbody>
-        </table>
-      </div>
+      {catalog ? (
+        <FrameLogicUniversalCatalogGrid
+          registros={catalog.registros}
+          matches={matches}
+          selectedRow={selectedRow}
+          unlocked={unlocked}
+          onSelect={setSelectedRow}
+          onCellEdit={editCell}
+          onRecordReplace={replaceRecord}
+        />
+      ) : (
+        <div className="fl-catalog-empty">
+          Selecciona DBFrameLogic.json para consultar cualquier código y sus subdivisiones.
+        </div>
+      )}
       <small className="fl-catalog-notice">
-        Las celdas editadas modifican el JSON en memoria. Pulsa Guardar JSON para escribir
+        Las propiedades se muestran de forma dinámica: solo «codigo» es obligatorio. Los valores editados modifican el JSON en memoria. Pulsa Guardar JSON para escribir
         el archivo local (si el navegador permite escritura) o descargar una copia.
         El candado global de Configuración controla todas las pestañas.
         Esta clave provisional vacía NO protege un archivo compartido ni permite escribir
