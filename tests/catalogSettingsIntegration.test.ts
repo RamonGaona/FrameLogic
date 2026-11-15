@@ -26,6 +26,16 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(view).toContain("FrameLogicUniversalCatalogGrid");
     expect(view).toContain('data-framelogic-catalog-base-path="true"');
     expect(view).toContain('value={catalog.ruta_base ?? ""}');
+    expect(view).toContain('data-framelogic-catalog-audit="true"');
+    expect(view).toContain('catalog.fecha || "Sin registrar"');
+    expect(view).toContain('catalog.usuario || "—"');
+    expect(view).toContain("markCatalogModified(blankCatalog())");
+    expect(view).toContain("markCatalogModified({ ...current, registros: records })");
+    expect(view).toContain("setCatalog(markCatalogModified(normalized))");
+    expect(view).toContain("const updated = markCatalogModified(");
+    expect(view).toContain("setCatalog(markCatalogModified({");
+    expect(view).toContain("markCatalogModified({ ...current, ruta_base: next })");
+
     expect(view).toContain('disabled={!unlocked}');
     expect(view).not.toContain('rutaBase={catalog.ruta_base}');
     expect(explorer).not.toContain('displayCatalogPath');
@@ -83,6 +93,8 @@ describe("global settings lock and local JSON spreadsheet", () => {
 
   it("still ships a valid starter file for optional URL-based catalogs", () => {
     const catalog = JSON.parse(read("../apps/web/public/data/framelogic-catalog.json"));
-    expect(catalog).toEqual({ version: 1, ruta_base: "", registros: [] });
+    expect(catalog).toEqual({
+      version: 1, fecha: "", usuario: "", ruta_base: "", registros: [],
+    });
   });
 });

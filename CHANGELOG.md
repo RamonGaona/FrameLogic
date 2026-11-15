@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.172 — 2026-11-15 (fecha y usuario de última modificación del JSON)
+
+- Se añaden **`fecha`** y **`usuario`** al nivel general de `DBFrameLogic.json`, junto a `version` y `ruta_base`. `fecha` es una cadena ISO 8601 con zona horaria y se genera en UTC; `usuario` será el autor del último cambio, pero por ahora permanece como cadena vacía `""` porque el candado provisional no identifica personas.
+- La fecha se actualiza automáticamente al crear un JSON, modificar una celda o su tipo de dato, aplicar cambios a una estructura, añadir/eliminar piezas y modificar la ruta base. Solo se marca el catálogo cuando cambia su contenido, no al navegar entre pestañas, consultar el archivo o descargarlo.
+- Los metadatos aparecen en una línea de consulta general fuera del cuadro de códigos. **Guardar JSON** persiste los valores ya actualizados en el archivo local; no modifica ninguna otra ruta ni altera la estructura de cada pieza.
+- Compatible con bases JSON antiguas sin `fecha` o `usuario`: se preservan al leer, y los campos se incorporan al guardar después de una modificación. Se valida que `fecha` sea texto ISO 8601 válido (o vacío) y `usuario` sea texto.
+- Nuevas pruebas de formato y actualización UTC, usuario provisional vacío, orden de propiedades, compatibilidad anterior y cobertura de todos los puntos de edición. Sin costos ni despliegue MCP.
+
+---
+
 ## v0.1.171 — 2026-11-15 (ruta base independiente del catálogo)
 
 - Nueva propiedad opcional **`ruta_base`** en la raíz de `DBFrameLogic.json`, fuera de `registros`, para definir una carpeta general de recursos. El catálogo nuevo incluye la propiedad como texto inicialmente vacío; los catálogos existentes sin esta propiedad siguen siendo compatibles.

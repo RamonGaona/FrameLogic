@@ -8,6 +8,7 @@ import {
   updateCatalogField,
   parseCatalogRecordEditor,
   makeCatalogRecordWithAllSubdivisions,
+  markCatalogModified,
   catalogScalarType,
   convertCatalogScalarValue,
   parseCatalogNumericInput,
@@ -31,7 +32,7 @@ const baseRecord = {
 describe("JSON catalog for FrameLogic parts", () => {
   it("creates a versioned empty file with no default credentials", () => {
     const file = blankCatalog();
-    expect(file).toEqual({ version: 1, ruta_base: "", registros: [] });
+    expect(file).toEqual({ version: 1, fecha: "", usuario: "", ruta_base: "", registros: [] });
     expect(serializeFrameLogicCatalog(file)).toContain('"registros": []');
     expect(CATALOG_DEFAULT_URL).toMatch(/\.json$/);
   });
@@ -333,6 +334,60 @@ describe("JSON catalog for FrameLogic parts", () => {
     ));
     expect(result.registros[0]?.ruta).toBe("pieza.step");
     expect(result.registros[1]?.referencias).toEqual({ ruta: "sub/archivo.dxf" });
+  });
+
+  it("adds global fecha and usuario and records the modification timestamp in UTC", () => {
+    const empty = blankCatalog();
+    expect(empty.fecha).toBe("");
+    expect(empty.usuario).toBe("");
+    const actual = markCatalogModified({
+      ...empty,
+      ruta_base: "D:/FrameLogic/Recursos",
+      registros: [{ codigo: "REC3002", ruta: "Perfiles/REC3002.step" }],
+    }, new Date("2026-11-15T16:27:31.250-05:00"));
+    expect(actual.fecha).toBe("2026-11-15T21:27:31.250Z");
+    expect(actual.usuario).toBe("");
+    expect(actual.registros[0]?.ruta).toBe("Perfiles/REC3002.step");
+    const saved = serializeFrameLogicCatalog(actual);
+    expect(JSON.parse(saved)).toEqual(actual);
+    expect(saved.indexOf('"version"')).toBeLessThan(saved.indexOf('"fecha"'));
+    expect(saved.indexOf('"fecha"')).toBeLessThan(saved.indexOf('"usuario"'));
+    expect(saved.indexOf('"usuario"')).toBeLessThan(saved.indexOf('"ruta_base"'));
+    expect(saved.indexOf('"ruta_base"')).toBeLessThan(saved.indexOf('"registros"'));
+  });
+
+  it("updates fecha when editing and clears provisional user without changing the catalog version", () => {
+    const old = {
+      version: 1 as const, fecha: "2026-11-14T20:00:00.000Z",
+      usuario: "usuario-anterior", ruta_base: "D:/FrameLogic",
+      registros: [{ codigo: "P1", peso: 12, ruta: "perfiles/P1.step" }],
+    };
+    const modified = markCatalogModified({
+      ...old,
+      registros: [{ codigo: "P1", peso: 15, ruta: "perfiles/P1.step" }],
+    }, new Date("2026-11-15T12:00:00.000Z"));
+    expect(modified.fecha).toBe("2026-11-15T12:00:00.000Z");
+    expect(modified.usuario).toBe("");
+    expect(modified.version).toBe(1);
+    expect(old.usuario).toBe("usuario-anterior");
+    expect(modified.registros[0]?.ruta).toBe("perfiles/P1.step");
+  });
+
+  it("preserves historical metadata on read, but old JSON without it remains compatible", () => {
+    const original = { version: 1, registros: [{ codigo: "P1" }] };
+    expect(parseFrameLogicCatalog(JSON.stringify(original))).toEqual(original);
+    const withMetadata = {
+      ...original,
+      fecha: "2026-11-15T14:00:00Z",
+      usuario: "",
+    };
+    expect(parseFrameLogicCatalog(JSON.stringify(withMetadata))).toEqual(withMetadata);
+    expect(() => normalizeFrameLogicCatalog({ ...original, fecha: "yesterday" }))
+      .toThrow(/fecha/);
+    expect(() => normalizeFrameLogicCatalog({ ...original, fecha: 123456 }))
+      .toThrow(/fecha/);
+    expect(() => normalizeFrameLogicCatalog({ ...original, usuario: null }))
+      .toThrow(/usuario/);
   });
 
 });

@@ -555,3 +555,18 @@
 @media(max-width: 690px) {
   .fl-catalog-base-path { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Catalog-wide audit metadata lives outside every code's property table. */
+.fl-catalog-audit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  padding: 6px 11px;
+  background: #1b3340;
+  border: 1px solid #4f6c7c;
+  border-radius: 5px;
+  color: #b9d5e1;
+  font-size: 12px;
+}
+.fl-catalog-audit strong { color: #e1f0f7; }

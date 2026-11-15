@@ -16,6 +16,7 @@ import {
   CATALOG_LOCAL_FILE_PATH,
   CATALOG_SOURCE_STORAGE_KEY,
   makeCatalogRecordWithAllSubdivisions,
+  markCatalogModified,
   MAX_CATALOG_BYTES,
   normalizeFrameLogicCatalog,
   parseFrameLogicCatalog,
@@ -326,7 +327,7 @@ export function FrameLogicCatalogSettings({
   const newCatalog = () => {
     if (!unlocked || !confirmDiscard()) return;
     requestId.current += 1;
-    const fresh = blankCatalog();
+    const fresh = markCatalogModified(blankCatalog());
     acceptCatalog(fresh, serializeFrameLogicCatalog(fresh),
       "new", CATALOG_LOCAL_FILE_NAME, null);
     rememberRoute(CATALOG_LOCAL_FILE_PATH);
@@ -335,13 +336,16 @@ export function FrameLogicCatalogSettings({
   };
 
   const editCell = (index: number, path: CatalogPath, value: CatalogValue) => {
-    if (!unlocked) return;
+    if (!unlocked || !catalog?.registros[index]) return;
     try {
+      const original = catalog.registros[index]!;
+      const edited = updateCatalogField(original, path, value);
+      if (JSON.stringify(original) === JSON.stringify(edited)) return;
       setCatalog((current) => {
-        if (!current || !current.registros[index]) return current;
+        if (!current?.registros[index]) return current;
         const records = [...current.registros];
         records[index] = updateCatalogField(records[index]!, path, value);
-        return { ...current, registros: records };
+        return markCatalogModified({ ...current, registros: records });
       });
       setDirty(true);
       setError("");
@@ -353,10 +357,11 @@ export function FrameLogicCatalogSettings({
   const replaceRecord = (index: number, record: CatalogRecord) => {
     if (!unlocked || !catalog) return;
     try {
+      if (JSON.stringify(catalog.registros[index]) === JSON.stringify(record)) return;
       const records = [...catalog.registros];
       records[index] = record;
       const normalized = normalizeFrameLogicCatalog({ ...catalog, registros: records });
-      setCatalog(normalized);
+      setCatalog(markCatalogModified(normalized));
       setDirty(true);
       setError("");
       setMessage("Estructura del código actualizada en memoria. Guarda JSON para conservarla.");
@@ -369,10 +374,10 @@ export function FrameLogicCatalogSettings({
     if (!unlocked || !catalog || busy) return;
     try {
       const next = makeCatalogRecordWithAllSubdivisions(catalog.registros);
-      const updated = normalizeFrameLogicCatalog({
+      const updated = markCatalogModified(normalizeFrameLogicCatalog({
         ...catalog,
         registros: [...catalog.registros, next],
-      });
+      }));
       // Validate the final size before mutating the current catalog.
       serializeFrameLogicCatalog(updated);
       setCatalog(updated);
@@ -392,10 +397,10 @@ export function FrameLogicCatalogSettings({
     if (!unlocked || !catalog || selectedRow === null) return;
     const code = catalog.registros[selectedRow]?.codigo;
     if (!window.confirm("¿Eliminar la fila «" + code + "»?")) return;
-    setCatalog({
+    setCatalog(markCatalogModified({
       ...catalog,
       registros: catalog.registros.filter((_, i) => i !== selectedRow),
-    });
+    }));
     setSelectedRow(null);
     setDirty(true);
     setMessage("Fila eliminada. Guarda JSON para confirmar.");
@@ -548,6 +553,13 @@ export function FrameLogicCatalogSettings({
       </div>
 
       {catalog && (
+        <div className="fl-catalog-audit" data-framelogic-catalog-audit="true">
+          <span><strong>Fecha última modificación:</strong> {catalog.fecha || "Sin registrar"}</span>
+          <span><strong>Usuario:</strong> {catalog.usuario || "—"}</span>
+        </div>
+      )}
+
+      {catalog && (
         <div className="fl-catalog-base-path" data-framelogic-catalog-base-path="true">
           <label htmlFor="fl-catalog-base-path-input">Ruta base (ruta_base)</label>
           <input id="fl-catalog-base-path-input" type="text" spellCheck={false}
@@ -557,7 +569,8 @@ export function FrameLogicCatalogSettings({
             onChange={(event) => {
               if (!unlocked) return;
               const next = event.currentTarget.value;
-              setCatalog((current) => current ? { ...current, ruta_base: next } : current);
+              setCatalog((current) => current && current.ruta_base !== next
+                ? markCatalogModified({ ...current, ruta_base: next }) : current);
               setDirty(true);
               setError("");
             }} />

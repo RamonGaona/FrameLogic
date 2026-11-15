@@ -21,6 +21,10 @@ export interface CatalogPasswordVerifier {
 
 export interface FrameLogicCatalog {
   version: 1;
+  /** ISO 8601 UTC time of last actual edit; empty until the first edit. */
+  fecha?: string;
+  /** Last editor's username; blank until real user authentication is added. */
+  usuario?: string;
   /** Shared base directory stored independently; never rewrites a record's relative paths. */
   ruta_base?: string;
   registros: CatalogRecord[];
@@ -41,7 +45,12 @@ const ITERATIONS = 210_000;
 export const EMPTY_CATALOG_RECORD: CatalogRecord = { codigo: "" };
 
 export function blankCatalog(): FrameLogicCatalog {
-  return { version: 1, ruta_base: "", registros: [] };
+  return { version: 1, fecha: "", usuario: "", ruta_base: "", registros: [] };
+}
+
+/** Called on catalog data edits, not when opening, viewing or downloading. */
+export function markCatalogModified(catalog: FrameLogicCatalog, now = new Date()): FrameLogicCatalog {
+  return { ...catalog, fecha: now.toISOString(), usuario: "" };
 }
 
 /** Reject unsupported runtime values rather than silently discarding fields. */
@@ -100,16 +109,29 @@ export function normalizeFrameLogicCatalog(value: unknown): FrameLogicCatalog {
     if (codes.has(key)) throw new Error("Código duplicado: " + record.codigo);
     codes.add(key);
   }
-  let rutaBase: string | undefined;
+  const metadata: Pick<FrameLogicCatalog, "fecha" | "usuario" | "ruta_base"> = {};
+  if (obj.fecha !== undefined) {
+    if (typeof obj.fecha !== "string"
+      || (obj.fecha !== "" && (!Number.isFinite(Date.parse(obj.fecha))
+        || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(obj.fecha)))) {
+      throw new Error("«fecha» debe ser texto ISO 8601 con zona horaria, o estar vacía.");
+    }
+    metadata.fecha = obj.fecha;
+  }
+  if (obj.usuario !== undefined) {
+    if (typeof obj.usuario !== "string" || obj.usuario.length > 256) {
+      throw new Error("«usuario» debe ser texto.");
+    }
+    metadata.usuario = obj.usuario;
+  }
   if (obj.ruta_base !== undefined) {
     if (typeof obj.ruta_base !== "string" || obj.ruta_base.length > MAX_TEXT) {
       throw new Error("«ruta_base» debe ser texto (una ruta de carpeta).");
     }
-    rutaBase = obj.ruta_base;
+    metadata.ruta_base = obj.ruta_base;
   }
-  const catalog: FrameLogicCatalog = rutaBase === undefined
-    ? { version: 1, registros: records }
-    : { version: 1, ruta_base: rutaBase, registros: records };
+  // Stable root metadata ordering, preserving older catalogs without metadata.
+  const catalog: FrameLogicCatalog = { version: 1, ...metadata, registros: records };
   // Keep legacy verifier metadata for backward compatibility; the global
   // editor lock is still temporary and never authorizes server writes.
   if (obj.admin !== undefined) {
