@@ -182,6 +182,9 @@ export function convertCatalogScalarValue(
     if (value === null) return null;
     if (typeof value === "boolean") return value ? 1 : 0;
     if (typeof value === "number") return value;
+    if (typeof value !== "string") {
+      throw new Error("Solo los valores simples pueden convertirse a número.");
+    }
     return parseCatalogNumericInput(value);
   }
   if (value === null) return false;
