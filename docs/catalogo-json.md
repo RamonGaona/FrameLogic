@@ -1,4 +1,4 @@
-# Catálogo JSON universal de FrameLogic (v0.1.168)
+# Catálogo JSON universal de FrameLogic (v0.1.169)
 
 La pestaña **Configuración → Base de datos** muestra el archivo `DBFrameLogic.json`
 en un listado vertical de códigos y una tabla **Propiedad / Valor**. La tabla
@@ -52,6 +52,28 @@ No debe utilizarse para autorizar escritura remota. El bloqueo anterior
 basado en un verificador de contraseña por archivo no se aplica ya al
 formulario; la clave estará a cargo de un servicio seguro si se implementa
 edición multiusuario.
+
+## Nueva pieza / código: unión de subdivisiones
+
+Con el **candado general abierto**, el botón **+ Nueva pieza / código** crea
+una fila con un código único provisional `NUEVO_0001`, `NUEVO_0002`, etc.
+FrameLogic recorre **todos los códigos del JSON actualmente cargado** y
+construye una plantilla que reúne sus propiedades y subdivisiones:
+objetos, grupos profundos y todas las posiciones presentes en listas.
+
+- Se reutilizan los nombres y la estructura, **no** las medidas, tarifas,
+  rutas, descripciones ni otros valores específicos de piezas existentes.
+- Las nuevas cadenas comienzan vacías y los valores numéricos/booleanos
+  comienzan como `null`, para no inventar datos técnicos.
+- Los códigos originales no se modifican. El nuevo código se selecciona para
+  completar sus campos en la tabla, y se guarda mediante **Guardar JSON**.
+- Si dos códigos utilizan tipos incompatibles para el mismo campo, se prioriza
+  el objeto anidado sobre la lista, y la lista sobre un valor simple. Esta
+  regla evita perder subdivisiones, pero no equivale a una migración de tipos.
+
+**Alcance:** se utilizan los códigos del archivo `DBFrameLogic.json`
+seleccionado; una web no puede inspeccionar automáticamente todos los demás
+archivos locales de una carpeta `D:\`.
 
 ## Cómo abrir y editar
 
