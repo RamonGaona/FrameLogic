@@ -290,3 +290,148 @@
 .fl-catalog-search { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
 .fl-catalog-search input { flex: 1 1 240px; }
 .fl-catalog-notice { line-height: 1.6; }
+
+/* Universal catalog: two-pane selector and fully dynamic nested key/value table. */
+.fl-universal-catalog {
+  display: grid;
+  grid-template-columns: minmax(160px, 230px) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  align-items: start;
+}
+.fl-universal-codes, .fl-universal-values {
+  border: 1px solid #526e81;
+  border-radius: 5px;
+  background: #152b38;
+  min-width: 0;
+  overflow: hidden;
+}
+.fl-universal-title, .fl-universal-values-header {
+  background: #203e50;
+  color: #e7f4fb;
+  font-weight: 650;
+  padding: 8px 11px;
+  min-height: 39px;
+  box-sizing: border-box;
+}
+.fl-universal-code-list {
+  max-height: 380px;
+  overflow-y: auto;
+}
+.fl-catalog .fl-universal-code-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid #365567;
+  border-radius: 0;
+  background: transparent;
+  color: #d9edf5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font: 12px system-ui, sans-serif;
+  padding: 11px;
+}
+.fl-catalog .fl-universal-code-list button:hover,
+.fl-catalog .fl-universal-code-list button.is-selected {
+  background: #295c73;
+}
+.fl-universal-code-number {
+  color: #a9cddc;
+  font-size: 10px;
+  min-width: 19px;
+  text-align: right;
+}
+.fl-universal-values-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fl-universal-values-header strong { overflow-wrap: anywhere; }
+.fl-universal-values-scroll { overflow: auto; max-height: 380px; }
+.fl-universal-field-table { width: 100%; table-layout: fixed; }
+.fl-universal-field-table th:first-child { width: 47%; }
+.fl-universal-field-table th:last-child { width: 53%; }
+.fl-universal-field-table td {
+  min-width: 0 !important;
+  max-width: none !important;
+}
+.fl-universal-field-table .fl-universal-field-name {
+  display: block;
+  box-sizing: border-box;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-right: 5px;
+  min-height: 34px;
+  overflow-wrap: anywhere;
+}
+.fl-universal-field-table .fl-catalog-cell-text {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+.fl-universal-group-row td {
+  background: #254556;
+  font-weight: 650;
+  color: #e6f1f7;
+}
+.fl-universal-group-label {
+  display: block;
+  padding: 9px;
+  color: #9ecadd;
+  font-style: italic;
+  font-size: 11px;
+}
+.fl-universal-field-table .fl-catalog-cell-input {
+  min-width: 0;
+  box-sizing: border-box;
+  width: 100%;
+}
+.fl-universal-field-table .fl-catalog-value-select {
+  border: 0;
+  border-radius: 0;
+  width: 100%;
+  min-height: 36px;
+  box-sizing: border-box;
+  background: transparent;
+  color: #f4fcff;
+  padding: 6px 9px;
+}
+.fl-universal-field-table .fl-catalog-value-select option {
+  background: #1c394b;
+}
+.fl-universal-empty { padding: 16px; color: #b4cfdc; }
+.fl-universal-json-editor {
+  padding: 12px;
+  border-top: 1px solid #526d7e;
+  display: grid;
+  gap: 8px;
+}
+.fl-universal-json-editor p {
+  color: #bdd2df;
+  font-size: 11px;
+  margin: 0;
+}
+.fl-universal-json-editor textarea {
+  width: 100%;
+  min-height: 165px;
+  box-sizing: border-box;
+  color: #e9f5fb;
+  background: #0e2330;
+  padding: 10px;
+  border: 1px solid #7296a8;
+  border-radius: 4px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  resize: vertical;
+}
+.fl-universal-json-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+.fl-universal-json-error { color: #ffc5b9 !important; }
+@media(max-width: 720px) {
+  .fl-universal-catalog { grid-template-columns: 1fr; }
+  .fl-universal-code-list { max-height: 135px; }
+  .fl-universal-values-scroll { max-height: 370px; }
+}
