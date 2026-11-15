@@ -1,4 +1,4 @@
-# Catálogo JSON universal de FrameLogic (v0.1.171)
+# Catálogo JSON universal de FrameLogic (v0.1.172)
 
 La pestaña **Configuración → Base de datos** muestra el archivo `DBFrameLogic.json`
 en un listado vertical de códigos y una tabla **Propiedad / Valor**. La tabla
@@ -21,6 +21,26 @@ de borrarlo. Los decimales admiten punto o coma y los negativos son válidos.
 Un valor numérico vacío se conserva como `null`, nunca como cero.
 El campo obligatorio `codigo` siempre debe permanecer como texto.
 
+## Fecha y usuario de última modificación
+
+El archivo `DBFrameLogic.json` incorpora dos propiedades generales al
+lado de `version` y `ruta_base`, fuera de los registros de piezas:
+
+- `fecha`: fecha y hora de la última **modificación del catálogo** en
+  formato ISO 8601, expresada en UTC (por ejemplo,
+  `2026-11-15T21:27:31.250Z`). Se actualiza automáticamente al editar
+  una propiedad, crear/modificar/eliminar códigos o cambiar `ruta_base`.
+- `usuario`: nombre del usuario que hizo la última modificación. **Por ahora
+  queda vacío** (`""`) porque el desbloqueo provisional no identifica
+  usuarios. Más adelante podrá rellenarse mediante autenticación real.
+
+En un JSON nuevo, ambos valores empiezan vacíos; al crear el archivo se
+registra la fecha. El botón **Guardar JSON** persiste la fecha generada
+por las modificaciones. Abrir, consultar o descargar una copia de un catálogo
+sin cambios no modifica los metadatos; los archivos antiguos sin esos dos
+campos se siguen leyendo normalmente. La ventana muestra la fecha y el
+usuario en una línea general, fuera del cuadro de lectura por código.
+
 ## Ruta base global y ruta relativa por pieza
 
 El JSON puede contener **una sola** propiedad `ruta_base` en su raíz, separada
@@ -30,6 +50,8 @@ su propia ruta (`ruta`, o cualquier otro nombre de propiedad de archivo):
 ```json
 {
   "version": 1,
+  "fecha": "",
+  "usuario": "",
   "ruta_base": "D:\\Documents\\FrameLogic\\Recursos",
   "registros": [
     {"codigo": "REC3002", "ruta": "Perfiles\\REC3002.step"},
@@ -60,6 +82,8 @@ Contenido inicial:
 ```json
 {
   "version": 1,
+  "fecha": "",
+  "usuario": "",
   "ruta_base": "",
   "registros": []
 }
