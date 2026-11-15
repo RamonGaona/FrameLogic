@@ -528,3 +528,30 @@
 @media (max-width: 650px) {
   .fl-catalog-base-path { grid-template-columns: 1fr; }
 }
+
+/* Shared ruta_base: one line outside the per-code property viewer. */
+.fl-catalog-base-path {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px 12px;
+  padding: 9px 12px;
+  border: 1px solid #55758a;
+  border-radius: 5px;
+  background: #1c3645;
+}
+.fl-catalog-base-path label {
+  font-weight: 650;
+  color: #dceff8;
+}
+.fl-catalog-base-path input {
+  width: 100%;
+  min-width: 0;
+}
+.fl-catalog-base-path small {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+@media(max-width: 690px) {
+  .fl-catalog-base-path { grid-template-columns: minmax(0, 1fr); }
+}
