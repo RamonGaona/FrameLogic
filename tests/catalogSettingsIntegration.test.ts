@@ -3,31 +3,50 @@ import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-describe("settings JSON database integration", () => {
-  it("adds the catalog to the existing dialog, not a second modal", () => {
-    const window = read("../apps/web/src/features/bim/settings/FrameLogicSettingsWindow.tsx");
-    const prefs = read("../apps/web/src/features/bim/settings/frameLogicPreferences.ts");
-    expect(prefs).toContain('id: "DATABASE"');
-    expect(window).toContain('activeSection === "DATABASE"');
-    expect(window).toContain("<FrameLogicCatalogSettings />");
-    expect(window.match(/role="dialog"/g)).toHaveLength(1);
+describe("global settings lock and local JSON spreadsheet", () => {
+  it("uses one lock outside all tabs and no catalog-specific login panel", () => {
+    const windowSource = read("../apps/web/src/features/bim/settings/FrameLogicSettingsWindow.tsx");
+    const catalogSource = read("../apps/web/src/features/bim/settings/FrameLogicCatalogSettings.tsx");
+    expect(windowSource).toContain('data-framelogic-settings-global-lock="true"');
+    expect(windowSource).toContain("mayUnlockSettings(username, password)");
+    expect(windowSource).toContain('setUnlocked(false)');
+    expect(windowSource).toContain('type="password" value={password}');
+    expect(windowSource).toContain('type="text" value={username}');
+    expect(windowSource).toContain('<FrameLogicCatalogSettings unlocked={unlocked}');
+    expect(windowSource).toContain('disabled={!unlocked}');
+    expect(catalogSource).not.toContain("createCatalogPasswordVerifier");
+    expect(catalogSource).not.toContain("Ingresar como administrador");
+    expect(catalogSource).not.toContain("verifyCatalogPassword");
   });
-  it("provides a route, JSON picker, all seven fields, search and admin-only edit", () => {
+
+  it("shows and edits all seven JSON fields in a full-width Excel-style table", () => {
     const view = read("../apps/web/src/features/bim/settings/FrameLogicCatalogSettings.tsx");
-    for (const field of ["codigo", "nombre", "familia", "ruta", "peso", "longitud", "tarifa"]) {
-      expect(view).toContain('"' + field + '"');
+    const style = read("../apps/web/src/features/bim/settings/frameLogicCatalogSettings.css");
+    for (const key of ["codigo", "nombre", "familia", "ruta", "peso", "longitud", "tarifa"]) {
+      expect(view).toContain('"' + key + '"');
     }
-    expect(view).toContain('id="fl-catalog-json-route"');
+    expect(view).toContain('className="fl-catalog-table fl-catalog-excel"');
+    expect(view).toContain("onChange={(event) => editCell(");
+    expect(view).toContain("if (!unlocked) return;");
+    expect(view).toContain("serializeFrameLogicCatalog(normalizeFrameLogicCatalog(catalog))");
+    expect(view).toContain("window.confirm(");
+    expect(style).toContain(".fl-catalog-excel .fl-catalog-cell-input");
+  });
+
+  it("keeps the local DBFrameLogic path through refresh, but uses file picker permissions", () => {
+    const view = read("../apps/web/src/features/bim/settings/FrameLogicCatalogSettings.tsx");
+    const catalog = read("../apps/web/src/features/bim/settings/frameLogicCatalog.ts");
+    expect(catalog).toContain("CATALOG_LOCAL_FILE_NAME = \"DBFrameLogic.json\"");
+    expect(catalog).toContain("D:\\Documents\\FrameLogic\\DB\\DBFrameLogic.json");
+    expect(view).toContain("CATALOG_SOURCE_STORAGE_KEY");
+    expect(view).toContain("localStorage.setItem(CATALOG_SOURCE_STORAGE_KEY, value)");
     expect(view).toContain("showOpenFilePicker");
     expect(view).toContain("showSaveFilePicker");
-    expect(view).toContain("verifyCatalogPassword");
-    expect(view).toContain("admin &&");
-    expect(view).toContain("disabled={!admin}");
-    expect(view).toContain("normalizeFrameLogicCatalog");
-    expect(view).toContain("El archivo cambió fuera de FrameLogic");
-    expect(view).toContain("NO modifica el JSON de la URL pública");
+    expect(view).toContain("createWritable()");
+    expect(view).toContain("El JSON cambió fuera de FrameLogic.");
   });
-  it("ships a valid empty catalog without credentials", () => {
+
+  it("still ships a valid starter file for optional URL-based catalogs", () => {
     const catalog = JSON.parse(read("../apps/web/public/data/framelogic-catalog.json"));
     expect(catalog).toEqual({ version: 1, registros: [] });
   });
