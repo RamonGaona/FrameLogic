@@ -15,6 +15,21 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.164 — 2026-11-14 (centro de configuración con pestañas)
+
+### Ventana de configuración única para Model y Paper Space
+
+- Botón **⚙ Configuración** permanente en las cintas superiores de Model Space y Paper Space; ambos abren la misma ventana modal web, equivalente visualmente al panel de opciones de una aplicación WPF de escritorio. No se introduce .NET/WPF ni un servicio externo.
+- Centro de configuración con secciones extensibles **General, Interfaz, Model Space, Paper Space**. Arquitectura de registro de secciones, tipos de preferencias, validación de esquema y efectos CSS para ir incorporando opciones reales sin duplicar lógica.
+- Preferencias iniciales funcionales: barras compactas, reducir animaciones de la interfaz, mostrar/ocultar cubo de vistas y mostrar/ocultar los cuatro grips de detalle circular. Los grips permanecen visibles por defecto.
+- Cambios aplicados inmediatamente, persistencia local versionada por navegador, restauración de valores predeterminados y degradación segura si el almacenamiento está bloqueado. **No** se aplican cambios a la geometría ni se alteran archivos `.flproject`.
+- Ventana accesible con cierre por Esc, navegación con Tab, restauración del foco y diseño adaptable a pantallas pequeñas.
+- Pruebas de registro, valores inválidos, persistencia, fallos de storage, atributos CSS y conexión del botón en ambos espacios. Se mantienen suites CI ya optimizadas y el detector para omitir MCP en cambios de UI.
+
+**Pendiente para siguientes iteraciones:** introducir opciones concretas de unidades, SNAP, acotación, exportación y preferencias por proyecto al definir su relación con los módulos respectivos. Validación visual en navegador real aún necesaria.
+
+---
+
 ## v0.1.163 — 2026-11-14 (Detalle circular: cuatro grips)
 
 ### Paper Space — eliminar botón duplicado y redimensionar desde cuatro lados

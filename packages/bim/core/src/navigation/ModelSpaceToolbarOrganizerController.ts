@@ -456,6 +456,16 @@ export class ModelSpaceToolbarOrganizerController {
       });
       tabs.append(button);
     }
+    const settings = document.createElement("button");
+    settings.type = "button";
+    settings.dataset["framelogicSettingsTrigger"] = "true";
+    settings.textContent = "⚙ Configuración";
+    settings.title = "Abrir configuración de FrameLogic";
+    settings.setAttribute("aria-haspopup", "dialog");
+    settings.addEventListener("click", () => {
+      window.dispatchEvent(new Event("framelogic:open-settings"));
+    });
+    tabs.append(settings);
     this.ribbonTabs = tabs;
     toolbar.prepend(tabs);
     this.selectRibbonCategory(this.activeRibbonCategory);

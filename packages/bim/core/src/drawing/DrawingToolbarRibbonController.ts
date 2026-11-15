@@ -108,6 +108,16 @@ export class DrawingToolbarRibbonController {
       this.tabs.append(button);
       this.buttons.set(key, button);
     }
+    const settings = document.createElement("button");
+    settings.type = "button";
+    settings.dataset["framelogicSettingsTrigger"] = "true";
+    settings.textContent = "⚙ Configuración";
+    settings.title = "Abrir configuración de FrameLogic";
+    settings.setAttribute("aria-haspopup", "dialog");
+    settings.addEventListener("click", () => {
+      window.dispatchEvent(new Event("framelogic:open-settings"));
+    });
+    this.tabs.append(settings);
     toolbar.prepend(this.tabs);
     // DOM-owned control: move the live panel, do not clone or rebind handlers.
     viewPanel.style.position = "static";

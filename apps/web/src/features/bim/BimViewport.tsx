@@ -1,6 +1,7 @@
 import { mountClashDetectionPanel } from "./mountClashDetectionPanel";
 import { mountAutomationPanel } from "./mountAutomationPanel";
 import { mountLocalChatPanel } from "./mountLocalChatPanel";
+import { FrameLogicSettingsWindow } from "./settings/FrameLogicSettingsWindow";
 import { connectAutomationBridge } from "@framelogic/bim-core";
 import { loadPieceVisualPackage, type LoadedPieceVisualPackage } from "@framelogic/bim-core";
 import {
@@ -2150,6 +2151,8 @@ export function BimViewport() {
           }
         }
       />
+
+      <FrameLogicSettingsWindow />
 
       <input
         ref={openFrameLogicPieceInputRef}
