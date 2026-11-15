@@ -24,6 +24,12 @@ describe("global settings lock and local JSON spreadsheet", () => {
     const explorer = read("../apps/web/src/features/bim/settings/FrameLogicUniversalCatalogGrid.tsx");
     const style = read("../apps/web/src/features/bim/settings/frameLogicCatalogSettings.css");
     expect(view).toContain("FrameLogicUniversalCatalogGrid");
+    expect(view).toContain('data-framelogic-catalog-base-path="true"');
+    expect(view).toContain('value={catalog.ruta_base ?? ""}');
+    expect(view).toContain('disabled={!unlocked}');
+    expect(view).not.toContain('rutaBase={catalog.ruta_base}');
+    expect(explorer).not.toContain('displayCatalogPath');
+
     expect(view).toContain("updateCatalogField");
     expect(view).toContain("makeCatalogRecordWithAllSubdivisions(catalog.registros)");
     expect(view).toContain('data-framelogic-catalog-new-code="true"');
@@ -77,6 +83,6 @@ describe("global settings lock and local JSON spreadsheet", () => {
 
   it("still ships a valid starter file for optional URL-based catalogs", () => {
     const catalog = JSON.parse(read("../apps/web/public/data/framelogic-catalog.json"));
-    expect(catalog).toEqual({ version: 1, registros: [] });
+    expect(catalog).toEqual({ version: 1, ruta_base: "", registros: [] });
   });
 });
