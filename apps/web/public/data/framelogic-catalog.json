@@ -1,7 +1,7 @@
 {
-  "version": 1,
-  "fecha": "",
-  "usuario": "",
-  "ruta_base": "",
+  "version": "1.0.0",
+  "fecha_modificacion": "",
+  "usuario_modificacion": "",
+  "ruta_base": "D:\\Documents\\FrameLogic",
   "registros": []
 }
