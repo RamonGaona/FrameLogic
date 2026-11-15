@@ -184,6 +184,7 @@ export function FrameLogicSettingsWindow() {
       <div className="fl-settings-window" role="dialog" aria-modal="true"
         aria-labelledby="framelogic-settings-title" ref={dialogRef}
         data-framelogic-settings-window="true"
+        data-framelogic-settings-active={activeSection}
         onPointerDown={(event) => event.stopPropagation()}>
         <header className="fl-settings-header">
           <div>
