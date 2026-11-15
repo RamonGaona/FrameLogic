@@ -1,18 +1,15 @@
 /**
- * JSON-based catalog for FrameLogic: explicit, versioned, user-editable data.
- *
- * The password verifier is a local *UI editing gate*, NOT server-side
- * authorization. Anyone with filesystem/repository write permission can
- * bypass it. A future shared write API must authenticate server-side.
+ * Universal FrameLogic catalog. Only "codigo" is mandatory for each record;
+ * unknown properties, nested objects, arrays, scalars and null are preserved.
+ * This JSON is local-first, not a server-authenticated data store.
  */
+export type CatalogValue =
+  | string | number | boolean | null
+  | CatalogValue[] | { [key: string]: CatalogValue };
+
 export interface CatalogRecord {
   codigo: string;
-  nombre: string;
-  familia: string;
-  ruta: string;
-  peso: number | null;
-  longitud: number | null;
-  tarifa: number | null;
+  [key: string]: CatalogValue;
 }
 
 export interface CatalogPasswordVerifier {
@@ -29,61 +26,59 @@ export interface FrameLogicCatalog {
 }
 
 export const CATALOG_DEFAULT_URL = "/data/framelogic-catalog.json";
-/** Suggested local SharePoint-synced folder (a display preference, not a web URL). */
 export const CATALOG_LOCAL_FILE_PATH = String.raw`D:\Documents\FrameLogic\DB\DBFrameLogic.json`;
 export const CATALOG_LOCAL_FILE_NAME = "DBFrameLogic.json";
 export const CATALOG_SOURCE_STORAGE_KEY = "framelogic.catalog.source.v1";
 export const MAX_CATALOG_BYTES = 5_000_000;
 const MAX_RECORDS = 10_000;
-const MAX_STRING = 2048;
+const MAX_DEPTH = 24;
+const MAX_NODES = 60_000;
+const MAX_TEXT = 32_768;
 const ITERATIONS = 210_000;
 
-export const EMPTY_CATALOG_RECORD: CatalogRecord = {
-  codigo: "", nombre: "", familia: "", ruta: "",
-  peso: null, longitud: null, tarifa: null,
-};
+export const EMPTY_CATALOG_RECORD: CatalogRecord = { codigo: "" };
 
 export function blankCatalog(): FrameLogicCatalog {
   return { version: 1, registros: [] };
 }
 
-function asText(value: unknown, field: string, index: number): string {
-  if (typeof value !== "string") throw new Error(
-    "Registro " + (index + 1) + ": «" + field + "» debe ser texto.",
-  );
-  const text = value.trim();
-  if (text.length > MAX_STRING) throw new Error(
-    "Registro " + (index + 1) + ": «" + field + "» supera " + MAX_STRING + " caracteres.",
-  );
-  return text;
-}
-
-function asNumber(value: unknown, field: string, index: number): number | null {
-  if (value === null) return null;
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new Error(
-      "Registro " + (index + 1) + ": «" + field + "» debe ser un número positivo o null.",
-    );
+/** Reject unsupported runtime values rather than silently discarding fields. */
+function cloneCatalogValue(value: unknown, depth: number, budget: { remaining: number }): CatalogValue {
+  if (--budget.remaining < 0) throw new Error("El JSON tiene demasiados elementos.");
+  if (depth > MAX_DEPTH) throw new Error("Demasiados niveles de subdivisiones en el JSON.");
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    if (value.length > MAX_TEXT) throw new Error("Un texto supera la longitud admitida.");
+    return value;
   }
-  return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneCatalogValue(item, depth + 1, budget));
+  }
+  if (typeof value === "object" && value) {
+    const object: { [key: string]: CatalogValue } = {};
+    for (const [key, child] of Object.entries(value)) {
+      if (!key || key.length > 256 || ["__proto__", "prototype", "constructor"].includes(key)) {
+        throw new Error("Nombre de propiedad JSON no permitido: " + key);
+      }
+      object[key] = cloneCatalogValue(child, depth + 1, budget);
+    }
+    return object;
+  }
+  throw new Error("La base de datos contiene un valor que no es JSON.");
 }
 
+/** A record may have any fields, including arbitrarily named nested divisions. */
 export function normalizeCatalogRecord(value: unknown, index = 0): CatalogRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("El registro " + (index + 1) + " debe ser un objeto.");
+    throw new Error("Registro " + (index + 1) + ": debe ser un objeto JSON.");
   }
-  const r = value as Record<string, unknown>;
-  const codigo = asText(r.codigo, "codigo", index);
-  if (!codigo) throw new Error("Registro " + (index + 1) + ": el código es obligatorio.");
-  return {
-    codigo,
-    nombre: asText(r.nombre, "nombre", index),
-    familia: asText(r.familia, "familia", index),
-    ruta: asText(r.ruta, "ruta", index),
-    peso: asNumber(r.peso, "peso", index),
-    longitud: asNumber(r.longitud, "longitud", index),
-    tarifa: asNumber(r.tarifa, "tarifa", index),
-  };
+  const obj = cloneCatalogValue(value, 0, { remaining: MAX_NODES }) as Record<string, CatalogValue>;
+  if (typeof obj.codigo !== "string" || obj.codigo.trim() === "") {
+    throw new Error("Registro " + (index + 1) + ": «codigo» es obligatorio.");
+  }
+  if (obj.codigo.length > 256) throw new Error("El código supera 256 caracteres.");
+  return { ...obj, codigo: obj.codigo.trim() };
 }
 
 export function normalizeFrameLogicCatalog(value: unknown): FrameLogicCatalog {
@@ -92,43 +87,36 @@ export function normalizeFrameLogicCatalog(value: unknown): FrameLogicCatalog {
   }
   const obj = value as Record<string, unknown>;
   if (obj.version !== 1) throw new Error("Versión JSON no compatible. Se requiere version: 1.");
-  if (!Array.isArray(obj.registros)) {
-    throw new Error("El JSON debe contener una matriz «registros».");
-  }
+  if (!Array.isArray(obj.registros)) throw new Error("El JSON debe incluir una matriz «registros».");
   if (obj.registros.length > MAX_RECORDS) {
     throw new Error("El catálogo supera el límite de " + MAX_RECORDS + " registros.");
   }
-  const records = obj.registros.map((record, index) => normalizeCatalogRecord(record, index));
+  const records = obj.registros.map((r, i) => normalizeCatalogRecord(r, i));
   const codes = new Set<string>();
   for (const record of records) {
-    const key = record.codigo.toUpperCase();
+    const key = record.codigo.toLocaleUpperCase();
     if (codes.has(key)) throw new Error("Código duplicado: " + record.codigo);
     codes.add(key);
   }
-  const result: FrameLogicCatalog = { version: 1, registros: records };
+  const catalog: FrameLogicCatalog = { version: 1, registros: records };
+  // Keep legacy verifier metadata for backward compatibility; the global
+  // editor lock is still temporary and never authorizes server writes.
   if (obj.admin !== undefined) {
-    const auth = obj.admin;
-    if (!auth || typeof auth !== "object" || Array.isArray(auth)) {
-      throw new Error("Bloque «admin» inválido.");
-    }
-    const a = auth as Record<string, unknown>;
-    if (a.algorithm !== "PBKDF2-SHA256"
+    const a = obj.admin as Record<string, unknown> | null;
+    if (!a || typeof a !== "object" || Array.isArray(a)
+      || a.algorithm !== "PBKDF2-SHA256"
       || !Number.isInteger(a.iterations)
       || (a.iterations as number) < 100_000
       || (a.iterations as number) > 1_000_000
       || typeof a.salt !== "string" || !/^[A-Za-z0-9+/]{20,}={0,2}$/.test(a.salt)
       || typeof a.verifier !== "string" || !/^[A-Za-z0-9+/]{40,}={0,2}$/.test(a.verifier)
-    ) {
-      throw new Error("Credenciales «admin» inválidas; no es posible habilitar la edición.");
-    }
-    result.admin = {
-      algorithm: "PBKDF2-SHA256",
-      iterations: a.iterations as number,
-      salt: a.salt,
-      verifier: a.verifier,
+    ) throw new Error("Credenciales «admin» no válidas.");
+    catalog.admin = {
+      algorithm: "PBKDF2-SHA256", iterations: a.iterations as number,
+      salt: a.salt, verifier: a.verifier,
     };
   }
-  return result;
+  return catalog;
 }
 
 export function parseFrameLogicCatalog(json: string): FrameLogicCatalog {
@@ -142,7 +130,74 @@ export function parseFrameLogicCatalog(json: string): FrameLogicCatalog {
 }
 
 export function serializeFrameLogicCatalog(catalog: FrameLogicCatalog): string {
-  return JSON.stringify(normalizeFrameLogicCatalog(catalog), null, 2) + "\n";
+  const text = JSON.stringify(normalizeFrameLogicCatalog(catalog), null, 2) + "\n";
+  if (new TextEncoder().encode(text).byteLength > MAX_CATALOG_BYTES) {
+    throw new Error("El JSON editado excede 5 MB.");
+  }
+  return text;
+}
+
+export type CatalogPath = readonly (string | number)[];
+export interface CatalogFieldRow {
+  path: CatalogPath;
+  label: string;
+  depth: number;
+  kind: "object" | "array" | "value";
+  value: CatalogValue;
+}
+
+/** One row per subdivision or leaf, regardless of its name or nesting. */
+export function catalogFieldRows(record: CatalogRecord): CatalogFieldRow[] {
+  const rows: CatalogFieldRow[] = [];
+  const walk = (value: CatalogValue, path: (string | number)[], depth: number) => {
+    const label = path.length ? String(path[path.length - 1]) : "Raíz";
+    const kind = Array.isArray(value) ? "array"
+      : value !== null && typeof value === "object" ? "object" : "value";
+    rows.push({ path, label, depth, kind, value });
+    if (kind === "array") {
+      (value as CatalogValue[]).forEach((child, index) =>
+        walk(child, [...path, index], depth + 1));
+    } else if (kind === "object") {
+      Object.entries(value as Record<string, CatalogValue>).forEach(([key, child]) =>
+        walk(child, [...path, key], depth + 1));
+    }
+  };
+  walk(record.codigo, ["codigo"], 0);
+  for (const [key, value] of Object.entries(record)) {
+    if (key !== "codigo") walk(value, [key], 0);
+  }
+  return rows;
+}
+
+/** Immutable update of a primitive, preserving adjacent nested values. */
+export function updateCatalogField(
+  record: CatalogRecord, path: CatalogPath, value: CatalogValue,
+): CatalogRecord {
+  if (!path.length) throw new Error("Selecciona un campo para editar.");
+  const update = (node: CatalogValue, i: number): CatalogValue => {
+    if (i === path.length) return value;
+    const segment = path[i]!;
+    if (Array.isArray(node) && typeof segment === "number"
+      && segment >= 0 && segment < node.length) {
+      const next = [...node];
+      next[segment] = update(node[segment]!, i + 1);
+      return next;
+    }
+    if (node !== null && typeof node === "object" && !Array.isArray(node)
+      && typeof segment === "string" && Object.prototype.hasOwnProperty.call(node, segment)) {
+      return { ...node, [segment]: update(node[segment]!, i + 1) };
+    }
+    throw new Error("Ruta de propiedad inexistente: " + path.join("."));
+  };
+  return update(record, 0) as CatalogRecord;
+}
+
+/** User-entered raw JSON can introduce any new subdivision, no fixed fields. */
+export function parseCatalogRecordEditor(text: string): CatalogRecord {
+  let value: unknown;
+  try { value = JSON.parse(text); }
+  catch { throw new Error("El contenido de la ficha no es JSON válido."); }
+  return normalizeCatalogRecord(value);
 }
 
 function toBase64(bytes: Uint8Array): string {
