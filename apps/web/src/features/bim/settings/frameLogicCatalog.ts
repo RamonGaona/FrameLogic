@@ -48,7 +48,7 @@ const ITERATIONS = 210_000;
 export const EMPTY_CATALOG_RECORD: CatalogRecord = { codigo: "" };
 
 export const CATALOG_INITIAL_BASE_PATH = String.raw`D:\Documents\FrameLogic`;
-const CATALOG_SEMVER = /^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/;
+const CATALOG_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 /** App releases and JSON releases have separate version numbers. */
 export function validateCatalogVersion(value: string): string {
@@ -160,7 +160,7 @@ export function normalizeFrameLogicCatalog(value: unknown): FrameLogicCatalog {
     if (raw === undefined) continue;
     if (typeof raw !== "string"
       || (raw !== "" && (!Number.isFinite(Date.parse(raw))
-        || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$/.test(raw)))) {
+        || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(raw)))) {
       throw new Error("«" + key + "» debe ser ISO 8601 con zona horaria, o estar vacío.");
     }
     metadata[key] = raw;
