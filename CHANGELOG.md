@@ -15,6 +15,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.170 — 2026-11-15 (corregir tipo JSON de propiedades)
+
+### Cambiar texto, número, booleano o null desde la misma celda
+
+- En la tabla vertical de `Configuración → Base de datos`, con el candado general desbloqueado, cada campo simple ofrece un **selector explícito de tipo JSON**: `Texto`, `Número`, `Sí/No` o `Vacío`. El campo obligatorio `codigo` sigue siendo exclusivamente texto.
+- Corrige el caso en el que se escribió texto en `peso_estimado_kg` (o cualquier campo numérico) y ya no se podía volver a número desde la tabla: `"125.5"` pasa a `125.5` sin abrir el editor JSON completo.
+- Conversión estricta de números decimales (punto o coma), enteros, negativos y notación científica. El contenido vacío se representa como `null`; jamás se interpreta silenciosamente como cero. Los textos incompatibles requieren confirmación explícita antes de vaciarlos.
+- Un campo numérico conserva temporalmente los valores incompletos mientras se edita y valida al perder el foco. No altera otros campos, subdivisiones, códigos ni listas del catálogo. Se mantiene el guardado explícito en `DBFrameLogic.json` y los permisos del archivo local.
+- Pruebas de conversión en ambos sentidos, valor `null`, booleanos, errores de formato, decimales negativos y persistencia de registros anidados. Sin servicios de pago ni cambios MCP.
+
+---
+
 ## v0.1.169 — 2026-11-15 (nueva pieza con subdivisiones universales)
 
 ### Crear códigos nuevos a partir de todos los registros existentes
