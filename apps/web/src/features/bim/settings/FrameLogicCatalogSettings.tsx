@@ -14,6 +14,7 @@ import {
   CATALOG_DEFAULT_URL,
   CATALOG_INITIAL_BASE_PATH,
   displayCatalogVersion,
+  hasEffectiveCatalogChanges,
   setCatalogVersion,
   CATALOG_LOCAL_FILE_NAME,
   CATALOG_LOCAL_FILE_PATH,
@@ -442,6 +443,12 @@ export function FrameLogicCatalogSettings({
     if (!unlocked || !editorAuth.current.unlocked || !catalog || busy || !dirty) return;
     if (versionDraft !== null) {
       setError("Guarda o cancela primero la edición de la versión.");
+      return;
+    }
+    if (source !== "new" && readText !== null
+      && !hasEffectiveCatalogChanges(readText, catalog)) {
+      setDirty(false);
+      setMessage("No hay cambios efectivos que guardar. Se conserva la fecha anterior.");
       return;
     }
     const authGeneration = editorAuth.current.generation;
