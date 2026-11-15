@@ -15,6 +15,7 @@ export const SETTINGS_SECTIONS = [
   { id: "INTERFACE", title: "Interfaz", description: "Densidad visual y movimiento" },
   { id: "MODEL", title: "Model Space", description: "Controles del espacio de modelado" },
   { id: "PAPER", title: "Paper Space", description: "Herramientas de planos y detalles" },
+  { id: "DATABASE", title: "Base de datos", description: "Catálogo JSON de códigos, características y tarifas" },
 ] as const;
 
 export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
