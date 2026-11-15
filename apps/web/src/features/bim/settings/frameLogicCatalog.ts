@@ -214,6 +214,14 @@ export function parseFrameLogicCatalog(json: string): FrameLogicCatalog {
   return normalizeFrameLogicCatalog(data);
 }
 
+/** Compare semantic content rather than formatting or transient editor state. */
+export function hasEffectiveCatalogChanges(
+  originalText: string, catalog: FrameLogicCatalog,
+): boolean {
+  return JSON.stringify(parseFrameLogicCatalog(originalText))
+    !== JSON.stringify(normalizeFrameLogicCatalog(catalog));
+}
+
 export function serializeFrameLogicCatalog(catalog: FrameLogicCatalog): string {
   const text = JSON.stringify(normalizeFrameLogicCatalog(catalog), null, 2) + "\n";
   if (new TextEncoder().encode(text).byteLength > MAX_CATALOG_BYTES) {
