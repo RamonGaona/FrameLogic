@@ -190,7 +190,7 @@
   border-radius: 6px;
   color: #bfd0da;
 }
-.fl-settings-window:has([data-framelogic-catalog-settings="true"]) {
+.fl-settings-window[data-framelogic-settings-active="DATABASE"] {
   width: min(1170px, 100%);
   height: min(750px, calc(100dvh - 36px));
 }
@@ -200,7 +200,7 @@
 }
 @media(max-width: 650px) {
   .fl-catalog-form { grid-template-columns: 1fr 1fr; }
-  .fl-settings-window:has([data-framelogic-catalog-settings="true"]) {
+  .fl-settings-window[data-framelogic-settings-active="DATABASE"] {
     height: calc(100dvh - 16px);
   }
   .fl-catalog-password-row input { flex: 1 1 100%; }
