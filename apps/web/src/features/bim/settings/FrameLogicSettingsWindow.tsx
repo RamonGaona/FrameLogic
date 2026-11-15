@@ -42,8 +42,13 @@ function PreferenceToggle({ name, description, checked, onChange }: PreferenceTo
 export function FrameLogicSettingsWindow() {
   const [open, setOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("GENERAL");
-  const [preferences, setPreferences] = useState<FrameLogicPreferences>(() =>
-    loadFrameLogicPreferences(window.localStorage));
+  const [preferences, setPreferences] = useState<FrameLogicPreferences>(() => {
+    try {
+      return loadFrameLogicPreferences(window.localStorage);
+    } catch {
+      return { ...DEFAULT_FRAMELOGIC_PREFERENCES };
+    }
+  });
   const [storageWarning, setStorageWarning] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
@@ -61,11 +66,13 @@ export function FrameLogicSettingsWindow() {
 
   useEffect(() => {
     applyFrameLogicPreferences(document.documentElement, preferences);
-    if (!saveFrameLogicPreferences(window.localStorage, preferences)) {
-      setStorageWarning(true);
-    } else {
-      setStorageWarning(false);
+    let saved = false;
+    try {
+      saved = saveFrameLogicPreferences(window.localStorage, preferences);
+    } catch {
+      // Browsers in restricted/private contexts may block even localStorage access.
     }
+    setStorageWarning(!saved);
   }, [preferences]);
 
   useEffect(() => {
