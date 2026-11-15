@@ -28,7 +28,21 @@ Contenido inicial:
 }
 ```
 
-Para añadir códigos, usa **+ Agregar fila** en modo editor. Cada registro
+Para añadir códigos, pulsa **+ Nueva pieza / código** en modo editor, escribe
+un código nuevo y pulsa **Crear pieza**. FrameLogic construye automáticamente
+una ficha que incluye la **unión de todas las propiedades y subdivisiones**
+que aparecen en los demás registros del mismo `DBFrameLogic.json`, incluidos
+objetos anidados y posiciones de listas. Los valores de las otras piezas **no
+se copian**: el texto queda vacío y los números/booleanos se dejan como
+`null` hasta introducir el valor real. La ficha se selecciona y queda
+pendiente de **Guardar JSON**. Las fichas originales no se modifican.
+
+Si dos registros tienen una misma subdivisión definida a la vez como objeto
+y lista, la creación se detiene con un aviso: no es posible preservar ambas
+estructuras en esa misma ruta sin decidir cómo unificarlas. Los registros con
+propiedades diferentes o con campos ausentes sí se combinan.
+
+Cada registro
 exige un código único (sin distinguir mayúsculas). **Todos los demás campos
 son opcionales y libres**: pueden existir grupos, listas, objetos, números
 positivos o negativos, textos, booleanos y valores `null`. No se presupone
