@@ -27,14 +27,20 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(view).toContain('data-framelogic-catalog-base-path="true"');
     expect(view).toContain('value={catalog.ruta_base ?? ""}');
     expect(view).toContain('data-framelogic-catalog-audit="true"');
-    expect(view).toContain('catalog.fecha || "Sin registrar"');
-    expect(view).toContain('catalog.usuario || "—"');
-    expect(view).toContain("markCatalogModified(blankCatalog())");
-    expect(view).toContain("markCatalogModified({ ...current, registros: records })");
-    expect(view).toContain("setCatalog(markCatalogModified(normalized))");
-    expect(view).toContain("const updated = markCatalogModified(");
-    expect(view).toContain("setCatalog(markCatalogModified({");
-    expect(view).toContain("markCatalogModified({ ...current, ruta_base: next })");
+    expect(view).toContain("catalog.fecha_modificacion || catalog.fecha");
+    expect(view).toContain("catalog.usuario_modificacion || catalog.usuario");
+    expect(view).toContain("const fresh = blankCatalog()");
+    expect(view).toContain("setCatalog(normalized)");
+    expect(view).toContain('data-framelogic-catalog-version="true"');
+    expect(view).toContain("displayCatalogVersion(catalog.version)");
+    expect(view).toContain('aria-label="Editar versión del JSON"');
+    expect(view).toContain("setCatalogVersion(catalog, versionDraft, editorAuth.current.unlocked)");
+    expect(view).toContain("setVersionDraft(null)");
+    expect(view).toContain("savedCatalog = markCatalogModified(normalizeFrameLogicCatalog(catalog))");
+    expect(view).toContain("if (!canWrite(authGeneration))");
+    expect(view).toContain("await writer.abort?.()");
+    expect(view).toContain("setCatalog(savedCatalog)");
+    expect(view).toContain('placeholder={CATALOG_INITIAL_BASE_PATH}');
 
     expect(view).toContain('disabled={!unlocked}');
     expect(view).not.toContain('rutaBase={catalog.ruta_base}');
@@ -94,7 +100,8 @@ describe("global settings lock and local JSON spreadsheet", () => {
   it("still ships a valid starter file for optional URL-based catalogs", () => {
     const catalog = JSON.parse(read("../apps/web/public/data/framelogic-catalog.json"));
     expect(catalog).toEqual({
-      version: 1, fecha: "", usuario: "", ruta_base: "", registros: [],
+      version: "1.0.0", fecha_modificacion: "", usuario_modificacion: "",
+      ruta_base: String.raw`D:\Documents\FrameLogic`, registros: [],
     });
   });
 });
