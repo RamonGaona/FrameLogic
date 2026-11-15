@@ -38,7 +38,12 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(view).toContain("setVersionDraft(null)");
     expect(view).toContain("savedCatalog = markCatalogModified(normalizeFrameLogicCatalog(catalog))");
     expect(view).toContain("if (!canWrite(authGeneration))");
-    expect(view).toContain("await writer.abort?.()");
+    expect(view).toContain("writeAuthorizedCatalogFile(");
+    const writer = read("../apps/web/src/features/bim/settings/catalogFileWriter.ts");
+    expect(writer).toContain("await writer.abort?.()");
+    expect(writer).toContain("await writer.close()");
+    expect(writer).toContain("assertAuthorized()");
+    expect(writer).toContain("requestCatalogWritePermission(handle)");
     expect(view).toContain("setCatalog(savedCatalog)");
     expect(view).toContain('placeholder={CATALOG_INITIAL_BASE_PATH}');
 
@@ -80,8 +85,9 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(view).toContain("localStorage.setItem(CATALOG_SOURCE_STORAGE_KEY, value)");
     expect(view).toContain("showOpenFilePicker");
     expect(view).toContain("showSaveFilePicker");
-    expect(view).toContain("createWritable()");
-    expect(view).toContain("El JSON cambió fuera de FrameLogic.");
+    const writer = read("../apps/web/src/features/bim/settings/catalogFileWriter.ts");
+    expect(writer).toContain("createWritable()");
+    expect(writer).toContain("El JSON cambió fuera de FrameLogic.");
     expect(view).toContain("restoreCatalogFileHandle(route)");
     expect(view).toContain("queryCatalogReadPermission(handle)");
     expect(view).toContain("requestCatalogReadPermission(handle)");
@@ -89,7 +95,7 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(view).toContain('data-framelogic-catalog-authorize="true"');
     expect(view).toContain("rememberedHandle &&");
     expect(view).toContain("loadLocal(file, handle, false)");
-    expect(view).toContain("requestCatalogWritePermission(handle)");
+    expect(writer).toContain("requestCatalogWritePermission(handle)");
     const store = read("../apps/web/src/features/bim/settings/catalogFileHandleStore.ts");
     expect(store).toContain("indexedDB.open(CATALOG_FILE_HANDLE_DB, 1)");
     expect(store).toContain("saved.route !== route");
