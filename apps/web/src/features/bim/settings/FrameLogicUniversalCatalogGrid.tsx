@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   catalogFieldRows,
-  displayCatalogPath,
   catalogScalarType,
   convertCatalogScalarValue,
   parseCatalogNumericInput,
@@ -143,8 +142,6 @@ export interface UniversalCatalogGridProps {
   matches: readonly { record: CatalogRecord; index: number }[];
   selectedRow: number | null;
   unlocked: boolean;
-  /** Folder displayed once above this pane; never used to read the filesystem. */
-  rutaBase?: string;
   onSelect: (index: number) => void;
   onCellEdit: (index: number, path: CatalogPath, value: CatalogValue) => void;
   onRecordReplace: (index: number, record: CatalogRecord) => void;
@@ -152,7 +149,7 @@ export interface UniversalCatalogGridProps {
 
 /** A selected code is expanded vertically into every nested JSON value. */
 export function FrameLogicUniversalCatalogGrid({
-  registros, matches, selectedRow, unlocked, rutaBase,
+  registros, matches, selectedRow, unlocked,
   onSelect, onCellEdit, onRecordReplace,
 }: UniversalCatalogGridProps) {
   const [jsonEditor, setJsonEditor] = useState<{
@@ -230,9 +227,7 @@ export function FrameLogicUniversalCatalogGrid({
                             onEdit={(path, next) => onCellEdit(selectedRow!, path, next)} />
                            : <span className="fl-catalog-cell-text"
                             title={String(row.value ?? "")}>
-                            {typeof row.value === "string"
-                              ? displayCatalogPath(row.value, rutaBase)
-                              : kindLabel(row.value)}
+                            {kindLabel(row.value)}
                           </span>}
                     </td>
                   </tr>
