@@ -8,6 +8,7 @@ import {
   updateCatalogField,
   parseCatalogRecordEditor,
   makeCatalogRecordWithAllSubdivisions,
+  type CatalogRecord,
   parseFrameLogicCatalog,
   resolveCatalogUrl,
   serializeFrameLogicCatalog,
@@ -156,7 +157,7 @@ describe("JSON catalog for FrameLogic parts", () => {
   });
 
   it("creates a unique new code with the UNION of subdivisions from every record", () => {
-    const originals = [
+    const originals: CatalogRecord[] = [
       {
         codigo: "REC3002",
         descripcion: "Viga REC",
@@ -192,7 +193,7 @@ describe("JSON catalog for FrameLogic parts", () => {
       familia: "",
       revisiones: [{ estado: null }],
     });
-    expect(originals[0]!.material.calidad).toBe("S355");
+    expect(originals[0]!.material).toEqual({ calidad: "S355", densidad: 7850 });
     expect(JSON.stringify(newRecord)).not.toContain("Galvanizado");
     expect(JSON.stringify(newRecord)).not.toContain("Corte");
     expect(JSON.stringify(newRecord)).not.toContain("12000");
@@ -203,7 +204,7 @@ describe("JSON catalog for FrameLogic parts", () => {
   });
 
   it("avoids existing codes even when upper/lower-case differs", () => {
-    const records = [
+    const records: CatalogRecord[] = [
       { codigo: "nuevo_0001", propiedades: { anclajes: [{ diametro: 12 }] } },
       { codigo: "NUEVO_0002", propiedades: { calculo: { kN: 500 } } },
     ];
@@ -212,7 +213,7 @@ describe("JSON catalog for FrameLogic parts", () => {
 
   it("supports an empty catalog and contradicting field types without inventing values", () => {
     expect(makeCatalogRecordWithAllSubdivisions([])).toEqual({ codigo: "NUEVO_0001" });
-    const records = [
+    const records: CatalogRecord[] = [
       { codigo: "A", configuracion: "manual", limites: 5 },
       { codigo: "B", configuracion: { carga: { maxima_kN: 1400 } }, limites: false },
     ];
