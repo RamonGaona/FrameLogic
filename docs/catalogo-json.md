@@ -1,4 +1,4 @@
-# Catálogo JSON universal de FrameLogic (v0.1.167)
+# Catálogo JSON universal de FrameLogic (v0.1.168)
 
 La pestaña **Configuración → Base de datos** muestra el archivo `DBFrameLogic.json`
 en un listado vertical de códigos y una tabla **Propiedad / Valor**. La tabla
@@ -78,10 +78,26 @@ personalizada, se conserva. La antigua URL predeterminada
 `/data/framelogic-catalog.json` se sustituye en la interfaz por la nueva
 ruta local.
 
-**Recordar la ruta no equivale a tener permiso de lectura o escritura.**
-Una página web no puede abrir automáticamente `D:\...` tras refrescar:
-hay que volver a seleccionar el archivo cuando el navegador lo requiera.
-El selector de archivos compatible puede recordar la última carpeta.
+**La ruta no es un permiso de disco.** En navegadores como Chrome/Edge
+compatibles con File System Access API, al pulsar **Seleccionar JSON**,
+FrameLogic almacena una referencia al archivo seleccionado en el IndexedDB
+del mismo origen web; **no** guarda allí la contraseña ni el contenido JSON.
+
+Al recargar la página o volver a abrir la ventana, intenta recuperar esa
+referencia y consultar el permiso **solo de lectura**:
+- **Permiso concedido:** carga automáticamente el contenido actual del archivo
+  local, sin volver a seleccionarlo ni desbloquear el candado.
+- **Permiso pendiente o caducado:** aparece **Autorizar acceso**.
+  Al pulsarlo, el navegador puede pedir permiso para leer el archivo.
+- **Referencia perdida, archivo movido o navegador incompatible:** sigue
+  disponible **Seleccionar JSON** para elegirlo de nuevo.
+- **Ruta diferente:** no se abre la referencia antigua. Cada navegador
+  mantiene sus propios permisos y puede olvidarlos al borrar sus datos.
+
+Las peticiones automáticas no solicitan permisos de escritura. Para sobrescribir
+el archivo se necesita además abrir el candado de edición y pulsar
+**Guardar JSON**, lo cual puede provocar otra solicitud de permiso.
+La web nunca obtiene acceso arbitrario al disco `D:\` por escribir su ruta.
 
 La ruta puede cambiar cuando SharePoint sincronice la carpeta local,
 pero cada usuario deberá poder abrir ese archivo desde el equipo donde
