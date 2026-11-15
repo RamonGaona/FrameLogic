@@ -58,7 +58,7 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(view).toContain("if (!unlocked || !catalog || busy) return;");
     expect(view).toContain("setFilter(\"\")");
     expect(view).toContain("serializeFrameLogicCatalog(updated)");
-    expect(view).toContain("if (!unlocked) return;");
+    expect(view).toContain("if (!unlocked || busy) return;");
     expect(view).toContain("serializeFrameLogicCatalog(savedCatalog)");
     expect(view).toContain("hasEffectiveCatalogChanges(readText, catalog)");
     expect(view).toContain("window.confirm(");
