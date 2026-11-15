@@ -19,18 +19,20 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(catalogSource).not.toContain("verifyCatalogPassword");
   });
 
-  it("shows and edits all seven JSON fields in a full-width Excel-style table", () => {
+  it("explores every nested JSON field dynamically, editing only when unlocked", () => {
     const view = read("../apps/web/src/features/bim/settings/FrameLogicCatalogSettings.tsx");
+    const explorer = read("../apps/web/src/features/bim/settings/FrameLogicUniversalCatalogGrid.tsx");
     const style = read("../apps/web/src/features/bim/settings/frameLogicCatalogSettings.css");
-    for (const key of ["codigo", "nombre", "familia", "ruta", "peso", "longitud", "tarifa"]) {
-      expect(view).toContain('"' + key + '"');
-    }
-    expect(view).toContain('className="fl-catalog-table fl-catalog-excel"');
-    expect(view).toContain("onChange={(event) => editCell(");
+    expect(view).toContain("FrameLogicUniversalCatalogGrid");
+    expect(view).toContain("updateCatalogField");
     expect(view).toContain("if (!unlocked) return;");
     expect(view).toContain("serializeFrameLogicCatalog(normalizeFrameLogicCatalog(catalog))");
     expect(view).toContain("window.confirm(");
-    expect(style).toContain(".fl-catalog-excel .fl-catalog-cell-input");
+    expect(explorer).toContain('catalogFieldRows(record)');
+    expect(explorer).toContain('Editar estructura JSON');
+    expect(explorer).toContain('parseCatalogRecordEditor(jsonEditor.text)');
+    expect(explorer).toContain("onCellEdit(selectedRow!, path, next)");
+    expect(style).toContain(".fl-universal-field-table");
   });
 
   it("keeps the local DBFrameLogic path through refresh, but uses file picker permissions", () => {
