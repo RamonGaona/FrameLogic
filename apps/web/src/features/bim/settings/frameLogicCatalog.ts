@@ -137,6 +137,63 @@ export function serializeFrameLogicCatalog(catalog: FrameLogicCatalog): string {
   return text;
 }
 
+/**
+ * Every leaf can change its JSON scalar type from the editor. This is not a
+ * schema inference: the user explicitly chooses Text/Number/Boolean/Null.
+ */
+export type CatalogScalarType = "text" | "number" | "boolean" | "null";
+
+export function catalogScalarType(value: CatalogValue): CatalogScalarType {
+  if (value === null) return "null";
+  if (typeof value === "string") return "text";
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  throw new Error("Los grupos y listas se modifican desde Editar estructura JSON.");
+}
+
+/**
+ * Strict locale-friendly numeric parser: accepts decimals with . or ,
+ * and negative values; never turns arbitrary text or an empty string into 0.
+ * An empty input represents null (missing numeric value).
+ */
+export function parseCatalogNumericInput(raw: string): number | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const normalized = text.replace(",", ".");
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(normalized)) {
+    throw new Error("Introduce un número válido, por ejemplo 125.5 o -2,75.");
+  }
+  const number = Number(normalized);
+  if (!Number.isFinite(number)) {
+    throw new Error("El número introducido está fuera del intervalo permitido.");
+  }
+  return number;
+}
+
+export function convertCatalogScalarValue(
+  value: CatalogValue,
+  target: CatalogScalarType,
+): string | number | boolean | null {
+  const source = catalogScalarType(value);
+  if (target === source) return value as string | number | boolean | null;
+  if (target === "null") return null;
+  if (target === "text") return value === null ? "" : String(value);
+  if (target === "number") {
+    if (value === null) return null;
+    if (typeof value === "boolean") return value ? 1 : 0;
+    if (typeof value === "number") return value;
+    return parseCatalogNumericInput(value);
+  }
+  if (value === null) return false;
+  if (typeof value === "string") {
+    if (value.trim().toLowerCase() === "true" || value.trim().toLowerCase() === "sí") return true;
+    if (value.trim().toLowerCase() === "false" || value.trim().toLowerCase() === "no") return false;
+    // Do not silently treat arbitrary text as a true boolean.
+    throw new Error("El texto no representa un booleano. Escribe true o false antes de convertir.");
+  }
+  return Boolean(value);
+}
+
 export type CatalogPath = readonly (string | number)[];
 export interface CatalogFieldRow {
   path: CatalogPath;
