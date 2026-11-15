@@ -15,7 +15,7 @@ import {
   CATALOG_LOCAL_FILE_NAME,
   CATALOG_LOCAL_FILE_PATH,
   CATALOG_SOURCE_STORAGE_KEY,
-  EMPTY_CATALOG_RECORD,
+  createCatalogRecordFromExisting,
   MAX_CATALOG_BYTES,
   normalizeFrameLogicCatalog,
   parseFrameLogicCatalog,
@@ -112,6 +112,8 @@ export function FrameLogicCatalogSettings({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [filter, setFilter] = useState("");
+  const [newCodeOpen, setNewCodeOpen] = useState(false);
+  const [newCode, setNewCode] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const requestId = useRef(0);
 
@@ -365,21 +367,37 @@ export function FrameLogicCatalogSettings({
     }
   };
 
-  const addRow = () => {
+  const openNewCode = () => {
     if (!unlocked || !catalog) return;
-    const codes = new Set(catalog.registros.map((r) => r.codigo.toUpperCase()));
+    const codes = new Set(catalog.registros.map((r) => r.codigo.toLocaleUpperCase()));
     let number = catalog.registros.length + 1;
-    let code = "CODIGO_" + String(number).padStart(3, "0");
-    while (codes.has(code)) {
+    while (codes.has(("CODIGO_" + String(number).padStart(3, "0")).toLocaleUpperCase())) {
       number += 1;
-      code = "CODIGO_" + String(number).padStart(3, "0");
     }
-    const next: CatalogRecord = { ...EMPTY_CATALOG_RECORD, codigo: code };
-    setCatalog({ ...catalog, registros: [...catalog.registros, next] });
-    setSelectedRow(catalog.registros.length);
-    setDirty(true);
+    setNewCode("CODIGO_" + String(number).padStart(3, "0"));
+    setNewCodeOpen(true);
     setError("");
-    setMessage("Fila añadida. Edita sus celdas y guarda el archivo JSON.");
+  };
+
+  const createNewCode = () => {
+    if (!unlocked || !catalog || busy) return;
+    try {
+      const next = createCatalogRecordFromExisting(catalog.registros, newCode);
+      const updated = normalizeFrameLogicCatalog({
+        ...catalog, registros: [...catalog.registros, next],
+      });
+      setCatalog(updated);
+      setSelectedRow(catalog.registros.length);
+      setFilter("");
+      setNewCodeOpen(false);
+      setNewCode("");
+      setDirty(true);
+      setError("");
+      setMessage("Pieza «" + next.codigo
+        + "» creada con todas las subdivisiones existentes y valores vacíos. Pulsa Guardar JSON.");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
   };
 
   const removeRow = () => {
@@ -528,7 +546,8 @@ export function FrameLogicCatalogSettings({
             } catch (cause) { setError(errorMessage(cause)); }
           }}>Descargar copia</button>
           {unlocked && <>
-            <button type="button" onClick={addRow} disabled={!catalog || busy}>+ Agregar fila</button>
+            <button type="button" onClick={openNewCode} disabled={!catalog || busy}
+              data-framelogic-catalog-new-code="true">+ Nueva pieza / código</button>
             <button type="button" onClick={removeRow}
               disabled={!catalog || selectedRow === null || busy}>Eliminar fila</button>
             <button type="button" onClick={() => void saveJson()}
@@ -536,6 +555,23 @@ export function FrameLogicCatalogSettings({
           </>}
         </div>
       </div>
+
+      {unlocked && newCodeOpen && (
+        <form className="fl-catalog-create-code" aria-label="Crear nueva pieza o código"
+          onSubmit={(event) => { event.preventDefault(); createNewCode(); }}>
+          <label htmlFor="fl-catalog-new-code">Código de la nueva pieza</label>
+          <input id="fl-catalog-new-code" type="text" value={newCode}
+            autoFocus required maxLength={256} disabled={busy}
+            onChange={(event) => setNewCode(event.currentTarget.value)} />
+          <small>Se incluirán automáticamente todas las subdivisiones presentes en los demás
+            códigos, sin copiar sus valores. Puedes completarlas en la tabla.</small>
+          <div className="fl-catalog-create-actions">
+            <button type="submit" disabled={busy || !newCode.trim()}>Crear pieza</button>
+            <button type="button" disabled={busy}
+              onClick={() => { setNewCodeOpen(false); setNewCode(""); }}>Cancelar</button>
+          </div>
+        </form>
+      )}
 
       <label className="fl-catalog-search" htmlFor="fl-catalog-search-input">
         Buscar códigos y propiedades
