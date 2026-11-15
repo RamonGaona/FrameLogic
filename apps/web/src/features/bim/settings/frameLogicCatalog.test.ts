@@ -7,6 +7,7 @@ import {
   catalogFieldRows,
   updateCatalogField,
   parseCatalogRecordEditor,
+  makeCatalogRecordWithAllSubdivisions,
   parseFrameLogicCatalog,
   resolveCatalogUrl,
   serializeFrameLogicCatalog,
@@ -152,6 +153,85 @@ describe("JSON catalog for FrameLogic parts", () => {
     }));
     expect(newRecord.nuevaDivision).toEqual({ sub: [true, null, { nombre: "A" }] });
     expect(() => parseCatalogRecordEditor('["not an object"]')).toThrow(/objeto/i);
+  });
+
+  it("creates a unique new code with the UNION of subdivisions from every record", () => {
+    const originals = [
+      {
+        codigo: "REC3002",
+        descripcion: "Viga REC",
+        material: { calidad: "S355", densidad: 7850 },
+        geometria: { largo_mm: 3000 },
+        procesos: ["Corte", "Soldadura"],
+        taladros: [{ diametro: 18, posicion: { x: 22 } }, { diametro: 20 }],
+        activo: true,
+        tarifa: 12000,
+      },
+      {
+        codigo: "PL-ANCLA-450",
+        familia: "Placas",
+        material: { acabado: "Galvanizado" },
+        geometria: { ancho_mm: 450, espesor_mm: 25 },
+        taladros: [{ posicion: { y: -30 }, referencia: "M24" }],
+        revisiones: [{ estado: false }],
+      },
+    ];
+    const newRecord = makeCatalogRecordWithAllSubdivisions(originals);
+    expect(newRecord).toEqual({
+      codigo: "NUEVO_0001",
+      descripcion: "",
+      material: { calidad: "", densidad: null, acabado: "" },
+      geometria: { largo_mm: null, ancho_mm: null, espesor_mm: null },
+      procesos: ["", ""],
+      taladros: [
+        { diametro: null, posicion: { x: null, y: null }, referencia: "" },
+        { diametro: null },
+      ],
+      activo: null,
+      tarifa: null,
+      familia: "",
+      revisiones: [{ estado: null }],
+    });
+    expect(originals[0]!.material.calidad).toBe("S355");
+    expect(JSON.stringify(newRecord)).not.toContain("Galvanizado");
+    expect(JSON.stringify(newRecord)).not.toContain("Corte");
+    expect(JSON.stringify(newRecord)).not.toContain("12000");
+    const saved = serializeFrameLogicCatalog({
+      version: 1, registros: [...originals, newRecord],
+    });
+    expect(parseFrameLogicCatalog(saved).registros[2]).toEqual(newRecord);
+  });
+
+  it("avoids existing codes even when upper/lower-case differs", () => {
+    const records = [
+      { codigo: "nuevo_0001", propiedades: { anclajes: [{ diametro: 12 }] } },
+      { codigo: "NUEVO_0002", propiedades: { calculo: { kN: 500 } } },
+    ];
+    expect(makeCatalogRecordWithAllSubdivisions(records).codigo).toBe("NUEVO_0003");
+  });
+
+  it("supports an empty catalog and contradicting field types without inventing values", () => {
+    expect(makeCatalogRecordWithAllSubdivisions([])).toEqual({ codigo: "NUEVO_0001" });
+    const records = [
+      { codigo: "A", configuracion: "manual", limites: 5 },
+      { codigo: "B", configuracion: { carga: { maxima_kN: 1400 } }, limites: false },
+    ];
+    const fresh = makeCatalogRecordWithAllSubdivisions(records);
+    expect(fresh.configuracion).toEqual({ carga: { maxima_kN: null } });
+    expect(fresh.limites).toBeNull();
+  });
+
+  it("creates repeated codes without losing any prior catalog records", () => {
+    const first = { codigo: "A1", subdivision: { interno: { diametro: 90 } } };
+    const next = makeCatalogRecordWithAllSubdivisions([first]);
+    const following = makeCatalogRecordWithAllSubdivisions([first, next]);
+    expect(following.codigo).toBe("NUEVO_0002");
+    expect(following.subdivision).toEqual({ interno: { diametro: null } });
+    const saved = parseFrameLogicCatalog(
+      serializeFrameLogicCatalog({ version: 1, registros: [first, next, following] }),
+    );
+    expect(saved.registros[0]).toEqual(first);
+    expect(saved.registros).toHaveLength(3);
   });
 
 });
