@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.169 — 2026-11-15 (nueva pieza universal en el catálogo)
+
+### Crear un código con la estructura combinada de los existentes
+
+- En `Configuración → Base de datos`, el botón **+ Nueva pieza / código** aparece únicamente con el candado general de edición abierto. Solicita un código nuevo, detecta duplicados sin distinguir mayúsculas y selecciona inmediatamente la ficha creada.
+- La nueva ficha contiene automáticamente la **unión de todas las subdivisiones** de los registros del archivo JSON cargado, incluso grupos anidados y elementos de listas con distintas propiedades. No se altera ninguna ficha anterior ni se copian sus valores: textos vacíos y números/booleanos sin definir (`null`) hasta que el editor los complete.
+- Si en dos piezas la misma propiedad es objeto y lista simultáneamente, se avisa del conflicto en lugar de perder subdivisiones. El código nuevo queda sin guardar hasta pulsar **Guardar JSON**; se mantiene la validación, el control de cambios externos y el permiso explícito de escritura local.
+- Pruebas añadidas para unión de objetos y listas, valores vacíos, detección de duplicados y conflicto de estructuras; integración del botón con el candado general. El desbloqueo provisional sigue siendo solo una protección de interfaz, no autenticación real.
+
+---
+
 ## v0.1.168 — 2026-11-15 (recuperación automática del JSON local)
 
 ### Recordar el archivo seleccionado, no solo su ruta
