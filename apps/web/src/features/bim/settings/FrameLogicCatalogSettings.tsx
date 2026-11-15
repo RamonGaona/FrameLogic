@@ -5,7 +5,7 @@ import {
   forgetCatalogFileHandle,
   queryCatalogReadPermission,
   requestCatalogReadPermission,
-   restoreCatalogFileHandle,
+  restoreCatalogFileHandle,
   storeCatalogFileHandle,
   type CatalogFileHandle,
 } from "./catalogFileHandleStore";
