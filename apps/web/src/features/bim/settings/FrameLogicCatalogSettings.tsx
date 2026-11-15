@@ -2,22 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import {
   blankCatalog,
   CATALOG_DEFAULT_URL,
+  CATALOG_LOCAL_FILE_NAME,
+  CATALOG_LOCAL_FILE_PATH,
   CATALOG_SOURCE_STORAGE_KEY,
   EMPTY_CATALOG_RECORD,
   MAX_CATALOG_BYTES,
-  createCatalogPasswordVerifier,
-  normalizeCatalogRecord,
   normalizeFrameLogicCatalog,
   parseFrameLogicCatalog,
   resolveCatalogUrl,
   serializeFrameLogicCatalog,
-  verifyCatalogPassword,
   type CatalogRecord,
   type FrameLogicCatalog,
 } from "./frameLogicCatalog";
 import "./frameLogicCatalogSettings.css";
 
-/** File System Access API is progressive enhancement, not required for reading. */
 interface CatalogWritable {
   write(data: string): Promise<void>;
   close(): Promise<void>;
@@ -28,536 +26,452 @@ interface CatalogFileHandle {
   getFile(): Promise<File>;
   createWritable(): Promise<CatalogWritable>;
 }
-interface FilePickerWindow extends Window {
+interface CatalogPickerWindow extends Window {
   showOpenFilePicker?: (options?: {
+    id?: string;
     multiple?: boolean;
     types?: Array<{ description: string; accept: Record<string, string[]> }>;
   }) => Promise<CatalogFileHandle[]>;
   showSaveFilePicker?: (options?: {
+    id?: string;
     suggestedName?: string;
     types?: Array<{ description: string; accept: Record<string, string[]> }>;
   }) => Promise<CatalogFileHandle>;
 }
 
-type CatalogDraft = Omit<CatalogRecord, "peso" | "longitud" | "tarifa"> & {
-  peso: string;
-  longitud: string;
-  tarifa: string;
-};
-type SourceKind = "remote" | "local" | "new";
-
 const JSON_FILE_TYPES = [{
-  description: "Archivo JSON de FrameLogic",
+  description: "Base de datos FrameLogic (JSON)",
   accept: { "application/json": [".json"] },
 }];
 
-function toDraft(record: CatalogRecord): CatalogDraft {
-  return {
-    codigo: record.codigo,
-    nombre: record.nombre,
-    familia: record.familia,
-    ruta: record.ruta,
-    peso: record.peso === null ? "" : String(record.peso),
-    longitud: record.longitud === null ? "" : String(record.longitud),
-    tarifa: record.tarifa === null ? "" : String(record.tarifa),
-  };
+const COLUMNS = [
+  ["codigo", "Código"],
+  ["nombre", "Nombre"],
+  ["familia", "Familia"],
+  ["ruta", "Ruta"],
+  ["peso", "Peso"],
+  ["longitud", "Longitud"],
+  ["tarifa", "Tarifa"],
+] as const;
+
+type CatalogField = (typeof COLUMNS)[number][0];
+type SourceKind = "remote" | "local" | "new";
+
+function isNumeric(field: CatalogField): field is "peso" | "longitud" | "tarifa" {
+  return field === "peso" || field === "longitud" || field === "tarifa";
 }
 
-function fromDraft(draft: CatalogDraft): CatalogRecord {
-  const numberOrNull = (value: string) => value.trim() === "" ? null : Number(value);
-  return normalizeCatalogRecord({
-    ...draft,
-    peso: numberOrNull(draft.peso),
-    longitud: numberOrNull(draft.longitud),
-    tarifa: numberOrNull(draft.tarifa),
-  });
-}
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function isWebRoute(value: string): boolean {
+  return /^(https?:\/\/|\/)/i.test(value.trim());
 }
 
 function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-function downloadCatalog(json: string, fileName: string): void {
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function downloadJson(json: string, name: string): void {
   const blob = new Blob([json], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = fileName.toLowerCase().endsWith(".json") ? fileName : fileName + ".json";
+  link.download = name.endsWith(".json") ? name : CATALOG_LOCAL_FILE_NAME;
   document.body.append(link);
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Catalog panel: shared read-only JSON URL, or a local file with explicit save. */
-export function FrameLogicCatalogSettings() {
+export interface FrameLogicCatalogSettingsProps {
+  /** Controlled by the single lock in the settings WINDOW header. */
+  unlocked: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+/**
+ * Excel-style catalog grid. Every onChange updates the in-memory JSON.
+ * Explicit Guardar JSON writes to the selected local file (when permission
+ * exists) or downloads a copy. Never pretends to update the public URL.
+ */
+export function FrameLogicCatalogSettings({
+  unlocked,
+  onDirtyChange,
+}: FrameLogicCatalogSettingsProps) {
   const [route, setRoute] = useState(() => {
-    try { return localStorage.getItem(CATALOG_SOURCE_STORAGE_KEY) ?? CATALOG_DEFAULT_URL; }
-    catch { return CATALOG_DEFAULT_URL; }
+    try {
+      return localStorage.getItem(CATALOG_SOURCE_STORAGE_KEY) || CATALOG_LOCAL_FILE_PATH;
+    } catch {
+      return CATALOG_LOCAL_FILE_PATH;
+    }
   });
   const [catalog, setCatalog] = useState<FrameLogicCatalog | null>(null);
-  const [source, setSource] = useState<SourceKind>("remote");
+  const [source, setSource] = useState<SourceKind>("local");
   const [fileHandle, setFileHandle] = useState<CatalogFileHandle | null>(null);
   const [readText, setReadText] = useState<string | null>(null);
-  const [filename, setFilename] = useState("framelogic-catalog.json");
+  const [fileName, setFileName] = useState(CATALOG_LOCAL_FILE_NAME);
+  const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [filter, setFilter] = useState("");
-  const [admin, setAdmin] = useState(false);
-  const [password, setPassword] = useState("");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [authBusy, setAuthBusy] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [isNew, setIsNew] = useState(false);
-  const [draftDirty, setDraftDirty] = useState(false);
-  const [draft, setDraft] = useState<CatalogDraft>(() => toDraft(EMPTY_CATALOG_RECORD));
   const fileInput = useRef<HTMLInputElement>(null);
-  const requestSerial = useRef(0);
+  const requestId = useRef(0);
 
-  const selectData = (
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const rememberRoute = (value: string) => {
+    setRoute(value);
+    try { localStorage.setItem(CATALOG_SOURCE_STORAGE_KEY, value); }
+    catch { /* Incognito/private browser mode */ }
+  };
+
+  const acceptCatalog = (
     data: FrameLogicCatalog,
-    raw: string,
+    text: string,
     kind: SourceKind,
     name: string,
     handle: CatalogFileHandle | null,
   ) => {
     setCatalog(data);
-    setReadText(raw);
+    setReadText(text);
     setSource(kind);
-    setFilename(name);
+    setFileName(name);
     setFileHandle(handle);
-    setAdmin(false);
-    setPassword("");
-    setPasswordConfirm("");
+    setSelectedRow(null);
     setDirty(false);
-    setDraftDirty(false);
-    setIsNew(false);
-    setSelectedIndex(data.registros.length ? 0 : null);
-    setDraft(toDraft(data.registros[0] ?? EMPTY_CATALOG_RECORD));
     setFilter("");
+    setError("");
   };
 
-  const requestRemote = async (value: string, onOpen = false): Promise<void> => {
-    const serial = ++requestSerial.current;
-    if (!onOpen && (dirty || draftDirty)
-      && !window.confirm("Hay cambios sin guardar. ¿Descartar y cargar otra base de datos?")) return;
+  const confirmDiscard = (): boolean => !dirty
+    || window.confirm("Hay cambios sin guardar. ¿Deseas descartarlos?");
+
+  const loadRemote = async (value: string, initial = false): Promise<void> => {
+    if (!initial && !confirmDiscard()) return;
+    if (!isWebRoute(value)) {
+      setError("La ruta local se abre con «Seleccionar JSON». Por seguridad, el navegador no puede leer D:\\ directamente.");
+      return;
+    }
+    const id = ++requestId.current;
     setBusy(true);
     setError("");
     setMessage("");
     try {
-      const url = resolveCatalogUrl(value, window.location.href);
+      const url = resolveCatalogUrl(value, location.href);
       const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) throw new Error("No se pudo abrir el JSON (HTTP " + response.status + ").");
-      const size = Number(response.headers.get("content-length") || 0);
-      if (size > MAX_CATALOG_BYTES) throw new Error("La base de datos supera 5 MB.");
-      const raw = await response.text();
-      const parsed = parseFrameLogicCatalog(raw);
-      if (serial !== requestSerial.current) return;
-      selectData(parsed, raw, "remote", new URL(url).pathname.split("/").pop() || "catalogo.json", null);
-      try { localStorage.setItem(CATALOG_SOURCE_STORAGE_KEY, value); } catch { /* private mode */ }
-      setMessage("Catálogo cargado en modo consulta desde la URL.");
+      if (!response.ok) throw new Error("No se pudo abrir el JSON: HTTP " + response.status + ".");
+      if (Number(response.headers.get("content-length") || 0) > MAX_CATALOG_BYTES) {
+        throw new Error("El archivo excede el máximo de 5 MB.");
+      }
+      const text = await response.text();
+      const next = parseFrameLogicCatalog(text);
+      if (id !== requestId.current) return;
+      acceptCatalog(next, text, "remote", new URL(url).pathname.split("/").pop()
+        || CATALOG_LOCAL_FILE_NAME, null);
+      rememberRoute(value);
+      setMessage("Catálogo web cargado en modo consulta. No se puede sobrescribir desde el navegador.");
     } catch (cause) {
-      if (serial === requestSerial.current) setError(errorText(cause));
+      if (id === requestId.current) setError(errorMessage(cause));
     } finally {
-      if (serial === requestSerial.current) setBusy(false);
+      if (id === requestId.current) setBusy(false);
     }
   };
 
-  // The default URL is served from Cloudflare Pages so all users start with the same catalog.
-  // Remote updates require a protected server API; they are NEVER sent using a client password.
+  // A Windows local path is only a reference. The browser always requires the
+  // user to select/grant access to that file, even after page refresh.
   useEffect(() => {
-    void requestRemote(route, true);
-    return () => { requestSerial.current += 1; };
-    // Only load the initial saved URL when the settings section mounts.
+    if (isWebRoute(route)) void loadRemote(route, true);
+    else setMessage("Ruta local recordada. Selecciona DBFrameLogic.json para conceder acceso.");
+    return () => { requestId.current += 1; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadLocalFile = async (file: File, handle: CatalogFileHandle | null) => {
+  const loadLocal = async (file: File, handle: CatalogFileHandle | null) => {
     if (file.size > MAX_CATALOG_BYTES) {
-      setError("El archivo seleccionado supera el límite de 5 MB.");
+      setError("El archivo seleccionado supera 5 MB.");
       return;
     }
-    const serial = ++requestSerial.current;
+    const id = ++requestId.current;
     setBusy(true);
     setError("");
-    setMessage("");
     try {
-      const raw = await file.text();
-      const parsed = parseFrameLogicCatalog(raw);
-      if (serial !== requestSerial.current) return;
-      selectData(parsed, raw, "local", file.name, handle);
-      setRoute(file.name);
+      const text = await file.text();
+      const parsed = parseFrameLogicCatalog(text);
+      if (id !== requestId.current) return;
+      acceptCatalog(parsed, text, "local", file.name, handle);
+      if (isWebRoute(route)) rememberRoute(CATALOG_LOCAL_FILE_PATH);
       setMessage(handle
-        ? "Archivo local abierto. Un administrador podrá guardar en este archivo."
-        : "Archivo local abierto. Al guardar se descargará una nueva copia JSON.");
+        ? "Archivo local abierto. Guardar JSON escribirá sobre este archivo con permiso del navegador."
+        : "Archivo local abierto para consulta. Guardar JSON descargará una nueva copia.");
     } catch (cause) {
-      if (serial === requestSerial.current) setError(errorText(cause));
+      if (id === requestId.current) setError(errorMessage(cause));
     } finally {
-      if (serial === requestSerial.current) setBusy(false);
+      if (id === requestId.current) setBusy(false);
     }
   };
 
-  const openLocal = async () => {
-    if ((dirty || draftDirty) && !window.confirm(
-      "Hay cambios sin guardar. ¿Descartar y abrir otro archivo?",
-    )) return;
-    const picker = window as FilePickerWindow;
+  const selectJson = async () => {
+    if (!confirmDiscard()) return;
+    const picker = window as CatalogPickerWindow;
     if (!picker.showOpenFilePicker) {
       fileInput.current?.click();
       return;
     }
     try {
       const [handle] = await picker.showOpenFilePicker({
+        id: "framelogic-db-json",
         multiple: false,
         types: JSON_FILE_TYPES,
       });
-      if (handle) await loadLocalFile(await handle.getFile(), handle);
+      if (handle) await loadLocal(await handle.getFile(), handle);
     } catch (cause) {
-      if (!isAbort(cause)) setError(errorText(cause));
+      if (!isAbort(cause)) setError(errorMessage(cause));
     }
   };
 
-  const createNew = () => {
-    if ((dirty || draftDirty) && !window.confirm(
-      "Hay cambios sin guardar. ¿Descartar y crear otra base de datos?",
-    )) return;
-    requestSerial.current += 1;
-    const data = blankCatalog();
-    selectData(data, serializeFrameLogicCatalog(data), "new", "framelogic-catalog.json", null);
-    setRoute("framelogic-catalog.json");
+  const newCatalog = () => {
+    if (!unlocked || !confirmDiscard()) return;
+    requestId.current += 1;
+    const fresh = blankCatalog();
+    acceptCatalog(fresh, serializeFrameLogicCatalog(fresh),
+      "new", CATALOG_LOCAL_FILE_NAME, null);
+    rememberRoute(CATALOG_LOCAL_FILE_PATH);
     setDirty(true);
-    setMessage("JSON nuevo creado. Establece una contraseña de edición y guárdalo como archivo.");
-    setError("");
+    setMessage("Nuevo DBFrameLogic.json. Añade códigos y pulsa «Guardar JSON» para elegir dónde guardarlo.");
   };
 
-  const enterAdmin = async () => {
-    if (!catalog) return;
-    setAuthBusy(true);
-    setError("");
-    try {
-      if (catalog.admin) {
-        if (!await verifyCatalogPassword(password, catalog.admin)) {
-          throw new Error("Contraseña de editor incorrecta.");
-        }
-      } else {
-        if (password !== passwordConfirm) {
-          throw new Error("Las dos contraseñas no coinciden.");
-        }
-        const verifier = await createCatalogPasswordVerifier(password);
-        setCatalog({ ...catalog, admin: verifier });
-        setDirty(true);
-        setMessage("Contraseña de edición establecida. Guarda el JSON para conservarla.");
-      }
-      setAdmin(true);
-      setPassword("");
-      setPasswordConfirm("");
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
-  const selectRecord = (index: number) => {
-    if (draftDirty && !window.confirm("¿Descartar los cambios de la ficha actual?")) return;
-    setSelectedIndex(index);
-    setIsNew(false);
-    setDraft(toDraft(catalog!.registros[index]!));
-    setDraftDirty(false);
-    setError("");
-  };
-
-  const newRecord = () => {
-    if (draftDirty && !window.confirm("¿Descartar los cambios de la ficha actual?")) return;
-    setSelectedIndex(null);
-    setIsNew(true);
-    setDraft(toDraft(EMPTY_CATALOG_RECORD));
-    setDraftDirty(false);
-  };
-
-  const setField = (key: keyof CatalogDraft, value: string) => {
-    setDraft((old) => ({ ...old, [key]: value }));
-    setDraftDirty(true);
-  };
-
-  const commitRecord = () => {
-    if (!catalog || !admin || (!isNew && selectedIndex === null)) return;
-    try {
-      const record = fromDraft(draft);
-      const records = [...catalog.registros];
-      if (isNew) records.push(record);
-      else records[selectedIndex!] = record;
-      const next = normalizeFrameLogicCatalog({ ...catalog, registros: records });
-      const index = isNew ? records.length - 1 : selectedIndex!;
-      setCatalog(next);
-      setSelectedIndex(index);
-      setDraft(toDraft(next.registros[index]!));
-      setIsNew(false);
-      setDraftDirty(false);
-      setDirty(true);
-      setError("");
-      setMessage("Ficha actualizada. Guarda el JSON para conservar los cambios.");
-    } catch (cause) {
-      setError(errorText(cause));
-    }
-  };
-
-  const deleteRecord = () => {
-    if (!catalog || !admin || selectedIndex === null || isNew) return;
-    const old = catalog.registros[selectedIndex];
-    if (!window.confirm("¿Eliminar el código «" + old?.codigo + "» del JSON?")) return;
-    const records = catalog.registros.filter((_, i) => i !== selectedIndex);
-    setCatalog({ ...catalog, registros: records });
-    setSelectedIndex(records.length ? Math.min(selectedIndex, records.length - 1) : null);
-    setDraft(toDraft(records[Math.min(selectedIndex, records.length - 1)] ?? EMPTY_CATALOG_RECORD));
+  const editCell = (index: number, field: CatalogField, input: string) => {
+    if (!unlocked) return;
+    setCatalog((current) => {
+      if (!current || !current.registros[index]) return current;
+      const value = isNumeric(field) ? (input.trim() === "" ? null : Number(input)) : input;
+      const records = [...current.registros];
+      records[index] = { ...records[index]!, [field]: value };
+      return { ...current, registros: records };
+    });
     setDirty(true);
-    setDraftDirty(false);
     setError("");
-    setMessage("Registro eliminado. Guarda el JSON para confirmar.");
   };
 
-  const saveChanges = async () => {
-    if (!catalog || !admin) return;
-    if (draftDirty) { setError("Primero pulsa «Aplicar ficha» para confirmar los campos."); return; }
+  const addRow = () => {
+    if (!unlocked || !catalog) return;
+    const codes = new Set(catalog.registros.map((r) => r.codigo.toUpperCase()));
+    let number = catalog.registros.length + 1;
+    let code = "CODIGO_" + String(number).padStart(3, "0");
+    while (codes.has(code)) {
+      number += 1;
+      code = "CODIGO_" + String(number).padStart(3, "0");
+    }
+    const next: CatalogRecord = { ...EMPTY_CATALOG_RECORD, codigo: code };
+    setCatalog({ ...catalog, registros: [...catalog.registros, next] });
+    setSelectedRow(catalog.registros.length);
+    setDirty(true);
+    setError("");
+    setMessage("Fila añadida. Edita sus celdas y guarda el archivo JSON.");
+  };
+
+  const removeRow = () => {
+    if (!unlocked || !catalog || selectedRow === null) return;
+    const code = catalog.registros[selectedRow]?.codigo;
+    if (!window.confirm("¿Eliminar la fila «" + code + "»?")) return;
+    setCatalog({
+      ...catalog,
+      registros: catalog.registros.filter((_, i) => i !== selectedRow),
+    });
+    setSelectedRow(null);
+    setDirty(true);
+    setMessage("Fila eliminada. Guarda JSON para confirmar.");
+  };
+
+  const saveJson = async () => {
+    if (!unlocked || !catalog) return;
     setError("");
     setMessage("");
     let json: string;
-    try { json = serializeFrameLogicCatalog(catalog); }
-    catch (cause) { setError(errorText(cause)); return; }
+    try {
+      json = serializeFrameLogicCatalog(normalizeFrameLogicCatalog(catalog));
+    } catch (cause) {
+      setError("Corrige las celdas antes de guardar: " + errorMessage(cause));
+      return;
+    }
 
-    // For URL sources, remote writes are intentionally unavailable.
-    // Use a local file picker or explicit download; never send client passwords to a public API.
     setBusy(true);
     try {
-      let target = fileHandle;
-      if (!target) {
-        const picker = window as FilePickerWindow;
+      let handle = fileHandle;
+      if (!handle) {
+        const picker = window as CatalogPickerWindow;
         if (picker.showSaveFilePicker) {
-          target = await picker.showSaveFilePicker({
-            suggestedName: filename,
+          handle = await picker.showSaveFilePicker({
+            id: "framelogic-db-json",
+            suggestedName: CATALOG_LOCAL_FILE_NAME,
             types: JSON_FILE_TYPES,
           });
         } else {
-          downloadCatalog(json, filename);
+          downloadJson(json, CATALOG_LOCAL_FILE_NAME);
           setDirty(false);
-          setMessage("Copia JSON descargada. La URL compartida NO se ha actualizado.");
+          setMessage("Copia descargada. Muévela manualmente a la carpeta D:\\Documents\\FrameLogic\\DB. No se modificó el JSON original.");
           return;
         }
       }
-      if (target === fileHandle && readText !== null) {
-        // Prevent overwriting another edit made to the same local file.
-        const latest = await (await target.getFile()).text();
-        if (latest !== readText) {
-          throw new Error("El archivo cambió fuera de FrameLogic. Vuelve a abrirlo antes de sobrescribir.");
+      if (handle === fileHandle && readText !== null) {
+        const currentText = await (await handle.getFile()).text();
+        if (currentText !== readText) {
+          throw new Error("El JSON cambió fuera de FrameLogic. Ábrelo de nuevo antes de sobrescribir.");
         }
       }
-      const writer = await target.createWritable();
+      const writer = await handle.createWritable();
       try {
         await writer.write(json);
         await writer.close();
       } catch (cause) {
-        try { await writer.abort?.(); } catch { /* could already be closed */ }
+        try { await writer.abort?.(); } catch { /* Already closed */ }
         throw cause;
       }
-      setFileHandle(target);
+      setFileHandle(handle);
       setReadText(json);
-      setFilename(target.name);
+      setFileName(handle.name);
       setSource("local");
-      setRoute(target.name);
       setDirty(false);
-      setMessage("JSON guardado en el archivo local. No actualiza por sí solo la URL web compartida.");
+      setMessage("DBFrameLogic.json guardado en el archivo local seleccionado. La URL pública no se ha modificado.");
     } catch (cause) {
-      if (!isAbort(cause)) setError(errorText(cause));
+      if (!isAbort(cause)) setError(errorMessage(cause));
     } finally {
       setBusy(false);
     }
   };
 
-  const matches = catalog?.registros
-    .map((record, index) => ({ record, index }))
+  const matches = catalog?.registros.map((record, index) => ({ record, index }))
     .filter(({ record }) => {
-      const q = filter.toLocaleLowerCase().trim();
-      return !q || [record.codigo, record.nombre, record.familia, record.ruta]
-        .some((value) => value.toLocaleLowerCase().includes(q));
+      const q = filter.trim().toLocaleLowerCase();
+      return !q || COLUMNS.filter(([field]) => !isNumeric(field))
+        .some(([field]) => String(record[field]).toLocaleLowerCase().includes(q));
     }) ?? [];
-  const activeRecord = selectedIndex === null ? null : catalog?.registros[selectedIndex] ?? null;
-  const display = admin ? draft : toDraft(activeRecord ?? EMPTY_CATALOG_RECORD);
-  const active = isNew || activeRecord !== null;
 
   return (
     <div className="fl-catalog" data-framelogic-catalog-settings="true">
-      <div className="fl-settings-info">
-        <strong>Catálogo JSON de códigos</strong>
-        <p>Todos pueden consultar una misma URL JSON. En esta fase, la edición requiere
-          contraseña y se guarda en un archivo local: para que aparezca a todos los usuarios,
-          ese archivo debe publicarse en la URL común mediante un servicio protegido.</p>
-      </div>
       <div className="fl-catalog-route">
-        <label htmlFor="fl-catalog-json-route">Ruta o URL del archivo JSON</label>
+        <label htmlFor="fl-catalog-json-route">Ubicación de DBFrameLogic.json</label>
         <div className="fl-catalog-route-row">
           <input id="fl-catalog-json-route" type="text" value={route}
-            autoComplete="off" spellCheck={false}
-            placeholder="https://servidor.com/catalogo.json o /data/catalogo.json"
-            onChange={(event) => setRoute(event.target.value)} />
-          <button type="button" disabled={busy}
-            onClick={() => void requestRemote(route)}>Cargar URL</button>
-          <button type="button" disabled={busy} onClick={() => void openLocal()}>
+            disabled={!unlocked} spellCheck={false}
+            onChange={(event) => rememberRoute(event.currentTarget.value)}
+            title="Ubicación de referencia. Para abrir archivos locales usa Seleccionar JSON." />
+          <button type="button" onClick={() => void selectJson()} disabled={busy}>
             Seleccionar JSON
           </button>
-          <button type="button" disabled={busy} onClick={createNew}>Nuevo JSON</button>
+          <button type="button" onClick={() => void loadRemote(route)} disabled={busy || !isWebRoute(route)}>
+            Cargar URL
+          </button>
+          <button type="button" onClick={newCatalog} disabled={!unlocked || busy}>
+            Nuevo JSON
+          </button>
         </div>
         <input ref={fileInput} type="file" accept=".json,application/json" hidden
           onChange={(event) => {
             const file = event.currentTarget.files?.[0];
-            if (file) void loadLocalFile(file, null);
+            if (file) void loadLocal(file, null);
             event.currentTarget.value = "";
           }} />
-        <small>Los navegadores no permiten abrir rutas locales como C:\carpeta\archivo.json
-          directamente; utiliza «Seleccionar JSON». Una URL externa debe permitir CORS.</small>
+        <small>Ruta local prevista: {CATALOG_LOCAL_FILE_PATH}. Se recuerda en este navegador,
+          pero después de recargar debes volver a seleccionar el archivo para dar permiso.
+          También puedes utilizar una URL HTTPS, por ejemplo {CATALOG_DEFAULT_URL}.</small>
       </div>
 
-      {error && <div className="fl-catalog-alert is-error" role="alert">{error}</div>}
-      {message && <div className="fl-catalog-alert" role="status">{message}</div>}
+      {error && <div role="alert" className="fl-catalog-alert is-error">{error}</div>}
+      {message && <div role="status" className="fl-catalog-alert">{message}</div>}
+      <div className="fl-catalog-action-row">
+        <strong>{unlocked ? "🔓 Edición habilitada" : "🔒 Solo lectura"} ·{" "}
+          {catalog?.registros.length ?? 0} códigos · {source === "remote" ? "URL web" : "Archivo local"}
+          {dirty ? " · Sin guardar" : ""}
+        </strong>
+        <div className="fl-catalog-buttons">
+          <button type="button" disabled={!catalog} onClick={() => {
+            if (!catalog) return;
+            try {
+              downloadJson(serializeFrameLogicCatalog(catalog), CATALOG_LOCAL_FILE_NAME);
+              setMessage("Copia descargada; no se modificó el archivo original.");
+            } catch (cause) { setError(errorMessage(cause)); }
+          }}>Descargar copia</button>
+          {unlocked && <>
+            <button type="button" onClick={addRow} disabled={!catalog || busy}>+ Agregar fila</button>
+            <button type="button" onClick={removeRow}
+              disabled={!catalog || selectedRow === null || busy}>Eliminar fila</button>
+            <button type="button" onClick={() => void saveJson()}
+              disabled={!catalog || busy || !dirty}>Guardar JSON</button>
+          </>}
+        </div>
+      </div>
 
-      {catalog ? (
-        <>
-          <div className="fl-catalog-action-row">
-            <span className="fl-catalog-status">
-              {admin ? "Modo editor" : "Solo lectura"} · {catalog.registros.length} códigos ·
-              {" "}{source === "remote" ? "URL compartida" : "Archivo local"}
-              {dirty ? " · Cambios sin guardar" : ""}
-            </span>
-            <div className="fl-catalog-buttons">
-              <button type="button" onClick={() => {
-                downloadCatalog(serializeFrameLogicCatalog(catalog), filename);
-                setMessage("Se descargó una copia; no se modificó la URL compartida.");
-              }}>Descargar copia</button>
-              {admin && <>
-                <button type="button" disabled={busy || !dirty} onClick={() => void saveChanges()}>
-                  Guardar JSON
-                </button>
-                <button type="button" onClick={() => {
-                  if (draftDirty && !window.confirm("¿Descartar los cambios de la ficha?")) return;
-                  setDraftDirty(false);
-                  setAdmin(false);
-                }}>Salir del editor</button>
-              </>}
-            </div>
-          </div>
-          {!admin && (
-            <div className="fl-catalog-admin-access">
-              <strong>{catalog.admin ? "Ingresar como administrador" : "Establecer contraseña de edición"}</strong>
-              <div className="fl-catalog-password-row">
-                <input type="password" value={password}
-                  autoComplete={catalog.admin ? "current-password" : "new-password"}
-                  placeholder="Contraseña de administrador"
-                  aria-label="Contraseña de administrador"
-                  onChange={(event) => setPassword(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && password) void enterAdmin();
-                  }} />
-                {!catalog.admin && <input type="password" value={passwordConfirm}
-                  autoComplete="new-password" placeholder="Confirmar contraseña"
-                  aria-label="Confirmar contraseña de administrador"
-                  onChange={(event) => setPasswordConfirm(event.target.value)} />}
-                <button type="button" disabled={authBusy || !password}
-                  onClick={() => void enterAdmin()}>
-                  {authBusy ? "Validando…" : catalog.admin ? "Entrar en modo editor" : "Crear clave y editar"}
-                </button>
-              </div>
-              <small>La clave no se guarda en texto plano. Este bloqueo protege la edición
-                desde la interfaz, pero NO reemplaza los permisos reales del archivo o
-                la autenticación del servidor.</small>
-            </div>
-          )}
-          <div className="fl-catalog-search">
-            <label htmlFor="fl-catalog-search-input">Buscar código, nombre, familia o ruta</label>
-            <input id="fl-catalog-search-input" type="search" value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-              placeholder="Buscar en el catálogo" />
-          </div>
-          <div className="fl-catalog-grid">
-            <div className="fl-catalog-table-wrap">
-              <table className="fl-catalog-table">
-                <thead><tr>
-                  <th>Código</th><th>Nombre</th><th>Familia</th><th>Ruta</th>
-                  <th>Peso</th><th>Longitud</th><th>Tarifa</th>
-                </tr></thead>
-                <tbody>
-                  {matches.map(({ record, index }) => (
-                    <tr key={record.codigo} className={selectedIndex === index && !isNew ? "is-selected" : ""}
-                      onClick={() => selectRecord(index)}>
-                      <td>{record.codigo}</td>
-                      <td>{record.nombre || "—"}</td>
-                      <td>{record.familia || "—"}</td>
-                      <td title={record.ruta}>{record.ruta || "—"}</td>
-                      <td>{record.peso ?? "—"}</td>
-                      <td>{record.longitud ?? "—"}</td>
-                      <td>{record.tarifa ?? "—"}</td>
-                    </tr>
-                  ))}
-                  {!matches.length && <tr><td colSpan={7}>
-                    {catalog.registros.length ? "Sin resultados." : "El catálogo todavía no contiene códigos."}
-                  </td></tr>}
-                </tbody>
-              </table>
-            </div>
-            <section className="fl-catalog-record" aria-label="Ficha del código">
-              <div className="fl-catalog-record-heading">
-                <strong>{isNew ? "Nuevo código" : activeRecord ? "Ficha: " + activeRecord.codigo : "Ficha del código"}</strong>
-                {admin && <button type="button" onClick={newRecord}>+ Nuevo</button>}
-              </div>
-              {active ? (
-                <>
-                  <div className="fl-catalog-form">
-                    {(["codigo", "nombre", "familia", "ruta"] as const).map((key) => (
-                      <label key={key}>{key === "codigo" ? "Código" : key === "nombre" ? "Nombre"
-                        : key === "familia" ? "Familia" : "Ruta"}
-                        <input type="text" value={display[key]} disabled={!admin}
-                          maxLength={2048}
-                          onChange={(event) => setField(key, event.target.value)} />
-                      </label>
-                    ))}
-                    {(["peso", "longitud", "tarifa"] as const).map((key) => (
-                      <label key={key}>{key === "peso" ? "Peso" : key === "longitud" ? "Longitud" : "Tarifa"}
-                        <input type="number" min="0" step="any" value={display[key]}
-                          disabled={!admin}
-                          onChange={(event) => setField(key, event.target.value)} />
-                      </label>
-                    ))}
-                  </div>
-                  {admin && <div className="fl-catalog-record-actions">
-                    <button type="button" disabled={!draftDirty && !isNew} onClick={commitRecord}>
-                      Aplicar ficha
-                    </button>
-                    {!isNew && <button type="button" className="fl-catalog-danger"
-                      onClick={deleteRecord}>Eliminar código</button>}
-                  </div>}
-                </>
-              ) : (
-                <p>Selecciona un código para ver sus propiedades.
-                  {admin ? " También puedes crear uno nuevo." : ""}</p>
-              )}
-            </section>
-          </div>
-          <p className="fl-catalog-notice">
-            {source === "remote"
-              ? "Aviso: editar o guardar una copia NO modifica el JSON de la URL pública ni los datos de otros usuarios."
-              : fileHandle
-                ? "El guardado directo requiere permiso del navegador sobre el archivo seleccionado."
-                : "Sin acceso de escritura directo, «Guardar JSON» crea o descarga un archivo en tu equipo."}
-          </p>
-        </>
-      ) : (
-        <p className="fl-catalog-empty">{busy ? "Cargando catálogo…" :
-          "Introduce la URL de un JSON, selecciona un archivo o crea una base de datos nueva."}</p>
-      )}
+      <label className="fl-catalog-search" htmlFor="fl-catalog-search-input">
+        Buscar códigos y propiedades
+        <input id="fl-catalog-search-input" type="search" value={filter}
+          onChange={(event) => setFilter(event.currentTarget.value)}
+          placeholder="Buscar código, nombre, familia, ruta…" />
+      </label>
+
+      <div className="fl-catalog-table-wrap fl-catalog-excel-scroll">
+        <table className="fl-catalog-table fl-catalog-excel" aria-label="Base de datos de códigos">
+          <thead><tr>
+            <th className="fl-catalog-row-number">#</th>
+            {COLUMNS.map(([field, label]) => <th key={field}>{label}</th>)}
+          </tr></thead>
+          <tbody>
+            {matches.map(({ record, index }) => (
+              <tr key={index} className={selectedRow === index ? "is-selected" : ""}
+                onClick={() => setSelectedRow(index)}>
+                <td className="fl-catalog-row-number">{index + 1}</td>
+                {COLUMNS.map(([field, label]) => (
+                  <td key={field}>
+                    {unlocked ? (
+                      <input className="fl-catalog-cell-input"
+                        aria-label={label + " fila " + (index + 1)}
+                        type={isNumeric(field) ? "number" : "text"}
+                        min={isNumeric(field) ? "0" : undefined}
+                        step={isNumeric(field) ? "any" : undefined}
+                        value={record[field] ?? ""}
+                        onChange={(event) => editCell(index, field, event.currentTarget.value)}
+                        onFocus={() => setSelectedRow(index)}
+                        title={String(record[field] ?? "")} />
+                    ) : (
+                      <span className="fl-catalog-cell-text" title={String(record[field] ?? "")}>
+                        {record[field] ?? "—"}
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {!matches.length && <tr><td colSpan={8} className="fl-catalog-empty-cell">
+              {catalog
+                ? catalog.registros.length ? "No se encontraron códigos." : "No hay códigos todavía."
+                : "Selecciona el archivo DBFrameLogic.json para ver o editar el catálogo."}
+            </td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <small className="fl-catalog-notice">
+        Las celdas editadas modifican el JSON en memoria. Pulsa Guardar JSON para escribir
+        el archivo local (si el navegador permite escritura) o descargar una copia.
+        El candado global de Configuración controla todas las pestañas.
+        Esta clave provisional vacía NO protege un archivo compartido ni permite escribir
+        directamente en SharePoint o en Cloudflare Pages.
+      </small>
     </div>
   );
 }
