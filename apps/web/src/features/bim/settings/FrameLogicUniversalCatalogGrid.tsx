@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   catalogFieldRows,
+  catalogScalarType,
+  convertCatalogScalarValue,
+  parseCatalogNumericInput,
+  type CatalogScalarType,
   parseCatalogRecordEditor,
   type CatalogPath,
   type CatalogRecord,
@@ -24,41 +28,112 @@ interface ValueInputProps {
 
 function ValueInput({ value, path, onEdit }: ValueInputProps) {
   const label = path.map((part) => String(part)).join(".");
-  if (typeof value === "boolean") {
-    return (
-      <select aria-label={label} className="fl-catalog-value-select"
-        value={String(value)}
-        onChange={(event) => onEdit(path, event.currentTarget.value === "true")}>
-        <option value="true">true</option><option value="false">false</option>
-      </select>
-    );
-  }
-  if (value === null) {
-    return (
-      <select aria-label={label} className="fl-catalog-value-select"
-        value="null"
-        onChange={(event) => {
-          const kind = event.currentTarget.value;
-          onEdit(path, kind === "text" ? "" :
-            kind === "number" ? 0 : kind === "boolean" ? false : null);
-        }}>
-        <option value="null">null</option>
-        <option value="text">Convertir a texto</option>
-        <option value="number">Convertir a número</option>
-        <option value="boolean">Convertir a booleano</option>
-      </select>
-    );
-  }
+  // "codigo" must always remain text; other JSON leaf types are user-selectable.
+  const isCode = path.length === 1 && path[0] === "codigo";
+  const [emptyNumber, setEmptyNumber] = useState(false);
+  const [numericDraft, setNumericDraft] = useState(() =>
+    typeof value === "number" ? String(value) : "");
+  const [focused, setFocused] = useState(false);
+  const [error, setError] = useState("");
+  const actualType = catalogScalarType(value);
+  const selectedType: CatalogScalarType =
+    value === null && emptyNumber ? "number" : actualType;
+
+  useEffect(() => {
+    if (!focused) setNumericDraft(typeof value === "number" ? String(value) : "");
+  }, [value, focused, selectedType]);
+
+  const changeType = (type: CatalogScalarType) => {
+    if (isCode || type === selectedType) return;
+    try {
+      const converted = convertCatalogScalarValue(value, type);
+      setEmptyNumber(type === "number" && converted === null);
+      setNumericDraft(typeof converted === "number" ? String(converted) : "");
+      setError("");
+      onEdit(path, converted);
+    } catch (cause) {
+      if (type === "number" && window.confirm(
+        "El texto actual no es un número válido. ¿Vaciarlo y cambiar este campo a Número?",
+      )) {
+        setEmptyNumber(true);
+        setNumericDraft("");
+        setError("");
+        onEdit(path, null);
+      } else {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    }
+  };
+
+  const editNumericDraft = (text: string) => {
+    setNumericDraft(text);
+    setError("");
+    if (text.trim() === "") return;
+    try {
+      const parsed = parseCatalogNumericInput(text);
+      if (parsed !== null) {
+        setEmptyNumber(false);
+        onEdit(path, parsed);
+      }
+    } catch {
+      // Partial values such as "-" and "1e" remain local until valid.
+      // They are never silently converted into 0 or saved as text.
+    }
+  };
+
+  const commitNumericDraft = () => {
+    setFocused(false);
+    try {
+      const parsed = parseCatalogNumericInput(numericDraft);
+      setEmptyNumber(parsed === null);
+      setError("");
+      onEdit(path, parsed);
+    } catch (cause) {
+      setNumericDraft(typeof value === "number" ? String(value) : "");
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
   return (
-    <input aria-label={label} className="fl-catalog-cell-input"
-      type={typeof value === "number" ? "number" : "text"}
-      step={typeof value === "number" ? "any" : undefined}
-      value={value as string | number}
-      onChange={(event) => {
-        const text = event.currentTarget.value;
-        onEdit(path, typeof value === "number"
-          ? text.trim() === "" ? null : Number(text) : text);
-      }} />
+    <div className="fl-catalog-scalar-wrapper">
+      <div className="fl-catalog-scalar-editor">
+        {selectedType === "boolean" ? (
+          <select aria-label={label} className="fl-catalog-value-select fl-catalog-scalar-value"
+            value={String(value)}
+            onChange={(event) => onEdit(path, event.currentTarget.value === "true")}>
+            <option value="true">true</option>
+            <option value="false">false</option>
+          </select>
+        ) : selectedType === "null" ? (
+          <span className="fl-catalog-cell-text fl-catalog-scalar-null">null</span>
+        ) : selectedType === "number" ? (
+          <input aria-label={label} className="fl-catalog-cell-input fl-catalog-scalar-value"
+            type="text" inputMode="decimal" value={numericDraft}
+            placeholder="Número"
+            onFocus={() => setFocused(true)}
+            onChange={(event) => editNumericDraft(event.currentTarget.value)}
+            onBlur={commitNumericDraft}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }} />
+        ) : (
+          <input aria-label={label} className="fl-catalog-cell-input fl-catalog-scalar-value"
+            type="text" value={String(value ?? "")}
+            onChange={(event) => onEdit(path, event.currentTarget.value)} />
+        )}
+        {!isCode && (
+          <select aria-label={"Tipo de " + label} title={"Tipo JSON de " + label}
+            className="fl-catalog-type-select" value={selectedType}
+            onChange={(event) => changeType(event.currentTarget.value as CatalogScalarType)}>
+            <option value="text">Texto</option>
+            <option value="number">Número</option>
+            <option value="boolean">Sí/No</option>
+            <option value="null">Vacío</option>
+          </select>
+        )}
+      </div>
+      {error && <span role="alert" className="fl-catalog-scalar-error">{error}</span>}
+    </div>
   );
 }
 
