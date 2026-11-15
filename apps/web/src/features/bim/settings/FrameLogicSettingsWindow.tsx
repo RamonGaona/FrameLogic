@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FrameLogicCatalogSettings } from "./FrameLogicCatalogSettings";
 import { mayUnlockSettings } from "./settingsEditorGate";
@@ -60,11 +60,23 @@ export function FrameLogicSettingsWindow() {
   const [unlockError, setUnlockError] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
+  const catalogDirtyRef = useRef(false);
+  const onCatalogDirty = useCallback((value: boolean) => {
+    catalogDirtyRef.current = value;
+  }, []);
+
+  const requestClose = () => {
+    if (catalogDirtyRef.current && !window.confirm(
+      "La base de datos tiene cambios sin guardar. ¿Cerrar y descartarlos?",
+    )) return;
+    setOpen(false);
+  };
 
   useEffect(() => {
     const show = () => {
       previousFocus.current = document.activeElement instanceof HTMLElement
         ? document.activeElement : null;
+      catalogDirtyRef.current = false;
       setActiveSection("GENERAL");
       setUnlocked(false);
       setUnlockFormOpen(false);
@@ -100,7 +112,9 @@ export function FrameLogicSettingsWindow() {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopImmediatePropagation();
-        setOpen(false);
+        if (!catalogDirtyRef.current || window.confirm(
+          "La base de datos tiene cambios sin guardar. ¿Cerrar y descartarlos?",
+        )) setOpen(false);
         return;
       }
       if (event.key !== "Tab" || !dialogRef.current) return;
@@ -165,7 +179,7 @@ export function FrameLogicSettingsWindow() {
     <div className="fl-settings-backdrop"
       data-framelogic-settings-backdrop="true"
       onPointerDown={(event) => {
-        if (event.target === event.currentTarget) setOpen(false);
+        if (event.target === event.currentTarget) requestClose();
       }}>
       <div className="fl-settings-window" role="dialog" aria-modal="true"
         aria-labelledby="framelogic-settings-title" ref={dialogRef}
@@ -188,7 +202,7 @@ export function FrameLogicSettingsWindow() {
             </button>
             <button type="button" className="fl-settings-close"
               title="Cerrar configuración" aria-label="Cerrar configuración"
-              onClick={() => setOpen(false)}>×</button>
+              onClick={requestClose}>×</button>
           </div>
         </header>
         {unlockFormOpen && (
@@ -277,14 +291,16 @@ export function FrameLogicSettingsWindow() {
                 disabled={!unlocked}
                 onChange={(value) => update("showCircularDetailGrips", value)} />
             )}
-            {activeSection === "DATABASE" && <FrameLogicCatalogSettings unlocked={unlocked} />}
+            <div hidden={activeSection !== "DATABASE"}>
+              <FrameLogicCatalogSettings unlocked={unlocked} onDirtyChange={onCatalogDirty} />
+            </div>
           </main>
         </div>
         <footer className="fl-settings-footer">
           <span>{unlocked ? "🔓 Edición habilitada" : "🔒 Solo lectura"} · {storageWarning
             ? "Las preferencias no se pueden guardar en este navegador."
             : "Preferencias de interfaz guardadas en este navegador."}</span>
-          <button type="button" onClick={() => setOpen(false)}>Cerrar</button>
+          <button type="button" onClick={requestClose}>Cerrar</button>
         </footer>
       </div>
     </div>,
