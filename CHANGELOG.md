@@ -15,6 +15,26 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.166 — 2026-11-15 (candado general y DBFrameLogic.json local)
+
+### Un bloqueo para todas las pestañas de Configuración
+
+- El botón **🔒/🔓** se sitúa en la cabecera de la ventana de Configuración, fuera de las pestañas; todas las opciones de todas las secciones empiezan bloqueadas para edición.
+- El desbloqueo solicita **Usuario** y **Contraseña**. En esta etapa ambos deben estar vacíos: pulsar **Aceptar** con los dos campos en blanco habilita el modo edición de forma temporal. Se vuelve a bloquear al cerrar la ventana o pulsar el candado; no se guardan credenciales.
+- Es un **bloqueo provisional solo de interfaz**, no autenticación real. No autoriza escritura de datos remotos ni protege el archivo compartido. La futura autenticación multiusuario deberá validarse en el servidor.
+
+### Base de datos local y edición directa tipo Excel
+
+- Nuevo archivo inicial para distribución manual: `DBFrameLogic.json`, con esquema `{ "version": 1, "registros": [] }`, para ubicar en `D:\Documents\FrameLogic\DB\DBFrameLogic.json`.
+- La pestaña Base de datos muestra una tabla completa de filas y celdas rectangulares (Código, Nombre, Familia, Ruta, Peso, Longitud y Tarifa), en lugar del listado más una ficha secundaria. En modo editor las celdas se modifican directamente y actualizan el JSON en memoria, además de poder añadir/eliminar filas; en solo lectura son texto.
+- El botón **Seleccionar JSON** obtiene permiso del usuario para leer el archivo local; **Guardar JSON** sobrescribe el archivo local cuando el navegador tiene permisos de escritura mediante File System Access API, y en caso contrario descarga una nueva copia. Se valida la estructura, códigos duplicados y tipos al guardar y se comprueba que el archivo no haya cambiado externamente.
+- La ruta local sugerida se recuerda mediante `localStorage`. Al recargar se conserva su texto pero, por restricciones de seguridad del navegador, puede ser necesario seleccionar el archivo de nuevo. Las URL personalizadas guardadas previamente no se pierden.
+- Las pestañas no desmontan el catálogo al cambiar entre secciones, por lo que no se descartan los cambios de celdas durante la misma apertura; se advierte sobre cambios pendientes al cerrar o recargar.
+- Se conserva la opción de consultar JSON por URL HTTPS, pero no se promete sobrescribir el JSON estático de Cloudflare ni sincronizar SharePoint automáticamente. Para acceso y escritura compartidos con control de permisos se necesitará un backend.
+- Nuevas pruebas del desbloqueo con campos vacíos, la posición global del candado, la grilla editable, la ruta local y el guardado. Sin servicios de pago.
+
+---
+
 ## v0.1.165 — 2026-11-15 (catálogo de piezas JSON en Configuración)
 
 ### Nueva pestaña Base de datos

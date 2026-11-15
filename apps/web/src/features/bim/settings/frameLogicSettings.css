@@ -168,3 +168,71 @@ html[data-framelogic-show-detail-grips="false"] [data-framelogic-detail-drag="RA
   .fl-settings-header { padding: 10px 14px; }
   .fl-settings-footer { padding: 10px 14px; }
 }
+
+/* Global lock sits in the window header, OUTSIDE all settings tabs. */
+.fl-settings-window { position: relative; }
+.fl-settings-header-actions { display: flex; align-items: center; gap: 9px; }
+.fl-settings-global-lock {
+  border: 1px solid #769caf;
+  border-radius: 6px;
+  background: #253e4c;
+  color: #edf6fa;
+  padding: 7px 11px;
+  min-height: 34px;
+  font: 600 12px system-ui, sans-serif;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.fl-settings-global-lock:hover { background: #355970; }
+.fl-settings-global-lock span:first-child { font-size: 17px; }
+.fl-settings-unlock-panel {
+  position: absolute;
+  right: 58px;
+  top: 61px;
+  z-index: 20;
+  width: min(380px, calc(100% - 30px));
+  border: 1px solid #6f97ad;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.4);
+  background: #203542;
+  display: grid;
+  gap: 10px;
+  box-sizing: border-box;
+}
+.fl-settings-unlock-panel p {
+  font-size: 11px;
+  color: #b5d0dd;
+  margin: -2px 0 2px;
+}
+.fl-settings-unlock-panel label {
+  display: grid;
+  gap: 4px;
+  color: #dbeaf1;
+  font-size: 12px;
+}
+.fl-settings-unlock-panel input {
+  border: 1px solid #7695a8;
+  border-radius: 4px;
+  padding: 7px 9px;
+  color: #f4fcff;
+  background: #0e2531;
+}
+.fl-settings-unlock-error { color: #ffbcb6; font-size: 11px; }
+.fl-settings-unlock-actions { display: flex; justify-content: flex-end; gap: 9px; }
+.fl-settings-unlock-actions button {
+  border: 1px solid #6a9eb7;
+  border-radius: 4px;
+  background: #2b5065;
+  padding: 7px 15px;
+  color: white;
+  cursor: pointer;
+}
+.fl-settings-field:has(input:disabled) { cursor: default; }
+.fl-settings-reset:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 650px) {
+  .fl-settings-global-lock { padding: 6px 9px; }
+  .fl-settings-unlock-panel { top: 58px; right: 8px; }
+}

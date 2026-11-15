@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FrameLogicCatalogSettings } from "./FrameLogicCatalogSettings";
+import { mayUnlockSettings } from "./settingsEditorGate";
 import {
   applyFrameLogicPreferences,
   DEFAULT_FRAMELOGIC_PREFERENCES,
@@ -19,17 +20,18 @@ interface PreferenceToggleProps {
   readonly name: string;
   readonly description: string;
   readonly checked: boolean;
+  readonly disabled: boolean;
   readonly onChange: (checked: boolean) => void;
 }
 
-function PreferenceToggle({ name, description, checked, onChange }: PreferenceToggleProps) {
+function PreferenceToggle({ name, description, checked, disabled, onChange }: PreferenceToggleProps) {
   return (
     <label className="fl-settings-field">
       <span>
         <strong>{name}</strong>
         <small>{description}</small>
       </span>
-      <input type="checkbox" checked={checked}
+      <input type="checkbox" checked={checked} disabled={disabled}
         onChange={(event) => onChange(event.currentTarget.checked)} />
     </label>
   );
@@ -51,14 +53,36 @@ export function FrameLogicSettingsWindow() {
     }
   });
   const [storageWarning, setStorageWarning] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+  const [unlockFormOpen, setUnlockFormOpen] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [unlockError, setUnlockError] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
+  const catalogDirtyRef = useRef(false);
+  const onCatalogDirty = useCallback((value: boolean) => {
+    catalogDirtyRef.current = value;
+  }, []);
+
+  const requestClose = () => {
+    if (catalogDirtyRef.current && !window.confirm(
+      "La base de datos tiene cambios sin guardar. ¿Cerrar y descartarlos?",
+    )) return;
+    setOpen(false);
+  };
 
   useEffect(() => {
     const show = () => {
       previousFocus.current = document.activeElement instanceof HTMLElement
         ? document.activeElement : null;
+      catalogDirtyRef.current = false;
       setActiveSection("GENERAL");
+      setUnlocked(false);
+      setUnlockFormOpen(false);
+      setUsername("");
+      setPassword("");
+      setUnlockError("");
       setOpen(true);
     };
     window.addEventListener(FRAMELOGIC_OPEN_SETTINGS_EVENT, show);
@@ -88,7 +112,9 @@ export function FrameLogicSettingsWindow() {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopImmediatePropagation();
-        setOpen(false);
+        if (!catalogDirtyRef.current || window.confirm(
+          "La base de datos tiene cambios sin guardar. ¿Cerrar y descartarlos?",
+        )) setOpen(false);
         return;
       }
       if (event.key !== "Tab" || !dialogRef.current) return;
@@ -117,7 +143,34 @@ export function FrameLogicSettingsWindow() {
   }, [open]);
 
   const update = (key: BooleanSetting, checked: boolean) => {
+    if (!unlocked) return;
     setPreferences((current) => ({ ...current, [key]: checked }));
+  };
+
+  const toggleEditorLock = () => {
+    if (unlocked) {
+      setUnlocked(false);
+      setUnlockFormOpen(false);
+      setUsername("");
+      setPassword("");
+      return;
+    }
+    setUsername("");
+    setPassword("");
+    setUnlockError("");
+    setUnlockFormOpen(true);
+  };
+
+  const acceptUnlock = () => {
+    if (!mayUnlockSettings(username, password)) {
+      setUnlockError("Por ahora, deja usuario y contraseña vacíos y pulsa Aceptar.");
+      return;
+    }
+    setUnlocked(true);
+    setUnlockFormOpen(false);
+    setUsername("");
+    setPassword("");
+    setUnlockError("");
   };
 
   if (!open) return null;
@@ -126,21 +179,54 @@ export function FrameLogicSettingsWindow() {
     <div className="fl-settings-backdrop"
       data-framelogic-settings-backdrop="true"
       onPointerDown={(event) => {
-        if (event.target === event.currentTarget) setOpen(false);
+        if (event.target === event.currentTarget) requestClose();
       }}>
       <div className="fl-settings-window" role="dialog" aria-modal="true"
         aria-labelledby="framelogic-settings-title" ref={dialogRef}
         data-framelogic-settings-window="true"
+        data-framelogic-settings-active={activeSection}
         onPointerDown={(event) => event.stopPropagation()}>
         <header className="fl-settings-header">
           <div>
             <span className="fl-settings-eyebrow">PREFERENCIAS DE APLICACIÓN</span>
             <h2 id="framelogic-settings-title">Configuración de FrameLogic</h2>
           </div>
-          <button type="button" className="fl-settings-close"
-            title="Cerrar configuración" aria-label="Cerrar configuración"
-            onClick={() => setOpen(false)}>×</button>
+          <div className="fl-settings-header-actions">
+            <button type="button" className="fl-settings-global-lock"
+              data-framelogic-settings-global-lock="true"
+              aria-label={unlocked ? "Bloquear edición de configuración" : "Desbloquear edición de configuración"}
+              aria-expanded={unlockFormOpen}
+              title={unlocked ? "Edición habilitada: bloquear" : "Solo lectura: desbloquear"}
+              onClick={toggleEditorLock}>
+              <span aria-hidden="true">{unlocked ? "🔓" : "🔒"}</span>
+              <span>{unlocked ? "Edición" : "Solo lectura"}</span>
+            </button>
+            <button type="button" className="fl-settings-close"
+              title="Cerrar configuración" aria-label="Cerrar configuración"
+              onClick={requestClose}>×</button>
+          </div>
         </header>
+        {unlockFormOpen && (
+          <form className="fl-settings-unlock-panel"
+            aria-label="Desbloquear edición de toda la configuración"
+            onSubmit={(event) => { event.preventDefault(); acceptUnlock(); }}>
+            <strong>Acceso de editor (toda la configuración)</strong>
+            <p>Acceso provisional: usuario y contraseña vacíos. No es seguridad real.</p>
+            <label>Usuario
+              <input type="text" value={username} autoComplete="off"
+                onChange={(event) => setUsername(event.currentTarget.value)} />
+            </label>
+            <label>Contraseña
+              <input type="password" value={password} autoComplete="off"
+                onChange={(event) => setPassword(event.currentTarget.value)} />
+            </label>
+            {unlockError && <span className="fl-settings-unlock-error" role="alert">{unlockError}</span>}
+            <div className="fl-settings-unlock-actions">
+              <button type="button" onClick={() => setUnlockFormOpen(false)}>Cancelar</button>
+              <button type="submit">Aceptar</button>
+            </div>
+          </form>
+        )}
         <div className="fl-settings-layout">
           <nav className="fl-settings-nav" aria-label="Secciones de configuración">
             {SETTINGS_SECTIONS.map(({ id, title }) => (
@@ -160,7 +246,7 @@ export function FrameLogicSettingsWindow() {
               <>
                 <div className="fl-settings-info">
                   <strong>Centro de configuración</strong>
-                  <p>Las preferencias se aplican inmediatamente y se conservan en este navegador.
+                  <p>El candado de la cabecera controla la edición de todas las pestañas. Las preferencias se aplican inmediatamente y se conservan en este navegador.
                     No modifican la geometría del proyecto ni se guardan todavía en archivos .flproject.</p>
                 </div>
                 <div className="fl-settings-info">
@@ -170,7 +256,9 @@ export function FrameLogicSettingsWindow() {
                     al motor correspondiente.</p>
                 </div>
                 <button type="button" className="fl-settings-reset"
+                  disabled={!unlocked}
                   onClick={() => {
+                    if (!unlocked) return;
                     if (!window.confirm("¿Restaurar las preferencias de interfaz predeterminadas?")) return;
                     setPreferences({ ...DEFAULT_FRAMELOGIC_PREFERENCES });
                   }}>Restaurar valores predeterminados</button>
@@ -181,10 +269,12 @@ export function FrameLogicSettingsWindow() {
                 <PreferenceToggle name="Barras de herramientas compactas"
                   description="Reduce espacios y tamaños de los controles superiores."
                   checked={preferences.compactRibbon}
+                  disabled={!unlocked}
                   onChange={(value) => update("compactRibbon", value)} />
                 <PreferenceToggle name="Reducir animaciones de interfaz"
                   description="Suprime transiciones decorativas, sin modificar el movimiento del modelo 3D."
                   checked={preferences.reduceMotion}
+                  disabled={!unlocked}
                   onChange={(value) => update("reduceMotion", value)} />
               </>
             )}
@@ -192,22 +282,26 @@ export function FrameLogicSettingsWindow() {
               <PreferenceToggle name="Mostrar cubo de vistas"
                 description="Muestra u oculta el cubo de orientación, sin cambiar la cámara."
                 checked={preferences.showViewCube}
+                disabled={!unlocked}
                 onChange={(value) => update("showViewCube", value)} />
             )}
             {activeSection === "PAPER" && (
               <PreferenceToggle name="Mostrar los cuatro puntos del detalle circular"
                 description="Controla la visibilidad de los grips de edición N/E/S/O. No cambia el PDF exportado."
                 checked={preferences.showCircularDetailGrips}
+                disabled={!unlocked}
                 onChange={(value) => update("showCircularDetailGrips", value)} />
             )}
-            {activeSection === "DATABASE" && <FrameLogicCatalogSettings />}
+            <div hidden={activeSection !== "DATABASE"}>
+              <FrameLogicCatalogSettings unlocked={unlocked} onDirtyChange={onCatalogDirty} />
+            </div>
           </main>
         </div>
         <footer className="fl-settings-footer">
-          <span>{storageWarning
-            ? "No se pudo guardar en este navegador; los cambios solo durarán en esta sesión."
-            : "Cambios aplicados y guardados automáticamente en este navegador."}</span>
-          <button type="button" onClick={() => setOpen(false)}>Cerrar</button>
+          <span>{unlocked ? "🔓 Edición habilitada" : "🔒 Solo lectura"} · {storageWarning
+            ? "Las preferencias no se pueden guardar en este navegador."
+            : "Preferencias de interfaz guardadas en este navegador."}</span>
+          <button type="button" onClick={requestClose}>Cerrar</button>
         </footer>
       </div>
     </div>,

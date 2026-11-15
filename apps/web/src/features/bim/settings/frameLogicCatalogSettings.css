@@ -190,7 +190,7 @@
   border-radius: 6px;
   color: #bfd0da;
 }
-.fl-settings-window:has([data-framelogic-catalog-settings="true"]) {
+.fl-settings-window[data-framelogic-settings-active="DATABASE"] {
   width: min(1170px, 100%);
   height: min(750px, calc(100dvh - 36px));
 }
@@ -200,8 +200,93 @@
 }
 @media(max-width: 650px) {
   .fl-catalog-form { grid-template-columns: 1fr 1fr; }
-  .fl-settings-window:has([data-framelogic-catalog-settings="true"]) {
+  .fl-settings-window[data-framelogic-settings-active="DATABASE"] {
     height: calc(100dvh - 16px);
   }
   .fl-catalog-password-row input { flex: 1 1 100%; }
 }
+
+/* Full-width, vertical list of records with Excel-like editable cells. */
+.fl-catalog-excel-scroll {
+  width: 100%;
+  max-height: 420px;
+  min-height: 155px;
+  overflow: auto;
+  border: 1px solid #526e81;
+}
+.fl-catalog-excel {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font: 12px/1.35 system-ui, sans-serif;
+}
+.fl-catalog-excel th,
+.fl-catalog-excel td {
+  border-right: 1px solid #3e5969;
+  border-bottom: 1px solid #3e5969;
+  padding: 0;
+  min-width: 100px;
+  max-width: none;
+  height: 37px;
+  overflow: visible;
+}
+.fl-catalog-excel th {
+  padding: 9px 11px;
+  box-sizing: border-box;
+  min-height: 38px;
+  background: #1b3a4c;
+  color: #e0f5fd;
+  font-weight: 650;
+}
+.fl-catalog-excel :is(th, td):nth-child(2) { min-width: 124px; }
+.fl-catalog-excel :is(th, td):nth-child(3) { min-width: 185px; }
+.fl-catalog-excel :is(th, td):nth-child(4) { min-width: 140px; }
+.fl-catalog-excel :is(th, td):nth-child(5) { min-width: 200px; }
+.fl-catalog-excel :is(th, td):nth-child(n+6) { min-width: 100px; }
+.fl-catalog-excel .fl-catalog-row-number {
+  position: sticky;
+  left: 0;
+  min-width: 42px !important;
+  width: 42px;
+  background: #244455;
+  color: #e4f0f4;
+  text-align: center;
+  z-index: 1;
+}
+.fl-catalog-excel thead .fl-catalog-row-number { z-index: 4; }
+.fl-catalog-excel .fl-catalog-cell-text {
+  display: block;
+  padding: 10px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fl-catalog-excel .fl-catalog-cell-input {
+  display: block;
+  margin: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #f4fcff;
+  padding: 8px 10px !important;
+  outline-offset: -2px !important;
+  font: inherit;
+}
+.fl-catalog-excel .fl-catalog-cell-input:focus {
+  background: #17435e !important;
+  outline: 2px solid #8ed7ff;
+}
+.fl-catalog-excel tr.is-selected td { background: rgba(54, 126, 163, .18); }
+.fl-catalog-excel .fl-catalog-empty-cell {
+  padding: 18px 13px;
+  color: #bbd5e1;
+}
+.fl-catalog-excel td:last-child,
+.fl-catalog-excel th:last-child { border-right: 0; }
+.fl-catalog-search { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.fl-catalog-search input { flex: 1 1 240px; }
+.fl-catalog-notice { line-height: 1.6; }

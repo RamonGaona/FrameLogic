@@ -29,6 +29,9 @@ export interface FrameLogicCatalog {
 }
 
 export const CATALOG_DEFAULT_URL = "/data/framelogic-catalog.json";
+/** Suggested local SharePoint-synced folder (a display preference, not a web URL). */
+export const CATALOG_LOCAL_FILE_PATH = String.raw`D:\Documents\FrameLogic\DB\DBFrameLogic.json`;
+export const CATALOG_LOCAL_FILE_NAME = "DBFrameLogic.json";
 export const CATALOG_SOURCE_STORAGE_KEY = "framelogic.catalog.source.v1";
 export const MAX_CATALOG_BYTES = 5_000_000;
 const MAX_RECORDS = 10_000;
