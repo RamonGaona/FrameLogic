@@ -547,6 +547,26 @@ export function FrameLogicCatalogSettings({
         </div>
       </div>
 
+      {catalog && (
+        <div className="fl-catalog-base-path" data-framelogic-catalog-base-path="true">
+          <label htmlFor="fl-catalog-base-path-input">Ruta base (ruta_base)</label>
+          <input id="fl-catalog-base-path-input" type="text" spellCheck={false}
+            placeholder="Ej.: D:\\Documents\\FrameLogic\\Recursos"
+            value={catalog.ruta_base ?? ""}
+            disabled={!unlocked}
+            onChange={(event) => {
+              if (!unlocked) return;
+              const next = event.currentTarget.value;
+              setCatalog((current) => current ? { ...current, ruta_base: next } : current);
+              setDirty(true);
+              setError("");
+            }} />
+          <small>Esta ruta se guarda una sola vez, en la raíz del JSON. Cada pieza
+            almacena únicamente su ruta final o relativa, sin añadirle ni quitarle
+            texto automáticamente. Otra función podrá unir ambas rutas cuando lo necesite.</small>
+        </div>
+      )}
+
       <label className="fl-catalog-search" htmlFor="fl-catalog-search-input">
         Buscar códigos y propiedades
         <input id="fl-catalog-search-input" type="search" value={filter}

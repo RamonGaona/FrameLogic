@@ -225,7 +225,8 @@ export function FrameLogicUniversalCatalogGrid({
                         : unlocked
                           ? <ValueInput value={row.value} path={row.path}
                             onEdit={(path, next) => onCellEdit(selectedRow!, path, next)} />
-                          : <span className="fl-catalog-cell-text">
+                           : <span className="fl-catalog-cell-text"
+                            title={String(row.value ?? "")}>
                             {kindLabel(row.value)}
                           </span>}
                     </td>

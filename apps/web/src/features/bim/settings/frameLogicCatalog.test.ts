@@ -31,7 +31,7 @@ const baseRecord = {
 describe("JSON catalog for FrameLogic parts", () => {
   it("creates a versioned empty file with no default credentials", () => {
     const file = blankCatalog();
-    expect(file).toEqual({ version: 1, registros: [] });
+    expect(file).toEqual({ version: 1, ruta_base: "", registros: [] });
     expect(serializeFrameLogicCatalog(file)).toContain('"registros": []');
     expect(CATALOG_DEFAULT_URL).toMatch(/\.json$/);
   });
@@ -286,6 +286,53 @@ describe("JSON catalog for FrameLogic parts", () => {
     expect(() => convertCatalogScalarValue("otro", "boolean")).toThrow(/booleano/);
     expect(convertCatalogScalarValue(true, "number")).toBe(1);
     expect(convertCatalogScalarValue(-3, "null")).toBeNull();
+  });
+
+  it("stores ruta_base once at catalog root while keeping each relative route exactly as entered", () => {
+    const catalog = {
+      version: 1,
+      ruta_base: String.raw`D:\Documents\FrameLogic\Recursos`,
+      registros: [
+        { codigo: "REC3002", ruta: String.raw`Perfiles\REC3002.step`,
+          archivos: { plano: "Planos/P-01.pdf", referencia: "REC3002.dwg" } },
+        { codigo: "PL-ANCLA-450", ruta: "Placas/ANCLA-450.step" },
+      ],
+    };
+    const parsed = parseFrameLogicCatalog(JSON.stringify(catalog));
+    expect(parsed).toEqual(catalog);
+    const savedText = serializeFrameLogicCatalog(parsed);
+    expect(savedText.indexOf('"ruta_base"')).toBeLessThan(savedText.indexOf('"registros"'));
+    expect(JSON.parse(savedText)).toEqual(catalog);
+    expect(parsed.registros[0]?.ruta).toBe(String.raw`Perfiles\REC3002.step`);
+    expect(parsed.registros[1]?.ruta).toBe("Placas/ANCLA-450.step");
+    expect(parsed.registros[0]?.archivos).toEqual({
+      plano: "Planos/P-01.pdf", referencia: "REC3002.dwg",
+    });
+  });
+
+  it("accepts legacy catalogs without ruta_base and validates the new field as text", () => {
+    const old = { version: 1, registros: [{ codigo: "A", ruta: "A.step" }] };
+    expect(parseFrameLogicCatalog(JSON.stringify(old))).toEqual(old);
+    expect(() => normalizeFrameLogicCatalog({ ...old, ruta_base: 42 }))
+      .toThrow(/ruta_base/);
+    expect(() => normalizeFrameLogicCatalog({ ...old, ruta_base: null }))
+      .toThrow(/ruta_base/);
+  });
+
+  it("never calculates or transforms record paths from ruta_base", () => {
+    const data = {
+      version: 1,
+      ruta_base: "C:/Shared/Assets",
+      registros: [
+        { codigo: "A", ruta: "pieza.step" },
+        { codigo: "B", referencias: { ruta: "sub/archivo.dxf" } },
+      ],
+    };
+    const result = parseFrameLogicCatalog(serializeFrameLogicCatalog(
+      normalizeFrameLogicCatalog(data),
+    ));
+    expect(result.registros[0]?.ruta).toBe("pieza.step");
+    expect(result.registros[1]?.referencias).toEqual({ ruta: "sub/archivo.dxf" });
   });
 
 });
