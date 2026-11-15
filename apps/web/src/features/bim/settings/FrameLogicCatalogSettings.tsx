@@ -445,10 +445,15 @@ export function FrameLogicCatalogSettings({
       setError("Guarda o cancela primero la edición de la versión.");
       return;
     }
-    if (source !== "new" && readText !== null
-      && !hasEffectiveCatalogChanges(readText, catalog)) {
-      setDirty(false);
-      setMessage("No hay cambios efectivos que guardar. Se conserva la fecha anterior.");
+    try {
+      if (source !== "new" && readText !== null
+        && !hasEffectiveCatalogChanges(readText, catalog)) {
+        setDirty(false);
+        setMessage("No hay cambios efectivos que guardar. Se conserva la fecha anterior.");
+        return;
+      }
+    } catch (cause) {
+      setError("Corrige los datos antes de guardar: " + errorMessage(cause));
       return;
     }
     const authGeneration = editorAuth.current.generation;
