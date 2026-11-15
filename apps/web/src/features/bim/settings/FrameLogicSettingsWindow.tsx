@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { FrameLogicCatalogSettings } from "./FrameLogicCatalogSettings";
 import {
   applyFrameLogicPreferences,
   DEFAULT_FRAMELOGIC_PREFERENCES,
@@ -199,6 +200,7 @@ export function FrameLogicSettingsWindow() {
                 checked={preferences.showCircularDetailGrips}
                 onChange={(value) => update("showCircularDetailGrips", value)} />
             )}
+            {activeSection === "DATABASE" && <FrameLogicCatalogSettings />}
           </main>
         </div>
         <footer className="fl-settings-footer">

@@ -1,0 +1,207 @@
+/* Catalog stays inside the common FrameLogic settings dialog.
+   Read-only and edit modes deliberately share one layout. */
+.fl-catalog {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 13px;
+}
+.fl-catalog-route label,
+.fl-catalog-search label {
+  font-weight: 650;
+  display: block;
+  margin-bottom: 5px;
+}
+.fl-catalog-route-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+.fl-catalog-route-row > input {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.fl-catalog :is(input[type="text"], input[type="password"], input[type="search"], input[type="number"]) {
+  box-sizing: border-box;
+  border: 1px solid #567285;
+  border-radius: 4px;
+  padding: 8px 9px;
+  background: #10212d;
+  color: #e7f5fc;
+  font: inherit;
+  min-height: 34px;
+}
+.fl-catalog input:disabled {
+  opacity: .76;
+  cursor: default;
+  background: #20303b;
+}
+.fl-catalog input:focus-visible,
+.fl-catalog button:focus-visible {
+  outline: 2px solid #88d4f5;
+  outline-offset: 2px;
+}
+.fl-catalog button {
+  border: 1px solid #678ba0;
+  color: #ecf6fa;
+  background: #254759;
+  border-radius: 4px;
+  font: 600 12px system-ui, sans-serif;
+  cursor: pointer;
+  padding: 8px 11px;
+  white-space: nowrap;
+}
+.fl-catalog button:hover:not(:disabled) { background: #32617a; }
+.fl-catalog button:disabled { opacity: .45; cursor: not-allowed; }
+.fl-catalog :is(small, .fl-catalog-notice) {
+  display: block;
+  font-size: 11px;
+  color: #adc4d1;
+  margin-top: 6px;
+}
+.fl-catalog-alert {
+  border: 1px solid #488a7b;
+  background: #193f42;
+  padding: 8px 11px;
+  color: #d8fff2;
+  border-radius: 4px;
+}
+.fl-catalog-alert.is-error {
+  border-color: #b85f56;
+  background: #522d30;
+  color: #ffebeb;
+}
+.fl-catalog-action-row {
+  border-top: 1px solid #3a5364;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 10px;
+}
+.fl-catalog-status { font-weight: 650; color: #a5d6e9; }
+.fl-catalog-buttons { display: flex; gap: 7px; flex-wrap: wrap; }
+.fl-catalog-admin-access {
+  border-radius: 6px;
+  border: 1px solid #587789;
+  background: #203843;
+  padding: 10px 13px;
+}
+.fl-catalog-password-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 8px;
+}
+.fl-catalog-password-row input { flex: 1 1 170px; min-width: 140px; }
+.fl-catalog-search {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fl-catalog-search label { margin: 0; }
+.fl-catalog-search input { flex: 1 1 220px; min-width: 0; }
+.fl-catalog-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(240px, .85fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+.fl-catalog-table-wrap {
+  max-height: 360px;
+  min-height: 130px;
+  overflow: auto;
+  border-radius: 5px;
+  border: 1px solid #526d7d;
+}
+.fl-catalog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.fl-catalog-table :is(td, th) { padding: 9px 8px; border-bottom: 1px solid #364e5d; }
+.fl-catalog-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  color: #d7e8f0;
+  text-align: left;
+  background: #203b4c;
+}
+.fl-catalog-table td {
+  max-width: 145px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #c4d9e3;
+}
+.fl-catalog-table tbody tr { cursor: pointer; }
+.fl-catalog-table tbody tr:hover { background: #284250; }
+.fl-catalog-table tbody tr.is-selected { background: #24536b; }
+.fl-catalog-table tbody tr.is-selected td { color: #fff; }
+.fl-catalog-record {
+  min-width: 0;
+  border-radius: 5px;
+  border: 1px solid #456373;
+  background: #1d3440;
+  padding: 10px 12px;
+}
+.fl-catalog-record-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid #415e6c;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+.fl-catalog-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.fl-catalog-form label {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  font-size: 11px;
+  color: #b9d2de;
+}
+.fl-catalog-form input { width: 100%; min-width: 0; }
+.fl-catalog-record-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.fl-catalog button.fl-catalog-danger {
+  background: #713a38;
+  border-color: #c67d75;
+}
+.fl-catalog-notice { margin-bottom: 0; }
+.fl-catalog-empty {
+  border: 1px dashed #526d7d;
+  padding: 20px 12px;
+  border-radius: 6px;
+  color: #bfd0da;
+}
+.fl-settings-window:has([data-framelogic-catalog-settings="true"]) {
+  width: min(1170px, 100%);
+  height: min(750px, calc(100dvh - 36px));
+}
+@media(max-width: 900px) {
+  .fl-catalog-grid { grid-template-columns: minmax(0, 1fr); }
+  .fl-catalog-table-wrap { max-height: 245px; }
+}
+@media(max-width: 650px) {
+  .fl-catalog-form { grid-template-columns: 1fr 1fr; }
+  .fl-settings-window:has([data-framelogic-catalog-settings="true"]) {
+    height: calc(100dvh - 16px);
+  }
+  .fl-catalog-password-row input { flex: 1 1 100%; }
+}
