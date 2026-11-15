@@ -102,7 +102,10 @@ export function FrameLogicCatalogSettings({
 }: FrameLogicCatalogSettingsProps) {
   const [route, setRoute] = useState(() => {
     try {
-      return localStorage.getItem(CATALOG_SOURCE_STORAGE_KEY) || CATALOG_LOCAL_FILE_PATH;
+      const saved = localStorage.getItem(CATALOG_SOURCE_STORAGE_KEY);
+      // Migrate the original default web catalog to the new local DB location.
+      return saved && saved !== CATALOG_DEFAULT_URL
+        ? saved : CATALOG_LOCAL_FILE_PATH;
     } catch {
       return CATALOG_LOCAL_FILE_PATH;
     }
