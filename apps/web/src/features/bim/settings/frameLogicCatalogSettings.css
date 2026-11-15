@@ -497,3 +497,34 @@
   outline: 2px solid #91d9fc;
   outline-offset: -2px;
 }
+
+/* Global resource folder belongs to the catalog, outside the code viewer. */
+.fl-catalog-base-path {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 10px;
+  border: 1px solid #587787;
+  border-radius: 5px;
+  background: #1d3542;
+  padding: 9px 11px;
+  min-width: 0;
+}
+.fl-catalog-base-path label {
+  color: #d8eaf2;
+  font-weight: 650;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.fl-catalog-base-path input {
+  width: 100%;
+  min-width: 0;
+  font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.fl-catalog-base-path small {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+@media (max-width: 650px) {
+  .fl-catalog-base-path { grid-template-columns: 1fr; }
+}
