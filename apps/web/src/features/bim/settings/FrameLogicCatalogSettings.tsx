@@ -15,7 +15,7 @@ import {
   CATALOG_LOCAL_FILE_NAME,
   CATALOG_LOCAL_FILE_PATH,
   CATALOG_SOURCE_STORAGE_KEY,
-  EMPTY_CATALOG_RECORD,
+  makeCatalogRecordWithAllSubdivisions,
   MAX_CATALOG_BYTES,
   normalizeFrameLogicCatalog,
   parseFrameLogicCatalog,
@@ -366,20 +366,26 @@ export function FrameLogicCatalogSettings({
   };
 
   const addRow = () => {
-    if (!unlocked || !catalog) return;
-    const codes = new Set(catalog.registros.map((r) => r.codigo.toUpperCase()));
-    let number = catalog.registros.length + 1;
-    let code = "CODIGO_" + String(number).padStart(3, "0");
-    while (codes.has(code)) {
-      number += 1;
-      code = "CODIGO_" + String(number).padStart(3, "0");
+    if (!unlocked || !catalog || busy) return;
+    try {
+      const next = makeCatalogRecordWithAllSubdivisions(catalog.registros);
+      const updated = normalizeFrameLogicCatalog({
+        ...catalog,
+        registros: [...catalog.registros, next],
+      });
+      // Validate the final size before mutating the current catalog.
+      serializeFrameLogicCatalog(updated);
+      setCatalog(updated);
+      setSelectedRow(updated.registros.length - 1);
+      setFilter("");
+      setDirty(true);
+      setError("");
+      setMessage("Nueva pieza " + next.codigo
+        + " creada con todas las subdivisiones de los códigos existentes. "
+        + "Sus valores están vacíos. Edita las propiedades y pulsa Guardar JSON.");
+    } catch (cause) {
+      setError("No se pudo crear el nuevo código: " + errorMessage(cause));
     }
-    const next: CatalogRecord = { ...EMPTY_CATALOG_RECORD, codigo: code };
-    setCatalog({ ...catalog, registros: [...catalog.registros, next] });
-    setSelectedRow(catalog.registros.length);
-    setDirty(true);
-    setError("");
-    setMessage("Fila añadida. Edita sus celdas y guarda el archivo JSON.");
   };
 
   const removeRow = () => {
@@ -528,7 +534,11 @@ export function FrameLogicCatalogSettings({
             } catch (cause) { setError(errorMessage(cause)); }
           }}>Descargar copia</button>
           {unlocked && <>
-            <button type="button" onClick={addRow} disabled={!catalog || busy}>+ Agregar fila</button>
+            <button type="button" onClick={addRow} disabled={!catalog || busy}
+              data-framelogic-catalog-new-code="true"
+              title="Crea un código con todas las subdivisiones existentes, sin copiar los valores">
+              + Nueva pieza / código
+            </button>
             <button type="button" onClick={removeRow}
               disabled={!catalog || selectedRow === null || busy}>Eliminar fila</button>
             <button type="button" onClick={() => void saveJson()}

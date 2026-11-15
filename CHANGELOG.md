@@ -15,6 +15,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.169 — 2026-11-15 (nueva pieza con subdivisiones universales)
+
+### Crear códigos nuevos a partir de todos los registros existentes
+
+- En `Configuración → Base de datos` se añade el botón **+ Nueva pieza / código**. Solo aparece con el **candado global desbloqueado**; no permite escribir sin el modo editor.
+- Al pulsarlo se genera automáticamente un `codigo` único (`NUEVO_0001`, `NUEVO_0002`, etc.), se selecciona la nueva pieza y se limpia el filtro de búsqueda.
+- El nuevo registro incluye la **unión recursiva de todas las subdivisiones** existentes en los demás registros del JSON que esté cargado: nombres de propiedades, grupos anidados y posiciones de listas, incluso si los registros tienen estructuras heterogéneas. No se copian valores de otras piezas: textos vacíos y datos numéricos, booleanos o ausentes inicializados como `null`.
+- Si dos registros usan tipos incompatibles en la misma propiedad, se prioriza una estructura compuesta (objeto sobre lista, lista sobre valor simple), ya que JSON no admite varios tipos simultáneamente en la misma clave.
+- Se valida tamaño y estructura antes de incorporar el nuevo registro a la memoria; los registros existentes no se alteran. El usuario edita las propiedades y pulsa **Guardar JSON** para persistir en el archivo local seleccionado, con los permisos normales del navegador.
+- Pruebas para unión de esquemas diferentes, campos anidados, listas, valores vacíos, códigos duplicados, catálogo vacío y conservación de registros originales.
+- No se examinan archivos adicionales del disco: la plantilla se construye con los códigos del **único catálogo JSON cargado**. No se introduce acceso arbitrario a directorios Windows ni escritura remota sin autenticación.
+
+---
+
 ## v0.1.168 — 2026-11-15 (recuperación automática del JSON local)
 
 ### Recordar el archivo seleccionado, no solo su ruta

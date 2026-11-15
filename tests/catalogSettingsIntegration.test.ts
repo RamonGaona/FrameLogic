@@ -25,6 +25,12 @@ describe("global settings lock and local JSON spreadsheet", () => {
     const style = read("../apps/web/src/features/bim/settings/frameLogicCatalogSettings.css");
     expect(view).toContain("FrameLogicUniversalCatalogGrid");
     expect(view).toContain("updateCatalogField");
+    expect(view).toContain("makeCatalogRecordWithAllSubdivisions(catalog.registros)");
+    expect(view).toContain('data-framelogic-catalog-new-code="true"');
+    expect(view).toContain("+ Nueva pieza / código");
+    expect(view).toContain("if (!unlocked || !catalog || busy) return;");
+    expect(view).toContain("setFilter(\"\")");
+    expect(view).toContain("serializeFrameLogicCatalog(updated)");
     expect(view).toContain("if (!unlocked) return;");
     expect(view).toContain("serializeFrameLogicCatalog(normalizeFrameLogicCatalog(catalog))");
     expect(view).toContain("window.confirm(");

@@ -192,6 +192,72 @@ export function updateCatalogField(
   return update(record, 0) as CatalogRecord;
 }
 
+/**
+ * Builds a blank universal template using ALL records from the currently
+ * loaded catalog. No product values, prices, file paths or personal data are
+ * copied: only the property names, nested shapes and array positions.
+ *
+ * When a property has contradictory types across records, an object takes
+ * precedence over an array, and an array over a primitive. A single JSON
+ * property cannot represent two conflicting container types at once.
+ */
+function blankStructure(value: CatalogValue): CatalogValue {
+  if (Array.isArray(value)) return value.map(blankStructure);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, nested]) =>
+      [key, blankStructure(nested)])) as { [key: string]: CatalogValue };
+  }
+  return typeof value === "string" ? "" : null;
+}
+
+function mergeBlankStructures(first: CatalogValue, other: CatalogValue): CatalogValue {
+  if (first !== null && typeof first === "object" && !Array.isArray(first)
+    && other !== null && typeof other === "object" && !Array.isArray(other)) {
+    const result: Record<string, CatalogValue> = { ...first };
+    for (const [key, value] of Object.entries(other)) {
+      result[key] = Object.prototype.hasOwnProperty.call(result, key)
+        ? mergeBlankStructures(result[key]!, value) : blankStructure(value);
+    }
+    return result;
+  }
+  if (Array.isArray(first) && Array.isArray(other)) {
+    return Array.from({ length: Math.max(first.length, other.length) }, (_, index) =>
+      index < first.length && index < other.length
+        ? mergeBlankStructures(first[index]!, other[index]!)
+        : index < first.length
+          ? blankStructure(first[index]!)
+          : blankStructure(other[index]!));
+  }
+  const rank = (value: CatalogValue): number =>
+    value !== null && typeof value === "object"
+      ? Array.isArray(value) ? 2 : 3
+      : typeof value === "string" ? 1 : 0;
+  return rank(first) >= rank(other) ? blankStructure(first) : blankStructure(other);
+}
+
+/**
+ * Adds a new unique code and inherits the recursive UNION of all subdivisions
+ * across the loaded JSON records, not only the currently selected one.
+ */
+export function makeCatalogRecordWithAllSubdivisions(
+  records: readonly CatalogRecord[],
+): CatalogRecord {
+  const existing = new Set(records.map((record) => record.codigo.trim().toLocaleUpperCase()));
+  let suffix = 1;
+  let code = "";
+  do {
+    code = "NUEVO_" + String(suffix++).padStart(4, "0");
+  } while (existing.has(code.toLocaleUpperCase()));
+
+  let template: CatalogValue = {};
+  for (const record of records) {
+    const { codigo: _codigo, ...properties } = record;
+    template = mergeBlankStructures(template, properties);
+  }
+  const fresh = { codigo: code, ...(template as Record<string, CatalogValue>) };
+  return normalizeCatalogRecord(fresh);
+}
+
 /** User-entered raw JSON can introduce any new subdivision, no fixed fields. */
 export function parseCatalogRecordEditor(text: string): CatalogRecord {
   let value: unknown;
