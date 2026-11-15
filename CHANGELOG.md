@@ -15,6 +15,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.167 — 2026-11-15 (catálogo universal por código)
+
+### Subdivisiones JSON abiertas y sin columnas obligatorias fijas
+
+- En `Configuración → Base de datos`, cada registro requiere únicamente **`codigo`**. El sistema conserva **todos** los demás nombres y valores JSON, aunque sean diferentes entre registros.
+- Se visualizan dinámicamente todas las subdivisiones anidadas como grupos y filas verticales **Propiedad / Valor**: objetos, listas con índices, números, textos, booleanos y `null`, incluso con diferentes niveles y nombres.
+- En el modo editor desbloqueado por el candado general, los valores simples son editables directamente; **Editar estructura JSON** permite añadir, renombrar y eliminar propiedades, grupos o listas arbitrarias conservando todo lo demás.
+- La lectura, validación y escritura ya no reconstruyen una lista fija de nombre/familia/ruta/peso/longitud/tarifa, evitando la pérdida silenciosa de datos desconocidos. Se mantienen código único, límite de tamaño y profundidad, JSON bien formado, compatibilidad con archivos antiguos y guardado explícito local.
+- Pruebas de dos registros con esquemas distintos, recorrido profundo de propiedades, edición de listas anidadas, validación de código y fidelidad de ida y vuelta en JSON.
+- Archivo `DBFrameLogic.json` de dos ejemplos ficticios facilitado al usuario para copiar a `D:\Documents\FrameLogic\DB`. No se almacena información real de empresa; los nombres y valores son ilustrativos.
+
+---
+
 ## v0.1.166 — 2026-11-15 (candado general y DBFrameLogic.json local)
 
 ### Un bloqueo para todas las pestañas de Configuración

@@ -4,6 +4,9 @@ import {
   CATALOG_DEFAULT_URL,
   createCatalogPasswordVerifier,
   normalizeFrameLogicCatalog,
+  catalogFieldRows,
+  updateCatalogField,
+  parseCatalogRecordEditor,
   parseFrameLogicCatalog,
   resolveCatalogUrl,
   serializeFrameLogicCatalog,
@@ -42,16 +45,17 @@ describe("JSON catalog for FrameLogic parts", () => {
     })).toThrow(/duplicado/i);
   });
 
-  it("rejects invalid numeric values, empty codes, unsupported versions", () => {
+  it("only requires codigo, and accepts any property type and subdivision", () => {
+    const flexible = {
+      codigo: "PRUEBA",
+      condiciones: { temperatura_c: -3, aprobado: false, nota: "mínimo" },
+      valores: [null, 42, "M16", { x: -125, y: 0 }],
+    };
+    const catalog = normalizeFrameLogicCatalog({ version: 1, registros: [flexible] });
+    expect(catalog.registros).toEqual([flexible]);
     expect(() => normalizeFrameLogicCatalog({
-      version: 1, registros: [{ ...baseRecord, peso: "18.5" }],
-    })).toThrow(/peso/i);
-    expect(() => normalizeFrameLogicCatalog({
-      version: 1, registros: [{ ...baseRecord, longitud: -3 }],
-    })).toThrow(/longitud/i);
-    expect(() => normalizeFrameLogicCatalog({
-      version: 1, registros: [{ ...baseRecord, codigo: " " }],
-    })).toThrow(/código/i);
+      version: 1, registros: [{ codigo: " " }],
+    })).toThrow(/codigo/i);
     expect(() => normalizeFrameLogicCatalog({ version: 2, registros: [] }))
       .toThrow(/versión/i);
     expect(() => parseFrameLogicCatalog("{")).toThrow(/JSON válido/);
@@ -91,4 +95,63 @@ describe("JSON catalog for FrameLogic parts", () => {
     expect(parseFrameLogicCatalog(serializeFrameLogicCatalog(catalog)).admin).toEqual(verifier);
     await expect(createCatalogPasswordVerifier("short")).rejects.toThrow(/12 caracteres/);
   });
+  it("preserves unrelated, differently shaped objects for multiple codes", () => {
+    const example = {
+      version: 1,
+      registros: [
+        { codigo: "REC3000", geometria: { seccion: { tipo: "RHS", ancho_mm: 120 } },
+          procesos: ["Corte", "Taladrado"], material: { aprobado: true } },
+        { codigo: "PL-ANCLA-450",
+          taladros: [{ diametro_mm: 26, posicion_mm: { x: -55, y: 55 } }],
+          precios: { moneda: "EUR", subtotal: 20.5 }, tratamiento: null },
+      ],
+    };
+    const output = parseFrameLogicCatalog(JSON.stringify(example));
+    expect(output.registros).toEqual(example.registros);
+    expect(parseFrameLogicCatalog(serializeFrameLogicCatalog(output)).registros)
+      .toEqual(example.registros);
+  });
+
+  it("renders every nested leaf, array position and group path", () => {
+    const record = parseCatalogRecordEditor(JSON.stringify({
+      codigo: "A1",
+      material: { calidad: "S355", propiedades: { densidad: 7850 } },
+      agujeros: [{ diametro: 18 }, { diametro: 22 }],
+      booleano: false,
+      opcional: null,
+    }));
+    const rows = catalogFieldRows(record);
+    const paths = rows.map((row) => row.path.join("."));
+    expect(paths).toContain("codigo");
+    expect(paths).toContain("material");
+    expect(paths).toContain("material.calidad");
+    expect(paths).toContain("material.propiedades.densidad");
+    expect(paths).toContain("agujeros");
+    expect(paths).toContain("agujeros.0.diametro");
+    expect(paths).toContain("agujeros.1.diametro");
+    expect(paths).toContain("booleano");
+    expect(paths).toContain("opcional");
+  });
+
+  it("edits a deeply nested property without replacing siblings or changing types", () => {
+    const record = parseCatalogRecordEditor(JSON.stringify({
+      codigo: "A1", geometria: { x: 1, y: 2 },
+      taladros: [{ diametro: 18 }, { diametro: 20 }],
+    }));
+    const updated = updateCatalogField(record, ["taladros", 1, "diametro"], 24);
+    expect(updated.taladros).toEqual([{ diametro: 18 }, { diametro: 24 }]);
+    expect(updated.geometria).toEqual({ x: 1, y: 2 });
+    expect(record.taladros).toEqual([{ diametro: 18 }, { diametro: 20 }]);
+    expect(() => updateCatalogField(record, ["inexistente"], "x"))
+      .toThrow(/inexistente/i);
+  });
+
+  it("allows editing the JSON object to add entirely new subdivisions", () => {
+    const newRecord = parseCatalogRecordEditor(JSON.stringify({
+      codigo: "X", nuevaDivision: { sub: [true, null, { nombre: "A" }] },
+    }));
+    expect(newRecord.nuevaDivision).toEqual({ sub: [true, null, { nombre: "A" }] });
+    expect(() => parseCatalogRecordEditor('["not an object"]')).toThrow(/objeto/i);
+  });
+
 });
