@@ -450,3 +450,30 @@
   color: #ffcd99;
   margin-top: 7px;
 }
+
+/* New part/code creation: only mounted when the global editor lock is open. */
+.fl-catalog-create-code {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(190px, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px;
+  border: 1px solid #60899d;
+  border-radius: 5px;
+  background: #1c3543;
+}
+.fl-catalog-create-code > label { color: #e1eff6; font-weight: 650; }
+.fl-catalog-create-code > small {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.fl-catalog-create-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 680px) {
+  .fl-catalog-create-code { grid-template-columns: 1fr; }
+}

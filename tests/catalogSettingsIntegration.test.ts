@@ -32,6 +32,11 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(explorer).toContain('Editar estructura JSON');
     expect(explorer).toContain('parseCatalogRecordEditor(jsonEditor.text)');
     expect(explorer).toContain("onCellEdit(selectedRow!, path, next)");
+    expect(view).toContain('data-framelogic-catalog-new-code="true"');
+    expect(view).toContain('unlocked && newCodeOpen');
+    expect(view).toContain('createCatalogRecordFromExisting(catalog.registros, newCode)');
+    expect(view).toContain('setFilter("")');
+
     expect(style).toContain(".fl-universal-field-table");
   });
 
