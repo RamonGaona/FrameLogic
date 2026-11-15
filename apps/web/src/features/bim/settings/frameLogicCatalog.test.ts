@@ -4,6 +4,7 @@ import {
   CATALOG_DEFAULT_URL,
   CATALOG_INITIAL_BASE_PATH,
   displayCatalogVersion,
+  hasEffectiveCatalogChanges,
   setCatalogVersion,
   validateCatalogVersion,
   createCatalogPasswordVerifier,
@@ -473,6 +474,20 @@ describe("JSON catalog for FrameLogic parts", () => {
       .toThrow(/fecha_modificacion/);
     expect(() => normalizeFrameLogicCatalog({ ...source, usuario_modificacion: 4 }))
       .toThrow(/usuario_modificacion/);
+  });
+
+  it("does not refresh audit for a change reverted to its original JSON content", () => {
+    const original = JSON.stringify({
+      version: "1.0.0", fecha_modificacion: "2026-11-14T22:00:00Z",
+      usuario_modificacion: "", registros: [{ codigo: "A", peso: 12 }],
+    });
+    const parsed = parseFrameLogicCatalog(original);
+    const modified = { ...parsed, registros: [{ codigo: "A", peso: 13 }] };
+    expect(hasEffectiveCatalogChanges(original, modified)).toBe(true);
+    expect(hasEffectiveCatalogChanges(original, parsed)).toBe(false);
+    const reverted = { ...modified, registros: [{ codigo: "A", peso: 12 }] };
+    expect(hasEffectiveCatalogChanges(original, reverted)).toBe(false);
+    expect(parsed.fecha_modificacion).toBe("2026-11-14T22:00:00Z");
   });
 
 });
