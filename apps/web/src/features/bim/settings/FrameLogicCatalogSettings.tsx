@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { FrameLogicUniversalCatalogGrid } from "./FrameLogicUniversalCatalogGrid";
 import {
+  forgetCatalogFileHandle,
+  queryCatalogReadPermission,
+  requestCatalogReadPermission,
+  requestCatalogWritePermission,
+  restoreCatalogFileHandle,
+  storeCatalogFileHandle,
+  type CatalogFileHandle,
+} from "./catalogFileHandleStore";
+import {
   blankCatalog,
   CATALOG_DEFAULT_URL,
   CATALOG_LOCAL_FILE_NAME,
@@ -20,16 +29,6 @@ import {
 } from "./frameLogicCatalog";
 import "./frameLogicCatalogSettings.css";
 
-interface CatalogWritable {
-  write(data: string): Promise<void>;
-  close(): Promise<void>;
-  abort?(): Promise<void>;
-}
-interface CatalogFileHandle {
-  name: string;
-  getFile(): Promise<File>;
-  createWritable(): Promise<CatalogWritable>;
-}
 interface CatalogPickerWindow extends Window {
   showOpenFilePicker?: (options?: {
     id?: string;
@@ -102,6 +101,9 @@ export function FrameLogicCatalogSettings({
   const [catalog, setCatalog] = useState<FrameLogicCatalog | null>(null);
   const [source, setSource] = useState<SourceKind>("local");
   const [fileHandle, setFileHandle] = useState<CatalogFileHandle | null>(null);
+  const [rememberedHandle, setRememberedHandle] = useState<CatalogFileHandle | null>(null);
+  const [needsAuthorization, setNeedsAuthorization] = useState(false);
+  const [handleNotice, setHandleNotice] = useState("");
   const [readText, setReadText] = useState<string | null>(null);
   const [fileName, setFileName] = useState(CATALOG_LOCAL_FILE_NAME);
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
@@ -129,6 +131,8 @@ export function FrameLogicCatalogSettings({
 
   const rememberRoute = (value: string) => {
     setRoute(value);
+    setRememberedHandle(null);
+    setNeedsAuthorization(false);
     try { localStorage.setItem(CATALOG_SOURCE_STORAGE_KEY, value); }
     catch { /* Incognito/private browser mode */ }
   };
@@ -185,16 +189,54 @@ export function FrameLogicCatalogSettings({
     }
   };
 
-  // A Windows local path is only a reference. The browser always requires the
-  // user to select/grant access to that file, even after page refresh.
+  // A typed Windows path is just a reference. An IndexedDB file handle can
+  // be read automatically on reload ONLY if the browser still permits it.
+  // We never call requestPermission without a direct user click.
   useEffect(() => {
-    if (isWebRoute(route)) void loadRemote(route, true);
-    else setMessage("Ruta local recordada. Selecciona DBFrameLogic.json para conceder acceso.");
+    const id = ++requestId.current;
+    if (isWebRoute(route)) {
+      void loadRemote(route, true);
+    } else {
+      setBusy(true);
+      void (async () => {
+        try {
+          const handle = await restoreCatalogFileHandle(route);
+          if (id !== requestId.current) return;
+          if (!handle) {
+            setMessage("Ruta local recordada. Selecciona DBFrameLogic.json una vez para recordar el archivo.");
+            return;
+          }
+          setRememberedHandle(handle);
+          const permission = await queryCatalogReadPermission(handle);
+          if (id !== requestId.current) return;
+          if (permission === "granted" || !handle.queryPermission) {
+            try {
+              const file = await handle.getFile();
+              if (id !== requestId.current) return;
+              await loadLocal(file, handle, false);
+            } catch {
+              if (id !== requestId.current) return;
+              setNeedsAuthorization(true);
+              setMessage("Se recordó DBFrameLogic.json, pero el navegador requiere autorizar su lectura.");
+            }
+          } else {
+            setNeedsAuthorization(true);
+            setMessage("Archivo recordado: " + handle.name
+              + ". Pulsa «Autorizar acceso» para renovar el permiso de lectura.");
+          }
+        } catch (cause) {
+          if (id === requestId.current) setError(errorMessage(cause));
+        } finally {
+          if (id === requestId.current) setBusy(false);
+        }
+      })();
+    }
     return () => { requestId.current += 1; };
+    // Only use the initial saved route; subsequent route changes require explicit loading.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadLocal = async (file: File, handle: CatalogFileHandle | null) => {
+  const loadLocal = async (file: File, handle: CatalogFileHandle | null, remember = true) => {
     if (file.size > MAX_CATALOG_BYTES) {
       setError("El archivo seleccionado supera 5 MB.");
       return;
@@ -207,14 +249,58 @@ export function FrameLogicCatalogSettings({
       const parsed = parseFrameLogicCatalog(text);
       if (id !== requestId.current) return;
       acceptCatalog(parsed, text, "local", file.name, handle);
-      if (isWebRoute(route)) rememberRoute(CATALOG_LOCAL_FILE_PATH);
+      const localRoute = isWebRoute(route) ? CATALOG_LOCAL_FILE_PATH : route;
+      if (isWebRoute(route)) rememberRoute(localRoute);
+      if (handle) {
+        setRememberedHandle(handle);
+        setNeedsAuthorization(false);
+        if (remember) {
+          const stored = await storeCatalogFileHandle(localRoute, handle);
+          if (id !== requestId.current) return;
+          setHandleNotice(stored ? "" :
+            "El navegador no pudo recordar el permiso del archivo (IndexedDB no disponible).");
+        } else {
+          setHandleNotice("");
+        }
+      } else {
+        setRememberedHandle(null);
+        setNeedsAuthorization(false);
+        setHandleNotice("Este navegador puede leer JSON, pero no admite recordar archivos locales.");
+        await forgetCatalogFileHandle();
+        if (id !== requestId.current) return;
+      }
       setMessage(handle
-        ? "Archivo local abierto. Guardar JSON escribirá sobre este archivo con permiso del navegador."
-        : "Archivo local abierto para consulta. Guardar JSON descargará una nueva copia.");
+        ? (remember
+          ? "JSON cargado. FrameLogic recordará el archivo y comprobará el permiso al volver a abrir."
+          : "JSON recuperado automáticamente desde el archivo local autorizado.")
+        : "Archivo local abierto. Guardar JSON descargará una copia.");
     } catch (cause) {
       if (id === requestId.current) setError(errorMessage(cause));
     } finally {
       if (id === requestId.current) setBusy(false);
+    }
+  };
+
+  const authorizeRememberedFile = async () => {
+    const handle = rememberedHandle;
+    if (!handle) return;
+    setError("");
+    setBusy(true);
+    // Request read access DIRECTLY from the click, before any other await.
+    try {
+      const granted = await requestCatalogReadPermission(handle);
+      if (!granted) {
+        setNeedsAuthorization(true);
+        setError("No se concedió permiso de lectura. Puedes seleccionar el archivo otra vez.");
+        return;
+      }
+      const file = await handle.getFile();
+      await loadLocal(file, handle, false);
+    } catch (cause) {
+      setNeedsAuthorization(true);
+      setError("No se pudo reabrir el archivo recordado: " + errorMessage(cause));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -324,6 +410,12 @@ export function FrameLogicCatalogSettings({
     setBusy(true);
     try {
       let handle = fileHandle;
+      // A persisted read-only handle may need explicit write authorization.
+      // Ask from this Save button gesture, never during automatic restore.
+      if (handle && !await requestCatalogWritePermission(handle)) {
+        setError("No se concedió permiso para escribir en DBFrameLogic.json.");
+        return;
+      }
       if (!handle) {
         const picker = window as CatalogPickerWindow;
         if (picker.showSaveFilePicker) {
@@ -354,6 +446,13 @@ export function FrameLogicCatalogSettings({
         throw cause;
       }
       setFileHandle(handle);
+      const localRoute = isWebRoute(route) ? CATALOG_LOCAL_FILE_PATH : route;
+      if (isWebRoute(route)) rememberRoute(localRoute);
+      setRememberedHandle(handle);
+      setNeedsAuthorization(false);
+      const remembered = await storeCatalogFileHandle(localRoute, handle);
+      setHandleNotice(remembered ? "" :
+        "Se guardó el JSON, pero el navegador no puede recordar el archivo para la siguiente visita.");
       setReadText(json);
       setFileName(handle.name);
       setSource("local");
@@ -384,6 +483,14 @@ export function FrameLogicCatalogSettings({
           <button type="button" onClick={() => void selectJson()} disabled={busy}>
             Seleccionar JSON
           </button>
+          {needsAuthorization && rememberedHandle && (
+            <button type="button" className="fl-catalog-authorize"
+              data-framelogic-catalog-authorize="true"
+              disabled={busy}
+              onClick={() => void authorizeRememberedFile()}>
+              Autorizar acceso
+            </button>
+          )}
           <button type="button" onClick={() => void loadRemote(route)} disabled={busy || !isWebRoute(route)}>
             Cargar URL
           </button>
@@ -397,9 +504,12 @@ export function FrameLogicCatalogSettings({
             if (file) void loadLocal(file, null);
             event.currentTarget.value = "";
           }} />
-        <small>Ruta local prevista: {CATALOG_LOCAL_FILE_PATH}. Se recuerda en este navegador,
-          pero después de recargar debes volver a seleccionar el archivo para dar permiso.
+        <small>Ruta local prevista: {CATALOG_LOCAL_FILE_PATH}. Al seleccionar el JSON,
+          FrameLogic intentará recordar el archivo en este navegador. La próxima vez lo leerá
+          automáticamente si el navegador conserva el permiso; si no, aparecerá
+          «Autorizar acceso». La ruta es solo una referencia, no concede acceso al disco.
           También puedes utilizar una URL HTTPS, por ejemplo {CATALOG_DEFAULT_URL}.</small>
+        {handleNotice && <small role="status" className="fl-catalog-handle-notice">{handleNotice}</small>}
       </div>
 
       {error && <div role="alert" className="fl-catalog-alert is-error">{error}</div>}

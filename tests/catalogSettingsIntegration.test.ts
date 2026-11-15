@@ -46,6 +46,19 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(view).toContain("showSaveFilePicker");
     expect(view).toContain("createWritable()");
     expect(view).toContain("El JSON cambió fuera de FrameLogic.");
+    expect(view).toContain("restoreCatalogFileHandle(route)");
+    expect(view).toContain("queryCatalogReadPermission(handle)");
+    expect(view).toContain("requestCatalogReadPermission(handle)");
+    expect(view).toContain("storeCatalogFileHandle(localRoute, handle)");
+    expect(view).toContain('data-framelogic-catalog-authorize="true"');
+    expect(view).toContain("rememberedHandle &&");
+    expect(view).toContain("loadLocal(file, handle, false)");
+    expect(view).toContain("requestCatalogWritePermission(handle)");
+    const store = read("../apps/web/src/features/bim/settings/catalogFileHandleStore.ts");
+    expect(store).toContain("indexedDB.open(CATALOG_FILE_HANDLE_DB, 1)");
+    expect(store).toContain("saved.route !== route");
+    expect(store).toContain('queryPermission({ mode: "read" })');
+    expect(store).toContain('requestPermission({ mode: "read" })');
   });
 
   it("still ships a valid starter file for optional URL-based catalogs", () => {

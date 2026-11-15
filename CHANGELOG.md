@@ -15,6 +15,20 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.168 — 2026-11-15 (recuperación automática del JSON local)
+
+### Recordar el archivo seleccionado, no solo su ruta
+
+- En `Configuración → Base de datos`, el selector de archivos en navegadores compatibles con File System Access API guarda la **referencia de `DBFrameLogic.json` en IndexedDB del navegador**, separada de la ruta de texto persistida en `localStorage`. No se copia el contenido JSON a IndexedDB.
+- Al reabrir la aplicación, FrameLogic recupera ese identificador y **consulta el permiso de lectura sin pedirlo**. Si sigue concedido, carga el JSON automáticamente en solo lectura, sin que sea necesario desbloquear Configuración ni buscar el archivo otra vez.
+- Si el permiso requiere renovación, aparece el botón **Autorizar acceso**, que solicita permiso de lectura exclusivamente tras el clic del usuario. Si no se concede, aún puede pulsar **Seleccionar JSON**.
+- Las operaciones de lectura no solicitan permisos de escritura. **Guardar JSON** sigue limitado al candado de editor y puede solicitar `readwrite` al guardar; se mantiene la comprobación de cambios externos antes de sobrescribir el fichero.
+- Las referencias guardadas están asociadas a la ruta de configuración: si se cambia de ruta, la referencia anterior no se abre automáticamente por error. Degradación segura en navegadores sin IndexedDB o File System Access API, modo privado, permiso caducado y archivo movido o eliminado.
+- Se preservan los códigos y subdivisiones universales, el JSON local en `D:\Documents\FrameLogic\DB\DBFrameLogic.json`, las URL remotas en consulta y el candado general. No se añade API ni acceso remoto de escritura a SharePoint.
+- Pruebas de persistencia del identificador sin datos, restablecimiento por ruta, revocación, permiso de lectura y escritura separado y fallback sin IndexedDB.
+
+---
+
 ## v0.1.167 — 2026-11-15 (catálogo universal por código)
 
 ### Subdivisiones JSON abiertas y sin columnas obligatorias fijas
