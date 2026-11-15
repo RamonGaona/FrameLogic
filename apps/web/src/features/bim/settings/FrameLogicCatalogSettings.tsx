@@ -446,10 +446,10 @@ export function FrameLogicCatalogSettings({
         throw cause;
       }
       setFileHandle(handle);
-      setRememberedHandle(handle);
-      setNeedsAuthorization(false);
       const localRoute = isWebRoute(route) ? CATALOG_LOCAL_FILE_PATH : route;
       if (isWebRoute(route)) rememberRoute(localRoute);
+      setRememberedHandle(handle);
+      setNeedsAuthorization(false);
       const remembered = await storeCatalogFileHandle(localRoute, handle);
       setHandleNotice(remembered ? "" :
         "Se guardó el JSON, pero el navegador no puede recordar el archivo para la siguiente visita.");
