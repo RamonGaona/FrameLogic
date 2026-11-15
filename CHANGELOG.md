@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.171 — 2026-11-15 (ruta base independiente del catálogo)
+
+- Nueva propiedad opcional **`ruta_base`** en la raíz de `DBFrameLogic.json`, fuera de `registros`, para definir una carpeta general de recursos. El catálogo nuevo incluye la propiedad como texto inicialmente vacío; los catálogos existentes sin esta propiedad siguen siendo compatibles.
+- Se muestra **Ruta base** en una única línea fuera del listado de códigos y la tabla de propiedades. El candado general controla su edición; se guarda al pulsar **Guardar JSON** en el archivo local autorizado.
+- Las rutas de las piezas son únicamente la **parte final o relativa** definida por el usuario: se muestran tal cual, sin recortarlas, añadirles prefijos, combinarlas ni reescribirlas automáticamente. El código futuro que utilice un recurso podrá concatenar `ruta_base` y la parte relativa explícitamente.
+- Se conserva el soporte de subdivisiones universales por código, lectura automática autorizada, guardado local, protección contra sobrescrituras y esquemas JSON existentes.
+- Pruebas de persistencia, validación de `ruta_base`, rutas relativas intactas y comprobaciones de integración de la interfaz. Documentación y catálogo web de inicio actualizados. Sin backend ni servicios de pago.
+
+---
+
 ## v0.1.170 — 2026-11-15 (corregir tipo JSON de propiedades)
 
 ### Cambiar texto, número, booleano o null desde la misma celda
