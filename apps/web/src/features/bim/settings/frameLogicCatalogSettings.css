@@ -450,3 +450,50 @@
   color: #ffcd99;
   margin-top: 7px;
 }
+
+/* Explicit type picker for every JSON scalar leaf, without editing raw JSON. */
+.fl-catalog-scalar-wrapper { min-width: 0; width: 100%; }
+.fl-catalog-scalar-editor {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+.fl-universal-field-table .fl-catalog-scalar-value {
+  flex: 1 1 0;
+  min-width: 0 !important;
+  width: 0;
+}
+.fl-universal-field-table .fl-catalog-type-select {
+  box-sizing: border-box;
+  flex: 0 0 94px;
+  width: 94px;
+  min-height: 36px;
+  max-width: 43%;
+  border: 0;
+  border-left: 1px solid #547083;
+  border-radius: 0;
+  padding: 5px 3px;
+  font: 11px system-ui, sans-serif;
+  background: #234457;
+  color: #e5f7ff;
+  cursor: pointer;
+}
+.fl-universal-field-table .fl-catalog-type-select option { background: #1c394b; }
+.fl-universal-field-table .fl-catalog-scalar-null {
+  flex: 1 1 auto;
+  color: #b6ccd7;
+  font-style: italic;
+}
+.fl-universal-field-table .fl-catalog-scalar-error {
+  display: block;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #ffd0c5;
+  background: #573436;
+  overflow-wrap: anywhere;
+}
+.fl-catalog-type-select:focus-visible {
+  outline: 2px solid #91d9fc;
+  outline-offset: -2px;
+}
