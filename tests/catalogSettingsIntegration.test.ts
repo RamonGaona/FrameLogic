@@ -27,14 +27,25 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(view).toContain('data-framelogic-catalog-base-path="true"');
     expect(view).toContain('value={catalog.ruta_base ?? ""}');
     expect(view).toContain('data-framelogic-catalog-audit="true"');
-    expect(view).toContain('catalog.fecha || "Sin registrar"');
-    expect(view).toContain('catalog.usuario || "—"');
-    expect(view).toContain("markCatalogModified(blankCatalog())");
-    expect(view).toContain("markCatalogModified({ ...current, registros: records })");
-    expect(view).toContain("setCatalog(markCatalogModified(normalized))");
-    expect(view).toContain("const updated = markCatalogModified(");
-    expect(view).toContain("setCatalog(markCatalogModified({");
-    expect(view).toContain("markCatalogModified({ ...current, ruta_base: next })");
+    expect(view).toContain("catalog.fecha_modificacion || catalog.fecha");
+    expect(view).toContain("catalog.usuario_modificacion || catalog.usuario");
+    expect(view).toContain("const fresh = blankCatalog()");
+    expect(view).toContain("setCatalog(normalized)");
+    expect(view).toContain('data-framelogic-catalog-version="true"');
+    expect(view).toContain("displayCatalogVersion(catalog.version)");
+    expect(view).toContain('aria-label="Editar versión del JSON"');
+    expect(view).toContain("setCatalogVersion(catalog, versionDraft, editorAuth.current.unlocked)");
+    expect(view).toContain("setVersionDraft(null)");
+    expect(view).toContain("savedCatalog = markCatalogModified(normalizeFrameLogicCatalog(catalog))");
+    expect(view).toContain("if (!canWrite(authGeneration))");
+    expect(view).toContain("writeAuthorizedCatalogFile(");
+    const writer = read("../apps/web/src/features/bim/settings/catalogFileWriter.ts");
+    expect(writer).toContain("await writer.abort?.()");
+    expect(writer).toContain("await writer.close()");
+    expect(writer).toContain("assertAuthorized()");
+    expect(writer).toContain("requestCatalogWritePermission(handle)");
+    expect(view).toContain("setCatalog(savedCatalog)");
+    expect(view).toContain('placeholder={CATALOG_INITIAL_BASE_PATH}');
 
     expect(view).toContain('disabled={!unlocked}');
     expect(view).not.toContain('rutaBase={catalog.ruta_base}');
@@ -47,8 +58,9 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(view).toContain("if (!unlocked || !catalog || busy) return;");
     expect(view).toContain("setFilter(\"\")");
     expect(view).toContain("serializeFrameLogicCatalog(updated)");
-    expect(view).toContain("if (!unlocked) return;");
-    expect(view).toContain("serializeFrameLogicCatalog(normalizeFrameLogicCatalog(catalog))");
+    expect(view).toContain("if (!unlocked || busy) return;");
+    expect(view).toContain("serializeFrameLogicCatalog(savedCatalog)");
+    expect(view).toContain("hasEffectiveCatalogChanges(readText, catalog)");
     expect(view).toContain("window.confirm(");
     expect(explorer).toContain('catalogFieldRows(record)');
     expect(explorer).toContain('Editar estructura JSON');
@@ -74,8 +86,9 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(view).toContain("localStorage.setItem(CATALOG_SOURCE_STORAGE_KEY, value)");
     expect(view).toContain("showOpenFilePicker");
     expect(view).toContain("showSaveFilePicker");
-    expect(view).toContain("createWritable()");
-    expect(view).toContain("El JSON cambió fuera de FrameLogic.");
+    const writer = read("../apps/web/src/features/bim/settings/catalogFileWriter.ts");
+    expect(writer).toContain("createWritable()");
+    expect(writer).toContain("El JSON cambió fuera de FrameLogic.");
     expect(view).toContain("restoreCatalogFileHandle(route)");
     expect(view).toContain("queryCatalogReadPermission(handle)");
     expect(view).toContain("requestCatalogReadPermission(handle)");
@@ -83,7 +96,7 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(view).toContain('data-framelogic-catalog-authorize="true"');
     expect(view).toContain("rememberedHandle &&");
     expect(view).toContain("loadLocal(file, handle, false)");
-    expect(view).toContain("requestCatalogWritePermission(handle)");
+    expect(writer).toContain("requestCatalogWritePermission(handle)");
     const store = read("../apps/web/src/features/bim/settings/catalogFileHandleStore.ts");
     expect(store).toContain("indexedDB.open(CATALOG_FILE_HANDLE_DB, 1)");
     expect(store).toContain("saved.route !== route");
@@ -94,7 +107,8 @@ describe("global settings lock and local JSON spreadsheet", () => {
   it("still ships a valid starter file for optional URL-based catalogs", () => {
     const catalog = JSON.parse(read("../apps/web/public/data/framelogic-catalog.json"));
     expect(catalog).toEqual({
-      version: 1, fecha: "", usuario: "", ruta_base: "", registros: [],
+      version: "1.0.0", fecha_modificacion: "", usuario_modificacion: "",
+      ruta_base: String.raw`D:\Documents\FrameLogic`, registros: [],
     });
   });
 });

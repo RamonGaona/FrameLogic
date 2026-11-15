@@ -570,3 +570,40 @@
   font-size: 12px;
 }
 .fl-catalog-audit strong { color: #e1f0f7; }
+
+
+/* Metadata summary keeps the JSON's manual release independent from the app. */
+.fl-catalog-audit {
+  display: grid;
+  gap: 8px;
+  align-items: stretch;
+}
+.fl-catalog-audit-heading {
+  font-size: 13px;
+}
+.fl-catalog-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 10px 16px;
+}
+.fl-catalog-audit-grid > div {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+}
+.fl-catalog-audit-grid > div > strong {
+  color: #bed8e7;
+  font-size: 11px;
+}
+.fl-catalog-audit-grid > div > span {
+  color: #f0f8fc;
+  overflow-wrap: anywhere;
+}
+.fl-catalog-version-field { grid-column: span 1; }
+.fl-catalog-version-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.fl-catalog-version-edit input { min-width: 125px; width: 155px; }
+.fl-catalog .fl-catalog-version-edit button,
+.fl-catalog .fl-catalog-version-toggle { font-size: 11px; padding: 5px 8px; }
+.fl-catalog .fl-catalog-version-toggle { margin-left: 10px; }
+.fl-catalog-audit > small { font-size: 11px; color: #a9c6d5; }

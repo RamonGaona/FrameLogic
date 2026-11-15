@@ -1,199 +1,119 @@
-# Catálogo JSON universal de FrameLogic (v0.1.172)
+# Catálogo JSON universal de FrameLogic (v0.1.173)
 
-La pestaña **Configuración → Base de datos** muestra el archivo `DBFrameLogic.json`
-en un listado vertical de códigos y una tabla **Propiedad / Valor**. La tabla
-recorre recursivamente cualquier grupo, objeto o lista y expone todos los
-valores JSON, sin establecer columnas rígidas. Solo **`codigo`** es
-obligatorio. El usuario consulta sin desbloquear; el **candado general**
-de la cabecera habilita la edición para todas las pestañas.
+La pestaña **Configuración → Base de datos** permite consultar un catálogo
+`DBFrameLogic.json` local sin iniciar sesión. El **candado general** de
+Configuración controla de forma provisional la edición. Solo se introduce
+una versión de catálogo al cambiarla explícitamente; las versiones de
+FrameLogic y del archivo JSON son independientes.
 
-Cada código puede tener propiedades y subdivisiones completamente distintas
-de los demás. En modo editor, se pueden cambiar valores directamente, o
-utilizar **Editar estructura JSON** para agregar, modificar o quitar cualquier
-grupo, lista o campo adicional. La actualización modifica el JSON en memoria
-y **Guardar JSON** lo escribe al archivo local si el navegador tiene permiso.
+## Estructura real y compatibilidad
 
-Cada propiedad simple tiene un selector de tipo **Texto / Número / Sí/No / Vacío**.
-Si `peso_estimado_kg` quedó por error como texto, cambia el tipo a **Número**
-sin editar toda la estructura. Los textos numéricos se convierten conservando
-su valor; si el texto no es un número, el programa exige confirmar antes
-de borrarlo. Los decimales admiten punto o coma y los negativos son válidos.
-Un valor numérico vacío se conserva como `null`, nunca como cero.
-El campo obligatorio `codigo` siempre debe permanecer como texto.
+El catálogo que utiliza actualmente FrameLogic almacena sus piezas en
+**`registros[]`**, con la propiedad obligatoria `codigo` y cualquier
+cantidad de campos y subdivisiones. No se convierte a un objeto `codigos`
+porque eso rompería los archivos existentes.
 
-## Fecha y usuario de última modificación
-
-El archivo `DBFrameLogic.json` incorpora dos propiedades generales al
-lado de `version` y `ruta_base`, fuera de los registros de piezas:
-
-- `fecha`: fecha y hora de la última **modificación del catálogo** en
-  formato ISO 8601, expresada en UTC (por ejemplo,
-  `2026-11-15T21:27:31.250Z`). Se actualiza automáticamente al editar
-  una propiedad, crear/modificar/eliminar códigos o cambiar `ruta_base`.
-- `usuario`: nombre del usuario que hizo la última modificación. **Por ahora
-  queda vacío** (`""`) porque el desbloqueo provisional no identifica
-  usuarios. Más adelante podrá rellenarse mediante autenticación real.
-
-En un JSON nuevo, ambos valores empiezan vacíos; al crear el archivo se
-registra la fecha. El botón **Guardar JSON** persiste la fecha generada
-por las modificaciones. Abrir, consultar o descargar una copia de un catálogo
-sin cambios no modifica los metadatos; los archivos antiguos sin esos dos
-campos se siguen leyendo normalmente. La ventana muestra la fecha y el
-usuario en una línea general, fuera del cuadro de lectura por código.
-
-## Ruta base global y ruta relativa por pieza
-
-El JSON puede contener **una sola** propiedad `ruta_base` en su raíz, separada
-de `registros`. Cada pieza guarda **únicamente la parte final o relativa** de
-su propia ruta (`ruta`, o cualquier otro nombre de propiedad de archivo):
+Un archivo nuevo puede tener esta estructura:
 
 ```json
 {
-  "version": 1,
-  "fecha": "",
-  "usuario": "",
-  "ruta_base": "D:\\Documents\\FrameLogic\\Recursos",
+  "version": "1.0.0",
+  "fecha_modificacion": "",
+  "usuario_modificacion": "",
+  "ruta_base": "D:\\Documents\\FrameLogic",
   "registros": [
-    {"codigo": "REC3002", "ruta": "Perfiles\\REC3002.step"},
-    {"codigo": "PL-ANCLA-450", "ruta": "Placas\\ANCLA-450.step"}
+    {
+      "codigo": "REC3002",
+      "nombre": "Perfil rectangular",
+      "familia": "Estructura metálica",
+      "ruta": "Perfiles\\REC3002.step",
+      "peso": 18.5,
+      "activo": true
+    }
   ]
 }
 ```
 
-La ventana Configuración → Base de datos muestra `ruta_base` en una línea
-**fuera** del cuadro de lectura por código. Solo se modifica con el candado
-general abierto. Dentro de cada código se muestra **exactamente** la parte
-relativa que tiene el JSON. FrameLogic **no recorta, completa, modifica ni
-concatena las rutas** al consultar, editar o guardar. Una función posterior
-podrá combinar ambas partes al utilizar un archivo.
+- **`version`** es una cadena manual con formato `MAYOR.MENOR.PARCHE`,
+  por ejemplo `1.0.0`, `1.0.1` o `2.0.0`. El usuario autorizado debe
+  pulsar **Editar versión → Guardar versión** y luego **Guardar JSON**.
+  Ninguna actualización de FrameLogic incrementa esta cadena.
+- **`fecha_modificacion`** guarda fecha y hora ISO 8601 con zona horaria,
+  generada al preparar una escritura efectiva. La interfaz la muestra en
+  la zona horaria del navegador. No cambia al navegar o descargar una copia.
+- **`usuario_modificacion`** será la identidad del editor autenticado.
+  El candado temporal no identifica a una persona, así que hoy permanece vacío.
+- **`ruta_base`** se guarda una sola vez en la raíz; para un catálogo
+  nuevo comienza en `D:\Documents\FrameLogic`. Los campos `ruta` dentro
+  de cada registro conservan exactamente el texto relativo original. El
+  archivo `DBFrameLogic.json` se busca por referencia en
+  `D:\Documents\FrameLogic\DB\DBFrameLogic.json` y **no** se abre
+  automáticamente a partir de una cadena de ruta de Windows.
 
-Los archivos existentes sin `ruta_base` siguen funcionando. No se reescriben
-ni se convierten automáticamente sus rutas actuales; el usuario puede
-adaptarlas manualmente.
+Los archivos heredados con `version: 1` y/o con `fecha` y `usuario`
+siguen siendo legibles. Un catálogo sin campo `version` también se
+acepta, muestra **Sin versión registrada**, y no se modifica en lectura.
+El antiguo valor numérico `1` se trata como una marca del formato previo,
+no como la versión `1.0.0`; solo el usuario autorizado puede reemplazarlo.
+Los metadatos `fecha` y `usuario` preexistentes se conservan: cuando
+se guarda efectivamente un cambio, también se sincronizan con los nuevos
+campos `fecha_modificacion` y `usuario_modificacion`. Nunca se inventan
+fechas históricas faltantes.
 
-## Archivo local inicial
+## Consultar y editar
 
-Guardar una copia con este nombre y ubicación en Windows:
+En el encabezado se muestra **Información del archivo JSON** con
+Versión del JSON, Última modificación, Usuario, Estado y Origen.
+Debajo aparece la Ruta base y el buscador, seguido del listado vertical
+de códigos y sus propiedades dinámicas. La edición incluye cambio
+de tipos Texto / Número / Booleano / Vacío, modificación de estructuras
+anidadas y creación de códigos que heredan la **unión de subdivisiones**
+de todas las piezas existentes, sin copiar valores de otras piezas.
 
-`D:\Documents\FrameLogic\DB\DBFrameLogic.json`
+Al pulsar **Editar versión**, el campo admite únicamente la forma
+`MAYOR.MENOR.PARCHE`. **Guardar versión** confirma el borrador en memoria;
+**Cancelar** lo descarta sin cambiar el catálogo. **Guardar JSON** es el
+único paso que intenta persistir cambios en el archivo local; la fecha
+de modificación solo se actualiza al preparar ese guardado.
 
-Contenido inicial:
+## Guardar original, guardar nuevo o descargar copia
 
-```json
-{
-  "version": 1,
-  "fecha": "",
-  "usuario": "",
-  "ruta_base": "",
-  "registros": []
-}
-```
+Chrome/Edge pueden utilizar File System Access API para abrir un archivo
+elegido por el usuario. FrameLogic recuerda su *handle* en IndexedDB
+cuando el navegador lo permite, nunca una autorización implícita por ruta.
+Al volver a abrir, consulta si todavía tiene permiso de lectura y, si no,
+muestra **Autorizar acceso**. La autorización de escritura se solicita
+únicamente después de pulsar **Guardar JSON** con el candado desbloqueado.
 
-Para añadir códigos, usa **+ Agregar fila** en modo editor. Cada registro
-exige un código único (sin distinguir mayúsculas). **Todos los demás campos
-son opcionales y libres**: pueden existir grupos, listas, objetos, números
-positivos o negativos, textos, booleanos y valores `null`. No se presupone
-una unidad ni moneda; dependen de las propiedades que defina cada empresa.
+Antes de sobrescribir un archivo seleccionado, FrameLogic comprueba
+que su contenido no haya cambiado fuera de la aplicación. La escritura
+se realiza con `createWritable()`, `write()` y `close()`; si ocurre
+un error antes del cierre, se intenta `abort()`. La escritura puede
+ser transaccional según el navegador, pero **no se garantiza atomicidad
+en todas las plataformas**. Conviene conservar copias de seguridad.
 
-## Candado general, por ahora sin credenciales
+- **Guardar JSON** con archivo editable: modifica el archivo autorizado y
+  confirma la nueva fecha en la interfaz únicamente tras el cierre exitoso.
+- **Guardar JSON** sin *handle* pero con selector de guardado: el usuario
+  elige manualmente un archivo nuevo o una ruta de destino.
+- **Descargar copia**: genera otra copia y nunca informa que actualizó
+  el original. Si el navegador no admite selección de destino, **Guardar
+  JSON** también descarga una copia, pero mantiene el aviso de cambios
+  pendientes en el original.
 
-Al abrir Configuración, todas las pestañas están en **Solo lectura**.
-El candado aparece fuera de las pestañas, arriba a la derecha.
+## Limitación del candado actual
 
-Al pulsarlo se solicitan **Usuario** y **Contraseña**.
-**Por ahora ambos deben quedar vacíos** y se pulsa **Aceptar**.
-El candado abierto permite modificar cualquier ajuste, incluida la tabla
-de base de datos. Al cerrar y volver a abrir Configuración se bloquea
-de nuevo.
+**El acceso de editor actualmente acepta usuario y contraseña vacíos**,
+como mecanismo provisional de interfaz implementado en
+`settingsEditorGate.ts`. No es autenticación segura: cualquier persona con
+control de la página puede manipular JavaScript, memoria o el JSON que le
+pertenezca. El navegador es quien autoriza la escritura en el archivo
+local; ninguno de estos mecanismos constituye autorización remota.
 
-Este desbloqueo es una **medida provisional de interfaz**, no autenticación
-real ni un mecanismo que impida cambios ajenos al programa. Al existir
-código público, cualquiera puede conocer y reproducir esta condición.
-No debe utilizarse para autorizar escritura remota. El bloqueo anterior
-basado en un verificador de contraseña por archivo no se aplica ya al
-formulario; la clave estará a cargo de un servicio seguro si se implementa
-edición multiusuario.
-
-## Nueva pieza / código: unión de subdivisiones
-
-Con el **candado general abierto**, el botón **+ Nueva pieza / código** crea
-una fila con un código único provisional `NUEVO_0001`, `NUEVO_0002`, etc.
-FrameLogic recorre **todos los códigos del JSON actualmente cargado** y
-construye una plantilla que reúne sus propiedades y subdivisiones:
-objetos, grupos profundos y todas las posiciones presentes en listas.
-
-- Se reutilizan los nombres y la estructura, **no** las medidas, tarifas,
-  rutas, descripciones ni otros valores específicos de piezas existentes.
-- Las nuevas cadenas comienzan vacías y los valores numéricos/booleanos
-  comienzan como `null`, para no inventar datos técnicos.
-- Los códigos originales no se modifican. El nuevo código se selecciona para
-  completar sus campos en la tabla, y se guarda mediante **Guardar JSON**.
-- Si dos códigos utilizan tipos incompatibles para el mismo campo, se prioriza
-  el objeto anidado sobre la lista, y la lista sobre un valor simple. Esta
-  regla evita perder subdivisiones, pero no equivale a una migración de tipos.
-
-**Alcance:** se utilizan los códigos del archivo `DBFrameLogic.json`
-seleccionado; una web no puede inspeccionar automáticamente todos los demás
-archivos locales de una carpeta `D:\`.
-
-## Cómo abrir y editar
-
-1. Coloca `DBFrameLogic.json` en la ruta de Windows indicada.
-2. Abre FrameLogic → **Configuración** → **Base de datos**.
-3. Pulsa **Seleccionar JSON** y elige el archivo de la carpeta local.
-4. En la cabecera general, pulsa el candado y luego **Aceptar** con
-   usuario y contraseña vacíos.
-5. Edita directamente las celdas, añade o elimina filas.
-6. Pulsa **Guardar JSON**. Si tu navegador admite File System Access API
-   y tiene permiso de escritura, el archivo local seleccionado se
-   sobrescribe; en otros navegadores, el programa descargará una
-   copia `DBFrameLogic.json` que debes mover manualmente a la carpeta.
-
-La aplicación comprueba que el archivo no haya cambiado externamente
-antes de sobrescribirlo y valida el código y tipos numéricos al guardar.
-
-## Persistencia de ruta y límites del navegador
-
-La ruta de referencia se guarda en `localStorage` bajo
-`framelogic.catalog.source.v1`, para que aparezca al recargar la
-misma web en el mismo navegador. Si el usuario había guardado una URL
-personalizada, se conserva. La antigua URL predeterminada
-`/data/framelogic-catalog.json` se sustituye en la interfaz por la nueva
-ruta local.
-
-**La ruta no es un permiso de disco.** En navegadores como Chrome/Edge
-compatibles con File System Access API, al pulsar **Seleccionar JSON**,
-FrameLogic almacena una referencia al archivo seleccionado en el IndexedDB
-del mismo origen web; **no** guarda allí la contraseña ni el contenido JSON.
-
-Al recargar la página o volver a abrir la ventana, intenta recuperar esa
-referencia y consultar el permiso **solo de lectura**:
-- **Permiso concedido:** carga automáticamente el contenido actual del archivo
-  local, sin volver a seleccionarlo ni desbloquear el candado.
-- **Permiso pendiente o caducado:** aparece **Autorizar acceso**.
-  Al pulsarlo, el navegador puede pedir permiso para leer el archivo.
-- **Referencia perdida, archivo movido o navegador incompatible:** sigue
-  disponible **Seleccionar JSON** para elegirlo de nuevo.
-- **Ruta diferente:** no se abre la referencia antigua. Cada navegador
-  mantiene sus propios permisos y puede olvidarlos al borrar sus datos.
-
-Las peticiones automáticas no solicitan permisos de escritura. Para sobrescribir
-el archivo se necesita además abrir el candado de edición y pulsar
-**Guardar JSON**, lo cual puede provocar otra solicitud de permiso.
-La web nunca obtiene acceso arbitrario al disco `D:\` por escribir su ruta.
-
-La ruta puede cambiar cuando SharePoint sincronice la carpeta local,
-pero cada usuario deberá poder abrir ese archivo desde el equipo donde
-ejecuta FrameLogic. No se promete sincronización multiusuario desde
-el navegador, y el directorio de Windows no está accesible al servidor
-Cloudflare Pages.
-
-La URL pública `/data/framelogic-catalog.json` continúa siendo un recurso
-estático de consulta, distinto del archivo local `DBFrameLogic.json`.
-Para que varios usuarios editen una única base compartida de manera
-segura se necesitará autenticación y autorización **en un servidor**,
-versionado y control de concurrencia. No incluir contraseñas ni claves
-de acceso a SharePoint en código frontend o en archivos JSON públicos.
-
-Los códigos del catálogo todavía no se vinculan automáticamente a las
-instancias o definiciones de piezas del modelo.
+Se conserva el candado existente y se comprueba antes de cambiar la
+versión, las celdas y antes/durante el guardado; si se bloquea la interfaz
+antes de completar la escritura, se intenta abortar. En una futura
+implementación multiusuario, **todas las escrituras compartidas deberán
+validarse por un backend** con identidad, roles, expiración de sesión,
+control de concurrencia y auditoría. No colocar contraseñas en texto plano
+en `DBFrameLogic.json`, variables frontend o registros de consola.

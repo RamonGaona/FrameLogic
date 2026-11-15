@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { FrameLogicUniversalCatalogGrid } from "./FrameLogicUniversalCatalogGrid";
+import { writeAuthorizedCatalogFile } from "./catalogFileWriter";
 import {
   forgetCatalogFileHandle,
   queryCatalogReadPermission,
   requestCatalogReadPermission,
-  requestCatalogWritePermission,
   restoreCatalogFileHandle,
   storeCatalogFileHandle,
   type CatalogFileHandle,
@@ -12,6 +12,10 @@ import {
 import {
   blankCatalog,
   CATALOG_DEFAULT_URL,
+  CATALOG_INITIAL_BASE_PATH,
+  displayCatalogVersion,
+  hasEffectiveCatalogChanges,
+  setCatalogVersion,
   CATALOG_LOCAL_FILE_NAME,
   CATALOG_LOCAL_FILE_PATH,
   CATALOG_SOURCE_STORAGE_KEY,
@@ -110,6 +114,14 @@ export function FrameLogicCatalogSettings({
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [versionDraft, setVersionDraft] = useState<string | null>(null);
+  // Changes to the settings lock invalidate in-flight save operations.
+  const editorAuth = useRef({ unlocked, generation: 0 });
+  if (editorAuth.current.unlocked !== unlocked) {
+    editorAuth.current = { unlocked, generation: editorAuth.current.generation + 1 };
+  }
+  const canWrite = (generation: number) =>
+    editorAuth.current.unlocked && editorAuth.current.generation === generation;
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [filter, setFilter] = useState("");
@@ -119,6 +131,10 @@ export function FrameLogicCatalogSettings({
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!unlocked) setVersionDraft(null);
+  }, [unlocked]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -146,6 +162,7 @@ export function FrameLogicCatalogSettings({
     handle: CatalogFileHandle | null,
   ) => {
     setCatalog(data);
+    setVersionDraft(null);
     setReadText(text);
     setSource(kind);
     setFileName(name);
@@ -327,7 +344,7 @@ export function FrameLogicCatalogSettings({
   const newCatalog = () => {
     if (!unlocked || !confirmDiscard()) return;
     requestId.current += 1;
-    const fresh = markCatalogModified(blankCatalog());
+    const fresh = blankCatalog();
     acceptCatalog(fresh, serializeFrameLogicCatalog(fresh),
       "new", CATALOG_LOCAL_FILE_NAME, null);
     rememberRoute(CATALOG_LOCAL_FILE_PATH);
@@ -336,7 +353,7 @@ export function FrameLogicCatalogSettings({
   };
 
   const editCell = (index: number, path: CatalogPath, value: CatalogValue) => {
-    if (!unlocked || !catalog?.registros[index]) return;
+    if (!unlocked || busy || !catalog?.registros[index]) return;
     try {
       const original = catalog.registros[index]!;
       const edited = updateCatalogField(original, path, value);
@@ -345,7 +362,7 @@ export function FrameLogicCatalogSettings({
         if (!current?.registros[index]) return current;
         const records = [...current.registros];
         records[index] = updateCatalogField(records[index]!, path, value);
-        return markCatalogModified({ ...current, registros: records });
+        return { ...current, registros: records };
       });
       setDirty(true);
       setError("");
@@ -355,13 +372,13 @@ export function FrameLogicCatalogSettings({
   };
 
   const replaceRecord = (index: number, record: CatalogRecord) => {
-    if (!unlocked || !catalog) return;
+    if (!unlocked || busy || !catalog) return;
     try {
       if (JSON.stringify(catalog.registros[index]) === JSON.stringify(record)) return;
       const records = [...catalog.registros];
       records[index] = record;
       const normalized = normalizeFrameLogicCatalog({ ...catalog, registros: records });
-      setCatalog(markCatalogModified(normalized));
+      setCatalog(normalized);
       setDirty(true);
       setError("");
       setMessage("Estructura del código actualizada en memoria. Guarda JSON para conservarla.");
@@ -374,10 +391,10 @@ export function FrameLogicCatalogSettings({
     if (!unlocked || !catalog || busy) return;
     try {
       const next = makeCatalogRecordWithAllSubdivisions(catalog.registros);
-      const updated = markCatalogModified(normalizeFrameLogicCatalog({
+      const updated = normalizeFrameLogicCatalog({
         ...catalog,
         registros: [...catalog.registros, next],
-      }));
+      });
       // Validate the final size before mutating the current catalog.
       serializeFrameLogicCatalog(updated);
       setCatalog(updated);
@@ -394,25 +411,60 @@ export function FrameLogicCatalogSettings({
   };
 
   const removeRow = () => {
-    if (!unlocked || !catalog || selectedRow === null) return;
+    if (!unlocked || busy || !catalog || selectedRow === null) return;
     const code = catalog.registros[selectedRow]?.codigo;
     if (!window.confirm("¿Eliminar la fila «" + code + "»?")) return;
-    setCatalog(markCatalogModified({
+    setCatalog({
       ...catalog,
       registros: catalog.registros.filter((_, i) => i !== selectedRow),
-    }));
+    });
     setSelectedRow(null);
     setDirty(true);
     setMessage("Fila eliminada. Guarda JSON para confirmar.");
   };
 
+  const commitVersion = () => {
+    if (!unlocked || busy || !catalog || versionDraft === null) return;
+    try {
+      const updated = setCatalogVersion(catalog, versionDraft, editorAuth.current.unlocked);
+      if (updated.version !== catalog.version) {
+        setCatalog(updated);
+        setDirty(true);
+        setMessage("Versión actualizada en memoria. Pulsa Guardar JSON para escribirla en el archivo.");
+      }
+      setVersionDraft(null);
+      setError("");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
   const saveJson = async () => {
-    if (!unlocked || !catalog) return;
+    if (!unlocked || !editorAuth.current.unlocked || !catalog || busy || !dirty) return;
+    if (versionDraft !== null) {
+      setError("Guarda o cancela primero la edición de la versión.");
+      return;
+    }
+    try {
+      if (source !== "new" && readText !== null
+        && !hasEffectiveCatalogChanges(readText, catalog)) {
+        setDirty(false);
+        setMessage("No hay cambios efectivos que guardar. Se conserva la fecha anterior.");
+        return;
+      }
+    } catch (cause) {
+      setError("Corrige los datos antes de guardar: " + errorMessage(cause));
+      return;
+    }
+    const authGeneration = editorAuth.current.generation;
     setError("");
     setMessage("");
     let json: string;
+    let savedCatalog: FrameLogicCatalog;
     try {
-      json = serializeFrameLogicCatalog(normalizeFrameLogicCatalog(catalog));
+      // Preserve historic timestamps until a real write is completed.
+      savedCatalog = markCatalogModified(normalizeFrameLogicCatalog(catalog));
+      json = serializeFrameLogicCatalog(savedCatalog);
     } catch (cause) {
       setError("Corrige las celdas antes de guardar: " + errorMessage(cause));
       return;
@@ -421,12 +473,6 @@ export function FrameLogicCatalogSettings({
     setBusy(true);
     try {
       let handle = fileHandle;
-      // A persisted read-only handle may need explicit write authorization.
-      // Ask from this Save button gesture, never during automatic restore.
-      if (handle && !await requestCatalogWritePermission(handle)) {
-        setError("No se concedió permiso para escribir en DBFrameLogic.json.");
-        return;
-      }
       if (!handle) {
         const picker = window as CatalogPickerWindow;
         if (picker.showSaveFilePicker) {
@@ -436,26 +482,17 @@ export function FrameLogicCatalogSettings({
             types: JSON_FILE_TYPES,
           });
         } else {
+          if (!canWrite(authGeneration)) throw new Error("La autorización de edición ha caducado.");
           downloadJson(json, CATALOG_LOCAL_FILE_NAME);
-          setDirty(false);
-          setMessage("Copia descargada. Muévela manualmente a la carpeta D:\\Documents\\FrameLogic\\DB. No se modificó el JSON original.");
+          setMessage("Copia descargada (con los metadatos del nuevo archivo). No se modificó el archivo original ni se confirmaron los cambios en FrameLogic.");
           return;
         }
       }
-      if (handle === fileHandle && readText !== null) {
-        const currentText = await (await handle.getFile()).text();
-        if (currentText !== readText) {
-          throw new Error("El JSON cambió fuera de FrameLogic. Ábrelo de nuevo antes de sobrescribir.");
-        }
-      }
-      const writer = await handle.createWritable();
-      try {
-        await writer.write(json);
-        await writer.close();
-      } catch (cause) {
-        try { await writer.abort?.(); } catch { /* Already closed */ }
-        throw cause;
-      }
+      if (!canWrite(authGeneration)) throw new Error("La autorización de edición ha caducado.");
+      await writeAuthorizedCatalogFile(
+        handle, json, handle === fileHandle ? readText : null,
+        () => canWrite(authGeneration),
+      );
       setFileHandle(handle);
       const localRoute = isWebRoute(route) ? CATALOG_LOCAL_FILE_PATH : route;
       if (isWebRoute(route)) rememberRoute(localRoute);
@@ -465,6 +502,7 @@ export function FrameLogicCatalogSettings({
       setHandleNotice(remembered ? "" :
         "Se guardó el JSON, pero el navegador no puede recordar el archivo para la siguiente visita.");
       setReadText(json);
+      setCatalog(savedCatalog);
       setFileName(handle.name);
       setSource("local");
       setDirty(false);
@@ -547,30 +585,65 @@ export function FrameLogicCatalogSettings({
             <button type="button" onClick={removeRow}
               disabled={!catalog || selectedRow === null || busy}>Eliminar fila</button>
             <button type="button" onClick={() => void saveJson()}
-              disabled={!catalog || busy || !dirty}>Guardar JSON</button>
+              disabled={!catalog || busy || !dirty || versionDraft !== null}>Guardar JSON</button>
           </>}
         </div>
       </div>
 
       {catalog && (
-        <div className="fl-catalog-audit" data-framelogic-catalog-audit="true">
-          <span><strong>Fecha última modificación:</strong> {catalog.fecha || "Sin registrar"}</span>
-          <span><strong>Usuario:</strong> {catalog.usuario || "—"}</span>
-        </div>
+        <section className="fl-catalog-audit" data-framelogic-catalog-audit="true"
+          aria-label="Información del archivo JSON">
+          <strong className="fl-catalog-audit-heading">Información del archivo JSON</strong>
+          <div className="fl-catalog-audit-grid">
+            <div className="fl-catalog-version-field" data-framelogic-catalog-version="true">
+              <strong>Versión del JSON</strong>
+              {versionDraft !== null && unlocked ? (
+                <div className="fl-catalog-version-edit">
+                  <input aria-label="Editar versión del JSON" type="text" spellCheck={false}
+                    placeholder="MAYOR.MENOR.PARCHE" value={versionDraft}
+                    disabled={busy}
+                    onChange={(event) => setVersionDraft(event.currentTarget.value)} />
+                  <button type="button" disabled={busy} onClick={commitVersion}>Guardar versión</button>
+                  <button type="button" disabled={busy} onClick={() => setVersionDraft(null)}>Cancelar</button>
+                </div>
+              ) : (
+                <span>
+                  {displayCatalogVersion(catalog.version)}
+                  {unlocked && <button type="button" className="fl-catalog-version-toggle"
+                    disabled={busy} onClick={() => setVersionDraft(
+                      typeof catalog.version === "string" ? catalog.version : ""
+                    )}>Editar versión</button>}
+                </span>
+              )}
+            </div>
+            <div><strong>Última modificación</strong>
+              <span>{catalog.fecha_modificacion || catalog.fecha
+                ? new Date((catalog.fecha_modificacion || catalog.fecha)!).toLocaleString("es-CO",
+                  { dateStyle: "short", timeStyle: "short" }) : "Sin registrar"}</span>
+            </div>
+            <div><strong>Usuario</strong>
+              <span>{catalog.usuario_modificacion || catalog.usuario || "Sin registrar"}</span>
+            </div>
+            <div><strong>Estado</strong><span>{unlocked ? "Edición habilitada (local)" : "Solo lectura"}</span></div>
+            <div><strong>Origen</strong><span>{source === "remote" ? "URL web" : source === "new" ? "Nuevo archivo" : "Archivo local"}</span></div>
+          </div>
+          <small>Versión del catálogo JSON independiente de la versión de FrameLogic.
+            La versión solo cambia manualmente. Las ediciones se guardan primero en memoria.</small>
+        </section>
       )}
 
       {catalog && (
         <div className="fl-catalog-base-path" data-framelogic-catalog-base-path="true">
           <label htmlFor="fl-catalog-base-path-input">Ruta base (ruta_base)</label>
           <input id="fl-catalog-base-path-input" type="text" spellCheck={false}
-            placeholder="Ej.: D:\\Documents\\FrameLogic\\Recursos"
+            placeholder={CATALOG_INITIAL_BASE_PATH}
             value={catalog.ruta_base ?? ""}
-            disabled={!unlocked}
+            disabled={!unlocked || busy}
             onChange={(event) => {
-              if (!unlocked) return;
+              if (!unlocked || busy) return;
               const next = event.currentTarget.value;
-              setCatalog((current) => current && current.ruta_base !== next
-                ? markCatalogModified({ ...current, ruta_base: next }) : current);
+              if (catalog.ruta_base === next) return;
+              setCatalog((current) => current ? { ...current, ruta_base: next } : current);
               setDirty(true);
               setError("");
             }} />
@@ -606,7 +679,9 @@ export function FrameLogicCatalogSettings({
         Las propiedades se muestran de forma dinámica: solo «codigo» es obligatorio. Los valores editados modifican el JSON en memoria. Pulsa Guardar JSON para escribir
         el archivo local (si el navegador permite escritura) o descargar una copia.
         El candado global de Configuración controla todas las pestañas.
-        Esta clave provisional vacía NO protege un archivo compartido ni permite escribir
+        El candado provisional admite credenciales vacías y NO es autenticación segura:
+        no impide modificaciones ajenas al navegador ni autoriza escrituras en servidor.
+        No protege un archivo compartido ni permite escribir
         directamente en SharePoint o en Cloudflare Pages.
       </small>
     </div>

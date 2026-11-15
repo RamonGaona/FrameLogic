@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.173 — 2026-11-15 (versión manual de la base JSON y metadatos de guardado)
+
+- **Versión del JSON** visible en Información del archivo JSON, independiente de la versión de FrameLogic. Solo se cambia manualmente con el candado global abierto, pulsando **Editar versión / Guardar versión** y posteriormente **Guardar JSON**. Validación estricta `MAYOR.MENOR.PARCHE`; edición cancelable sin cambios.
+- Los archivos antiguos con `version: 1` o sin `version` siguen leyéndose sin migración silenciosa. La interfaz informa **Sin versión registrada** y conserva intactos códigos, subdivisiones y rutas. El archivo inicial nuevo utiliza `version: "1.0.0"`.
+- Metadatos generales `fecha_modificacion` y `usuario_modificacion` para archivos nuevos; compatibilidad con `fecha` y `usuario` heredados, sin inventar fechas anteriores. La marca temporal se confirma solamente después de una escritura exitosa, no al editar un borrador, cancelar, navegar o descargar una copia.
+- Ruta base predeterminada de **nuevos catálogos**: `D:\\Documents\\FrameLogic`, almacenada una sola vez y sin alterar las rutas relativas de las piezas existentes. Persistencia local con permisos del navegador, comprobación de cambios externos y cancelación tentativa de escrituras fallidas o tras bloqueo de edición.
+- El candado temporal sigue sin autenticación real (usuario y contraseña vacíos): requiere protección backend antes de admitir escrituras compartidas. Nuevas pruebas de formatos, compatibilidad, permisos de interfaz, metadatos, conservación de datos y guardado. Los cambios no afectan al worker MCP.
+
+---
+
 ## v0.1.172 — 2026-11-15 (fecha y usuario de última modificación del JSON)
 
 - Se añaden **`fecha`** y **`usuario`** al nivel general de `DBFrameLogic.json`, junto a `version` y `ruta_base`. `fecha` es una cadena ISO 8601 con zona horaria y se genera en UTC; `usuario` será el autor del último cambio, pero por ahora permanece como cadena vacía `""` porque el candado provisional no identifica personas.

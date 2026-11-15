@@ -20,10 +20,13 @@ export interface CatalogPasswordVerifier {
 }
 
 export interface FrameLogicCatalog {
-  version: 1;
-  /** ISO 8601 UTC time of last actual edit; empty until the first edit. */
+  /** Manual catalog release. Numeric 1 is accepted only for legacy files. */
+  version?: string | 1;
+  /** Canonical ISO 8601 audit fields (changed only after an effective save). */
+  fecha_modificacion?: string;
+  usuario_modificacion?: string;
+  /** Historic audit names: retained so old files can round-trip unchanged. */
   fecha?: string;
-  /** Last editor's username; blank until real user authentication is added. */
   usuario?: string;
   /** Shared base directory stored independently; never rewrites a record's relative paths. */
   ruta_base?: string;
@@ -44,13 +47,48 @@ const ITERATIONS = 210_000;
 
 export const EMPTY_CATALOG_RECORD: CatalogRecord = { codigo: "" };
 
-export function blankCatalog(): FrameLogicCatalog {
-  return { version: 1, fecha: "", usuario: "", ruta_base: "", registros: [] };
+export const CATALOG_INITIAL_BASE_PATH = String.raw`D:\Documents\FrameLogic`;
+const CATALOG_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+/** App releases and JSON releases have separate version numbers. */
+export function validateCatalogVersion(value: string): string {
+  if (!CATALOG_SEMVER.test(value)) {
+    throw new Error("La versión del JSON debe seguir MAYOR.MENOR.PARCHE, por ejemplo 1.0.0.");
+  }
+  return value;
 }
 
-/** Called on catalog data edits, not when opening, viewing or downloading. */
-export function markCatalogModified(catalog: FrameLogicCatalog, now = new Date()): FrameLogicCatalog {
-  return { ...catalog, fecha: now.toISOString(), usuario: "" };
+export function displayCatalogVersion(version: FrameLogicCatalog["version"]): string {
+  return typeof version === "string" ? version : "Sin versión registrada";
+}
+
+/** A UI-level guard; server-side authorization is required for shared writes. */
+export function setCatalogVersion(
+  catalog: FrameLogicCatalog, value: string, authorized: boolean,
+): FrameLogicCatalog {
+  if (!authorized) throw new Error("No hay autorización para modificar la versión del JSON.");
+  return { ...catalog, version: validateCatalogVersion(value) };
+}
+
+export function blankCatalog(): FrameLogicCatalog {
+  return {
+    version: "1.0.0", fecha_modificacion: "", usuario_modificacion: "",
+    ruta_base: CATALOG_INITIAL_BASE_PATH, registros: [],
+  };
+}
+
+/** Apply audit metadata only to a successfully written copy, never to a draft. */
+export function markCatalogModified(
+  catalog: FrameLogicCatalog, now = new Date(), authenticatedUser = "",
+): FrameLogicCatalog {
+  const timestamp = now.toISOString();
+  const updated: FrameLogicCatalog = {
+    ...catalog, fecha_modificacion: timestamp, usuario_modificacion: authenticatedUser,
+  };
+  // Legacy clients may still inspect these keys. Do not introduce them in new files.
+  if (catalog.fecha !== undefined) updated.fecha = timestamp;
+  if (catalog.usuario !== undefined) updated.usuario = authenticatedUser;
+  return updated;
 }
 
 /** Reject unsupported runtime values rather than silently discarding fields. */
@@ -97,7 +135,13 @@ export function normalizeFrameLogicCatalog(value: unknown): FrameLogicCatalog {
     throw new Error("El JSON debe contener un objeto con «version» y «registros».");
   }
   const obj = value as Record<string, unknown>;
-  if (obj.version !== 1) throw new Error("Versión JSON no compatible. Se requiere version: 1.");
+  // Missing version and numeric 1 are legacy; neither is migrated silently.
+  if (obj.version !== undefined && obj.version !== 1) {
+    if (typeof obj.version !== "string") {
+      throw new Error("Versión JSON no compatible.");
+    }
+    validateCatalogVersion(obj.version);
+  }
   if (!Array.isArray(obj.registros)) throw new Error("El JSON debe incluir una matriz «registros».");
   if (obj.registros.length > MAX_RECORDS) {
     throw new Error("El catálogo supera el límite de " + MAX_RECORDS + " registros.");
@@ -109,20 +153,25 @@ export function normalizeFrameLogicCatalog(value: unknown): FrameLogicCatalog {
     if (codes.has(key)) throw new Error("Código duplicado: " + record.codigo);
     codes.add(key);
   }
-  const metadata: Pick<FrameLogicCatalog, "fecha" | "usuario" | "ruta_base"> = {};
-  if (obj.fecha !== undefined) {
-    if (typeof obj.fecha !== "string"
-      || (obj.fecha !== "" && (!Number.isFinite(Date.parse(obj.fecha))
-        || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(obj.fecha)))) {
-      throw new Error("«fecha» debe ser texto ISO 8601 con zona horaria, o estar vacía.");
+  const metadata: Pick<FrameLogicCatalog,
+    "fecha" | "usuario" | "fecha_modificacion" | "usuario_modificacion" | "ruta_base"> = {};
+  for (const key of ["fecha", "fecha_modificacion"] as const) {
+    const raw = obj[key];
+    if (raw === undefined) continue;
+    if (typeof raw !== "string"
+      || (raw !== "" && (!Number.isFinite(Date.parse(raw))
+        || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(raw)))) {
+      throw new Error("«" + key + "» debe ser ISO 8601 con zona horaria, o estar vacío.");
     }
-    metadata.fecha = obj.fecha;
+    metadata[key] = raw;
   }
-  if (obj.usuario !== undefined) {
-    if (typeof obj.usuario !== "string" || obj.usuario.length > 256) {
-      throw new Error("«usuario» debe ser texto.");
+  for (const key of ["usuario", "usuario_modificacion"] as const) {
+    const raw = obj[key];
+    if (raw === undefined) continue;
+    if (typeof raw !== "string" || raw.length > 256) {
+      throw new Error("«" + key + "» debe ser texto.");
     }
-    metadata.usuario = obj.usuario;
+    metadata[key] = raw;
   }
   if (obj.ruta_base !== undefined) {
     if (typeof obj.ruta_base !== "string" || obj.ruta_base.length > MAX_TEXT) {
@@ -130,8 +179,11 @@ export function normalizeFrameLogicCatalog(value: unknown): FrameLogicCatalog {
     }
     metadata.ruta_base = obj.ruta_base;
   }
-  // Stable root metadata ordering, preserving older catalogs without metadata.
-  const catalog: FrameLogicCatalog = { version: 1, ...metadata, registros: records };
+  // Preserve absent legacy metadata and root keys; never add a version during read.
+  const catalog: FrameLogicCatalog = {
+    ...(obj.version === undefined ? {} : { version: obj.version as string | 1 }),
+    ...metadata, registros: records,
+  };
   // Keep legacy verifier metadata for backward compatibility; the global
   // editor lock is still temporary and never authorizes server writes.
   if (obj.admin !== undefined) {
@@ -160,6 +212,14 @@ export function parseFrameLogicCatalog(json: string): FrameLogicCatalog {
   try { data = JSON.parse(json); }
   catch { throw new Error("El archivo seleccionado no contiene JSON válido."); }
   return normalizeFrameLogicCatalog(data);
+}
+
+/** Compare semantic content rather than formatting or transient editor state. */
+export function hasEffectiveCatalogChanges(
+  originalText: string, catalog: FrameLogicCatalog,
+): boolean {
+  return JSON.stringify(parseFrameLogicCatalog(originalText))
+    !== JSON.stringify(normalizeFrameLogicCatalog(catalog));
 }
 
 export function serializeFrameLogicCatalog(catalog: FrameLogicCatalog): string {

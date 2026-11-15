@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   blankCatalog,
   CATALOG_DEFAULT_URL,
+  CATALOG_INITIAL_BASE_PATH,
+  displayCatalogVersion,
+  hasEffectiveCatalogChanges,
+  setCatalogVersion,
+  validateCatalogVersion,
   createCatalogPasswordVerifier,
   normalizeFrameLogicCatalog,
   catalogFieldRows,
@@ -32,7 +37,11 @@ const baseRecord = {
 describe("JSON catalog for FrameLogic parts", () => {
   it("creates a versioned empty file with no default credentials", () => {
     const file = blankCatalog();
-    expect(file).toEqual({ version: 1, fecha: "", usuario: "", ruta_base: "", registros: [] });
+    expect(file).toEqual({
+      version: "1.0.0", fecha_modificacion: "", usuario_modificacion: "",
+      ruta_base: CATALOG_INITIAL_BASE_PATH, registros: [],
+    });
+    expect(CATALOG_INITIAL_BASE_PATH).toBe(String.raw`D:\Documents\FrameLogic`);
     expect(serializeFrameLogicCatalog(file)).toContain('"registros": []');
     expect(CATALOG_DEFAULT_URL).toMatch(/\.json$/);
   });
@@ -338,21 +347,21 @@ describe("JSON catalog for FrameLogic parts", () => {
 
   it("adds global fecha and usuario and records the modification timestamp in UTC", () => {
     const empty = blankCatalog();
-    expect(empty.fecha).toBe("");
-    expect(empty.usuario).toBe("");
+    expect(empty.fecha_modificacion).toBe("");
+    expect(empty.usuario_modificacion).toBe("");
     const actual = markCatalogModified({
       ...empty,
       ruta_base: "D:/FrameLogic/Recursos",
       registros: [{ codigo: "REC3002", ruta: "Perfiles/REC3002.step" }],
     }, new Date("2026-11-15T16:27:31.250-05:00"));
-    expect(actual.fecha).toBe("2026-11-15T21:27:31.250Z");
-    expect(actual.usuario).toBe("");
+    expect(actual.fecha_modificacion).toBe("2026-11-15T21:27:31.250Z");
+    expect(actual.usuario_modificacion).toBe("");
     expect(actual.registros[0]?.ruta).toBe("Perfiles/REC3002.step");
     const saved = serializeFrameLogicCatalog(actual);
     expect(JSON.parse(saved)).toEqual(actual);
-    expect(saved.indexOf('"version"')).toBeLessThan(saved.indexOf('"fecha"'));
-    expect(saved.indexOf('"fecha"')).toBeLessThan(saved.indexOf('"usuario"'));
-    expect(saved.indexOf('"usuario"')).toBeLessThan(saved.indexOf('"ruta_base"'));
+    expect(saved.indexOf('"version"')).toBeLessThan(saved.indexOf('"fecha_modificacion"'));
+    expect(saved.indexOf('"fecha_modificacion"')).toBeLessThan(saved.indexOf('"usuario_modificacion"'));
+    expect(saved.indexOf('"usuario_modificacion"')).toBeLessThan(saved.indexOf('"ruta_base"'));
     expect(saved.indexOf('"ruta_base"')).toBeLessThan(saved.indexOf('"registros"'));
   });
 
@@ -388,6 +397,97 @@ describe("JSON catalog for FrameLogic parts", () => {
       .toThrow(/fecha/);
     expect(() => normalizeFrameLogicCatalog({ ...original, usuario: null }))
       .toThrow(/usuario/);
+  });
+
+  it("accepts legacy numeric or missing version without silently migrating on read", () => {
+    const legacy = { version: 1, fecha: "2026-11-14T15:00:00Z",
+      usuario: "", registros: [{ codigo: "A", ruta: "A.step" }] };
+    const missing = { registros: [{ codigo: "A", ruta: "A.step" }] };
+    expect(parseFrameLogicCatalog(JSON.stringify(legacy))).toEqual(legacy);
+    expect(parseFrameLogicCatalog(JSON.stringify(missing))).toEqual(missing);
+    expect(JSON.parse(serializeFrameLogicCatalog(parseFrameLogicCatalog(JSON.stringify(missing)))))
+      .toEqual(missing);
+    expect(displayCatalogVersion(legacy.version as 1)).toBe("Sin versión registrada");
+    expect(displayCatalogVersion(undefined)).toBe("Sin versión registrada");
+    expect(displayCatalogVersion("1.2.3")).toBe("1.2.3");
+  });
+
+  it("only accepts exact manual MAYOR.MENOR.PARCHE strings", () => {
+    for (const v of ["0.0.0", "1.0.0", "1.0.1", "1.1.0", "2.0.0", "24.12.193"]) {
+      expect(validateCatalogVersion(v)).toBe(v);
+      expect(parseFrameLogicCatalog(JSON.stringify({ version: v, registros: [] })).version).toBe(v);
+    }
+    for (const v of ["", "1", "1.2", "v1.0.0", "01.0.0", "1.0.0-beta", " 1.0.0", "1.0.0 "]) {
+      expect(() => validateCatalogVersion(v)).toThrow(/MAYOR.MENOR.PARCHE/);
+    }
+    expect(() => normalizeFrameLogicCatalog({ version: 2, registros: [] })).toThrow();
+    expect(() => normalizeFrameLogicCatalog({ version: null, registros: [] })).toThrow();
+  });
+
+  it("requires editor permission for manual version changes and preserves data on denial", () => {
+    const legacy = parseFrameLogicCatalog(JSON.stringify({
+      version: 1, registros: [{ codigo: "A", sub: { bol: true, n: 15 }, ruta: "a.step" }],
+    }));
+    expect(() => setCatalogVersion(legacy, "2.0.0", false)).toThrow(/autorización/);
+    expect(legacy.version).toBe(1);
+    expect(() => setCatalogVersion(legacy, "2.0", true)).toThrow(/MAYOR.MENOR.PARCHE/);
+    const changed = setCatalogVersion(legacy, "2.0.0", true);
+    expect(changed.version).toBe("2.0.0");
+    expect(changed.registros).toEqual(legacy.registros);
+    expect(changed.fecha_modificacion).toBeUndefined();
+    expect(parseFrameLogicCatalog(serializeFrameLogicCatalog(changed))).toEqual(changed);
+  });
+
+  it("updates audit only on committed snapshot and preserves old audit field names", () => {
+    const base = parseFrameLogicCatalog(JSON.stringify({
+      version: "1.0.0",
+      fecha: "2026-11-14T15:00:00Z", usuario: "anterior",
+      ruta_base: String.raw`D:\Documents\FrameLogic`,
+      registros: [{ codigo: "A", ruta: "Piezas/A.step", grupo: { ok: false, n: 15 } }],
+    }));
+    const draft = setCatalogVersion(base, "1.1.0", true);
+    expect(draft.fecha).toBe(base.fecha);
+    expect(draft.usuario).toBe("anterior");
+    const saved = markCatalogModified(draft, new Date("2026-11-15T18:00:00-05:00"));
+    expect(saved.fecha_modificacion).toBe("2026-11-15T23:00:00.000Z");
+    expect(saved.usuario_modificacion).toBe("");
+    expect(saved.fecha).toBe(saved.fecha_modificacion);
+    expect(saved.usuario).toBe("");
+    expect(saved.version).toBe("1.1.0");
+    expect(saved.ruta_base).toBe(base.ruta_base);
+    expect(saved.registros).toEqual(base.registros);
+    expect(base.fecha_modificacion).toBeUndefined();
+    expect(JSON.parse(serializeFrameLogicCatalog(saved)).registros).toEqual(base.registros);
+  });
+
+  it("validates canonical audit and keeps unknown record subdivisions", () => {
+    const source = {
+      version: "1.0.0",
+      fecha_modificacion: "2026-11-15T19:00:00-05:00",
+      usuario_modificacion: "",
+      ruta_base: String.raw`D:\Documents\FrameLogic`,
+      registros: [{ codigo: "REC3002", longitudes: [125, null],
+        precios: { por_unidad: 45.5 }, ruta: String.raw`carpeta\pieza.step` }],
+    };
+    expect(parseFrameLogicCatalog(JSON.stringify(source))).toEqual(source);
+    expect(() => normalizeFrameLogicCatalog({ ...source, fecha_modificacion: "ayer" }))
+      .toThrow(/fecha_modificacion/);
+    expect(() => normalizeFrameLogicCatalog({ ...source, usuario_modificacion: 4 }))
+      .toThrow(/usuario_modificacion/);
+  });
+
+  it("does not refresh audit for a change reverted to its original JSON content", () => {
+    const original = JSON.stringify({
+      version: "1.0.0", fecha_modificacion: "2026-11-14T22:00:00Z",
+      usuario_modificacion: "", registros: [{ codigo: "A", peso: 12 }],
+    });
+    const parsed = parseFrameLogicCatalog(original);
+    const modified = { ...parsed, registros: [{ codigo: "A", peso: 13 }] };
+    expect(hasEffectiveCatalogChanges(original, modified)).toBe(true);
+    expect(hasEffectiveCatalogChanges(original, parsed)).toBe(false);
+    const reverted = { ...modified, registros: [{ codigo: "A", peso: 12 }] };
+    expect(hasEffectiveCatalogChanges(original, reverted)).toBe(false);
+    expect(parsed.fecha_modificacion).toBe("2026-11-14T22:00:00Z");
   });
 
 });
