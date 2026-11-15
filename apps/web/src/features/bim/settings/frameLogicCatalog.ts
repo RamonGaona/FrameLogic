@@ -21,7 +21,7 @@ export interface CatalogPasswordVerifier {
 
 export interface FrameLogicCatalog {
   version: 1;
-  /** Optional shared folder for shortening displayed paths, not filesystem access. */
+  /** Shared base directory stored independently; never rewrites a record's relative paths. */
   ruta_base?: string;
   registros: CatalogRecord[];
   admin?: CatalogPasswordVerifier;
@@ -206,28 +206,6 @@ export function convertCatalogScalarValue(
     throw new Error("El texto no representa un booleano. Escribe true o false antes de convertir.");
   }
   return Boolean(value);
-}
-
-/**
- * Shortens only paths that are INSIDE the configured base directory.
- * Windows paths compare case-insensitively; both slash styles are accepted.
- * Never shortens an unrelated directory (e.g. C:\PiezasExtra).
- * This affects DISPLAY ONLY; original JSON values remain unchanged.
- */
-export function displayCatalogPath(value: string, base: string | undefined): string {
-  if (!base || !value) return value;
-  const normalize = (path: string) => path.replace(/\\/g, "/").replace(/\/+$/, "");
-  const full = normalize(value);
-  const parent = normalize(base);
-  if (!parent) return value;
-  const same = full.toLocaleLowerCase() === parent.toLocaleLowerCase();
-  if (same) return ".";
-  if (!full.toLocaleLowerCase().startsWith(parent.toLocaleLowerCase() + "/")) {
-    return value;
-  }
-  // Preserve the separator style from the path being shortened.
-  const rest = full.slice(parent.length + 1);
-  return value.includes("\\") ? rest.replace(/\//g, "\\") : rest;
 }
 
 export type CatalogPath = readonly (string | number)[];
