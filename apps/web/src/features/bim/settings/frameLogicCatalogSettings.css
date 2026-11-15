@@ -435,3 +435,18 @@
   .fl-universal-code-list { max-height: 135px; }
   .fl-universal-values-scroll { max-height: 370px; }
 }
+
+/* Explicit read authorization is separate from the global editing lock. */
+.fl-catalog .fl-catalog-authorize {
+  border-color: #8dd2f0;
+  background: #215b76;
+  color: #fff;
+  font-weight: 700;
+}
+.fl-catalog .fl-catalog-authorize:hover:not(:disabled) {
+  background: #307b9c;
+}
+.fl-catalog .fl-catalog-handle-notice {
+  color: #ffcd99;
+  margin-top: 7px;
+}
