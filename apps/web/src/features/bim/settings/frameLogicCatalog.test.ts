@@ -3,6 +3,7 @@ import {
   blankCatalog,
   CATALOG_DEFAULT_URL,
   createCatalogPasswordVerifier,
+  createCatalogRecordFromExisting,
   normalizeFrameLogicCatalog,
   catalogFieldRows,
   updateCatalogField,
@@ -144,6 +145,46 @@ describe("JSON catalog for FrameLogic parts", () => {
     expect(record.taladros).toEqual([{ diametro: 18 }, { diametro: 20 }]);
     expect(() => updateCatalogField(record, ["inexistente"], "x"))
       .toThrow(/inexistente/i);
+  });
+
+  it("creates a code with the union of every existing subdivision and empty values", () => {
+    const records = normalizeFrameLogicCatalog({ version: 1, registros: [
+      { codigo: "REC3000", nombre: "Tubo", material: { norma: "S355", densidad: 7850 },
+        dimensiones: { largo_mm: 3000 }, conexiones: [{ diametro: 16 }] },
+      { codigo: "PL-ANCLA-450", descripcion: "Placa", material: { tratamiento: "Pintura" },
+        dimensiones: { espesor_mm: 25 }, conexiones: [{ cantidad: 4, posicion: { x: 10 } },
+          { cantidad: 2 }], costo: { moneda: "EUR", valor: 15.5 }, activo: false },
+    ] }).registros;
+    const generated = createCatalogRecordFromExisting(records, "NUEVA-001");
+    expect(generated).toEqual({
+      codigo: "NUEVA-001",
+      nombre: "",
+      material: { norma: "", densidad: null, tratamiento: "" },
+      dimensiones: { largo_mm: null, espesor_mm: null },
+      conexiones: [
+        { diametro: null, cantidad: null, posicion: { x: null } },
+        { cantidad: null },
+      ],
+      descripcion: "",
+      costo: { moneda: "", valor: null },
+      activo: null,
+    });
+    // Sources remain unchanged and no actual attributes (e.g. weight) are copied.
+    expect(records[0]!.nombre).toBe("Tubo");
+    expect(records[1]!.dimensiones).toEqual({ espesor_mm: 25 });
+    expect(normalizeFrameLogicCatalog({version: 1, registros: [...records, generated]}).registros)
+      .toHaveLength(3);
+  });
+
+  it("rejects empty and duplicate new codes and incompatible JSON subdivisions", () => {
+    const records = normalizeFrameLogicCatalog({ version: 1, registros: [
+      { codigo: "A1", tipo: "X", detalles: { posiciones: [1] } },
+      { codigo: "B2", detalles: { posiciones: { frente: 3 } } },
+    ] }).registros;
+    expect(() => createCatalogRecordFromExisting(records, "")).toThrow(/código/i);
+    expect(() => createCatalogRecordFromExisting(records, "a1")).toThrow(/duplicado/i);
+    expect(() => createCatalogRecordFromExisting(records, "Nuevo")).toThrow(/incompatible/i);
+    expect(createCatalogRecordFromExisting([], "PRIMERO")).toEqual({ codigo: "PRIMERO" });
   });
 
   it("allows editing the JSON object to add entirely new subdivisions", () => {
