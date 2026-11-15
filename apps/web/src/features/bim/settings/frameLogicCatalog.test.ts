@@ -8,6 +8,9 @@ import {
   updateCatalogField,
   parseCatalogRecordEditor,
   makeCatalogRecordWithAllSubdivisions,
+  catalogScalarType,
+  convertCatalogScalarValue,
+  parseCatalogNumericInput,
   type CatalogRecord,
   parseFrameLogicCatalog,
   resolveCatalogUrl,
@@ -233,6 +236,56 @@ describe("JSON catalog for FrameLogic parts", () => {
     );
     expect(saved.registros[0]).toEqual(first);
     expect(saved.registros).toHaveLength(3);
+  });
+
+  it("converts an accidentally entered numeric string back to a JSON number", () => {
+    expect(catalogScalarType("125.5")).toBe("text");
+    expect(catalogScalarType(125.5)).toBe("number");
+    expect(catalogScalarType(null)).toBe("null");
+    expect(catalogScalarType(false)).toBe("boolean");
+    expect(convertCatalogScalarValue("125.5", "number")).toBe(125.5);
+    expect(convertCatalogScalarValue("-2,75", "number")).toBe(-2.75);
+    expect(convertCatalogScalarValue(125.5, "text")).toBe("125.5");
+    expect(convertCatalogScalarValue("0", "number")).toBe(0);
+    expect(convertCatalogScalarValue("", "number")).toBeNull();
+  });
+
+  it("never converts arbitrary text into zero or silently loses values", () => {
+    expect(() => convertCatalogScalarValue("texto equivocado", "number")).toThrow(/número válido/);
+    expect(() => parseCatalogNumericInput("12kg")).toThrow(/número válido/);
+    expect(() => parseCatalogNumericInput("1,2,3")).toThrow(/número válido/);
+    expect(() => parseCatalogNumericInput("Infinity")).toThrow(/número válido/);
+    expect(() => parseCatalogNumericInput("1e999")).toThrow(/intervalo/);
+    expect(parseCatalogNumericInput("")).toBeNull();
+    expect(parseCatalogNumericInput("   ")).toBeNull();
+    expect(parseCatalogNumericInput("-0.125")).toBe(-0.125);
+    expect(parseCatalogNumericInput("2e3")).toBe(2000);
+    expect(parseCatalogNumericInput("0")).toBe(0);
+  });
+
+  it("converts scalar values without damaging sibling properties or code", () => {
+    const source = {
+      codigo: "REC3002", fabricacion: { peso_estimado_kg: "140.25", tratamiento: "Lacado" },
+      piezas: [{ distancia: 125 }],
+    };
+    const next = updateCatalogField(source, ["fabricacion", "peso_estimado_kg"],
+      convertCatalogScalarValue(source.fabricacion.peso_estimado_kg, "number"));
+    expect(next.fabricacion).toEqual({ peso_estimado_kg: 140.25, tratamiento: "Lacado" });
+    expect(source.fabricacion.peso_estimado_kg).toBe("140.25");
+    expect(next.codigo).toBe("REC3002");
+    expect(parseFrameLogicCatalog(serializeFrameLogicCatalog({
+      version: 1, registros: [next],
+    })).registros[0]).toEqual(next);
+  });
+
+  it("maintains JSON boolean and null semantics through type changes", () => {
+    expect(convertCatalogScalarValue(null, "number")).toBeNull();
+    expect(convertCatalogScalarValue(null, "text")).toBe("");
+    expect(convertCatalogScalarValue("true", "boolean")).toBe(true);
+    expect(convertCatalogScalarValue("false", "boolean")).toBe(false);
+    expect(() => convertCatalogScalarValue("otro", "boolean")).toThrow(/booleano/);
+    expect(convertCatalogScalarValue(true, "number")).toBe(1);
+    expect(convertCatalogScalarValue(-3, "null")).toBeNull();
   });
 
 });

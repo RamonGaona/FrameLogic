@@ -38,6 +38,14 @@ describe("global settings lock and local JSON spreadsheet", () => {
     expect(explorer).toContain('Editar estructura JSON');
     expect(explorer).toContain('parseCatalogRecordEditor(jsonEditor.text)');
     expect(explorer).toContain("onCellEdit(selectedRow!, path, next)");
+    expect(explorer).toContain('className="fl-catalog-type-select"');
+    expect(explorer).toContain('aria-label={"Tipo de " + label}');
+    expect(explorer).toContain('value={selectedType}');
+    expect(explorer).toContain('parseCatalogNumericInput(text)');
+    expect(explorer).toContain('inputMode="decimal"');
+    expect(explorer).toContain("El texto actual no es un número válido");
+    expect(explorer).toContain('!isCode &&');
+
     expect(style).toContain(".fl-universal-field-table");
   });
 

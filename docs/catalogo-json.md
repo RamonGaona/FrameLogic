@@ -1,4 +1,4 @@
-# Catálogo JSON universal de FrameLogic (v0.1.169)
+# Catálogo JSON universal de FrameLogic (v0.1.170)
 
 La pestaña **Configuración → Base de datos** muestra el archivo `DBFrameLogic.json`
 en un listado vertical de códigos y una tabla **Propiedad / Valor**. La tabla
@@ -12,6 +12,14 @@ de los demás. En modo editor, se pueden cambiar valores directamente, o
 utilizar **Editar estructura JSON** para agregar, modificar o quitar cualquier
 grupo, lista o campo adicional. La actualización modifica el JSON en memoria
 y **Guardar JSON** lo escribe al archivo local si el navegador tiene permiso.
+
+Cada propiedad simple tiene un selector de tipo **Texto / Número / Sí/No / Vacío**.
+Si `peso_estimado_kg` quedó por error como texto, cambia el tipo a **Número**
+sin editar toda la estructura. Los textos numéricos se convierten conservando
+su valor; si el texto no es un número, el programa exige confirmar antes
+de borrarlo. Los decimales admiten punto o coma y los negativos son válidos.
+Un valor numérico vacío se conserva como `null`, nunca como cero.
+El campo obligatorio `codigo` siempre debe permanecer como texto.
 
 ## Archivo local inicial
 
