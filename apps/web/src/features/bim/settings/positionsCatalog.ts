@@ -290,6 +290,75 @@ export function updatePositionDefinition(file: PositionsFile, ref: PositionRef,
   next.families[ref.familyIndex]!.positions[ref.rowIndex] = changed;
   return normalizePositionsFile(next);
 }
+/** Copy one definition to a new interval; the original remains unchanged. */
+export function duplicatePositionDefinition(file: PositionsFile, ref: PositionRef,
+  destination: number): PositionsFile {
+  intSlot(destination, "Destino");
+  const next = clone(file);
+  const family = next.families[ref.familyIndex];
+  const original = family?.positions[ref.rowIndex];
+  if (!family || !original) throw new Error("Posición no encontrada.");
+  const width = original.to - original.from;
+  if (destination + width > MAX_SLOT) throw new Error("Rango duplicado fuera del límite.");
+  family.positions.push(mapDefinition(original, destination, destination + width));
+  return normalizePositionsFile(next);
+}
+/** Change just the visual/file ordering inside one family; numbers do not change. */
+export function reorderPositionDefinition(file: PositionsFile, ref: PositionRef,
+  direction: -1 | 1): PositionsFile {
+  const next = clone(file);
+  const family = next.families[ref.familyIndex];
+  const toIndex = ref.rowIndex + direction;
+  if (!family || toIndex < 0 || toIndex >= family.positions.length)
+    throw new Error("No existe una fila para intercambiar.");
+  const current = family.positions[ref.rowIndex]!;
+  family.positions[ref.rowIndex] = family.positions[toIndex]!;
+  family.positions[toIndex] = current;
+  return normalizePositionsFile(next);
+}
+export function sortPositionDefinitions(file: PositionsFile): PositionsFile {
+  const next = clone(file);
+  for (const family of next.families) {
+    family.positions.sort((a,b) => a.from - b.from || a.to - b.to);
+  }
+  return next;
+}
+/** Splitting preserves every component and custom field without changing slot membership. */
+export function splitPositionRange(file: PositionsFile, ref: PositionRef,
+  boundary: number): PositionsFile {
+  intSlot(boundary, "División");
+  const next = clone(file);
+  const family = next.families[ref.familyIndex];
+  const p = family?.positions[ref.rowIndex];
+  if (!family || !p || boundary <= p.from || boundary > p.to)
+    throw new Error("La división debe estar dentro del rango, después de su inicio.");
+  family.positions.splice(ref.rowIndex, 1,
+    mapDefinition(p, p.from, boundary - 1), mapDefinition(p, boundary, p.to));
+  return normalizePositionsFile(next);
+}
+/** Merge only adjacent definitions with identical components and extra properties. */
+export function combinePositionRanges(file: PositionsFile, ref: PositionRef): PositionsFile {
+  const next = clone(file);
+  const family = next.families[ref.familyIndex];
+  const chosen = family?.positions[ref.rowIndex];
+  if (!family || !chosen) throw new Error("Posición no encontrada.");
+  const payload = (p: PositionDefinition) => {
+    const { from: _f, to: _t, ...rest } = p;
+    return JSON.stringify(rest);
+  };
+  const otherIndex = family.positions.findIndex((p, index) =>
+    index !== ref.rowIndex && payload(p) === payload(chosen)
+      && (p.from === chosen.to + 1 || p.to + 1 === chosen.from));
+  if (otherIndex < 0) throw new Error("No existe un rango contiguo con idénticos componentes.");
+  const other = family.positions[otherIndex]!;
+  const combined = mapDefinition(chosen, Math.min(chosen.from, other.from),
+    Math.max(chosen.to, other.to));
+  const sortedIndices = [ref.rowIndex, otherIndex].sort((a,b) => b-a);
+  for (const index of sortedIndices) family.positions.splice(index, 1);
+  family.positions.push(combined);
+  family.positions.sort((a,b) => a.from-b.from || a.to-b.to);
+  return normalizePositionsFile(next);
+}
 export function firstFreePosition(file: PositionsFile): number {
   let slot = 0;
   for (const p of positionRows(file).map((r) => r.position).sort((a,b) => a.from-b.from)) {
