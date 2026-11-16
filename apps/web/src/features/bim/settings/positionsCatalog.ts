@@ -206,32 +206,40 @@ export function insertPositionSlot(file: PositionsFile, family: string, slot: nu
   return addPositionDefinition(next, family, slot);
 }
 
-/** Permute one GLOBAL numeric slot, including every family and overlapping range. */
-export function movePositionSlot(file: PositionsFile, source: number, target: number): PositionsFile {
-  intSlot(source, "Origen");
-  intSlot(target, "Destino");
-  if (source === target) return clone(file);
-  const next = clone(file);
+/**
+ * Move a whole global interval as one stable block. Ranges preserve their
+ * components, while unrelated definitions keep their former relative order.
+ * No per-position expansion is needed even for long intervals.
+ */
+export function movePositionRange(file: PositionsFile, from: number, to: number,
+  destination: number): PositionsFile {
+  intSlot(from, "Origen");
+  intSlot(to, "Final del rango");
+  intSlot(destination, "Destino");
+  if (from > to) throw new Error("El inicio debe ser menor que el final.");
+  const width = to - from + 1;
+  if (destination + width - 1 > MAX_SLOT) throw new Error("Destino fuera del rango disponible.");
+  if (from === destination) return clone(file);
   const map = (n: number): number => {
-    if (n === source) return target;
-    if (source > target && n >= target && n < source) return n + 1;
-    if (source < target && n > source && n <= target) return n - 1;
+    if (n >= from && n <= to) return n + destination - from;
+    if (destination < from && n >= destination && n < from) return n + width;
+    if (destination > from && n > to && n < destination + width) return n - width;
     return n;
   };
-  const breaks = [source, source + 1, target, target + 1];
+  const breakpoints = [from, to + 1, destination, destination + width];
+  const next = clone(file);
   for (const family of next.families) {
     const mapped = family.positions.flatMap((p) => {
       const points = [...new Set([p.from, p.to + 1,
-        ...breaks.filter((v) => v > p.from && v <= p.to)])].sort((a,b) => a-b);
+        ...breakpoints.filter((v) => v > p.from && v <= p.to)])].sort((a,b) => a-b);
       const parts: PositionDefinition[] = [];
       for (let i = 0; i < points.length - 1; i++) {
         const a = map(points[i]!);
-        const b = map(points[i+1]! - 1);
+        const b = map(points[i + 1]! - 1);
         parts.push(mapDefinition(p, Math.min(a,b), Math.max(a,b)));
       }
       return parts;
     }).sort((a,b) => a.from-b.from || a.to-b.to);
-    // Merge only adjacent pieces of the exact same original definition.
     family.positions = [];
     for (const p of mapped) {
       const prev = family.positions[family.positions.length - 1];
@@ -241,6 +249,10 @@ export function movePositionSlot(file: PositionsFile, source: number, target: nu
     }
   }
   return normalizePositionsFile(next);
+}
+/** One-slot move is the length-one case of the same global permutation. */
+export function movePositionSlot(file: PositionsFile, source: number, target: number): PositionsFile {
+  return movePositionRange(file, source, source, target);
 }
 /** Deletion without renumber removes only the requested family definition. */
 export function removePositionDefinition(file: PositionsFile, ref: PositionRef,
