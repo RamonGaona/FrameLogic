@@ -1,37 +1,42 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-
-const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
-
-describe("FrameLogic Configuración → Posiciones", () => {
-  it("mounts the tab under the existing single editor lock", () => {
-    const tabs = read("../apps/web/src/features/bim/settings/frameLogicPreferences.ts");
-    const window = read("../apps/web/src/features/bim/settings/FrameLogicSettingsWindow.tsx");
-    const component = read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
+const read=(p:string)=>readFileSync(new URL(p,import.meta.url),"utf8");
+describe("Configuración → Posiciones universales",()=>{
+  it("mounts the Excel grid under the global lock and shares dirty-close protection",()=>{
+    const tabs=read("../apps/web/src/features/bim/settings/frameLogicPreferences.ts");
+    const settings=read("../apps/web/src/features/bim/settings/FrameLogicSettingsWindow.tsx");
+    const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
     expect(tabs).toContain('{ id: "POSITIONS", title: "Posiciones"');
-    expect(window).toContain('<FrameLogicPositionsSettings unlocked={unlocked}');
-    expect(window).toContain("positionsDirtyRef.current");
-    expect(window).toContain("catalogDirtyRef.current || positionsDirtyRef.current");
-    expect(component).not.toContain("mayUnlockSettings");
+    expect(settings).toContain("<FrameLogicPositionsSettings unlocked={unlocked}");
+    expect(settings).toContain("catalogDirtyRef.current || positionsDirtyRef.current");
+    expect(ui).toContain("fl-positions-excel");
+    expect(ui).toContain("Código del ítem");
+    expect(ui).toContain("Familias del ítem (texto libre)");
+    expect(ui).toContain('commitCell(index,"familias"');
+    expect(ui).not.toContain("datalist");
+    expect(ui).not.toContain("selectedFamilies");
   });
-  it("uses only the DB folder, its own remembered file handle, and no other JSON writes", () => {
-    const model = read("../apps/web/src/features/bim/settings/positionsCatalog.ts");
-    const component = read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
-    expect(model).toContain("D:\\Documents\\FrameLogic\\DB\\POSITIONS.json");
-    expect(component).toContain("POSITIONS_HANDLE_KEY");
-    expect(component).toContain("restoreCatalogFileHandle(POSITIONS_LOCAL_PATH, POSITIONS_HANDLE_KEY)");
-    expect(component).toContain("storeCatalogFileHandle(POSITIONS_LOCAL_PATH");
-    expect(component).toContain("writeAuthorizedPositionsFile(destination, json");
-    expect(component).not.toContain("writeAuthorizedCatalogFile");
-    expect(component).not.toContain("DECISIONS.json,");
+  it("reuses the DB folder and safe local file permissions without reading DBFrameLogic.json",()=>{
+    const core=read("../apps/web/src/features/bim/settings/positionsFlatCatalog.ts");
+    const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
+    expect(core).toContain("POSITIONS_LOCAL_PATH");
+    expect(ui).toContain("restoreCatalogFileHandle(POSITIONS_LOCAL_PATH,POSITIONS_HANDLE_KEY)");
+    expect(ui).toContain("writeAuthorizedPositionsFile(destination,json");
+    expect(ui).not.toContain("fetch(DBFrameLogic");
   });
-  it("previews global changes, supports Undo/Redo and keeps local writes explicit", () => {
-    const source = read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
-    expect(source).toContain("previewPositionOperation(file, after)");
-    expect(source).toContain("movePositionRange(file, current.from, current.to, destination)");
-    expect(source).toContain("insertPositionSlot(file, family, slot, inheritRange)");
-    expect(source).toContain("setUndo(");
-    expect(source).toContain("setRedo(");
-    expect(source).toContain("markPositionsModified(normalizePositionsFile(file))");
+  it("requires an explicit backup before legacy schema conversion",()=>{
+    const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
+    expect(ui).toContain("migrateLegacyPositions(legacy.file)");
+    expect(ui).toContain('POSITIONS_respaldo_v1.json');
+    expect(ui).toContain("El esquema anterior contiene prioridades");
+  });
+  it("supports free-text families, global moves and Undo/Redo",()=>{
+    const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
+    expect(ui).toContain("freeFamilies(raw)");
+    expect(ui).toContain("insertGlobalSlotFlat(file,slot,item)");
+    expect(ui).toContain("moveGlobalRangeFlat(file,from,to,target)");
+    expect(ui).toContain("setUndo(");
+    expect(ui).toContain("setRedo(");
+    expect(ui).toContain("markFlatPositionsModified(validateFlatPositionsFile(file))");
   });
 });
