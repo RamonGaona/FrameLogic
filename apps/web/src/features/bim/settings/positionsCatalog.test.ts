@@ -65,7 +65,7 @@ describe("POSITIONS.json editor, original families/from/to/components schema", (
   it("moves 35 toward 30 and returns unchanged when destination equals source", () => {
     const next = movePositionSlot(fixture(), 35, 30);
     expect(next.families[0]!.positions.some((p) =>
-      p.from === 36 && p.to === 49 && p.components[0]?.code === "B")).toBe(true);
+      p.from === 30 && p.to === 30 && p.components[0]?.code === "B")).toBe(true);
     expect(movePositionSlot(fixture(), 35, 35)).toEqual(fixture());
   });
   it("deletes a definition without changing other families", () => {
