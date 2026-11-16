@@ -8,10 +8,12 @@ import {
 import {
   POSITIONS_FILE_NAME, POSITIONS_HANDLE_KEY, POSITIONS_LOCAL_PATH,
   POSITIONS_STORAGE_KEY, MAX_POSITIONS_BYTES,
-  addPositionDefinition, createComponent, firstFreePosition, insertPositionSlot,
+  addPositionDefinition, combinePositionRanges, createComponent, duplicatePositionDefinition,
+  firstFreePosition, insertPositionSlot,
   markPositionsModified, movePositionRange, newPositionsFile, normalizePositionsFile,
   parsePositionsFile, positionLabel, positionRows, previewPositionOperation,
-  removePositionDefinition, serializePositionsFile, updatePositionDefinition, usageAt,
+  removePositionDefinition, reorderPositionDefinition, sortPositionDefinitions,
+  splitPositionRange, serializePositionsFile, updatePositionDefinition, usageAt,
   type PositionComponent, type PositionDefinition, type PositionRef, type PositionsFile,
 } from "./positionsCatalog";
 import "./frameLogicPositionsSettings.css";
@@ -410,6 +412,51 @@ export function FrameLogicPositionsSettings({
           </label>
           <button type="button" disabled={!unlocked || !current || !targetDraft || busy}
             onClick={() => move(Number(targetDraft))}>Mover</button>
+          <button type="button" disabled={!unlocked || !current || busy}
+            onClick={() => {
+              if (!file || !selected || !current) return;
+              try {
+                const target = Math.max(0, ...positionRows(file).map((r) => r.position.to + 1));
+                const next = duplicatePositionDefinition(file, selected, target);
+                apply(next, "Duplicar definición en " + target, true,
+                  matchingRef(next, selected.familyIndex, target));
+              } catch (cause) { setError(exceptionText(cause)); }
+            }}>Duplicar al final</button>
+          <button type="button" disabled={!unlocked || !current || !selected || busy || selected.rowIndex === 0}
+            onClick={() => {
+              if (!file || !selected) return;
+              try {
+                apply(reorderPositionDefinition(file, selected, -1), "Subir fila visualmente",
+                  false, { ...selected, rowIndex: selected.rowIndex - 1 });
+              } catch (cause) { setError(exceptionText(cause)); }
+            }}>↑ Fila</button>
+          <button type="button" disabled={!unlocked || !current || !selected || busy ||
+              selected.rowIndex >= (file?.families[selected.familyIndex]?.positions.length ?? 0) - 1}
+            onClick={() => {
+              if (!file || !selected) return;
+              try {
+                apply(reorderPositionDefinition(file, selected, 1), "Bajar fila visualmente",
+                  false, { ...selected, rowIndex: selected.rowIndex + 1 });
+              } catch (cause) { setError(exceptionText(cause)); }
+            }}>↓ Fila</button>
+          <button type="button" disabled={!unlocked || !file || busy}
+            onClick={() => { if (file) apply(sortPositionDefinitions(file), "Ordenar filas por número"); }}>
+            Ordenar filas</button>
+          <button type="button" disabled={!unlocked || !current || !selected || busy ||
+              !positionDraft.trim()}
+            onClick={() => {
+              if (!file || !selected) return;
+              try {
+                const next = splitPositionRange(file, selected, Number(positionDraft));
+                apply(next, "Dividir rango en " + positionDraft);
+              } catch (cause) { setError(exceptionText(cause)); }
+            }}>Dividir rango</button>
+          <button type="button" disabled={!unlocked || !current || !selected || busy}
+            onClick={() => {
+              if (!file || !selected) return;
+              try { apply(combinePositionRanges(file, selected), "Combinar rangos contiguos", true, null); }
+              catch (cause) { setError(exceptionText(cause)); }
+            }}>Combinar rangos</button>
           <button type="button" disabled={!unlocked || !current || busy}
             onClick={() => remove(false)}>Eliminar</button>
           <button type="button" disabled={!unlocked || !current || busy}
