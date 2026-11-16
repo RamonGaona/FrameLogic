@@ -16,7 +16,6 @@ export interface PositionItem {
   familias: string[];
 }
 export interface FlatPositionsFile {
-  schemaVersion: 2;
   version?: string;
   fecha_modificacion?: string;
   usuario_modificacion?: string;
@@ -56,8 +55,10 @@ export function validateFlatPositionsFile(value: unknown): FlatPositionsFile {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("El documento debe ser un objeto JSON.");
   const obj = value as Record<string, unknown>;
-  if (obj.schemaVersion !== 2 || !Array.isArray(obj.items)) {
-    throw new Error("Se requiere schemaVersion: 2 y un arreglo items.");
+  // Accept older flat files with schemaVersion: 2, but never require or
+  // persist that internal identifier in the customer-facing JSON.
+  if (!Array.isArray(obj.items) || (obj.schemaVersion !== undefined && obj.schemaVersion !== 2)) {
+    throw new Error("El archivo debe contener una lista items válida.");
   }
   if (obj.items.length > 40_000) throw new Error("Máximo de 40.000 piezas.");
   for (const [i,item] of obj.items.entries()) {
@@ -84,7 +85,8 @@ export function validateFlatPositionsFile(value: unknown): FlatPositionsFile {
     if (obj[key] !== undefined && typeof obj[key] !== "string")
       throw new Error(key + " debe ser texto.");
   }
-  return value as unknown as FlatPositionsFile;
+  const { schemaVersion: _legacySchemaVersion, ...withoutSchema } = obj;
+  return withoutSchema as unknown as FlatPositionsFile;
 }
 export function readPositionsDocument(text: string): PositionsDocument {
   if (new TextEncoder().encode(text).byteLength > MAX_POSITIONS_BYTES)
@@ -99,13 +101,15 @@ export function readPositionsDocument(text: string): PositionsDocument {
 }
 export function serializeFlatPositionsFile(file: FlatPositionsFile): string {
   validateFlatPositionsFile(file);
-  const text = JSON.stringify(file, null, 2) + "\n";
+  // Serialize the normalized object so even imported schemaVersion: 2
+  // is omitted from the saved/downloaded JSON.
+  const text = JSON.stringify(validateFlatPositionsFile(file), null, 2) + "\n";
   if (new TextEncoder().encode(text).byteLength > MAX_POSITIONS_BYTES)
     throw new Error("El documento modificado supera 10 MB.");
   return text;
 }
 export function newFlatPositionsFile(): FlatPositionsFile {
-  return { schemaVersion: 2, version: "1.0.0",
+  return { version: "1.0.0",
     fecha_modificacion: "", usuario_modificacion: "", items: [] };
 }
 /** Commit audit fields only when the file is actually saved.

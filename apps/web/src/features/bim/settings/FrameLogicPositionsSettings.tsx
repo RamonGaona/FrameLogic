@@ -77,7 +77,10 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
     if(readText===null)return true;
     try{
       const old=readPositionsDocument(readText);
-      return old.kind!=="flat" || JSON.stringify(old.file)!==JSON.stringify(file);
+      // An older flat file may still include schemaVersion: 2. Mark it as
+      // unsaved so Guardar JSON can remove that field without altering items.
+      const hasObsoleteSchema = Object.prototype.hasOwnProperty.call(JSON.parse(readText), "schemaVersion");
+      return old.kind!=="flat" || hasObsoleteSchema || JSON.stringify(old.file)!==JSON.stringify(file);
     }catch{return true;}
   },[file,readText]);
   useEffect(()=>onDirtyChange?.(dirty),[dirty,onDirtyChange]);
@@ -330,7 +333,7 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
     {error&&<div className="fl-positions-alert is-error" role="alert">{error}</div>}
     {notice&&<div className="fl-positions-alert" role="status">{notice}</div>}
     {legacy?.kind==="legacy"&&<div className="fl-positions-alert">
-      <strong>Formato anterior (schemaVersion 1)</strong>
+      <strong>Formato anterior de posiciones</strong>
       <p>Este archivo agrupa componentes por familias y guarda también medidas y prioridades.
         Para convertirlo al modelo de tres campos debes guardar un respaldo; la conversión descarta
         esas propiedades antiguas, no modifica DBFrameLogic.json.</p>
@@ -342,7 +345,7 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
       <div className="fl-positions-meta">
         <strong>{unlocked?"🔓 Edición":"🔒 Solo lectura"} · {file.items.length} piezas
           {dirty?" · Cambios sin guardar":""}</strong>
-        <span>Esquema 2</span>
+        <span>Posición · Código · Familias</span>
         <span data-framelogic-positions-version="true">
           Versión JSON: {file.version ?? "Sin registrar (1.0.0 al guardar)"}
         </span>

@@ -15,6 +15,15 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.177 — 2026-11-16 (eliminar schemaVersion del archivo de posiciones)
+
+- El nuevo formato de `POSITIONS.json` ya no exige ni genera `schemaVersion`. El archivo muestra directamente los metadatos `version`, `fecha_modificacion`, `usuario_modificacion` y la lista `items` con las únicas propiedades por pieza `posicion`, `codigo` y `familias`.
+- Compatibilidad con archivos existentes que todavía traen `schemaVersion: 2`: FrameLogic los abre y omite ese atributo al guardar o descargar. Los archivos históricos de reglamentación con estructura `families[]` mantienen su flujo de importación/migración explícita para no perder información.
+- El editor elimina el indicador técnico de esquema y habilita **Guardar JSON** para limpiar archivos de posiciones cargados que todavía incluyan el campo obsoleto.
+- Las pruebas comprueban lectura sin `schemaVersion`, retrocompatibilidad, exportación sin el campo y conservación intacta de posiciones, códigos, familias y metadatos. Se mantiene la versión funcional de la aplicación separada de la versión editable del archivo JSON.
+
+---
+
 ## v0.1.176 — 2026-11-16 (versión, fecha y usuario en JSON de posiciones)
 
 - `POSITIONS.json` de esquema 2 conserva los campos `version` (versión propia del archivo), `fecha_modificacion` (ISO 8601 UTC) y `usuario_modificacion` (vacío hasta incorporar identificación de usuarios). Los registros `items[]` siguen conteniendo exclusivamente posición, código y familias libres.
