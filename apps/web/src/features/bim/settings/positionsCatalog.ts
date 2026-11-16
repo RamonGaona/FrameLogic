@@ -198,7 +198,12 @@ export function insertPositionSlot(file: PositionsFile, family: string, slot: nu
         mapDefinition(p, slot + 1, p.to + 1)];
     });
   }
-  return addPositionDefinition(normalizePositionsFile(next), family, slot);
+  normalizePositionsFile(next);
+  // If inheritance was requested for this family, the inherited range already
+  // occupies the slot. Do not create a conflicting empty definition over it.
+  if (inherit && next.families.find((f) => f.family === family)?.positions.some(
+    (p) => p.from <= slot && slot <= p.to)) return next;
+  return addPositionDefinition(next, family, slot);
 }
 
 /** Permute one GLOBAL numeric slot, including every family and overlapping range. */
