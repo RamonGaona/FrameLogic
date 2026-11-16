@@ -30,6 +30,15 @@ describe("Configuración → Posiciones universales",()=>{
     expect(ui).toContain('POSITIONS_respaldo_v1.json');
     expect(ui).toContain("El esquema anterior contiene prioridades");
   });
+  it("shows JSON version, modification date, and blank user independently from item columns",()=>{
+    const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
+    expect(ui).toContain('data-framelogic-positions-version="true"');
+    expect(ui).toContain('data-framelogic-positions-modified-at="true"');
+    expect(ui).toContain('data-framelogic-positions-modified-by="true"');
+    expect(ui).toContain('Modificado por: {file.usuario_modificacion || "(vacío)"}');
+    expect(ui).toContain("Completar metadatos");
+    expect(ui).toContain('version: file.version ?? "1.0.0"');
+  });
   it("supports free-text families, global moves and Undo/Redo",()=>{
     const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
     expect(ui).toContain("freeFamilies(raw)");
