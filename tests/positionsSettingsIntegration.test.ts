@@ -16,13 +16,28 @@ describe("Configuración → Posiciones universales",()=>{
     expect(ui).not.toContain("datalist");
     expect(ui).not.toContain("selectedFamilies");
   });
-  it("reuses the DB folder and safe local file permissions without reading DBFrameLogic.json",()=>{
+  it("reuses the DB folder and safely reads DBFrameLogic.json without writing it",()=>{
     const core=read("../apps/web/src/features/bim/settings/positionsFlatCatalog.ts");
     const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
     expect(core).toContain("POSITIONS_LOCAL_PATH");
     expect(ui).toContain("restoreCatalogFileHandle(POSITIONS_LOCAL_PATH,POSITIONS_HANDLE_KEY)");
     expect(ui).toContain("writeAuthorizedPositionsFile(destination,json");
     expect(ui).not.toContain("fetch(DBFrameLogic");
+  });
+  it("renders name as an independent noneditable column resolved from DBFrameLogic.json",()=>{
+    const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
+    const index=read("../apps/web/src/features/bim/settings/positionsCatalogNames.ts");
+    expect(ui).toContain('<th>Nombre</th>');
+    expect(ui).toContain("indexCatalogNames(parseFrameLogicCatalog(text))");
+    expect(ui).toContain("resolveCatalogName(dbNames,row.codigo)");
+    expect(ui).toContain("Seleccionar DBFrameLogic.json");
+    expect(ui).toContain("Actualizar nombres");
+    expect(ui).toContain("Autorizar DB");
+    expect(ui).toContain("restoreCatalogFileHandle(dbRoute())");
+    expect(ui).toContain("no se guardan en POSITIONS.json.");
+    expect(index).toContain("normalizedCatalogCode");
+    expect(ui).not.toContain('commitCell(index,"nombre"');
+    expect(ui).toContain('Estado «Única» significa sin solapamientos numéricos');
   });
   it("requires an explicit backup before legacy schema conversion",()=>{
     const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");

@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.178 — 2026-11-16 (columna Nombre vinculada a DBFrameLogic.json)
+
+- Configuración → Posiciones incorpora **Nombre** de solo lectura entre Código del ítem y Familias. Resuelve por `codigo` consultando los registros de `DBFrameLogic.json`, sin copiar nombres a `POSITIONS.json`.
+- Usa el archivo DBFrameLogic.json ya autorizado y recordado por la pestaña Base de datos cuando el navegador permite leerlo; si no está disponible, ofrece seleccionarlo o autorizar acceso mediante botones explícitos y actualizar nombres.
+- El lector admite propiedades `nombre` tanto en la raíz del registro como en subdivisiones, preservando la estructura universal. La búsqueda por código ignora espacios y diferencias de mayúsculas. Los nombres se pueden buscar en la tabla.
+- Si la base de datos no está cargada, el código no existe o el nombre está vacío, el editor lo indica expresamente; no inventa nombres ni modifica la base.
+- Se aclara la columna Estado: **Única** sin solapamientos y **Compartida** cuando otra fila ocupa la posición o parte de su rango. Estado no valida existencia en la base de datos.
+- Pruebas de resolución de nombres, archivos sin campo nombre, nombres anidados, permisos de lectura e invariancia del JSON de posiciones. La validación de publicación en Cloudflare Pages se realiza por separado.
+
+---
+
 ## v0.1.177 — 2026-11-16 (eliminar schemaVersion del archivo de posiciones)
 
 - El nuevo formato de `POSITIONS.json` ya no exige ni genera `schemaVersion`. El archivo muestra directamente los metadatos `version`, `fecha_modificacion`, `usuario_modificacion` y la lista `items` con las únicas propiedades por pieza `posicion`, `codigo` y `familias`.

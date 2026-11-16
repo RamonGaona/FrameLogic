@@ -17,6 +17,11 @@ import {
   splitFlatRange,
   updateFlatItem, validateFlatPositionsFile,
 } from "./positionsFlatCatalog";
+import {
+  CATALOG_LOCAL_FILE_PATH, CATALOG_LOCAL_FILE_NAME, CATALOG_SOURCE_STORAGE_KEY,
+  MAX_CATALOG_BYTES, parseFrameLogicCatalog,
+} from "./frameLogicCatalog";
+import { indexCatalogNames, resolveCatalogName } from "./positionsCatalogNames";
 import "./frameLogicPositionsSettings.css";
 
 interface PositionsPickerWindow extends Window {
@@ -65,6 +70,14 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
   const [error,setError]=useState("");
   const [notice,setNotice]=useState("");
   const fallback=useRef<HTMLInputElement>(null);
+  const dbFallback=useRef<HTMLInputElement>(null);
+  const dbRequest=useRef(0);
+  const [dbNames,setDbNames]=useState<Map<string,string|null>|null>(null);
+  const [dbHandle,setDbHandle]=useState<CatalogFileHandle|null>(null);
+  const [dbNeedsAuth,setDbNeedsAuth]=useState(false);
+  const [dbMessage,setDbMessage]=useState("DBFrameLogic.json no cargada.");
+  const [dbError,setDbError]=useState("");
+  const [dbBusy,setDbBusy]=useState(false);
   const requestId=useRef(0);
   const lock=useRef({unlocked,generation:0});
   if(lock.current.unlocked!==unlocked){
@@ -91,6 +104,80 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
     return()=>window.removeEventListener("beforeunload",beforeUnload);
   },[dirty]);
   useEffect(()=>{if(!unlocked)setVersionDraft(null);},[unlocked]);
+
+  const dbRoute=():string=>{
+    try {
+      const saved=localStorage.getItem(CATALOG_SOURCE_STORAGE_KEY);
+      return saved && !saved.startsWith("https://") && !saved.startsWith("http://") && !saved.startsWith("/")
+        ? saved : CATALOG_LOCAL_FILE_PATH;
+    } catch { return CATALOG_LOCAL_FILE_PATH; }
+  };
+
+  // Names are a read-only projection from the separate DBFrameLogic.json file.
+  // No fields from the DB are ever written to POSITIONS.json.
+  const loadNames=async(dbFile:File,sourceHandle:CatalogFileHandle|null,remember=false)=>{
+    if(dbFile.name.toLocaleLowerCase()!==CATALOG_LOCAL_FILE_NAME.toLocaleLowerCase())
+      throw new Error("Selecciona DBFrameLogic.json, no otro archivo.");
+    if(dbFile.size>MAX_CATALOG_BYTES)throw new Error("DBFrameLogic.json supera 5 MB.");
+    const id=++dbRequest.current;
+    setDbBusy(true);setDbError("");
+    try {
+      const text=await dbFile.text();
+      const names=indexCatalogNames(parseFrameLogicCatalog(text));
+      if(id!==dbRequest.current)return;
+      setDbNames(names);setDbHandle(sourceHandle);setDbNeedsAuth(false);
+      setDbMessage("DBFrameLogic.json cargada: "+names.size+" códigos disponibles.");
+      if(remember && sourceHandle){
+        const saved=await storeCatalogFileHandle(dbRoute(),sourceHandle);
+        if(id===dbRequest.current&&!saved){
+          setDbMessage("Base de datos cargada; el navegador no pudo recordar el acceso.");
+        }
+      }
+    }finally{if(id===dbRequest.current)setDbBusy(false);}
+  };
+  const reloadRememberedNames=async(requestAccess=false)=>{
+    try{
+      // When the user clicks Autorizar DB, use the already remembered handle
+      // immediately to retain the browser's transient user activation.
+      const existing=requestAccess && dbHandle ? dbHandle
+        : await restoreCatalogFileHandle(dbRoute());
+      if(!existing){
+        setDbNeedsAuth(false);setDbNames(null);
+        setDbMessage("Base de datos no recordada. Selecciona DBFrameLogic.json.");
+        return;
+      }
+      setDbHandle(existing);
+      const permission=requestAccess
+        ? await requestCatalogReadPermission(existing)
+        : (await queryCatalogReadPermission(existing))==="granted";
+      if(!permission && existing.queryPermission){
+        setDbNeedsAuth(true);
+        setDbMessage("DBFrameLogic.json necesita permiso de lectura.");
+        return;
+      }
+      await loadNames(await existing.getFile(),existing);
+    }catch(cause){
+      setDbNames(null);
+      setDbError(errorMessage(cause));
+      setDbNeedsAuth(true);
+    }
+  };
+  useEffect(()=>{
+    void reloadRememberedNames();
+    return()=>{dbRequest.current+=1;};
+    // One silent attempt on mount, without requesting browser permissions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+  const selectNamesFile=async()=>{
+    const picker=window as PositionsPickerWindow;
+    try{
+      if(!picker.showOpenFilePicker){dbFallback.current?.click();return;}
+      const [chosen]=await picker.showOpenFilePicker({
+        id:"framelogic-db-json",multiple:false,types,
+      });
+      if(chosen)await loadNames(await chosen.getFile(),chosen,true);
+    }catch(cause){if(!aborted(cause))setDbError(errorMessage(cause));}
+  };
 
   const loadLocal=async(picked:File,pickedHandle:CatalogFileHandle|null,remember=true)=>{
     if(picked.size>MAX_POSITIONS_BYTES)throw new Error("El archivo excede 10 MB.");
@@ -299,9 +386,11 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
     if(!file)return [];
     const q=filter.toLocaleLowerCase().trim();
     return file.items.map((row,index)=>({row,index})).filter(({row})=>
-      !q||(String(row.posicion)+" "+row.codigo+" "+row.familias.join(" "))
+      !q||(String(row.posicion)+" "+row.codigo+" "+row.familias.join(" ")
+        +" "+(resolveCatalogName(dbNames,row.codigo).state==="resolved"
+          ?resolveCatalogName(dbNames,row.codigo).label:""))
         .toLocaleLowerCase().includes(q));
-  },[file,filter]);
+  },[file,filter,dbNames]);
   const shared=useMemo(()=>file?sharedPositionFlags(file):[],[file]);
   const showDuplicates=shared.some(Boolean);
   return <section className="fl-positions" data-framelogic-positions-settings="true">
@@ -321,12 +410,34 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
           onClick={()=>void save()}>Guardar JSON</button>
       </div>
       <small>Una fila por código y posición. Las familias se escriben libremente, separadas por comas;
-        internamente son una lista. El código se relacionará después con DBFrameLogic.json.
+        internamente son una lista. El nombre se obtiene de DBFrameLogic.json por código, sin guardarlo en este archivo.
         La ruta local necesita permiso del navegador: no se abre automáticamente solo con escribirla.</small>
       <input ref={fallback} type="file" hidden accept=".json,application/json"
         onChange={e=>{
           const picked=e.currentTarget.files?.[0];
           if(picked)void loadLocal(picked,null).catch(cause=>setError(errorMessage(cause)));
+          e.currentTarget.value="";
+        }}/>
+    </div>
+    <div className="fl-positions-db-source" data-framelogic-positions-db-link="true">
+      <div>
+        <strong>Nombre del ítem · DBFrameLogic.json</strong>
+        <small>{dbMessage} Los nombres son de solo lectura y no se guardan en POSITIONS.json.</small>
+      </div>
+      <div className="fl-positions-toolbar">
+        <button type="button" disabled={dbBusy} onClick={()=>void selectNamesFile()}>
+          Seleccionar DBFrameLogic.json
+        </button>
+        {dbNeedsAuth&&dbHandle&&<button type="button" disabled={dbBusy}
+          onClick={()=>void reloadRememberedNames(true)}>Autorizar DB</button>}
+        <button type="button" disabled={dbBusy}
+          onClick={()=>void reloadRememberedNames()}>Actualizar nombres</button>
+      </div>
+      {dbError&&<small role="alert" className="fl-positions-db-error">{dbError}</small>}
+      <input type="file" ref={dbFallback} hidden accept=".json,application/json"
+        onChange={e=>{
+          const chosen=e.currentTarget.files?.[0];
+          if(chosen)void loadNames(chosen,null).catch(cause=>setDbError(errorMessage(cause)));
           e.currentTarget.value="";
         }}/>
     </div>
@@ -452,14 +563,14 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
       </div>
       <div className="fl-positions-filter">
         <input type="search" value={filter} onChange={e=>setFilter(e.currentTarget.value)}
-          placeholder="Buscar posición, código o familia"/>
+          placeholder="Buscar posición, código, nombre o familia"/>
         <span>{matches.length} filas {showDuplicates?"· Hay posiciones compartidas":""}</span>
       </div>
       <div className="fl-positions-grid" role="region"
         aria-label="Hoja de posiciones, códigos y familias editables" tabIndex={0}>
         <table className="fl-positions-excel">
           <thead><tr><th>N.º</th><th>Posición</th><th>Código del ítem</th>
-            <th>Familias del ítem (texto libre)</th><th>Estado</th></tr></thead>
+            <th>Nombre</th><th>Familias del ítem (texto libre)</th><th title="Compartida indica posiciones o rangos superpuestos">Estado</th></tr></thead>
           <tbody>{matches.map(({row,index})=><tr key={index}
             className={selected===index?"is-selected":""}
             onClick={()=>setSelected(index)}>
@@ -476,6 +587,11 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
               onBlur={e=>{if(!commitCell(index,"codigo",e.currentTarget.value))
                 e.currentTarget.value=row.codigo;}}
               onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur();}}/></td>
+            <td className={"fl-positions-name fl-positions-name--"
+                +resolveCatalogName(dbNames,row.codigo).state}
+              title={"Nombre obtenido de DBFrameLogic.json para "+row.codigo}>
+              {resolveCatalogName(dbNames,row.codigo).label}
+            </td>
             <td><input aria-label={"Familias fila "+(index+1)}
               key={"f"+index+cellKey(row)}
               defaultValue={row.familias.join(", ")} disabled={!unlocked||busy}
@@ -491,6 +607,9 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
         </table>
       </div>
       <p className="fl-positions-warning">
+        Estado «Única» significa sin solapamientos numéricos; «Compartida»
+        significa que otro ítem utiliza esa posición o parte del rango.
+        Este estado no valida el código contra DBFrameLogic.json.
         Al cambiar una posición no se altera ninguna otra base de datos.
         Si el mismo código aparece en varias posiciones o familias, se conservan sus filas.
         Las posiciones compartidas se resaltan para revisión, sin bloquear usos válidos.
