@@ -108,7 +108,7 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
   const dbRoute=():string=>{
     try {
       const saved=localStorage.getItem(CATALOG_SOURCE_STORAGE_KEY);
-      return saved && !/^https?:\\/\\//i.test(saved) && !saved.startsWith("/")
+      return saved && !saved.startsWith("https://") && !saved.startsWith("http://") && !saved.startsWith("/")
         ? saved : CATALOG_LOCAL_FILE_PATH;
     } catch { return CATALOG_LOCAL_FILE_PATH; }
   };
