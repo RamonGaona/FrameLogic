@@ -8,10 +8,12 @@ import {
 import {
   POSITIONS_FILE_NAME, POSITIONS_HANDLE_KEY, POSITIONS_LOCAL_PATH, MAX_POSITIONS_BYTES,
   type FlatPositionsFile, type PositionItem, type PositionsDocument,
-  cloneFlat, closeGlobalSlotFlat, formatPositionRange, freeFamilies,
+  cloneFlat, closeGlobalSlotFlat, combineFlatRanges, duplicateFlatItem,
+  formatPositionRange, freeFamilies,
   insertFlatItem, insertGlobalSlotFlat, markFlatPositionsModified,
   migrateLegacyPositions, moveGlobalRangeFlat, newFlatPositionsFile,
   overlapIndices, readPositionRange, readPositionsDocument, serializeFlatPositionsFile,
+  splitFlatRange,
   updateFlatItem, validateFlatPositionsFile,
 } from "./positionsFlatCatalog";
 import "./frameLogicPositionsSettings.css";
@@ -54,6 +56,7 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
   const [filter,setFilter]=useState("");
   const [insertAt,setInsertAt]=useState("");
   const [moveTo,setMoveTo]=useState("");
+  const [splitAt,setSplitAt]=useState("");
   const [versionDraft,setVersionDraft]=useState<string|null>(null);
   const [undo,setUndo]=useState<FlatPositionsFile[]>([]);
   const [redo,setRedo]=useState<FlatPositionsFile[]>([]);
@@ -185,8 +188,8 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
       setError("");setNotice(label+" · Sin guardar");
     }catch(cause){setError(errorMessage(cause));}
   };
-  const commitCell=(index:number,column:"posicion"|"codigo"|"familias",raw:string)=>{
-    if(!file||!unlocked)return;
+  const commitCell=(index:number,column:"posicion"|"codigo"|"familias",raw:string):boolean=>{
+    if(!file||!unlocked)return false;
     try{
       let change:Partial<PositionItem>;
       if(column==="posicion"){
@@ -196,9 +199,13 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
         change={codigo:raw.trim()};
       }else change={familias:freeFamilies(raw)};
       const next=updateFlatItem(file,index,change);
+      if(column==="posicion" && JSON.stringify(next)!==JSON.stringify(file)
+        && !window.confirm("Cambiar la posición de esta pieza no renumerará las demás. "
+          +"¿Confirmar la nueva posición?")) return false;
       const label=column==="familias"?"Familias de la pieza":column==="codigo"?"Código de la pieza":"Posición";
-      apply(next,label+" actualizado",column==="posicion",index);
-    }catch(cause){setError(errorMessage(cause));}
+      apply(next,label+" actualizado",false,index);
+      return true;
+    }catch(cause){setError(errorMessage(cause));return false;}
   };
   const availableCode=()=>{
     const existing=new Set(file?.items.map(x=>x.codigo.toLocaleUpperCase())??[]);
@@ -389,6 +396,31 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
             placeholder="N.º"/></label>
         <button type="button" disabled={!unlocked||busy||!active||!moveTo.trim()}
           onClick={()=>moveRow(Number(moveTo))}>Mover número</button>
+        <button type="button" disabled={!unlocked||busy||!active||selected===null}
+          onClick={()=>{
+            if(!file||selected===null)return;
+            try{const next=duplicateFlatItem(file,selected);
+              apply(next,"Duplicar pieza y su lista de familias",true,selected+1);}
+            catch(cause){setError(errorMessage(cause));}
+          }}>Duplicar fila</button>
+        <label>Dividir en
+          <input type="number" min="0" step="1" value={splitAt}
+            disabled={!unlocked||busy||!active} onChange={e=>setSplitAt(e.currentTarget.value)}/>
+        </label>
+        <button type="button" disabled={!unlocked||busy||!active||selected===null||!splitAt.trim()}
+          onClick={()=>{
+            if(!file||selected===null)return;
+            try{apply(splitFlatRange(file,selected,Number(splitAt)),
+              "Dividir rango en dos filas",true,selected);}
+            catch(cause){setError(errorMessage(cause));}
+          }}>Dividir rango</button>
+        <button type="button" disabled={!unlocked||busy||!active||selected===null}
+          onClick={()=>{
+            if(!file||selected===null)return;
+            try{const next=combineFlatRanges(file,selected);
+              apply(next,"Combinar rangos contiguos",true,next.items.length-1);}
+            catch(cause){setError(errorMessage(cause));}
+          }}>Combinar rangos</button>
         <button type="button" disabled={!unlocked||busy||!active} onClick={()=>removeRow(false)}>
           Eliminar</button>
         <button type="button" disabled={!unlocked||busy||!active} onClick={()=>removeRow(true)}>
@@ -411,18 +443,21 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
             <td><input aria-label={"Posición fila "+(index+1)}
               key={"p"+index+cellKey(row)}
               defaultValue={String(row.posicion)} disabled={!unlocked||busy}
-              onBlur={e=>commitCell(index,"posicion",e.currentTarget.value)}
+              onBlur={e=>{if(!commitCell(index,"posicion",e.currentTarget.value))
+                e.currentTarget.value=String(row.posicion);}}
               onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur();}}/></td>
             <td><input aria-label={"Código fila "+(index+1)}
               key={"c"+index+cellKey(row)}
               defaultValue={row.codigo} disabled={!unlocked||busy}
-              onBlur={e=>commitCell(index,"codigo",e.currentTarget.value)}
+              onBlur={e=>{if(!commitCell(index,"codigo",e.currentTarget.value))
+                e.currentTarget.value=row.codigo;}}
               onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur();}}/></td>
             <td><input aria-label={"Familias fila "+(index+1)}
               key={"f"+index+cellKey(row)}
               defaultValue={row.familias.join(", ")} disabled={!unlocked||busy}
               placeholder="Escribe: Familia A, Familia B"
-              onBlur={e=>commitCell(index,"familias",e.currentTarget.value)}
+              onBlur={e=>{if(!commitCell(index,"familias",e.currentTarget.value))
+                e.currentTarget.value=row.familias.join(", ");}}
               onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur();}}/></td>
             <td className="fl-positions-status">
               {overlapIndices(file,index).length>0?
