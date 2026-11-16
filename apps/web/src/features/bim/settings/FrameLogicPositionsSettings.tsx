@@ -70,6 +70,8 @@ export function FrameLogicPositionsSettings({
   const [selected, setSelected] = useState<PositionRef | null>(null);
   const [familyName, setFamilyName] = useState("");
   const [positionDraft, setPositionDraft] = useState("");
+  const [rangeFromDraft, setRangeFromDraft] = useState("");
+  const [rangeToDraft, setRangeToDraft] = useState("");
   const [targetDraft, setTargetDraft] = useState("");
   const [inheritRange, setInheritRange] = useState(false);
   const [filter, setFilter] = useState("");
@@ -204,6 +206,10 @@ export function FrameLogicPositionsSettings({
   };
   const current = selected && file?.families[selected.familyIndex]?.positions[selected.rowIndex];
   const currentFamily = selected && file?.families[selected.familyIndex]?.family;
+  useEffect(() => {
+    setRangeFromDraft(current ? String(current.from) : "");
+    setRangeToDraft(current ? String(current.to) : "");
+  }, [current?.from, current?.to, selected?.familyIndex, selected?.rowIndex]);
 
   const addPosition = (mode: "append" | "insert" | "free") => {
     if (!file || !unlocked || busy) return;
@@ -257,6 +263,10 @@ export function FrameLogicPositionsSettings({
     let saved: PositionsFile;
     let json: string;
     try {
+      const incomplete = positionRows(file).find((row) => row.position.components.some(
+        (component) => !component.code.trim() || !component.name.trim()));
+      if (incomplete) throw new Error("Completa código y nombre de los componentes de "
+        + incomplete.family + " (" + positionLabel(incomplete.position) + ") antes de guardar.");
       saved = markPositionsModified(normalizePositionsFile(file));
       json = serializePositionsFile(saved);
     } catch (cause) { setError(exceptionText(cause)); return; }
@@ -492,12 +502,28 @@ export function FrameLogicPositionsSettings({
               <p>{usage?.families.join(", ")} · {usage?.components ?? 0} componentes
                 {usage?.overlap ? " · Rango o posición compartida" : ""}</p>
               <div className="fl-positions-range">
-                {numberField("Desde", current.from, (v) => {
-                  if (v !== null && Number.isInteger(v)) patchDefinition({ from: v }, "Inicio de rango actualizado");
-                })}
-                {numberField("Hasta", current.to, (v) => {
-                  if (v !== null && Number.isInteger(v)) patchDefinition({ to: v }, "Final de rango actualizado");
-                })}
+                <label>Desde
+                  <input type="number" min="0" step="1" value={rangeFromDraft}
+                    disabled={!unlocked || busy}
+                    onChange={(e) => setRangeFromDraft(e.currentTarget.value)} />
+                </label>
+                <label>Hasta
+                  <input type="number" min="0" step="1" value={rangeToDraft}
+                    disabled={!unlocked || busy}
+                    onChange={(e) => setRangeToDraft(e.currentTarget.value)} />
+                </label>
+                <button type="button" disabled={!unlocked || busy ||
+                    !rangeFromDraft.trim() || !rangeToDraft.trim()}
+                  onClick={() => {
+                    if (!file || !selected) return;
+                    try {
+                      const from = Number(rangeFromDraft);
+                      const to = Number(rangeToDraft);
+                      const next = updatePositionDefinition(file, selected, { from, to });
+                      apply(next, "Cambiar rango " + positionLabel(current)
+                        + " → " + from + "–" + to, true, selected);
+                    } catch (cause) { setError(exceptionText(cause)); }
+                  }}>Aplicar rango</button>
               </div>
               <div className="fl-positions-detail-heading">
                 <strong>Componentes ({current.components.length})</strong>
