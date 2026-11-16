@@ -385,7 +385,7 @@ export function FrameLogicPositionsSettings({
             Heredar rango</label>
         </div>
         <div className="fl-positions-editbar">
-          <button type="button" disabled={!unlocked || !selected || busy || !undo.length}
+          <button type="button" disabled={!unlocked || busy || !undo.length}
             onClick={() => {
               const previous = undo[undo.length - 1];
               if (!previous || !file) return;
