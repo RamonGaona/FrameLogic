@@ -12,7 +12,8 @@ import {
   formatPositionRange, freeFamilies,
   insertFlatItem, insertGlobalSlotFlat, markFlatPositionsModified,
   migrateLegacyPositions, moveGlobalRangeFlat, newFlatPositionsFile,
-  overlapIndices, readPositionRange, readPositionsDocument, serializeFlatPositionsFile,
+  readPositionRange, readPositionsDocument, serializeFlatPositionsFile,
+  sharedPositionFlags,
   splitFlatRange,
   updateFlatItem, validateFlatPositionsFile,
 } from "./positionsFlatCatalog";
@@ -298,7 +299,8 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
       !q||(String(row.posicion)+" "+row.codigo+" "+row.familias.join(" "))
         .toLocaleLowerCase().includes(q));
   },[file,filter]);
-  const showDuplicates=file?.items.some((_,i)=>overlapIndices(file,i).length>0);
+  const shared=useMemo(()=>file?sharedPositionFlags(file):[],[file]);
+  const showDuplicates=shared.some(Boolean);
   return <section className="fl-positions" data-framelogic-positions-settings="true">
     <div className="fl-positions-route">
       <strong>Posiciones · carpeta DB</strong>
@@ -460,7 +462,7 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
                 e.currentTarget.value=row.familias.join(", ");}}
               onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur();}}/></td>
             <td className="fl-positions-status">
-              {overlapIndices(file,index).length>0?
+              {shared[index]?
                 <span title="Otro ítem utiliza una posición que coincide">Compartida</span>
                 : "Única"}</td>
           </tr>)}</tbody>
