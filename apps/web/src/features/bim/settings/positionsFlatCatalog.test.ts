@@ -4,7 +4,8 @@ import {
   freeFamilies, insertFlatItem, insertGlobalSlotFlat,
   markFlatPositionsModified, migrateLegacyPositions, moveGlobalRangeFlat,
   newFlatPositionsFile, overlapIndices, readPositionRange, readPositionsDocument,
-  serializeFlatPositionsFile, splitFlatRange, updateFlatItem, validateFlatPositionsFile,
+  serializeFlatPositionsFile, sharedPositionFlags, splitFlatRange,
+  updateFlatItem, validateFlatPositionsFile,
   type FlatPositionsFile,
 } from "./positionsFlatCatalog";
 import { type PositionsFile } from "./positionsCatalog";
@@ -52,6 +53,10 @@ describe("universal POSITIONS v2, position/code/free-text families",()=>{
     const file=insertFlatItem(example(),{posicion:40,codigo:"OTRA",familias:["Otra familia"]});
     expect(overlapIndices(file,0)).toEqual([4]);
     expect(overlapIndices(file,4)).toEqual([0]);
+  });
+  it("marks every overlapping row with global interval sweep",()=>{
+    const file=insertFlatItem(example(),{posicion:40,codigo:"OTRA",familias:["Cliente"]});
+    expect(sharedPositionFlags(file)).toEqual([true,false,false,false,true]);
   });
   it("inserts a new slot 40 and splits 31-49 without losing code or families",()=>{
     const next=insertGlobalSlotFlat(example(),40,{codigo:"NUEVO",familias:["Cualquier cliente"]});
