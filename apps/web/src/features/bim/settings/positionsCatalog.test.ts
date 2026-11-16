@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addPositionDefinition, firstFreePosition, insertPositionSlot, markPositionsModified,
-  movePositionSlot, newPositionsFile, normalizePositionsFile, parsePositionsFile,
+  movePositionSlot, movePositionRange, newPositionsFile, normalizePositionsFile, parsePositionsFile,
   positionRows, removePositionDefinition, serializePositionsFile, usageAt,
   type PositionsFile,
 } from "./positionsCatalog";
@@ -67,6 +67,13 @@ describe("POSITIONS.json editor, original families/from/to/components schema", (
     expect(next.families[0]!.positions.some((p) =>
       p.from === 30 && p.to === 30 && p.components[0]?.code === "B")).toBe(true);
     expect(movePositionSlot(fixture(), 35, 35)).toEqual(fixture());
+  });
+  it("moves the complete range 31–49 up one slot without losing members", () => {
+    const next = movePositionRange(fixture(), 31, 49, 30);
+    expect(next.families[0]!.positions.some((p) =>
+      p.from === 30 && p.to === 48 && p.components.some((c) => c.code === "B"))).toBe(true);
+    expect(next.families[0]!.positions.some((p) =>
+      p.from === 49 && p.components.some((c) => c.code === "A"))).toBe(true);
   });
   it("deletes a definition without changing other families", () => {
     const next = removePositionDefinition(fixture(), { familyIndex: 0, rowIndex: 1 });
