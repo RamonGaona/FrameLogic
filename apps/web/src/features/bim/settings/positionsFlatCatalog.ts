@@ -84,7 +84,7 @@ export function validateFlatPositionsFile(value: unknown): FlatPositionsFile {
     if (obj[key] !== undefined && typeof obj[key] !== "string")
       throw new Error(key + " debe ser texto.");
   }
-  return value as FlatPositionsFile;
+  return value as unknown as FlatPositionsFile;
 }
 export function readPositionsDocument(text: string): PositionsDocument {
   if (new TextEncoder().encode(text).byteLength > MAX_POSITIONS_BYTES)
@@ -199,6 +199,50 @@ export function closeGlobalSlotFlat(file: FlatPositionsFile, index: number): Fla
     const r=readPositionRange(item.posicion);
     return r.from>from ? remapPiece(item,r.from-1,r.to-1) : item;
   });
+  return validateFlatPositionsFile(next);
+}
+/** Duplicate selected item at the end of the global numbering without changing its families. */
+export function duplicateFlatItem(file: FlatPositionsFile,index:number):FlatPositionsFile {
+  const original=file.items[index];
+  if(!original)throw new Error("Selecciona una fila para duplicar.");
+  const {from,to}=readPositionRange(original.posicion);
+  const last=Math.max(-1,...file.items.map(row=>readPositionRange(row.posicion).to));
+  const target=last+1;
+  if(target+to-from>LIMIT)throw new Error("No hay espacio para duplicar ese rango.");
+  return insertFlatItem(file,{posicion:formatPositionRange(target,target+to-from),
+    codigo:original.codigo,familias:[...original.familias]},index+1);
+}
+/** Split an inclusive range into two rows, keeping code and all chosen families. */
+export function splitFlatRange(file:FlatPositionsFile,index:number,point:number):FlatPositionsFile {
+  const original=file.items[index];
+  if(!original)throw new Error("Fila inexistente.");
+  const {from,to}=readPositionRange(original.posicion);
+  if(!safe(point)||point<=from||point>to)
+    throw new Error("La división debe estar dentro del rango, después de su inicio.");
+  const next=cloneFlat(file);
+  next.items.splice(index,1,remapPiece(original,from,point-1),remapPiece(original,point,to));
+  return validateFlatPositionsFile(next);
+}
+/** Merge only adjacent ranges with identical code and family membership. */
+export function combineFlatRanges(file:FlatPositionsFile,index:number):FlatPositionsFile {
+  const original=file.items[index];
+  if(!original)throw new Error("Fila inexistente.");
+  const a=readPositionRange(original.posicion);
+  const eq=(row:PositionItem)=>
+    row.codigo===original.codigo && JSON.stringify([...row.familias].sort())===
+      JSON.stringify([...original.familias].sort());
+  const otherIndex=file.items.findIndex((row,i)=>{
+    if(i===index||!eq(row))return false;
+    const b=readPositionRange(row.posicion);
+    return a.to+1===b.from || b.to+1===a.from;
+  });
+  if(otherIndex<0)throw new Error("No hay intervalo contiguo con código y familias idénticos.");
+  const other=file.items[otherIndex]!;
+  const b=readPositionRange(other.posicion);
+  const next=cloneFlat(file);
+  const remove=[index,otherIndex].sort((x,y)=>y-x);
+  for(const n of remove)next.items.splice(n,1);
+  next.items.push(remapPiece(original,Math.min(a.from,b.from),Math.max(a.to,b.to)));
   return validateFlatPositionsFile(next);
 }
 /**
