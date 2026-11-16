@@ -30,6 +30,14 @@ describe("Configuración → Posiciones universales",()=>{
     expect(ui).toContain('POSITIONS_respaldo_v1.json');
     expect(ui).toContain("El esquema anterior contiene prioridades");
   });
+  it("does not require a schemaVersion field in the POSITIONS JSON",()=>{
+    const model=read("../apps/web/src/features/bim/settings/positionsFlatCatalog.ts");
+    const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
+    expect(model).not.toContain("schemaVersion: 2;");
+    expect(model).not.toContain('Se requiere schemaVersion: 2');
+    expect(ui).toContain('hasObsoleteSchema');
+    expect(ui).not.toContain('>Esquema 2</span>');
+  });
   it("shows JSON version, modification date, and blank user independently from item columns",()=>{
     const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
     expect(ui).toContain('data-framelogic-positions-version="true"');
