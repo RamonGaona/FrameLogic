@@ -11,7 +11,7 @@ import {
 import { type PositionsFile } from "./positionsCatalog";
 
 const example=():FlatPositionsFile=>({
-  schemaVersion:2,version:"1.0.0",
+  version:"1.0.0",
   fecha_modificacion:"",usuario_modificacion:"",
   items:[
     {posicion:"31-49",codigo:"PEB95400",familias:["MP","P4L"]},
@@ -36,7 +36,7 @@ describe("universal POSITIONS v2, position/code/free-text families",()=>{
     expect(updateFlatItem(example(),1,{familias:["Cliente 2027","Personalizada"]})
       .items[1]?.familias).toEqual(["Cliente 2027","Personalizada"]);
     expect(validateFlatPositionsFile({
-      schemaVersion:2,items:[{posicion:11,codigo:"X",familias:[]}],
+      items:[{posicion:11,codigo:"X",familias:[]}],
     }).items[0]?.familias).toEqual([]);
   });
   it("reads whole numbers and inclusive intervals",()=>{
@@ -118,15 +118,34 @@ describe("universal POSITIONS v2, position/code/free-text families",()=>{
     }]);
     expect(JSON.parse(text)).toEqual(legacy);
   });
+  it("reads the old flat marker but always exports JSON without schemaVersion",()=>{
+    const legacyFlat={
+      schemaVersion:2,version:"1.0.0",fecha_modificacion:"",
+      usuario_modificacion:"",items:example().items,
+    };
+    const parsed=readPositionsDocument(JSON.stringify(legacyFlat));
+    expect(parsed.kind).toBe("flat");
+    if(parsed.kind!=="flat")return;
+    expect(parsed.file).not.toHaveProperty("schemaVersion");
+    expect(JSON.parse(serializeFlatPositionsFile(parsed.file))).not.toHaveProperty("schemaVersion");
+    expect(parsed.file.items).toEqual(example().items);
+    expect(legacyFlat).toHaveProperty("schemaVersion",2);
+  });
+  it("accepts flat files with no marker and preserves their items",()=>{
+    const bare={items:example().items};
+    const normalized=validateFlatPositionsFile(bare);
+    expect(normalized.items).toEqual(example().items);
+    expect(JSON.parse(serializeFlatPositionsFile(normalized))).toEqual(bare);
+  });
   it("updates the audit stamp at save only and keeps schema version independent",()=>{
     const before=example();
     const after=markFlatPositionsModified(before,new Date("2026-11-16T17:00:00.000Z"));
     expect(after.fecha_modificacion).toBe("2026-11-16T17:00:00.000Z");
     expect(before.fecha_modificacion).toBe("");
-    expect(newFlatPositionsFile().schemaVersion).toBe(2);
+    expect(newFlatPositionsFile()).not.toHaveProperty("schemaVersion");
   });
   it("adds missing audit fields on successful save without changing items",()=>{
-    const old={schemaVersion:2 as const,items:[
+    const old={items:[
       {posicion:90,codigo:"MSB20007",familias:["P4L","P6"]},
     ]};
     const loaded=validateFlatPositionsFile(old);
@@ -146,8 +165,8 @@ describe("universal POSITIONS v2, position/code/free-text families",()=>{
     expect(before.usuario_modificacion).toBe("old-name");
   });
   it("rejects obsolete v1 records as v2 without explicit migration",()=>{
-    expect(()=>validateFlatPositionsFile({schemaVersion:1,families:[]})).toThrow(/schemaVersion: 2/);
-    expect(()=>validateFlatPositionsFile({schemaVersion:2,items:[{
+    expect(()=>validateFlatPositionsFile({schemaVersion:1,families:[]})).toThrow(/items válida/);
+    expect(()=>validateFlatPositionsFile({items:[{
       posicion:100,codigo:"X",familias:["MP"],name:"Duplicado de DB",
     }]})).toThrow(/solo tiene/);
   });
