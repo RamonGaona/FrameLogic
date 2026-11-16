@@ -61,3 +61,26 @@
 .fl-positions-excel td:nth-child(4) input { min-width: 220px; }
 .fl-positions-excel .fl-positions-status { font-size: 11px; color: #e6b887; }
 .fl-positions-route .fl-positions-alert p { margin: 6px 0; }
+
+/* Optional read-only catalog lookup; the POSITIONS JSON stays three-column. */
+.fl-positions-db-source {
+  display: grid; gap: 7px; padding: 9px 11px;
+  border: 1px solid #496778; border-radius: 6px; background: #1b3542;
+}
+.fl-positions-db-source > div:first-child { display: grid; gap: 4px; }
+.fl-positions-db-source strong { font-size: 12px; color: #e6f3fa; }
+.fl-positions-db-source small { color: #b7ceda; font-size: 11px; }
+.fl-positions-db-error { color: #ffc0c0 !important; }
+.fl-positions-excel { min-width: 830px; }
+.fl-positions-excel td:nth-child(4) { min-width: 190px; max-width: 320px; }
+.fl-positions-excel td:nth-child(5) { min-width: 230px; }
+.fl-positions-excel td:nth-child(5) input { min-width: 215px; }
+.fl-positions-excel .fl-positions-name {
+  max-width: 320px; white-space: normal; overflow-wrap: anywhere;
+  font-size: 11px; color: #e1f4fe;
+}
+.fl-positions-excel .fl-positions-name--db-not-loaded,
+.fl-positions-excel .fl-positions-name--code-not-found,
+.fl-positions-excel .fl-positions-name--name-missing {
+  color: #e4b987; font-style: italic;
+}
