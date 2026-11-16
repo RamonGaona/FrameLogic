@@ -314,7 +314,7 @@ export function FrameLogicPositionsSettings({
     <section className="fl-positions" data-framelogic-positions-settings="true">
       <div className="fl-positions-route">
         <strong>Archivo en carpeta DB</strong>
-        <code>{POSITIONS_LOCAL_PATH}</code>
+        <code>{route}</code>
         <div className="fl-positions-toolbar">
           <button type="button" disabled={busy} onClick={() => void selectJson()}>Seleccionar POSITIONS.json</button>
           {needsAuth && rememberedHandle && <button type="button" disabled={busy}
