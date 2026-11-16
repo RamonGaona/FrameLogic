@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.175 — 2026-11-16 (Posiciones universales por código y familias libres)
+
+- Rediseño de **Configuración → Posiciones** como hoja tipo Excel. Una fila representa una posición, un código y un conjunto de familias editable como texto separado por comas, sin familias predefinidas ni configuración previa por cliente.
+- Nuevo `POSITIONS.json` versión de esquema `schemaVersion: 2` con `items[]`. Cada ítem tiene exactamente tres campos: `posicion` (entero o intervalo inclusivo `31-49`), `codigo` (clave futura para enlazar `DBFrameLogic.json`) y `familias` (arreglo de cadenas introducidas por el usuario).
+- Se mantienen herramientas de insertar/desplazar numeración global, subir/bajar, mover bloque numérico, reordenar filas visualmente, eliminar con o sin cerrar hueco, Undo/Redo, búsqueda, estado de posiciones compartidas, versión del JSON y guardado explícito dentro de la carpeta DB.
+- Importación de esquema antiguo `schemaVersion: 1` exclusivamente bajo confirmación del usuario, con descarga del JSON original como respaldo. La migración agrupa por posición y código y unifica las familias asociadas; advierte que medidas, prioridades y restricciones del formato anterior no se transfieren al nuevo catálogo.
+- Se reutiliza el candado global de Configuración y el acceso local con permiso recordado, comprobación de modificaciones externas y descarga de copia. No se abre ni altera `DBFrameLogic.json`, `DECISIONS.json` ni `RULES_CATALOG.json`; la resolución de detalles de piezas por código queda para una implementación posterior.
+- Pruebas del esquema universal, familias arbitrarias, migración explícita, rangos, numeración global e integración de la hoja Excel en Configuración.
+
+---
+
 ## v0.1.174 — 2026-11-16 (editor de posiciones JSON en Configuración)
 
 - Nueva pestaña **Configuración → Posiciones**, controlada por el candado global existente. Trabaja únicamente con `POSITIONS.json`, ubicado por referencia en `D:\\Documents\\FrameLogic\\DB\\POSITIONS.json`; requiere selección y permisos del navegador para leer o escribir el archivo local.
