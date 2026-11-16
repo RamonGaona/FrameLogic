@@ -40,3 +40,24 @@
 .fl-positions-component input[type="number"] { width: 100%; }
 .fl-positions-warning { padding-top: 6px; border-top: 1px solid #3d5665; }
 @media (max-width: 850px) { .fl-positions-layout { grid-template-columns: 1fr; } .fl-positions-grid { max-height: 260px; } }
+
+/* Flat customer-neutral POSITIONS v2 spreadsheet: no family dropdown. */
+.fl-positions-grid { min-height: 180px; max-height: 460px; width: 100%; overflow: auto; }
+.fl-positions-excel { width: 100%; min-width: 590px; border-collapse: collapse; table-layout: auto; }
+.fl-positions-excel th, .fl-positions-excel td {
+  border-right: 1px solid #3d5969; white-space: nowrap;
+}
+.fl-positions-excel td:nth-child(2) { width: 105px; }
+.fl-positions-excel td:nth-child(3) { width: 140px; }
+.fl-positions-excel td:nth-child(4) { min-width: 230px; }
+.fl-positions-excel td input:not([type="checkbox"]) {
+  width: 100%; min-width: 60px; box-sizing: border-box;
+  border: 1px solid transparent; background: transparent;
+  color: inherit; padding: 5px 6px; font: inherit;
+}
+.fl-positions-excel td input:not([type="checkbox"]):hover:not(:disabled) { border-color: #577d94; }
+.fl-positions-excel td input:not([type="checkbox"]):focus { border-color: #6cbbdf; background: #0e2531; }
+.fl-positions-excel td input:disabled { opacity: .84; }
+.fl-positions-excel td:nth-child(4) input { min-width: 220px; }
+.fl-positions-excel .fl-positions-status { font-size: 11px; color: #e6b887; }
+.fl-positions-route .fl-positions-alert p { margin: 6px 0; }
