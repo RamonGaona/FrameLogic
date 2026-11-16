@@ -12,7 +12,7 @@ import {
 describe("FrameLogic settings registry and local preferences", () => {
   it("provides unique extensible settings sections", () => {
     expect(SETTINGS_SECTIONS.map((section) => section.id))
-      .toEqual(["GENERAL", "INTERFACE", "MODEL", "PAPER", "DATABASE"]);
+      .toEqual(["GENERAL", "INTERFACE", "MODEL", "PAPER", "DATABASE", "POSITIONS"]);
     expect(new Set(SETTINGS_SECTIONS.map((section) => section.id)).size)
       .toBe(SETTINGS_SECTIONS.length);
   });

@@ -79,11 +79,11 @@ async function operate<T>(
 }
 
 export async function storeCatalogFileHandle(
-  route: string, handle: CatalogFileHandle,
+  route: string, handle: CatalogFileHandle, key = CATALOG_FILE_HANDLE_KEY,
 ): Promise<boolean> {
   try {
     await operate<IDBValidKey>("readwrite", (store) =>
-      store.put({ route, handle } satisfies RememberedCatalogFile, CATALOG_FILE_HANDLE_KEY));
+      store.put({ route, handle } satisfies RememberedCatalogFile, key));
     return true;
   } catch {
     // IndexedDB may be disabled, or the handle cannot be structured-cloned.
@@ -91,10 +91,10 @@ export async function storeCatalogFileHandle(
   }
 }
 
-export async function restoreCatalogFileHandle(route: string): Promise<CatalogFileHandle | null> {
+export async function restoreCatalogFileHandle(route: string, key = CATALOG_FILE_HANDLE_KEY): Promise<CatalogFileHandle | null> {
   try {
     const saved = await operate<RememberedCatalogFile | undefined>("readonly", (store) =>
-      store.get(CATALOG_FILE_HANDLE_KEY));
+      store.get(key));
     // Never open a remembered handle when the user selected a different route.
     if (!saved || saved.route !== route || !isCatalogFileHandle(saved.handle)) return null;
     return saved.handle;
@@ -103,9 +103,9 @@ export async function restoreCatalogFileHandle(route: string): Promise<CatalogFi
   }
 }
 
-export async function forgetCatalogFileHandle(): Promise<void> {
+export async function forgetCatalogFileHandle(key = CATALOG_FILE_HANDLE_KEY): Promise<void> {
   try {
-    await operate<undefined>("readwrite", (store) => store.delete(CATALOG_FILE_HANDLE_KEY));
+    await operate<undefined>("readwrite", (store) => store.delete(key));
   } catch {
     // Clear failures never block the active user's ability to choose a file.
   }

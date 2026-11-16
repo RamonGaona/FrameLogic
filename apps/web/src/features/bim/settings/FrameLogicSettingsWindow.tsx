@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FrameLogicCatalogSettings } from "./FrameLogicCatalogSettings";
+import { FrameLogicPositionsSettings } from "./FrameLogicPositionsSettings";
 import { mayUnlockSettings } from "./settingsEditorGate";
 import {
   applyFrameLogicPreferences,
@@ -61,13 +62,17 @@ export function FrameLogicSettingsWindow() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const catalogDirtyRef = useRef(false);
+  const positionsDirtyRef = useRef(false);
   const onCatalogDirty = useCallback((value: boolean) => {
     catalogDirtyRef.current = value;
   }, []);
+  const onPositionsDirty = useCallback((value: boolean) => {
+    positionsDirtyRef.current = value;
+  }, []);
 
   const requestClose = () => {
-    if (catalogDirtyRef.current && !window.confirm(
-      "La base de datos tiene cambios sin guardar. ¿Cerrar y descartarlos?",
+    if ((catalogDirtyRef.current || positionsDirtyRef.current) && !window.confirm(
+      "Configuración contiene cambios JSON sin guardar. ¿Cerrar y descartarlos?",
     )) return;
     setOpen(false);
   };
@@ -77,6 +82,7 @@ export function FrameLogicSettingsWindow() {
       previousFocus.current = document.activeElement instanceof HTMLElement
         ? document.activeElement : null;
       catalogDirtyRef.current = false;
+      positionsDirtyRef.current = false;
       setActiveSection("GENERAL");
       setUnlocked(false);
       setUnlockFormOpen(false);
@@ -112,8 +118,8 @@ export function FrameLogicSettingsWindow() {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopImmediatePropagation();
-        if (!catalogDirtyRef.current || window.confirm(
-          "La base de datos tiene cambios sin guardar. ¿Cerrar y descartarlos?",
+        if (!(catalogDirtyRef.current || positionsDirtyRef.current) || window.confirm(
+          "Configuración contiene cambios JSON sin guardar. ¿Cerrar y descartarlos?",
         )) setOpen(false);
         return;
       }
@@ -294,6 +300,9 @@ export function FrameLogicSettingsWindow() {
             )}
             <div hidden={activeSection !== "DATABASE"}>
               <FrameLogicCatalogSettings unlocked={unlocked} onDirtyChange={onCatalogDirty} />
+            </div>
+            <div hidden={activeSection !== "POSITIONS"}>
+              <FrameLogicPositionsSettings unlocked={unlocked} onDirtyChange={onPositionsDirty} />
             </div>
           </main>
         </div>

@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.174 — 2026-11-16 (editor de posiciones JSON en Configuración)
+
+- Nueva pestaña **Configuración → Posiciones**, controlada por el candado global existente. Trabaja únicamente con `POSITIONS.json`, ubicado por referencia en `D:\\Documents\\FrameLogic\\DB\\POSITIONS.json`; requiere selección y permisos del navegador para leer o escribir el archivo local.
+- Compatible con el archivo original `schemaVersion: 1` que organiza `families[].positions[]` mediante `from`, `to` y `components`. Se conservan los campos existentes, incluidos `active`, prioridades, códigos, nombres, dimensiones y restricciones. Las familias comparten una numeración global, sin convertir ni reescribir automáticamente catálogos antiguos.
+- Tabla de posiciones y panel de componentes con búsqueda, adición, inserción con desplazamiento global, movimiento de posiciones o rangos completos, eliminación con o sin cierre de hueco, Undo/Redo y vista previa de cambios de numeración. Se diferencian posiciones compartidas de posiciones sin piezas; no se tratan automáticamente como conflictos.
+- Permisos independientes del archivo de base de datos; referencia de archivo recordada en IndexedDB con clave propia. Comprobación optimista de cambios externos, guardado con confirmación de permiso, descarga de copia, versión editable y marcas de auditoría al guardar.
+- Protección de integridad: se bloquea cerrar espacios compartidos que seguirían ocupados; la inserción dentro de rangos separa intervalos sin herencia por defecto, o los amplía solo al activar la opción. Las operaciones nunca modifican `DECISIONS.json`, `RULES_CATALOG.json` ni `DBFrameLogic.json`; las referencias externas se deben revisar antes de ejecutar reglamentaciones con numeración alterada.
+- Pruebas de desplazamientos globales, rangos, componentes compartidos, permisos de interfaz, compatibilidad de esquema e integración con Configuración. La fusión, el navegador local y el despliegue se verifican por separado.
+
+---
+
 ## v0.1.173 — 2026-11-15 (versión manual de la base JSON y metadatos de guardado)
 
 - **Versión del JSON** visible en Información del archivo JSON, independiente de la versión de FrameLogic. Solo se cambia manualmente con el candado global abierto, pulsando **Editar versión / Guardar versión** y posteriormente **Guardar JSON**. Validación estricta `MAYOR.MENOR.PARCHE`; edición cancelable sin cambios.
