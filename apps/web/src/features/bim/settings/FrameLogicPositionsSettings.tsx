@@ -9,7 +9,7 @@ import {
   POSITIONS_FILE_NAME, POSITIONS_HANDLE_KEY, POSITIONS_LOCAL_PATH,
   POSITIONS_STORAGE_KEY, MAX_POSITIONS_BYTES,
   addPositionDefinition, createComponent, firstFreePosition, insertPositionSlot,
-  markPositionsModified, movePositionSlot, newPositionsFile, normalizePositionsFile,
+  markPositionsModified, movePositionRange, newPositionsFile, normalizePositionsFile,
   parsePositionsFile, positionLabel, positionRows, previewPositionOperation,
   removePositionDefinition, serializePositionsFile, updatePositionDefinition, usageAt,
   type PositionComponent, type PositionDefinition, type PositionRef, type PositionsFile,
@@ -223,8 +223,8 @@ export function FrameLogicPositionsSettings({
   const move = (destination: number) => {
     if (!file || !current) return;
     try {
-      const after = movePositionSlot(file, current.from, destination);
-      apply(after, "Mover posición global " + current.from + " → " + destination,
+      const after = movePositionRange(file, current.from, current.to, destination);
+      apply(after, "Mover rango global " + positionLabel(current) + " → " + destination,
         true, selected && matchingRef(after, selected.familyIndex, destination));
     } catch (cause) { setError(exceptionText(cause)); }
   };
