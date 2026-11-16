@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  addPositionDefinition, firstFreePosition, insertPositionSlot, markPositionsModified,
+  addPositionDefinition, combinePositionRanges, duplicatePositionDefinition,
+  firstFreePosition, insertPositionSlot, markPositionsModified,
   movePositionSlot, movePositionRange, newPositionsFile, normalizePositionsFile, parsePositionsFile,
-  positionRows, removePositionDefinition, serializePositionsFile, usageAt,
+  positionRows, removePositionDefinition, reorderPositionDefinition,
+  serializePositionsFile, sortPositionDefinitions, splitPositionRange, usageAt,
   type PositionsFile,
 } from "./positionsCatalog";
 
@@ -102,6 +104,28 @@ describe("POSITIONS.json editor, original families/from/to/components schema", (
     malformed.families[0]!.positions[0]!.to = 25;
     expect(() => normalizePositionsFile(malformed)).toThrow(/inicio/);
     expect(() => parsePositionsFile("{")).toThrow(/JSON válido/);
+  });
+  it("duplicates a range without changing the original, and preserves every component", () => {
+    const before = fixture();
+    const next = duplicatePositionDefinition(before, { familyIndex: 0, rowIndex: 2 }, 200);
+    expect(before.families[0]!.positions.length).toBe(3);
+    expect(next.families[0]!.positions.some((p) =>
+      p.from === 200 && p.to === 218 && p.components[0]?.code === "B")).toBe(true);
+  });
+  it("visually reorders a row without altering global position values", () => {
+    const before = fixture();
+    const swapped = reorderPositionDefinition(before, { familyIndex: 0, rowIndex: 0 }, 1);
+    expect(swapped.families[0]!.positions[0]!.from).toBe(30);
+    expect(swapped.families[0]!.positions[1]!.from).toBe(29);
+    expect(sortPositionDefinitions(swapped)).toEqual(before);
+  });
+  it("splits and recombines a range preserving all properties", () => {
+    const before = fixture();
+    const split = splitPositionRange(before, { familyIndex: 0, rowIndex: 2 }, 40);
+    expect(split.families[0]!.positions.slice(2).map((p) => [p.from,p.to]))
+      .toEqual([[31,39],[40,49]]);
+    const combined = combinePositionRanges(split, { familyIndex: 0, rowIndex: 2 });
+    expect(combined).toEqual(before);
   });
   it("creates a fresh versioned file while retaining old files without metadata", () => {
     expect(newPositionsFile().version).toBe("1.0.0");
