@@ -1,9 +1,10 @@
 import { describe,expect,it } from "vitest";
 import {
-  closeGlobalSlotFlat, freeFamilies, insertFlatItem, insertGlobalSlotFlat,
+  closeGlobalSlotFlat, combineFlatRanges, duplicateFlatItem,
+  freeFamilies, insertFlatItem, insertGlobalSlotFlat,
   markFlatPositionsModified, migrateLegacyPositions, moveGlobalRangeFlat,
   newFlatPositionsFile, overlapIndices, readPositionRange, readPositionsDocument,
-  serializeFlatPositionsFile, updateFlatItem, validateFlatPositionsFile,
+  serializeFlatPositionsFile, splitFlatRange, updateFlatItem, validateFlatPositionsFile,
   type FlatPositionsFile,
 } from "./positionsFlatCatalog";
 import { type PositionsFile } from "./positionsCatalog";
@@ -73,6 +74,23 @@ describe("universal POSITIONS v2, position/code/free-text families",()=>{
     expect(()=>closeGlobalSlotFlat(file,1)).toThrow(/compartida/);
     const next=closeGlobalSlotFlat(example(),1);
     expect(next.items.find(x=>x.codigo==="MSB20007")?.posicion).toBe(89);
+  });
+  it("duplicates an item with all its free-text families",()=>{
+    const copy=duplicateFlatItem(example(),0);
+    expect(copy.items[1]).toEqual({
+      posicion:"111-129",codigo:"PEB95400",familias:["MP","P4L"],
+    });
+  });
+  it("splits and combines a range without losing its code and families",()=>{
+    const split=splitFlatRange(example(),0,40);
+    expect(split.items[0]).toEqual({
+      posicion:"31-39",codigo:"PEB95400",familias:["MP","P4L"],
+    });
+    expect(split.items[1]).toEqual({
+      posicion:"40-49",codigo:"PEB95400",familias:["MP","P4L"],
+    });
+    const combined=combineFlatRanges(split,0);
+    expect(combined.items.some(x=>x.codigo==="PEB95400"&&x.posicion==="31-49")).toBe(true);
   });
   it("migrates original family-centric v1 only through explicit user action",()=>{
     const legacy:PositionsFile={schemaVersion:1,families:[
