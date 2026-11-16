@@ -137,9 +137,12 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
   };
   const reloadRememberedNames=async(requestAccess=false)=>{
     try{
-      const existing=await restoreCatalogFileHandle(dbRoute());
+      // When the user clicks Autorizar DB, use the already remembered handle
+      // immediately to retain the browser's transient user activation.
+      const existing=requestAccess && dbHandle ? dbHandle
+        : await restoreCatalogFileHandle(dbRoute());
       if(!existing){
-        setDbNeedsAuth(false);
+        setDbNeedsAuth(false);setDbNames(null);
         setDbMessage("Base de datos no recordada. Selecciona DBFrameLogic.json.");
         return;
       }
@@ -407,7 +410,7 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
           onClick={()=>void save()}>Guardar JSON</button>
       </div>
       <small>Una fila por código y posición. Las familias se escriben libremente, separadas por comas;
-        internamente son una lista. El código se relacionará después con DBFrameLogic.json.
+        internamente son una lista. El nombre se obtiene de DBFrameLogic.json por código, sin guardarlo en este archivo.
         La ruta local necesita permiso del navegador: no se abre automáticamente solo con escribirla.</small>
       <input ref={fallback} type="file" hidden accept=".json,application/json"
         onChange={e=>{
@@ -560,7 +563,7 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
       </div>
       <div className="fl-positions-filter">
         <input type="search" value={filter} onChange={e=>setFilter(e.currentTarget.value)}
-          placeholder="Buscar posición, código o familia"/>
+          placeholder="Buscar posición, código, nombre o familia"/>
         <span>{matches.length} filas {showDuplicates?"· Hay posiciones compartidas":""}</span>
       </div>
       <div className="fl-positions-grid" role="region"
