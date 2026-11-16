@@ -125,6 +125,21 @@ export function overlapIndices(file: FlatPositionsFile, index: number): number[]
     return a.from <= b.to && b.from <= a.to ? [i] : [];
   });
 }
+/** O(n log n) sweep for highlighting all rows sharing any numeric slot. */
+export function sharedPositionFlags(file: FlatPositionsFile): boolean[] {
+  const flags=file.items.map(()=>false);
+  const sorted=file.items.map((item,index)=>({...readPositionRange(item.posicion),index}))
+    .sort((a,b)=>a.from-b.from||a.to-b.to);
+  let latestEnd=-1,owner=-1;
+  for(const row of sorted){
+    if(row.from<=latestEnd){
+      flags[row.index]=true;
+      if(owner>=0)flags[owner]=true;
+    }
+    if(row.to>latestEnd){latestEnd=row.to;owner=row.index;}
+  }
+  return flags;
+}
 /** A single code can appear at multiple positions. Shared slots are warnings, not errors. */
 export function insertFlatItem(file: FlatPositionsFile, item: PositionItem,
   atIndex = file.items.length): FlatPositionsFile {
