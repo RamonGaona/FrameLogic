@@ -343,8 +343,27 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
         <strong>{unlocked?"🔓 Edición":"🔒 Solo lectura"} · {file.items.length} piezas
           {dirty?" · Cambios sin guardar":""}</strong>
         <span>Esquema 2</span>
-        <span>Versión: {file.version??"Sin registrar"}</span>
-        <span>Fecha: {file.fecha_modificacion||"Sin registrar"}</span>
+        <span data-framelogic-positions-version="true">
+          Versión JSON: {file.version ?? "Sin registrar (1.0.0 al guardar)"}
+        </span>
+        <span data-framelogic-positions-modified-at="true">
+          Última modificación: {file.fecha_modificacion || "Sin registrar"}
+        </span>
+        <span data-framelogic-positions-modified-by="true">
+          Modificado por: {file.usuario_modificacion || "(vacío)"}
+        </span>
+        {unlocked && (file.version === undefined ||
+            file.fecha_modificacion === undefined || file.usuario_modificacion === undefined) && (
+          <button type="button" disabled={busy}
+            onClick={() => apply({
+              ...file,
+              version: file.version ?? "1.0.0",
+              fecha_modificacion: file.fecha_modificacion ?? "",
+              usuario_modificacion: "",
+            }, "Metadatos inicializados")}>
+            Completar metadatos
+          </button>
+        )}
         {unlocked&&(versionDraft!==null ? <>
           <input aria-label="Versión del JSON" value={versionDraft}
             onChange={e=>setVersionDraft(e.currentTarget.value)}/>

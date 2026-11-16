@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.176 — 2026-11-16 (versión, fecha y usuario en JSON de posiciones)
+
+- `POSITIONS.json` de esquema 2 conserva los campos `version` (versión propia del archivo), `fecha_modificacion` (ISO 8601 UTC) y `usuario_modificacion` (vacío hasta incorporar identificación de usuarios). Los registros `items[]` siguen conteniendo exclusivamente posición, código y familias libres.
+- Guardar un archivo antiguo de esquema 2 sin metadatos inicializa `version: "1.0.0"`, conserva cualquier versión semántica ya registrada y actualiza automáticamente `fecha_modificacion` al escribir; `usuario_modificacion` permanece en cadena vacía.
+- La interfaz Configuración → Posiciones muestra de forma explícita los tres datos de auditoría y ofrece **Completar metadatos** para archivos sin esos campos. La fecha solo cambia al guardar el archivo, no al leerlo ni al descargar una copia.
+- El error de `schemaVersion: 1` que aparece en versiones antiguas de la interfaz corresponde a un despliegue anterior: la rama de desarrollo usa el esquema `schemaVersion: 2`. La publicación del sitio y las pruebas de navegador se verifican por separado.
+- Pruebas añadidas para compatibilidad con archivos sin metadatos, conservación de las 3 columnas por ítem, versión independiente, fecha UTC, usuario vacío y controles de visualización.
+ 
+---
+
 ## v0.1.175 — 2026-11-16 (Posiciones universales por código y familias libres)
 
 - Rediseño de **Configuración → Posiciones** como hoja tipo Excel. Una fila representa una posición, un código y un conjunto de familias editable como texto separado por comas, sin familias predefinidas ni configuración previa por cliente.

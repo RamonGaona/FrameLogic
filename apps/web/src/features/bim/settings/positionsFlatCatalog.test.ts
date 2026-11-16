@@ -125,6 +125,26 @@ describe("universal POSITIONS v2, position/code/free-text families",()=>{
     expect(before.fecha_modificacion).toBe("");
     expect(newFlatPositionsFile().schemaVersion).toBe(2);
   });
+  it("adds missing audit fields on successful save without changing items",()=>{
+    const old={schemaVersion:2 as const,items:[
+      {posicion:90,codigo:"MSB20007",familias:["P4L","P6"]},
+    ]};
+    const loaded=validateFlatPositionsFile(old);
+    expect(loaded.version).toBeUndefined();
+    const saved=markFlatPositionsModified(loaded,new Date("2026-11-16T21:32:00Z"));
+    expect(saved.version).toBe("1.0.0");
+    expect(saved.fecha_modificacion).toBe("2026-11-16T21:32:00.000Z");
+    expect(saved.usuario_modificacion).toBe("");
+    expect(saved.items).toEqual(old.items);
+    expect(old).not.toHaveProperty("version");
+  });
+  it("keeps a manually edited JSON version while leaving modifier blank",()=>{
+    const before={...example(),version:"2.4.1",usuario_modificacion:"old-name"};
+    const saved=markFlatPositionsModified(before,new Date("2026-11-16T21:32:00Z"));
+    expect(saved.version).toBe("2.4.1");
+    expect(saved.usuario_modificacion).toBe("");
+    expect(before.usuario_modificacion).toBe("old-name");
+  });
   it("rejects obsolete v1 records as v2 without explicit migration",()=>{
     expect(()=>validateFlatPositionsFile({schemaVersion:1,families:[]})).toThrow(/schemaVersion: 2/);
     expect(()=>validateFlatPositionsFile({schemaVersion:2,items:[{

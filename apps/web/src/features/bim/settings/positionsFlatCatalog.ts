@@ -108,9 +108,16 @@ export function newFlatPositionsFile(): FlatPositionsFile {
   return { schemaVersion: 2, version: "1.0.0",
     fecha_modificacion: "", usuario_modificacion: "", items: [] };
 }
+/** Commit audit fields only when the file is actually saved.
+ * A catalog missing metadata gets its independent initial JSON version.
+ * User tracking remains intentionally blank until authentication is implemented.
+ */
 export function markFlatPositionsModified(file: FlatPositionsFile, date = new Date()): FlatPositionsFile {
-  return { ...file, fecha_modificacion: date.toISOString(),
-    usuario_modificacion: file.usuario_modificacion ?? "" };
+  return { ...file,
+    version: file.version ?? "1.0.0",
+    fecha_modificacion: date.toISOString(),
+    usuario_modificacion: "",
+  };
 }
 export function cloneFlat(file: FlatPositionsFile): FlatPositionsFile {
   return { ...file, items: file.items.map(item => ({ ...item, familias: [...item.familias] })) };
