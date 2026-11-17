@@ -15,6 +15,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.179 — 2026-11-17 (tres estados activos por cada posición)
+
+- Cada ítem de `POSITIONS.json` admite tres campos booleanos independientes: `activo_general`, `activo_proyecto` y `activo_puntal`. Los tres se crean inicialmente en `true`.
+- Configuración → Posiciones incorpora tres casillas por fila para activar/desactivar cada indicador, usando el candado global (deshabilitadas en solo lectura), Undo/Redo y el guardado existente. Cambiar una casilla no guarda hasta pulsar **Guardar JSON**.
+- Retrocompatibilidad: los JSON de posiciones anteriores sin estos campos se abren y se interpretan como activos en los tres niveles. Se señala que requieren guardado para añadir explícitamente los campos. No se introduce `schemaVersion`.
+- Los movimientos de posiciones, duplicaciones, divisiones de rangos y cambios de orden conservan los tres estados; no se combinan rangos contiguos con estados diferentes.
+- `version`, `fecha_modificacion` y `usuario_modificacion` conservan su lógica; el nombre sigue consultándose por código desde `DBFrameLogic.json`. No se modifican los archivos de decisiones, reglas ni base de datos.
+- Estos campos se almacenan y editan como propiedades independientes; la aplicación de su significado en cualquier motor de reglamentación se integra por separado.
+- Pruebas de importación antigua, validación estricta de booleanos, persistencia de desactivaciones, controles por fila, candado de administración y conservación al renumerar.
+
+---
+
 ## v0.1.178 — 2026-11-16 (columna Nombre vinculada a DBFrameLogic.json)
 
 - Configuración → Posiciones incorpora **Nombre** de solo lectura entre Código del ítem y Familias. Resuelve por `codigo` consultando los registros de `DBFrameLogic.json`, sin copiar nombres a `POSITIONS.json`.

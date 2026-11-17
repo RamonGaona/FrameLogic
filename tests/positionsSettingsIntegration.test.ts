@@ -39,6 +39,21 @@ describe("Configuración → Posiciones universales",()=>{
     expect(ui).not.toContain('commitCell(index,"nombre"');
     expect(ui).toContain('Estado «Única» significa sin solapamientos numéricos');
   });
+  it("renders 3 independent activation checkboxes per item under the editor lock",()=>{
+    const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
+    const model=read("../apps/web/src/features/bim/settings/positionsFlatCatalog.ts");
+    expect(ui).toContain("Activo general</th>");
+    expect(ui).toContain("Activo proyecto</th>");
+    expect(ui).toContain("Activo puntal</th>");
+    expect(ui).toContain("POSITION_ACTIVATION_KEYS.map((key)=>");
+    expect(ui).toContain('type="checkbox" checked={positionActivation(row,key)}');
+    expect(ui).toContain("disabled={!unlocked||busy}");
+    expect(ui).toContain("onChange={e=>toggleActivation(index,key,e.currentTarget.checked)}");
+    expect(ui).toContain('apply(updateFlatItem(file,index,{[key]:enabled})');
+    expect(ui).toContain("hasMissingActivation");
+    expect(model).toContain('activo_general: true, activo_proyecto: true, activo_puntal: true');
+    expect(model).toContain('positionActivation(row,key)===positionActivation(original,key)');
+  });
   it("requires an explicit backup before legacy schema conversion",()=>{
     const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
     expect(ui).toContain("migrateLegacyPositions(legacy.file)");

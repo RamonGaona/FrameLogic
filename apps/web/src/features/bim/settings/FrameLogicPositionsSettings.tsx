@@ -13,7 +13,7 @@ import {
   insertFlatItem, insertGlobalSlotFlat, markFlatPositionsModified,
   migrateLegacyPositions, moveGlobalRangeFlat, newFlatPositionsFile,
   readPositionRange, readPositionsDocument, serializeFlatPositionsFile,
-  sharedPositionFlags,
+  sharedPositionFlags, positionActivation, POSITION_ACTIVATION_KEYS,
   splitFlatRange,
   updateFlatItem, validateFlatPositionsFile,
 } from "./positionsFlatCatalog";
@@ -92,8 +92,12 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
       const old=readPositionsDocument(readText);
       // An older flat file may still include schemaVersion: 2. Mark it as
       // unsaved so Guardar JSON can remove that field without altering items.
-      const hasObsoleteSchema = Object.prototype.hasOwnProperty.call(JSON.parse(readText), "schemaVersion");
-      return old.kind!=="flat" || hasObsoleteSchema || JSON.stringify(old.file)!==JSON.stringify(file);
+      const original=JSON.parse(readText) as {schemaVersion?:unknown,items?:Array<Record<string,unknown>>};
+      const hasObsoleteSchema = Object.prototype.hasOwnProperty.call(original, "schemaVersion");
+      const hasMissingActivation = old.kind==="flat" && (original.items??[]).some(item=>
+        POSITION_ACTIVATION_KEYS.some(key=>!Object.prototype.hasOwnProperty.call(item,key)));
+      return old.kind!=="flat" || hasObsoleteSchema || hasMissingActivation
+        || JSON.stringify(old.file)!==JSON.stringify(file);
     }catch{return true;}
   },[file,readText]);
   useEffect(()=>onDirtyChange?.(dirty),[dirty,onDirtyChange]);
@@ -279,6 +283,13 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
       setError("");setNotice(label+" · Sin guardar");
     }catch(cause){setError(errorMessage(cause));}
   };
+  const toggleActivation=(index:number,key:typeof POSITION_ACTIVATION_KEYS[number],enabled:boolean)=>{
+    if(!file||!unlocked||busy)return;
+    try{
+      apply(updateFlatItem(file,index,{[key]:enabled}),
+        "Se cambió "+key.replace("activo_","activo ")+" de "+file.items[index]!.codigo,false,index);
+    }catch(cause){setError(errorMessage(cause));}
+  };
   const commitCell=(index:number,column:"posicion"|"codigo"|"familias",raw:string):boolean=>{
     if(!file||!unlocked)return false;
     try{
@@ -410,7 +421,9 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
           onClick={()=>void save()}>Guardar JSON</button>
       </div>
       <small>Una fila por código y posición. Las familias se escriben libremente, separadas por comas;
-        internamente son una lista. El nombre se obtiene de DBFrameLogic.json por código, sin guardarlo en este archivo.
+        internamente son una lista. Cada ítem tiene tres activos independientes (general,
+        proyecto y puntal). El nombre se obtiene de DBFrameLogic.json por código,
+        sin guardarlo en este archivo.
         La ruta local necesita permiso del navegador: no se abre automáticamente solo con escribirla.</small>
       <input ref={fallback} type="file" hidden accept=".json,application/json"
         onChange={e=>{
@@ -570,7 +583,11 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
         aria-label="Hoja de posiciones, códigos y familias editables" tabIndex={0}>
         <table className="fl-positions-excel">
           <thead><tr><th>N.º</th><th>Posición</th><th>Código del ítem</th>
-            <th>Nombre</th><th>Familias del ítem (texto libre)</th><th title="Compartida indica posiciones o rangos superpuestos">Estado</th></tr></thead>
+            <th>Nombre</th><th>Familias del ítem (texto libre)</th>
+            <th title="Control individual del ítem">Activo general</th>
+            <th title="Control individual del ítem">Activo proyecto</th>
+            <th title="Control individual del ítem">Activo puntal</th>
+            <th title="Compartida indica posiciones o rangos superpuestos">Estado</th></tr></thead>
           <tbody>{matches.map(({row,index})=><tr key={index}
             className={selected===index?"is-selected":""}
             onClick={()=>setSelected(index)}>
@@ -599,6 +616,14 @@ export function FrameLogicPositionsSettings({unlocked,onDirtyChange}:FrameLogicP
               onBlur={e=>{if(!commitCell(index,"familias",e.currentTarget.value))
                 e.currentTarget.value=row.familias.join(", ");}}
               onKeyDown={e=>{if(e.key==="Enter")e.currentTarget.blur();}}/></td>
+            {POSITION_ACTIVATION_KEYS.map((key)=>
+              <td key={key} className="fl-positions-activation">
+                <input type="checkbox" checked={positionActivation(row,key)}
+                  aria-label={key.replaceAll("_"," ")+" "+row.codigo}
+                  title={key.replaceAll("_"," ")+" · "+row.codigo}
+                  disabled={!unlocked||busy}
+                  onChange={e=>toggleActivation(index,key,e.currentTarget.checked)}/>
+              </td>)}
             <td className="fl-positions-status">
               {shared[index]?
                 <span title="Otro ítem utiliza una posición que coincide">Compartida</span>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { indexCatalogNames, resolveCatalogName } from "./positionsCatalogNames";
 import { parseFrameLogicCatalog } from "./frameLogicCatalog";
-import { serializeFlatPositionsFile, type FlatPositionsFile } from "./positionsFlatCatalog";
+import { serializeFlatPositionsFile, validateFlatPositionsFile, type FlatPositionsFile } from "./positionsFlatCatalog";
 
 const db = () => parseFrameLogicCatalog(JSON.stringify({
   version: "1.0.0",
@@ -39,7 +39,9 @@ describe("Columna Nombre enlazada a DBFrameLogic.json", () => {
     };
     const names=indexCatalogNames(db());
     expect(resolveCatalogName(names,file.items[0]!.codigo).label).toBe("Marco principal 5400");
-    expect(JSON.parse(serializeFlatPositionsFile(file))).toEqual(file);
+    // Older files omit the three flags; serialization fills them with true.
+    expect(JSON.parse(serializeFlatPositionsFile(file))).toEqual(validateFlatPositionsFile(file));
+    expect(file.items[0]).not.toHaveProperty("activo_general");
     expect(serializeFlatPositionsFile(file)).not.toContain("Marco principal 5400");
     expect(serializeFlatPositionsFile(file)).not.toContain('"nombre"');
   });
