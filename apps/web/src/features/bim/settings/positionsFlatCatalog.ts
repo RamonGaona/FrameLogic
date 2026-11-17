@@ -14,6 +14,20 @@ export interface PositionItem {
   codigo: string;
   /** Free-text customer-specific family names, never predefined. */
   familias: string[];
+  /** Independent enable switches; omitted values in older files default to true. */
+  activo_general?: boolean;
+  activo_proyecto?: boolean;
+  activo_puntal?: boolean;
+}
+export type PositionActivationKey =
+  "activo_general" | "activo_proyecto" | "activo_puntal";
+export const POSITION_ACTIVATION_KEYS: readonly PositionActivationKey[] =
+  ["activo_general", "activo_proyecto", "activo_puntal"];
+export const DEFAULT_POSITION_ACTIVATION = {
+  activo_general: true, activo_proyecto: true, activo_puntal: true,
+} as const;
+export function positionActivation(item: PositionItem, key: PositionActivationKey): boolean {
+  return item[key] !== false;
 }
 export interface FlatPositionsFile {
   version?: string;
@@ -61,12 +75,20 @@ export function validateFlatPositionsFile(value: unknown): FlatPositionsFile {
     throw new Error("El archivo debe contener una lista items válida.");
   }
   if (obj.items.length > 40_000) throw new Error("Máximo de 40.000 piezas.");
+  const normalizedItems: PositionItem[] = [];
   for (const [i,item] of obj.items.entries()) {
     if (!item || typeof item !== "object" || Array.isArray(item))
       throw new Error("Fila " + (i+1) + ": debe ser un objeto.");
     const row = item as unknown as Record<string, unknown>;
-    if (Object.keys(row).some(key => !["posicion","codigo","familias"].includes(key))) {
-      throw new Error("Fila " + (i+1) + ": cada pieza solo tiene posición, código y familias.");
+    if (Object.keys(row).some(key =>
+      !["posicion","codigo","familias",...POSITION_ACTIVATION_KEYS].includes(key))) {
+      throw new Error("Fila " + (i+1) +
+        ": campos permitidos: posición, código, familias y tres activos.");
+    }
+    for (const key of POSITION_ACTIVATION_KEYS) {
+      if (row[key] !== undefined && typeof row[key] !== "boolean") {
+        throw new Error("Fila " + (i+1) + ": " + key + " debe ser true o false.");
+      }
     }
     readPositionRange(row.posicion as PositionItem["posicion"]);
     if (typeof row.codigo !== "string" || !row.codigo.trim() || row.codigo.length > 256)
@@ -77,6 +99,14 @@ export function validateFlatPositionsFile(value: unknown): FlatPositionsFile {
     }
     if (new Set((row.familias as string[]).map(f=>f.trim().toLocaleLowerCase())).size
       !== row.familias.length) throw new Error("Fila " + (i+1) + ": familias repetidas.");
+    normalizedItems.push({
+      posicion: row.posicion as PositionItem["posicion"],
+      codigo: row.codigo as string,
+      familias: [...row.familias as string[]],
+      activo_general: row.activo_general === undefined ? true : row.activo_general as boolean,
+      activo_proyecto: row.activo_proyecto === undefined ? true : row.activo_proyecto as boolean,
+      activo_puntal: row.activo_puntal === undefined ? true : row.activo_puntal as boolean,
+    });
   }
   if (obj.version !== undefined &&
     (typeof obj.version !== "string" || !/^\d+\.\d+\.\d+$/.test(obj.version)))
@@ -86,7 +116,7 @@ export function validateFlatPositionsFile(value: unknown): FlatPositionsFile {
       throw new Error(key + " debe ser texto.");
   }
   const { schemaVersion: _legacySchemaVersion, ...withoutSchema } = obj;
-  return withoutSchema as unknown as FlatPositionsFile;
+  return { ...withoutSchema, items: normalizedItems } as FlatPositionsFile;
 }
 export function readPositionsDocument(text: string): PositionsDocument {
   if (new TextEncoder().encode(text).byteLength > MAX_POSITIONS_BYTES)
@@ -124,7 +154,7 @@ export function markFlatPositionsModified(file: FlatPositionsFile, date = new Da
   };
 }
 export function cloneFlat(file: FlatPositionsFile): FlatPositionsFile {
-  return { ...file, items: file.items.map(item => ({ ...item, familias: [...item.familias] })) };
+  return validateFlatPositionsFile(file);
 }
 export function overlapIndices(file: FlatPositionsFile, index: number): number[] {
   const row = file.items[index];
@@ -180,7 +210,8 @@ export function insertGlobalSlotFlat(file: FlatPositionsFile, slot: number,
     if (from >= slot) return [remapPiece(row,from+1,to+1)];
     return [remapPiece(row,from,slot-1),remapPiece(row,slot+1,to+1)];
   });
-  next.items.push({ posicion:slot, codigo:item.codigo, familias:[...item.familias] });
+  next.items.push({ posicion:slot, codigo:item.codigo, familias:[...item.familias],
+    ...DEFAULT_POSITION_ACTIVATION });
   return validateFlatPositionsFile(next);
 }
 /** Relocate one contiguous global block, splitting affected ranges without losing memberships. */
@@ -235,8 +266,8 @@ export function duplicateFlatItem(file: FlatPositionsFile,index:number):FlatPosi
   const last=Math.max(-1,...file.items.map(row=>readPositionRange(row.posicion).to));
   const target=last+1;
   if(target+to-from>LIMIT)throw new Error("No hay espacio para duplicar ese rango.");
-  return insertFlatItem(file,{posicion:formatPositionRange(target,target+to-from),
-    codigo:original.codigo,familias:[...original.familias]},index+1);
+  return insertFlatItem(file,{...original,posicion:formatPositionRange(target,target+to-from),
+    familias:[...original.familias]},index+1);
 }
 /** Split an inclusive range into two rows, keeping code and all chosen families. */
 export function splitFlatRange(file:FlatPositionsFile,index:number,point:number):FlatPositionsFile {
@@ -255,8 +286,10 @@ export function combineFlatRanges(file:FlatPositionsFile,index:number):FlatPosit
   if(!original)throw new Error("Fila inexistente.");
   const a=readPositionRange(original.posicion);
   const eq=(row:PositionItem)=>
-    row.codigo===original.codigo && JSON.stringify([...row.familias].sort())===
-      JSON.stringify([...original.familias].sort());
+    row.codigo===original.codigo
+    && JSON.stringify([...row.familias].sort())===
+      JSON.stringify([...original.familias].sort())
+    && POSITION_ACTIVATION_KEYS.every(key=>positionActivation(row,key)===positionActivation(original,key));
   const otherIndex=file.items.findIndex((row,i)=>{
     if(i===index||!eq(row))return false;
     const b=readPositionRange(row.posicion);
@@ -287,7 +320,7 @@ export function migrateLegacyPositions(legacy: PositionsFile): FlatPositionsFile
         let item=rows.get(key);
         if(!item){
           item={posicion:formatPositionRange(pos.from,pos.to),
-            codigo:component.code.trim(),familias:[]};
+            codigo:component.code.trim(),familias:[],...DEFAULT_POSITION_ACTIVATION};
           rows.set(key,item);
         }
         if(!item.familias.some(f=>f.toLocaleLowerCase()===family.family.toLocaleLowerCase()))
