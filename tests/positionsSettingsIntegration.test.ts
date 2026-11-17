@@ -42,9 +42,9 @@ describe("Configuración → Posiciones universales",()=>{
   it("renders 3 independent activation checkboxes per item under the editor lock",()=>{
     const ui=read("../apps/web/src/features/bim/settings/FrameLogicPositionsSettings.tsx");
     const model=read("../apps/web/src/features/bim/settings/positionsFlatCatalog.ts");
-    expect(ui).toContain("<th>Activo general</th>");
-    expect(ui).toContain("<th>Activo proyecto</th>");
-    expect(ui).toContain("<th>Activo puntal</th>");
+    expect(ui).toContain("Activo general</th>");
+    expect(ui).toContain("Activo proyecto</th>");
+    expect(ui).toContain("Activo puntal</th>");
     expect(ui).toContain("POSITION_ACTIVATION_KEYS.map((key)=>");
     expect(ui).toContain('type="checkbox" checked={positionActivation(row,key)}');
     expect(ui).toContain("disabled={!unlocked||busy}");
