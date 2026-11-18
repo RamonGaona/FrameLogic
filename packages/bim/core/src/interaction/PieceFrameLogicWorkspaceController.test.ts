@@ -1,7 +1,24 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { PieceFrameLogicWorkspaceController } from "./PieceFrameLogicWorkspaceController";
+import { readFileSync } from "node:fs";
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("isolated piece POINT creation entrypoint", () => {
+  it("shows a create-point action distinct from converting an existing point to SNAP", () => {
+    const source = readFileSync(new URL("./PieceFrameLogicWorkspaceController.ts", import.meta.url), "utf8");
+    const wiring = readFileSync(new URL("../engine/createFrameLogicBimCorePrecision.ts", import.meta.url), "utf8");
+    expect(source).toContain('"Crear punto (P)"');
+    expect(source).toContain('"Punto → SNAP"');
+    expect(source).toContain("const started = this.actions.startPoint()");
+    expect(source).toContain("readonly startPoint: () => boolean");
+    expect(wiring).toContain("startPoint: () => core.startPointCommand()");
+  });
+  it("reserves typed PUNTO before the earlier TRIM capture shortcut", () => {
+    const source = readFileSync(new URL("./CadTrimController.ts", import.meta.url), "utf8");
+    expect(source).toContain("__frameLogicTextCommandInputActive?.()");
+  });
+});
 
 describe("piece editor preparation lifecycle", () => {
   it("returns the docked preparation panel to document.body before removing workspace", () => {
