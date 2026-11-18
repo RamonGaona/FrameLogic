@@ -2,6 +2,7 @@ import { mountClashDetectionPanel } from "./mountClashDetectionPanel";
 import { mountAutomationPanel } from "./mountAutomationPanel";
 import { mountLocalChatPanel } from "./mountLocalChatPanel";
 import { FrameLogicSettingsWindow } from "./settings/FrameLogicSettingsWindow";
+import { LineFillDemoTool } from "./LineFillDemoTool";
 import { connectAutomationBridge } from "@framelogic/bim-core";
 import { loadPieceVisualPackage, type LoadedPieceVisualPackage } from "@framelogic/bim-core";
 import {
@@ -1936,6 +1937,8 @@ export function BimViewport() {
         >
           LINE
         </button>
+
+        <LineFillDemoTool coreRef={bimCoreRef} onInstancesChanged={refreshPieces}/>
 
         <button
           type="button"
