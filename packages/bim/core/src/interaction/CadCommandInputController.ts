@@ -510,15 +510,17 @@ export class CadCommandInputController {
         "COPY / COPYBASE · Enter · punto base y destino (C es CÍRCULO)";
       return;
     }
-    if (normalized === "E" || "PEDIT".startsWith(normalized)
+    // P is the exact POINT alias. Check it before PEDIT's prefix matching:
+    // "PEDIT".startsWith("P") must never shadow P / PUNTO.
+    if (normalized === "P" || normalized === "PU" || normalized === "PUN"
+      || "POINT".startsWith(normalized) || "PUNTO".startsWith(normalized)) {
+      this.suggestionElement.textContent = "P / PUNTO · Enter para ejecutar";
+      return;
+    }
+    if (normalized === "E" || normalized.startsWith("PE")
       || "EDITARPOLILINEA".startsWith(normalized)) {
       this.suggestionElement.textContent =
         "E / PEDIT · Enter inicia · primera opción Mover vértice preseleccionada";
-      return;
-    }
-    if (normalized === "P" || "POINT".startsWith(normalized)
-      || "PUNTO".startsWith(normalized)) {
-      this.suggestionElement.textContent = "P / PUNTO · Enter para ejecutar";
       return;
     }
     if (normalized === "T" || "TRIM".startsWith(normalized)
