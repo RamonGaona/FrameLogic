@@ -15,3 +15,20 @@ export interface FrameLogicViewportPort {
   readonly renderer: THREE.WebGLRenderer;
   readonly canvas: HTMLCanvasElement;
 }
+
+/**
+ * Wrap native Three.js handles without cloning or owning their lifecycle.
+ * The caller is responsible for attaching and disposing of the renderer.
+ */
+export function exposeFrameLogicViewport(
+  scene: THREE.Scene,
+  camera: THREE.Camera,
+  renderer: THREE.WebGLRenderer,
+): FrameLogicViewportPort {
+  return {
+    scene,
+    camera,
+    renderer,
+    canvas: renderer.domElement,
+  };
+}
