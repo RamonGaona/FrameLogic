@@ -4,14 +4,24 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ## Convención de mantenimiento
 
-- Cada versión funcional nueva debe añadir su entrada aquí antes de considerarse cerrada.
+- Cada cambio integrado en FrameLogic debe actualizar la versión, el archivo de bloqueo y registrar su nota en este changelog, incluidos cambios técnicos y documentales.
 - Fuente de versión única: `package.json` raíz. `package-lock.json` (raíz y `packages[""]`) y la entrada más reciente del changelog deben coincidir; la validación existente de versión comprueba los tres.
-- Incrementar `patch` para cada corrección funcional durante `0.1.x`; documentación aislada no cambia la versión. Indicar versión también en el PR.
+- Incrementar `patch` en cada PR o cambio integrado durante `0.1.x`, sin excepciones para documentación o mantenimiento. Usar `npm run version:patch -- "Descripción del cambio"` y reflejar la versión en el PR.
 - Distinguir implementación y pruebas automatizadas de comprobaciones reales de navegador, fusión y despliegue: no declarar estas últimas sin evidencia.
 - Las entradas se ordenan de la más reciente a la más antigua.
 - Se documentan funciones nuevas, cambios de comportamiento, correcciones importantes y cambios técnicos que afecten el uso o la arquitectura.
-- Los cambios únicamente de documentación no incrementan por sí solos la versión visible de FrameLogic.
+- Los cambios únicamente de documentación también generan una nueva versión visible, según la política actual.
 - Las herramientas o diagnósticos temporales deben indicarse expresamente como temporales para poder retirarlos después.
+
+---
+
+## v0.1.184 — 2026-11-18 (visor STEP y versionado obligatorio por cambio)
+
+- **Visor:** se registra la fase 1 de migración progresiva del visor a Three.js del PR #113 ya integrado en `main`: `FrameLogicViewportPort` desacopla los manejadores Three.js y `ThatOpenViewportAdapter` encapsula la creación de mundos, cámaras y renderizadores de That Open. Se conserva el backend actual, así como IFC/Fragments y la compatibilidad con STEP/OCCT, gizmos y snaps.
+- **Versión visible:** el indicador de FrameLogic y los metadatos de compilación pasan a `v0.1.184` desde `package.json`, con ambas versiones raíz de `package-lock.json` sincronizadas.
+- **Versionado recurrente:** nuevo comando `npm run version:patch -- "Descripción del cambio"` para incrementar la versión y generar una nueva entrada del changelog en cada cambio posterior.
+- **Control de CI:** GitHub Actions verifica en cada PR y actualización de `main` que la versión haya aumentado respecto a la base y que el changelog y el archivo de bloqueo correspondan. La prueba de badge existente se mantiene.
+- **Alcance:** no se ha sustituido todavía el renderer por uno Three.js nativo; no se afirma mejora de rendimiento ni validación visual del nuevo backend.
 
 ---
 
