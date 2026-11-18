@@ -34,10 +34,16 @@ export interface FrameLogicCameraDriver {
 }
 
 export class FrameLogicCameraController {
+  private readonly cameraProvider: () => THREE.Camera;
+  private readonly driver: FrameLogicCameraDriver;
+
   constructor(
-    private readonly cameraProvider: () => THREE.Camera,
-    private readonly driver: FrameLogicCameraDriver,
-  ) {}
+    cameraProvider: () => THREE.Camera,
+    driver: FrameLogicCameraDriver,
+  ) {
+    this.cameraProvider = cameraProvider;
+    this.driver = driver;
+  }
 
   /** Always read the active camera: avoid stale orthographic/perspective refs. */
   get camera(): THREE.Camera {
