@@ -94,9 +94,9 @@ export async function createBimCore(
   const cadPolylineGrips =
     new CadPolylineGripController({
       domElement:
-        renderer.three.domElement,
+        core.viewport.canvas,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       designModel:
         core.designModel,
       lineScene:
