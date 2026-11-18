@@ -17,6 +17,10 @@ function fixture(withRealDefinition: boolean) {
       xAxis:{x:1,y:0,z:0},
     },
   };
+  const prototype=new THREE.Group();
+  const beam=new THREE.Mesh(new THREE.BoxGeometry(6000,100,100));
+  beam.position.x=3000; // physical start at X=0; saved origin is X=100
+  prototype.add(beam);
   const recordOperation=vi.fn();
   const sync=vi.fn();
   const core={
@@ -42,7 +46,7 @@ function fixture(withRealDefinition: boolean) {
       },
     },
     designScene:{
-      getAssetPrototype:()=>withRealDefinition?new THREE.Group():null,
+      getAssetPrototype:()=>withRealDefinition?prototype:null,
       sync,
     },
     cadHistory:{recordOperation},
@@ -64,7 +68,7 @@ describe("sequential demo placement",()=>{
     const placed=insertLinePositionDemo(core,plan,{x:9000,y:500,z:0});
     expect(placed.realPieces).toBe(1);
     expect(placed.temporaryReferences).toBe(1);
-    expect(registered[0]?.transform.position).toEqual({x:-100,y:500,z:0});
+    expect(registered[0]?.transform.position).toEqual({x:0,y:500,z:0});
     expect(registered[0]?.tags).toContain("LINE_POSITION_DEMO");
     expect(recordOperation).toHaveBeenCalledOnce();
     const [,undo,redo]=recordOperation.mock.calls[0] as [string,()=>void,()=>void];
