@@ -418,7 +418,7 @@ async function setCardinalDirection(
   // RENDERER
   // ==========================================================
 
-  attachFrameLogicViewportRenderer(
+  const viewportRenderer = attachFrameLogicViewportRenderer(
     components,
     world,
     container,
@@ -426,10 +426,10 @@ async function setCardinalDirection(
 
 
   const canvas =
-    world.renderer.three.domElement;
+    viewportRenderer.three.domElement;
 
 
-  world.renderer.three.setPixelRatio(
+  viewportRenderer.three.setPixelRatio(
     Math.min(
       window.devicePixelRatio,
       2,
