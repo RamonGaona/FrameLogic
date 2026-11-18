@@ -124,8 +124,7 @@ export async function createBimCore(
       setCameraEnabled: (
         enabled,
       ) => {
-        core.world.camera.controls.enabled =
-          enabled;
+        core.cameraNavigation.setEnabled(enabled);
       },
       clearGeometryQueryCache: () =>
         core.geometryQuery.clearCache(),
