@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import type { PrecisionBimCoreInstance } from "@framelogic/bim-core";
 import type { LineFillPlan } from "./linePositionFillPlanner";
+import {
+  detectPieceLongAxis, pieceTransformOnLine,
+  type PieceLongAxis,
+} from "./linePieceGeometryOrientation";
 
 export interface LineFillInsertionResult {
   readonly realPieces: number;
@@ -70,6 +74,7 @@ export function insertLinePositionDemo(
       }
     }
   }
+  const axisByDefinition = new Map<string,PieceLongAxis>();
   const helperGroup = new THREE.Group();
   helperGroup.name = "Inserción de posiciones: referencias no guardables (DEMO)";
   const created = [];
@@ -90,29 +95,22 @@ export function insertLinePositionDemo(
         temporaryReferences++;
         continue;
       }
-      const source = new THREE.Vector3(
-        definition.coordinateSystem.xAxis.x,
-        definition.coordinateSystem.xAxis.y,
-        definition.coordinateSystem.xAxis.z,
-      ).normalize();
-      if (source.lengthSq() <= 1e-12) {
-        throw new Error("La pieza " + segment.code + " tiene un eje X local inválido.");
+      // CoordinateSystem.xAxis is an editable engineering axis, not necessarily
+      // the extrusion direction in native STEP geometry. Use the real geometric
+      // long axis (often Y/Z for older pieces) to avoid 90° rotated inserts.
+      let axis = axisByDefinition.get(definition.id);
+      if (!axis) {
+        axis=detectPieceLongAxis(
+          prototype,definition.coordinateSystem,definition.referenceGeometry);
+        axisByDefinition.set(definition.id,axis);
       }
-      const rotation = new THREE.Quaternion().setFromUnitVectors(source, target);
-      const origin = new THREE.Vector3(
-        definition.coordinateSystem.origin.x,
-        definition.coordinateSystem.origin.y,
-        definition.coordinateSystem.origin.z,
-      ).applyQuaternion(rotation);
-      const translation = anchor.sub(origin);
-      const euler = new THREE.Euler().setFromQuaternion(rotation, "XYZ");
+      const transform=pieceTransformOnLine(
+        definition.coordinateSystem,axis,anchor,target,
+      );
       const instance = core.designModel.registerPieceInstance({
         definitionId: definition.id,
         name: "Demo " + segment.code,
-        transform: {
-          position: { x: translation.x, y: translation.y, z: translation.z },
-          rotation: { x: euler.x, y: euler.y, z: euler.z },
-        },
+        transform,
         tags: ["LINE_POSITION_DEMO", "position:" + segment.position],
       });
       created.push(instance);
