@@ -223,7 +223,7 @@ export function BimViewport() {
       "PERSPECTIVE"
       | "ORTHOGRAPHIC"
     >(
-      "PERSPECTIVE",
+      "ORTHOGRAPHIC",
     );
 
   const [loadingReference, setLoadingReference] =

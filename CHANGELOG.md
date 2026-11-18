@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.187 — 2026-11-18 (corrección: mantener ortográfica, bloquear perspectiva)
+
+- **Corrección de la mitigación anterior:** el usuario confirmó que la cámara **ORTOGRÁFICA funciona**, mientras que **PERSPECTIVA** ocasiona una deformación grave de los ensamblajes STEP. Se invierte la restricción introducida en v0.1.186.
+- **Model Space:** arranca en ortográfica y bloquea la activación de perspectiva mediante `toggleCameraProjection()`, incluso si se invoca desde atajos o código heredado. La activación de ortográfica desde una sesión heredada en perspectiva sigue permitida.
+- **Carga y restauración:** al importar IFC se conserva ortográfica. Los proyectos `.flproject` guardados con perspectiva recuperan la posición y orientación en ortográfica; no se reutiliza el valor de zoom ortográfico potencialmente obsoleto guardado junto a una instantánea en perspectiva.
+- **Interfaz:** el selector O/P permanece oculto temporalmente; se mantienen las orientaciones TOP, BOTTOM, FRONT, BACK, LEFT, RIGHT e ISO. Los editores de piezas indican inicialmente el modo ortográfico.
+- **Planos y fabricación:** no se modifica Paper Space, el motor de proyecciones ortográficas, los cortes ni los PDF.
+- **Pruebas y trazabilidad:** sustitución de las pruebas erróneas de perspectiva por comprobaciones de ortográfica, sincronización de `package.json` / `package-lock.json` y changelog; queda pendiente investigar la causa real de la deformación de perspectiva.
+
+---
+
 ## v0.1.186 — 2026-11-18 (deshabilitar ortográfica temporalmente en Model Space)
 
 - **Protección del visor 3D:** se deshabilita temporalmente la proyección ortográfica de Model Space tras detectar una distorsión extrema de las mallas de un ensamblaje STEP al activarla en v0.1.185. No se atribuye todavía una causa definitiva a Three.js ni a That Open; esta medida evita activar el modo afectado hasta investigar el defecto.
