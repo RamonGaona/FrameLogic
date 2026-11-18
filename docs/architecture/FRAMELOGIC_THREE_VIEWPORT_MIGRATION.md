@@ -56,9 +56,22 @@ Manual browser tests of v0.1.185 are still required.
    input and camera Z-up behavior unchanged.
 4. Keep drawing/PDF camera state isolated from Model Space.
 
-## Temporary orthographic safety restriction (v0.1.186)
+## Superseded mitigation: perspective-only (v0.1.186, incorrect)
 
-Until the source of a severe STEP assembly visual corruption in Model Space orthographic projection is resolved, **3D Model Space uses perspective only**. Do not remove the native `THREE.OrthographicCamera` used separately for Paper Space, drawings, dimensions and PDF export. ViewCube face orientations (TOP/FRONT/BACK/RIGHT/LEFT/BOTTOM/ISO) remain available as perspective views. Older project camera snapshots are restored in perspective. The O/P button is temporarily unavailable in 3D editors; no performance gain is claimed. Re-enable only after an interactive WebGL regression with the originally affected assembly.
+This section records the now-reversed v0.1.186 assumption. The user clarified that perspective is the failing mode, and orthographic works. The effective restriction is v0.1.187, described below. Do not reintroduce the incorrect perspective-only behavior.
+
+## Temporary Model Space camera restriction (v0.1.187 correction)
+
+**The safe camera is ORTHOGRAPHIC. The broken camera is PERSPECTIVE.**
+The earlier v0.1.186 perspective-only restriction was based on a reversed
+interpretation of the user's screenshot; it is superseded by v0.1.187.
+Model Space initializes in orthographic, hides its O/P projection toggle,
+and guards the public toggle API against activating perspective.
+Saved perspective camera states load in orthographic without reapplying
+possibly stale orthographic zoom from those perspective snapshots.
+The separate drawing and PDF orthographic projection engine is unchanged.
+Keep this as a temporary mitigation pending investigation of the original
+perspective rendering issue with the real STEP assembly.
 
 ## Phase 3 — native Three.js backend
 
