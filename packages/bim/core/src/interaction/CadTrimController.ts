@@ -223,6 +223,15 @@ export class CadTrimController {
       return;
     }
 
+    // TRIM's capture listener is registered before the floating command HUD.
+    // Do not steal the T from a buffered command such as PUNTO or PEDIT.
+    if ((window as Window & {
+      __frameLogicTextCommandInputActive?: () => boolean;
+    }).__frameLogicTextCommandInputActive?.()) {
+      this.lastTAt = Number.NEGATIVE_INFINITY;
+      return;
+    }
+
     if (event.key === "Escape" && this.active) {
       event.preventDefault();
       event.stopImmediatePropagation();
