@@ -1,0 +1,33 @@
+name: Release version policy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with base history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+
+      - name: Enforce version bump and changelog for each change
+        env:
+          RELEASE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+        run: node scripts/ci/verify-release-version.mjs
+
+      - name: Version policy regression tests
+        run: node --test scripts/ci/verify-release-version.test.mjs
