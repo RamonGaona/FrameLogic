@@ -22,13 +22,14 @@ export function compareVersions(a, b) {
 export function verifyReleaseFiles(pkgText, lockText, changelogText) {
   const pkg = JSON.parse(pkgText);
   const lock = JSON.parse(lockText);
-  const latest = changelogText.match(/^## v(\d+\.\d+\.\d+)\s+—[^\n]*\n([\s\S]*?)(?=\n---\n|$)/m);
+  const latest = changelogText.match(/^## v(\d+\.\d+\.\d+)\s+—[^\n]*\n/m);
   compareVersions(pkg.version, "0.0.0");
   if (pkg.version !== lock.version || pkg.version !== lock.packages?.[""]?.version) {
     throw new Error("package.json and both root package-lock.json versions must match");
   }
   if (latest?.[1] !== pkg.version) throw new Error("Latest CHANGELOG.md heading must match package.json version");
-  if (!/^- \S.+/m.test(latest[2])) throw new Error("Latest CHANGELOG.md release must describe at least one change");
+  const releaseBody = changelogText.slice(latest.index + latest[0].length).split(/\r?\n---\r?\n/)[0];
+  if (!/^- \S.+/m.test(releaseBody)) throw new Error("Latest CHANGELOG.md release must describe at least one change");
   return pkg.version;
 }
 
