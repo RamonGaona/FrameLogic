@@ -33,10 +33,12 @@ export function attachFrameLogicViewportRenderer(
   components: OBC.Components,
   world: FrameLogicViewportWorld,
   container: HTMLElement,
-): void {
-  world.renderer = new OBC.SimpleRenderer(components, container);
+) {
+  const renderer = new OBC.SimpleRenderer(components, container);
   // The optional logo can be hidden; preserve MIT notices in distributed code.
-  world.renderer.showLogo = false;
+  renderer.showLogo = false;
+  world.renderer = renderer;
+  return renderer;
 }
 
 export function attachFrameLogicViewportCamera(
@@ -53,9 +55,13 @@ export function attachFrameLogicViewportCamera(
 export function getFrameLogicViewportPort(
   world: FrameLogicViewportWorld,
 ): FrameLogicViewportPort {
+  const renderer = world.renderer;
+  if (!renderer) {
+    throw new Error("FrameLogic viewport renderer is not initialized.");
+  }
   return exposeFrameLogicViewport(
     world.scene.three,
     world.camera.three,
-    world.renderer.three,
+    renderer.three,
   );
 }
