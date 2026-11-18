@@ -64,3 +64,44 @@ describe("typed E / PEDIT routes to the polyline edit choice menu", () => {
     expect(alert).not.toHaveBeenCalled();
   });
 });
+
+
+describe("typed P / PU / PUN / PUNTO / POINT starts native CAD points", () => {
+  it.each(["P", "PU", "PUN", "PUNTO", "POINT"])("executes %s on Enter without starting TRIM", (command) => {
+    const startPoint = vi.fn(() => true);
+    const startTrim = vi.fn(() => true);
+    const alert = vi.fn();
+    vi.stubGlobal("window", {
+      __frameLogicStartPointTextCommand: startPoint,
+      __frameLogicStartTrimTextCommand: startTrim,
+      alert,
+    });
+    const hide = vi.fn();
+    const input = Object.assign(
+      Object.create(CadCommandInputController.prototype) as object,
+      {command, hide},
+    ) as unknown as {execute():void};
+    input.execute();
+    expect(startPoint).toHaveBeenCalledOnce();
+    expect(startTrim).not.toHaveBeenCalled();
+    expect(hide).toHaveBeenCalledOnce();
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it("ignores unrecognized partial commands until they can be completed", () => {
+    const startPoint = vi.fn(() => true);
+    vi.stubGlobal("window", {
+      __frameLogicStartPointTextCommand: startPoint,
+      alert: vi.fn(),
+    });
+    const input = Object.assign(
+      Object.create(CadCommandInputController.prototype) as object,
+      {
+        command: "PUN",
+        hide: vi.fn(),
+      },
+    ) as unknown as {execute():void};
+    input.execute();
+    expect(startPoint).toHaveBeenCalledOnce();
+  });
+});
