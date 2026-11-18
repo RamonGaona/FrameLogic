@@ -125,7 +125,7 @@ export async function createBimCore(
   orthoCamera.updateProjectionMatrix();
 
   if (
-    core.world.camera.three
+    core.viewport.camera
     === orthoCamera
   ) {
     await cameraControls.zoomTo(
@@ -222,11 +222,11 @@ export async function createBimCore(
     renderer
       ? new CadLineTemporaryDimensionController({
           domElement:
-            renderer.three.domElement,
+            core.viewport.canvas,
           scene:
-            core.world.scene.three,
+            core.viewport.scene,
           cameraProvider: () =>
-            core.world.camera.three,
+            core.viewport.camera,
           designModel:
             core.designModel,
           lineSelection:
@@ -251,7 +251,7 @@ export async function createBimCore(
     renderer
       ? new CadCommandInputController({
           domElement:
-            renderer.three.domElement,
+            core.viewport.canvas,
           hasActiveCommand: () =>
             core.cadCommandManager.hasActiveCommand,
           startLine: () =>
@@ -277,7 +277,7 @@ export async function createBimCore(
       projectPackage:
         core.projectPackage,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       orthoCameraProvider: () =>
         core.world.camera.threeOrtho,
       controls:
