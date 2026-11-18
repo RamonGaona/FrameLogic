@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.185 — 2026-11-18 (fase 2 de desacoplamiento del visor Three.js)
+
+- **Resultados de la fase 1:** el usuario comprobó satisfactoriamente en `v0.1.184` la importación de STEP e IFC, navegación, vistas, gizmos, snaps y apertura de un ensamblaje grande. Son pruebas manuales funcionales, no mediciones comparativas de rendimiento.
+- **Puerto visual nativo:** se publica `core.viewport` con acceso a escena, cámara, renderer y canvas de Three.js, sin sustituir todavía el backend That Open ni la API heredada `core.world`.
+- **Cámaras dinámicas:** el puerto utiliza proveedores activos, de modo que las consultas a `core.viewport.camera` recuperan la cámara vigente tras alternar entre perspectiva y ortográfica; también recupera canvas y renderer activos.
+- **Herramientas CAD desacopladas:** controladores de precisión y snaps, selección, círculos, grips de polilíneas, copia, estiramiento, edición CAD, dibujo y navegación utilizan `core.viewport` para escena/cámara/canvas. Se mantienen controles específicos de navegación y la integración IFC/Fragments durante la transición.
+- **Regresiones:** pruebas de cambio de cámara y handles dinámicos; protección de la API de viewport y referencias de consumidores, además de las pruebas existentes de navegación y geometría.
+- **Pendiente:** continuar la separación de controles de navegación y del ciclo de vida del renderer, añadir el backend Three.js nativo opt-in y medir FPS/RAM con los mismos modelos STEP; no se afirma una mejora de rendimiento.
+  
+---
+
 ## v0.1.184 — 2026-11-18 (visor STEP y versionado obligatorio por cambio)
 
 - **Visor:** se registra la fase 1 de migración progresiva del visor a Three.js del PR #113 ya integrado en `main`: `FrameLogicViewportPort` desacopla los manejadores Three.js y `ThatOpenViewportAdapter` encapsula la creación de mundos, cámaras y renderizadores de That Open. Se conserva el backend actual, así como IFC/Fragments y la compatibilidad con STEP/OCCT, gizmos y snaps.
