@@ -15,6 +15,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.181 — 2026-11-17 (demo de inserción secuencial a lo largo de una línea)
+
+- **Comando P:** corregida la sugerencia del HUD de comandos: `P` ahora anuncia **P / PUNTO** en vez de **PEDIT**. `PE` y `PEDIT` siguen mostrando el editor de polilíneas; conserva el fix de TRIM al escribir PUNTO.
+- **Model Space → Piezas → Insertar (demo):** comando experimental que solicita `POSITIONS.json` y `DBFrameLogic.json` (recupera acceso local ya autorizado; si no, el usuario selecciona los dos JSON en el explorador). No hay escrituras automáticas ni acceso a archivos sin permiso.
+- Tras **Insertar**, se selecciona una **línea CAD individual**. Se ordenan los ítems activos de POSITIONS por posición ascendente, se buscan en DB por `codigo` y se utilizan sus campos `longitud` (incluidos campos anidados). Un selector permite aplicar activación General/Proyecto/Puntal. Los intervalos de posiciones son una sola entrada.
+- Se repite la secuencia en la dirección de inicio a fin de la línea hasta que el siguiente ítem no quepa; no se cortan piezas, no se estiran, no se altera el orden ni se supera la longitud disponible. Se solicita confirmación de la cantidad, uso y tramo restante antes de insertar; se limita a 250 instancias.
+- **Pieza cargada con geometría real:** crea una `PieceInstance` reutilizando la definición existente, orientando su eje X local hacia la línea y respetando el origen FrameLogic del asset; un único historial Undo/Redo agrupa las instancias nuevas.
+- **Código sin geometría cargada:** para esta demostración se muestra una referencia 3D naranja **TEMPORAL**, basada solo en la longitud del DB. No registra definiciones ni modelos falsos; los segmentos provisionales no se guardan en proyectos ni deben usarse como geometría de fabricación. Para crear piezas definitivas es necesario tener sus assets importados.
+- **Seguridad y validación:** si falta longitud/código o hay longitudes contradictorias, la inserción se cancela sin modificaciones. Línea de longitud cero, inserción fuera del editor aislado, Escape para cancelar y aviso de restos o límite de seguridad.
+- Pruebas del planificador, orientación y Undo/Redo, archivos y permisos, casillas activas, cambios de la sugerencia P.
+
+---
+
 ## v0.1.180 — 2026-11-17 (POINT en editor aislado, P/PUNTO y teclado TRIM)
 
 - **Preparación geométrica de una pieza:** se incorpora el botón **Crear punto (P)**, independiente de **Punto → SNAP**, que solo convierte puntos CAD seleccionados. El botón activa el comando nativo POINT con la capa de preparación desbloqueada. Los puntos creados pueden convertirse después en SNAP persistentes.
