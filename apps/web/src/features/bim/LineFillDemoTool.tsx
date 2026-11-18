@@ -73,6 +73,8 @@ export interface LineFillDemoToolProps {
 export function LineFillDemoTool({ coreRef, onInstancesChanged }: LineFillDemoToolProps) {
   const filesInput = useRef<HTMLInputElement>(null);
   const cleanupReferences = useRef<(() => void) | null>(null);
+  const onChangedRef = useRef(onInstancesChanged);
+  onChangedRef.current = onInstancesChanged;
   const [catalogs, setCatalogs] = useState<DemoCatalogs | null>(null);
   const [loading, setLoading] = useState(false);
   const [armed, setArmed] = useState(false);
@@ -181,7 +183,7 @@ export function LineFillDemoTool({ coreRef, onInstancesChanged }: LineFillDemoTo
           const placed = insertLinePositionDemo(core, plan, line.end);
           cleanupReferences.current?.();
           cleanupReferences.current = placed.clearTemporaryReferences;
-          onInstancesChanged();
+          onChangedRef.current();
           setStatus(
             "Insertadas " + placed.realPieces + " piezas reales; " +
             placed.temporaryReferences + " referencias visuales temporales (no se guardan). " +
@@ -206,7 +208,7 @@ export function LineFillDemoTool({ coreRef, onInstancesChanged }: LineFillDemoTo
       unsubscribe();
       window.removeEventListener("keydown", onEscape);
     };
-  }, [armed, catalogs, scope, coreRef, onInstancesChanged]);
+  }, [armed, catalogs, scope, coreRef]);
 
   return <div data-framelogic-line-position-demo="true" style={{
     display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap",
