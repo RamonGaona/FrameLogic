@@ -3,6 +3,9 @@ import type { PrecisionBimCoreInstance } from "@framelogic/bim-core";
 import type { LineFillPlan } from "./linePositionFillPlanner";
 import { ensureLineFLPieceDefinitions } from "./lineFLPieceAutoLoader";
 
+vi.mock("@framelogic/bim-core",()=>({
+  loadPieceVisualPackage:vi.fn(),
+}));
 vi.mock("./step/OcctStepGeometryAdapter",()=>({
   OcctStepGeometryAdapter:class {
     load=vi.fn(async()=>({dummy:"STEP geometry loaded"}));
