@@ -18,6 +18,8 @@ export interface PieceFrameLogicWorkspaceActions {
   ) => void;
   readonly stopPreparation: () => void;
   readonly startOriginSnap: () => void;
+  /** Creates a CAD POINT in the active piece-preparation layer. */
+  readonly startPoint: () => boolean;
   readonly addSnapsFromSelection: () => number;
   readonly addAxesFromSelection: () => number;
   readonly startCadLineMove?: () => boolean;
@@ -702,6 +704,20 @@ export class PieceFrameLogicWorkspaceController {
           this.startPreparation();
           this.actions
             .startOriginSnap();
+        },
+      ),
+      this.createButton(
+        "Crear punto (P)",
+        () => {
+          if (!this.startPreparation()) return;
+          try {
+            const started = this.actions.startPoint();
+            this.setStatus(started
+              ? "POINT activo: haz clic sobre un SNAP o en el plano de trabajo para crear un punto CAD. Esc cancela."
+              : "No se pudo iniciar POINT. Comprueba que no haya otra herramienta activa.");
+          } catch (error) {
+            this.setStatus(error instanceof Error ? error.message : String(error));
+          }
         },
       ),
       this.createButton(

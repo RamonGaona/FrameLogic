@@ -294,6 +294,7 @@ export async function createBimCore(
         stopPreparation: () => {
           core.stopPieceDefinitionPreparation();
         },
+        startPoint: () => core.startPointCommand(),
         startOriginSnap: () => {
           const pinned = core.piecePreparation.getPinnedSnapId();
           if (pinned) core.piecePreparation.setOriginFromSnapId(pinned);

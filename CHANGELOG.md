@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.180 — 2026-11-17 (POINT en editor aislado, P/PUNTO y teclado TRIM)
+
+- **Preparación geométrica de una pieza:** se incorpora el botón **Crear punto (P)**, independiente de **Punto → SNAP**, que solo convierte puntos CAD seleccionados. El botón activa el comando nativo POINT con la capa de preparación desbloqueada. Los puntos creados pueden convertirse después en SNAP persistentes.
+- **Entrada textual de comandos junto al cursor:** se aceptan `P`, `PU`, `PUN`, `PUNTO` y `POINT` seguidos de Enter para iniciar la misma herramienta POINT. No se interpreta `PUN` como comando desconocido.
+- **Corrección de interferencia de teclado:** TRIM escuchaba `T` antes de que la entrada de comandos terminara de escribir `PUNTO`. Ahora respeta el buffer de texto CAD activo y conserva su propio atajo cuando no hay entrada textual.
+- **Compatibilidad:** se conservan `Punto → SNAP`, `PEDIT`, `TRIM`, `LINE`, `MOVER`, los SNAPs y el Undo/Redo original. Esc sigue cancelando la herramienta o la entrada de comandos según el contexto.
+- **Pruebas de regresión:** secuencia completa `PUNTO + Enter`, atajos y abreviaturas, restitución de TRIM después de ejecutar, y disponibilidad del botón en el editor aislado.
+
+---
+
 ## v0.1.179 — 2026-11-17 (tres estados activos por cada posición)
 
 - Cada ítem de `POSITIONS.json` admite tres campos booleanos independientes: `activo_general`, `activo_proyecto` y `activo_puntal`. Los tres se crean inicialmente en `true`.

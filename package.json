@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.179",
+  "version": "0.1.180",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -22,7 +22,7 @@
     "test:instance-tree": "vitest run packages/bim/core/src/navigation/ModelSpaceToolbarOrganizerController.test.ts packages/bim/core/src/navigation/findInstanceTreeBody.test.ts packages/bim/core/src/navigation/PieceAppearanceController.test.ts packages/bim/core/src/navigation/FileMenuController.test.ts packages/bim/core/src/project/ProjectFileSaveDialog.test.ts",
     "test:version-badge": "vitest run tests/buildVersionBadge.test.ts",
     "test:assembly-hierarchy": "vitest run packages/domain/src/__test__/AssemblyHierarchy.test.ts packages/bim/core/src/navigation/AssemblyHierarchyHistory.test.ts packages/bim/core/src/navigation/InstanceTreeHierarchy.test.ts",
-    "test:copybase": "vitest run packages/bim/core/src/interaction/AssemblyCopyStructure.test.ts packages/bim/core/src/interaction/PieceMoveCopySessionHierarchy.test.ts packages/bim/core/src/interaction/CadCopyControllerPieces.test.ts packages/bim/core/src/interaction/CadCopyControllerMixed.test.ts packages/bim/core/src/interaction/UnifiedCadCopyTransaction.test.ts packages/bim/core/src/interaction/CadCopyControllerReferences.test.ts packages/bim/core/src/interaction/CadCommandInputCopy.test.ts",
+    "test:copybase": "vitest run packages/bim/core/src/interaction/AssemblyCopyStructure.test.ts packages/bim/core/src/interaction/PieceMoveCopySessionHierarchy.test.ts packages/bim/core/src/interaction/CadCopyControllerPieces.test.ts packages/bim/core/src/interaction/CadCopyControllerMixed.test.ts packages/bim/core/src/interaction/UnifiedCadCopyTransaction.test.ts packages/bim/core/src/interaction/CadCopyControllerReferences.test.ts packages/bim/core/src/interaction/CadCommandInputCopy.test.ts tests/piecePointCommandIntegration.test.ts",
     "test:visibility": "vitest run packages/bim/core/src/navigation/getInstanceGroupIds.test.ts packages/bim/core/src/design/DesignSceneController.test.ts packages/bim/core/src/drawing/SectionInstanceTreeBridgeController.test.ts",
     "test:camera": "vitest run packages/bim/core/src/navigation/CadMouseNavigationController.test.ts packages/bim/core/src/interaction/CadLineCameraNumericInput.test.ts packages/bim/core/src/interaction/CadLineCommandHint.test.ts packages/bim/core/src/interaction/ModelSpaceCameraZoomPolicy.test.ts packages/bim/core/src/interaction/ModelSpaceZoomCursorChoices.test.ts packages/bim/core/src/interaction/ModelSpaceZoomWindowGeometry.test.ts packages/bim/core/src/precision/CadScreenSpatialIndex.test.ts packages/bim/core/src/interaction/CadLineTrajectoryIntersection.test.ts",
     "test:piece-preparation": "vitest run packages/bim/core/src/interaction/assetPositionForPieceSnap.test.ts packages/bim/core/src/design/pickPieceReferenceAtScreen.test.ts packages/bim/core/src/interaction/PieceReferenceManipulationController.test.ts packages/bim/core/src/design/PieceDefinitionHelperSceneController.test.ts packages/bim/core/src/interaction/PieceDefinitionPreparationController.test.ts packages/bim/core/src/interaction/PieceFrameLogicWorkspaceController.test.ts packages/bim/core/src/interaction/finishActiveLineForAxisConversion.test.ts apps/web/src/features/bim/dockPiecePreparationPanel.test.ts",
