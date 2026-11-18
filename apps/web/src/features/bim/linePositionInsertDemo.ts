@@ -49,6 +49,7 @@ export function insertLinePositionDemo(
   core: PrecisionBimCoreInstance,
   plan: LineFillPlan,
   lineEnd: { x: number; y: number; z: number },
+  options: { requireRealGeometry?: boolean } = {},
 ): LineFillInsertionResult {
   const start = new THREE.Vector3(
     plan.segments[0]!.start.x,
@@ -58,6 +59,17 @@ export function insertLinePositionDemo(
   const target = new THREE.Vector3(lineEnd.x, lineEnd.y, lineEnd.z)
     .sub(start).normalize();
   if (target.lengthSq() <= 1e-12) throw new Error("La dirección de la línea es inválida.");
+  if(options.requireRealGeometry){
+    // Check everything before creating anything: never mix real geometry with
+    // invented placeholders when the user requests actual FLPIECE placement.
+    for(const segment of plan.segments){
+      const definition = core.designModel.pieceDefinitions.getAll().find(
+        item=>item.code.trim().toLocaleUpperCase()===segment.code.trim().toLocaleUpperCase());
+      if(!definition || !core.designScene.getAssetPrototype(definition.geometryAssetId)){
+        throw new Error("Falta geometría FLPIECE real para " + segment.code + ".");
+      }
+    }
+  }
   const helperGroup = new THREE.Group();
   helperGroup.name = "Inserción de posiciones: referencias no guardables (DEMO)";
   const created = [];
@@ -66,7 +78,8 @@ export function insertLinePositionDemo(
   try {
     for (const segment of plan.segments) {
       const anchor = new THREE.Vector3(segment.start.x, segment.start.y, segment.start.z);
-      const definition = core.designModel.pieceDefinitions.findByCode(segment.code);
+      const definition = core.designModel.pieceDefinitions.getAll().find(
+        item=>item.code.trim().toLocaleUpperCase()===segment.code.trim().toLocaleUpperCase());
       const prototype = definition
         ? core.designScene.getAssetPrototype(definition.geometryAssetId) : null;
       if (!definition || !prototype) {
