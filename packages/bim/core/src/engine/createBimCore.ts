@@ -4099,13 +4099,12 @@ function getCameraProjectionMode():
 async function toggleCameraProjection():
   Promise<CameraProjectionMode> {
 
-  // Temporary safety gate: Model Space only supports perspective until
-  // the orthographic rendering corruption is corrected. This public
-  // method also protects keyboard shortcuts and legacy callers.
-  // If an older runtime somehow left the camera in orthographic mode,
-  // the existing toggle below is allowed to recover to perspective.
-  if (getCameraProjectionMode() === "PERSPECTIVE") {
-    return "PERSPECTIVE";
+  // Temporary safety gate: the PERSPECTIVE camera causes severe visual
+  // corruption in STEP assemblies. Keep the working ORTHOGRAPHIC mode.
+  // This also protects hidden shortcuts and legacy API callers. If an
+  // older runtime is in perspective, allow one switch to orthographic.
+  if (getCameraProjectionMode() === "ORTHOGRAPHIC") {
+    return "ORTHOGRAPHIC";
   }
 
   // --------------------------------------------------------
