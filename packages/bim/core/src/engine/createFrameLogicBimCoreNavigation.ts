@@ -214,7 +214,7 @@ export async function createBimCore(
     );
   }
 
-  const canvas = renderer.three.domElement;
+  const canvas = core.viewport.canvas;
   const cadMouseNavigation =
     new CadMouseNavigationController({
       canvas,
@@ -239,7 +239,7 @@ export async function createBimCore(
     new ModelRenderModeController({
       container,
       designScene: core.designScene,
-      cameraProvider: () => core.world.camera.three,
+      cameraProvider: () => core.viewport.camera,
       trackingSnap: core.snapEngine,
       selectedIds: () => core.designSelection.getSelectedIds(),
       preparedInstanceId: () => core.piecePreparation.getState().instanceId ?? undefined,
@@ -252,7 +252,7 @@ export async function createBimCore(
 
   const referenceManipulation = new PieceReferenceManipulationController({
     canvas,
-    cameraProvider: () => core.world.camera.three,
+    cameraProvider: () => core.viewport.camera,
     preparation: core.piecePreparation,
     helpers: core.pieceDefinitionHelpers,
     snapAt: (x, y) => core.snapEngine.findSnap(x, y)?.point.clone() ?? null,
@@ -283,9 +283,9 @@ export async function createBimCore(
     new SmartPieceInsertionController({
       container,
       canvas,
-      scene: core.world.scene.three,
+      scene: core.viewport.scene,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       designModel: core.designModel,
       designScene: core.designScene,
       workPlane: core.cadWorkPlane,
@@ -572,7 +572,7 @@ export async function createBimCore(
       container,
       canvas,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       sectionDrawing: core.sectionDrawing,
       drawingProfessional: core.drawingProfessional,
     });
@@ -581,7 +581,7 @@ export async function createBimCore(
     new SectionAxisDragStabilityController({
       canvas,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       sectionDrawing: core.sectionDrawing,
     });
 

@@ -24,4 +24,31 @@ describe("FrameLogic viewer migration boundaries", () => {
     expect(core).toContain("OBC.IfcLoader");
     expect(core).toContain("OBF.Mesher");
   });
+
+  it("publishes a FrameLogic-owned port for CAD consumers", () => {
+    const core = read("../packages/bim/core/src/engine/createBimCore.ts");
+    const adapter = read("../packages/bim/core/src/viewport/ThatOpenViewportAdapter.ts");
+    expect(core).toContain("viewport: viewportPort");
+    expect(adapter).toContain("createLiveFrameLogicViewport({");
+    expect(adapter).toContain("getCamera: () => world.camera.three");
+  });
+
+  it("routes selected CAD tools through the native Three.js port", () => {
+    const consumers = [
+      "../packages/bim/core/src/engine/createFrameLogicBimCorePrecision.ts",
+      "../packages/bim/core/src/engine/createFrameLogicBimCoreSelectionSafe.ts",
+      "../packages/bim/core/src/circleNavigationIndex.ts",
+      "../packages/bim/core/src/advancedCadNavigationIndex.ts",
+      "../packages/bim/core/src/gripCadNavigationIndex.ts",
+      "../packages/bim/core/src/engine/createFrameLogicBimCoreDrawing.ts",
+      "../packages/bim/core/src/engine/createFrameLogicBimCoreNavigation.ts",
+    ];
+    for (const file of consumers) {
+      const source = read(file);
+      expect(source).toContain("core.viewport.camera");
+      expect(source).not.toContain("core.world.camera.three");
+      expect(source).not.toContain("core.world.scene.three");
+    }
+  });
+
 });

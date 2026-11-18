@@ -5427,6 +5427,10 @@ function dispose(): void {
 
     world,
 
+    // Native Three.js port for CAD tools; reads the active camera live.
+    // The legacy world remains for IFC/Fragments and navigation controls.
+    viewport: viewportPort,
+
     helpers,
 
 

@@ -1,7 +1,7 @@
 import * as OBC from "@thatopen/components";
 
 import {
-  exposeFrameLogicViewport,
+  createLiveFrameLogicViewport,
   type FrameLogicViewportPort,
 } from "./FrameLogicViewportPort";
 
@@ -59,9 +59,14 @@ export function getFrameLogicViewportPort(
   if (!renderer) {
     throw new Error("FrameLogic viewport renderer is not initialized.");
   }
-  return exposeFrameLogicViewport(
-    world.scene.three,
-    world.camera.three,
-    renderer.three,
-  );
+  return createLiveFrameLogicViewport({
+    getScene: () => world.scene.three,
+    getCamera: () => world.camera.three,
+    getRenderer: () => {
+      if (!world.renderer) {
+        throw new Error("FrameLogic viewport renderer is not initialized.");
+      }
+      return world.renderer.three;
+    },
+  });
 }

@@ -24,6 +24,27 @@ the STEP precision model, units (millimeters), drawing views, or project format.
 
 This phase is an API seam and NOT a speed-up or a switch to a native backend.
 
+## Phase 2 — CAD consumers (first increment v0.1.185)
+
+The user reported seven successful manual regression checks for phase 1
+(v0.1.184): STEP/IFC import, camera, views, transformations, exact snaps,
+and large assemblies.
+
+FrameLogic now publishes a `core.viewport` Three.js port with **live**
+camera/renderer/scene/canvas getters. Unlike a one-time snapshot, it observes
+the active camera after switching projection modes. CAD precision, selection,
+circle/grip tools, copy/stretch, drawing and navigation entrypoints use this
+port for native Three.js handles.
+
+The legacy `core.world` remains available for vendor navigation controls,
+orthographic camera access and BIM/Fragments integration. Replacing those
+services is a distinct next increment, not completed here. All new CAD tools
+should use `core.viewport` for native scene/camera/canvas access.
+
+The release contains tests for camera replacement and CAD integration plus
+the existing typecheck, model-space, snap and camera regression suites.
+Manual browser tests of v0.1.185 are still required.
+
 ## Phase 2 — decouple consumers
 
 1. Replace scattered `core.world.scene.three`, `core.world.renderer.three`,

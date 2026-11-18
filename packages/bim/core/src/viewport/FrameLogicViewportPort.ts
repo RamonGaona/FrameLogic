@@ -32,3 +32,27 @@ export function exposeFrameLogicViewport(
     canvas: renderer.domElement,
   };
 }
+
+/**
+ * Scene/camera/renderer can be replaced independently (for example during
+ * orthographic/perspective switches). Consumers must always read the active
+ * Three.js objects, not a snapshot captured at viewport creation.
+ *
+ * Ownership and disposal remain with the backend.
+ */
+export interface FrameLogicViewportProviders {
+  readonly getScene: () => THREE.Scene;
+  readonly getCamera: () => THREE.Camera;
+  readonly getRenderer: () => THREE.WebGLRenderer;
+}
+
+export function createLiveFrameLogicViewport(
+  providers: FrameLogicViewportProviders,
+): FrameLogicViewportPort {
+  return {
+    get scene() { return providers.getScene(); },
+    get camera() { return providers.getCamera(); },
+    get renderer() { return providers.getRenderer(); },
+    get canvas() { return providers.getRenderer().domElement; },
+  };
+}

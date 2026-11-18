@@ -168,9 +168,9 @@ export async function createBimCore(
   const cadTrim =
     new CadTrimController({
       domElement:
-        renderer.three.domElement,
+        core.viewport.canvas,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       designModel:
         core.designModel,
       lineScene:
@@ -214,11 +214,11 @@ export async function createBimCore(
     new SectionDrawingController({
       container,
       canvas:
-        renderer.three.domElement,
+        core.viewport.canvas,
       scene:
-        core.world.scene.three,
+        core.viewport.scene,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       workPlane:
         core.cadWorkPlane,
       designScene:
@@ -361,7 +361,7 @@ export async function createBimCore(
     });
 
   const cadTextScene = new CadReferenceTextSceneController(
-    core.world.scene.three, core.designModel,
+    core.viewport.scene, core.designModel,
   );
   const unsubscribeCadTextSync = core.cadLineScene.onSync(
     () => cadTextScene.sync(),
@@ -385,11 +385,11 @@ export async function createBimCore(
       cadTextScene,
       container,
       domElement:
-        renderer.three.domElement,
+        core.viewport.canvas,
       scene:
-        core.world.scene.three,
+        core.viewport.scene,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       designModel:
         core.designModel,
       cadLineScene:
@@ -425,11 +425,11 @@ export async function createBimCore(
   const zoomExtents =
     new ModelSpaceZoomExtentsController({
       container,
-      domElement: renderer.three.domElement,
+      domElement: core.viewport.canvas,
       scene:
-        core.world.scene.three,
+        core.viewport.scene,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       controls:
         core.world.camera.controls,
       designScene:

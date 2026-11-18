@@ -124,7 +124,7 @@ function refreshMoveControls(
    * cuando el usuario movía o acercaba la cámara manualmente.
    */
   core.designTransform.setCamera(
-    core.world.camera.three,
+    core.viewport.camera,
   );
 
 }
@@ -370,7 +370,7 @@ function installArmedSnapHelperRefresh(
 
 
         core.designTransform.setCamera(
-          core.world.camera.three,
+          core.viewport.camera,
         );
 
         return;
@@ -560,11 +560,11 @@ export async function createBimCore(
       ? new ModelSpaceDimensionController({
           container,
           domElement:
-            core.world.renderer.three.domElement,
+            core.viewport.canvas,
           scene:
-            core.world.scene.three,
+            core.viewport.scene,
           cameraProvider: () =>
-            core.world.camera.three,
+            core.viewport.camera,
           snap:
             core.designSnap,
           workPlane:
