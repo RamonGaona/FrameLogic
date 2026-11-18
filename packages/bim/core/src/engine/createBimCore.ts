@@ -1,6 +1,12 @@
 import * as THREE from "three";
 import * as OBC from "@thatopen/components";
 import * as OBF from "@thatopen/components-front";
+import {
+  attachFrameLogicViewportCamera,
+  attachFrameLogicViewportRenderer,
+  createFrameLogicViewportWorld,
+  getFrameLogicViewportPort,
+} from "../viewport/ThatOpenViewportAdapter";
 import { restoreCadMouseNavigationBindings } from "../navigation/CadMouseNavigationController";
 import { finishActiveLineForAxisConversion } from "../interaction/finishActiveLineForAxisConversion";
 
@@ -302,31 +308,10 @@ export async function createBimCore(
   // WORLD
   // ==========================================================
 
-  const worlds =
-    components.get(
-      OBC.Worlds,
-    );
-
-
-    const world =
-    worlds.create<
-      OBC.SimpleScene,
-      OBC.OrthoPerspectiveCamera,
-      OBC.SimpleRenderer
-    >();
-
-
-  // ==========================================================
-  // SCENE
-  // ==========================================================
-
-  world.scene =
-    new OBC.SimpleScene(
-      components,
-    );
-
-
-  world.scene.setup();
+  // Phase 1: the existing That Open world is created behind a FrameLogic
+  // viewport adapter. IFC / Fragments remain independent integrations.
+  const world =
+    createFrameLogicViewportWorld(components);
 
   // ==========================================================
 // CARDINAL CAMERA DIRECTION
@@ -433,22 +418,18 @@ async function setCardinalDirection(
   // RENDERER
   // ==========================================================
 
-  world.renderer =
-    new OBC.SimpleRenderer(
-      components,
-      container,
-    );
-
-  // That Open Engine permits hiding the optional corner logo.
-  // Keep third-party MIT license notices intact in distributed code.
-  world.renderer.showLogo = false;
+  const viewportRenderer = attachFrameLogicViewportRenderer(
+    components,
+    world,
+    container,
+  );
 
 
   const canvas =
-    world.renderer.three.domElement;
+    viewportRenderer.three.domElement;
 
 
-  world.renderer.three.setPixelRatio(
+  viewportRenderer.three.setPixelRatio(
     Math.min(
       window.devicePixelRatio,
       2,
@@ -460,10 +441,13 @@ async function setCardinalDirection(
   // CAMERA
   // ==========================================================
 
-  world.camera =
-  new OBC.OrthoPerspectiveCamera(
+  attachFrameLogicViewportCamera(
     components,
+    world,
   );
+
+  const viewportPort =
+    getFrameLogicViewportPort(world);
 
 
   world.camera.controls.dollySpeed =
@@ -602,7 +586,7 @@ async function setCardinalDirection(
 
   const helpers =
     addSceneHelpers(
-      world.scene.three,
+      viewportPort.scene,
     );
 
 
