@@ -207,13 +207,13 @@ export async function createBimCore(
   );
 
   const canvas =
-    renderer.three.domElement;
+    core.viewport.canvas;
   const engineeringModel =
     new FrameLogicEngineeringModel();
   const geometryQuery =
     new GeometryQueryEngine(
       canvas,
-      () => core.world.camera.three,
+      () => core.viewport.camera,
       core.designScene,
       core.designModel,
     );
@@ -245,7 +245,7 @@ export async function createBimCore(
   const snapEngine =
     new PrecisionSnapEngine(
       canvas,
-      () => core.world.camera.three,
+      () => core.viewport.camera,
       geometryQuery,
       legacyFindSnap,
       () => Array.from(
@@ -257,7 +257,7 @@ export async function createBimCore(
     new MeasurementEngine();
   const precisionCamera =
     new PrecisionCameraController(
-      () => core.world.camera.three,
+      () => core.viewport.camera,
       core.world.camera.controls as unknown as PrecisionCameraControls,
     );
   const structuralModel =
