@@ -179,12 +179,12 @@ export async function createBimCore(
   }
 
   /*
-   * Temporalmente Model Space usa solo perspectiva: el modo ortográfico
-   * presenta corrupción visual en ensamblajes STEP. Conservamos las
-   * orientaciones técnicas TOP/FRONT/RIGHT/ISO y Norte arriba, sin cambiar
-   * el renderer ortográfico separado que utilizan los planos y PDF.
+   * Model Space usa temporalmente solo ORTOGRÁFICA. La deformación
+   * observada afecta a PERSPECTIVA (corrección de la mitigación v0.1.186).
+   * Conservar TOP/FRONT/RIGHT/ISO y Norte arriba; Drawing/PDF permanece
+   * independiente de esta política del visor interactivo.
    */
-  if (core.getCameraProjectionMode() === "ORTHOGRAPHIC") {
+  if (core.getCameraProjectionMode() === "PERSPECTIVE") {
     await core.toggleCameraProjection();
   }
 
@@ -401,9 +401,13 @@ export async function createBimCore(
         );
 
       /*
-       * Al cargar un IFC de referencia se encuadra ISO manteniendo
-       * perspectiva; la carga IFC no debe reactivar ortográfica.
+       * Un IFC de referencia debe mantener la cámara ortográfica de
+       * Model Space. Si una ruta heredada dejó perspectiva, recuperarla
+       * antes de orientar ISO y encuadrar la geometría.
        */
+      if (core.getCameraProjectionMode() === "PERSPECTIVE") {
+        await core.toggleCameraProjection();
+      }
 
       await core.setStandardView(
         "ISO",
