@@ -10,7 +10,7 @@ describe("Insertar (demo) in Model Space",()=>{
     expect(tool).toContain('Insertar (demo)');
     expect(tool).toContain("core.cadLineSelection.subscribe");
     expect(tool).toContain("core.cancelActiveCadCommand()");
-    expect(tool).toContain("planLinePositionFill(line, catalogs.positions, catalogs.db, scope)");
+    expect(tool).toContain("planLinePositionFill(line,catalogs.positions,catalogs.db,scope)");
     expect(tool).toContain("insertLinePositionDemo(core,plan,line.end,{");
     expect(tool).toContain("requireRealGeometry:true");
     expect(tool).toContain("ensureLineFLPieceDefinitions(core,plan,");
