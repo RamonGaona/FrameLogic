@@ -179,22 +179,12 @@ export async function createBimCore(
   }
 
   /*
-   * FrameLogic es un espacio de trabajo de precisión.
-   *
-   * ORTHOGRAPHIC es la proyección primaria: evita la distorsión visual
-   * de perspectiva y hace que TOP/FRONT/RIGHT/ISO se comporten como
-   * vistas técnicas. PERSPECTIVE sigue disponible mediante el toggle,
-   * pero deja de ser el estado inicial del model space.
-   *
-   * Un proyecto nuevo debe abrir siempre con Norte arriba y vista TOP.
-   * Primero fijamos el azimut N y después TOP conserva ese azimut al
-   * llevar el ángulo polar a 0. La restauración de un .flproject puede
-   * sustituir posteriormente esta vista por la cámara guardada del proyecto.
+   * Temporalmente Model Space usa solo perspectiva: el modo ortográfico
+   * presenta corrupción visual en ensamblajes STEP. Conservamos las
+   * orientaciones técnicas TOP/FRONT/RIGHT/ISO y Norte arriba, sin cambiar
+   * el renderer ortográfico separado que utilizan los planos y PDF.
    */
-  if (
-    core.getCameraProjectionMode()
-    !== "ORTHOGRAPHIC"
-  ) {
+  if (core.getCameraProjectionMode() === "ORTHOGRAPHIC") {
     await core.toggleCameraProjection();
   }
 
@@ -411,15 +401,9 @@ export async function createBimCore(
         );
 
       /*
-       * Un IFC de referencia no cambia la política de cámara de FrameLogic.
-       * Después de cargarlo recuperamos una vista ISO ortográfica encuadrada.
+       * Al cargar un IFC de referencia se encuadra ISO manteniendo
+       * perspectiva; la carga IFC no debe reactivar ortográfica.
        */
-      if (
-        core.getCameraProjectionMode()
-        !== "ORTHOGRAPHIC"
-      ) {
-        await core.toggleCameraProjection();
-      }
 
       await core.setStandardView(
         "ISO",

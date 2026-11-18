@@ -1384,9 +1384,7 @@ export function StepPieceEditorDirect({
                     {item.label}
                   </button>
                 ))}
-                <button type="button" style={buttonStyle} onClick={() => { void handleToggleProjection(); }}>
-                  {projectionMode === "PERSPECTIVE" ? "ORTO" : "PERS"}
-                </button>
+                {/* O/P toggle omitted while orthographic 3D mode is disabled. */}
               </div>
 
               <div style={{ fontSize: "11px", fontWeight: 700, marginBottom: "6px" }}>

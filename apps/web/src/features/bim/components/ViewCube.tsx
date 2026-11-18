@@ -36,6 +36,9 @@ import type {
   
     onToggleProjection:
       () => void;
+
+    /** Temporary safety switch: ortho disabled in 3D editors. */
+    projectionToggleEnabled?: boolean;
   
   }
   
@@ -51,6 +54,7 @@ import type {
       onViewChange,
       onCardinalChange,
       onToggleProjection,
+      projectionToggleEnabled = false,
     }: ViewCubeProps,
   ) {
   
@@ -447,6 +451,7 @@ import type {
               PROJECTION
               -------------------------------------------------- */}
   
+          {projectionToggleEnabled && (
           <button
             type="button"
   
@@ -470,6 +475,7 @@ import type {
             }
   
           </button>
+          )}
   
         </div>
   

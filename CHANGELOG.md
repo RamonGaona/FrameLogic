@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.186 — 2026-11-18 (deshabilitar ortográfica temporalmente en Model Space)
+
+- **Protección del visor 3D:** se deshabilita temporalmente la proyección ortográfica de Model Space tras detectar una distorsión extrema de las mallas de un ensamblaje STEP al activarla en v0.1.185. No se atribuye todavía una causa definitiva a Three.js ni a That Open; esta medida evita activar el modo afectado hasta investigar el defecto.
+- **Perspectiva como único modo 3D:** proyectos nuevos y carga de referencias IFC permanecen en perspectiva. `toggleCameraProjection()` devuelve perspectiva sin alternar cuando ya está activa; si una cámara heredada estuviera en ortográfica, la devuelve a perspectiva.
+- **Interfaz:** se oculta temporalmente el botón O/P del ViewCube y los botones ORTO/PERS de ambos editores independientes de pieza. Permanecen accesibles los comandos de orientación TOP, BOTTOM, FRONT, BACK, LEFT, RIGHT e ISO.
+- **Proyectos existentes:** los proyectos `.flproject` guardados con cámara ortográfica pueden abrirse sin volver a activar ese modo; su cámara se recupera en perspectiva y no se reaplica el zoom ortográfico heredado. No se modifican formatos ni geometrías guardadas.
+- **Planos/PDF:** se conservan la proyección ortográfica de vistas de taller, las secciones y los renders independientes de Paper Space. La restricción solo afecta la cámara interactiva del visor 3D.
+- **Pruebas:** se agrega una regresión de la restricción y se incorpora a la suite de cámara de GitHub Actions. Queda pendiente volver a habilitar ortográfica únicamente cuando se corrija y valide el defecto visual en ensamblajes STEP reales.
+
+---
+
 ## v0.1.185 — 2026-11-18 (fase 2 de desacoplamiento del visor Three.js)
 
 - **Resultados de la fase 1:** el usuario comprobó satisfactoriamente en `v0.1.184` la importación de STEP e IFC, navegación, vistas, gizmos, snaps y apertura de un ensamblaje grande. Son pruebas manuales funcionales, no mediciones comparativas de rendimiento.

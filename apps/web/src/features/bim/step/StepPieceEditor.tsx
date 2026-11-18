@@ -2439,24 +2439,7 @@ export function StepPieceEditor({
                     ),
                   )
                 }
-
-                <button
-                  type="button"
-                  style={compactButtonStyle}
-                  onClick={
-                    () => {
-
-                      void handleToggleProjection();
-
-                    }
-                  }
-                >
-                  {
-                    projectionMode === "PERSPECTIVE"
-                      ? "ORTO"
-                      : "PERS"
-                  }
-                </button>
+                {/* Orthographic mode temporarily disabled for 3D rendering. */}
               </div>
 
               <div
