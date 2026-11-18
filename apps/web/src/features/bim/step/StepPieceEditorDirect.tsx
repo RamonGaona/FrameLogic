@@ -467,7 +467,7 @@ export function StepPieceEditorDirect({
     });
   const [projectionMode, setProjectionMode] =
     useState<CameraProjectionMode>(
-      "PERSPECTIVE",
+      "ORTHOGRAPHIC",
     );
 
 
@@ -1384,7 +1384,7 @@ export function StepPieceEditorDirect({
                     {item.label}
                   </button>
                 ))}
-                {/* O/P toggle omitted while orthographic 3D mode is disabled. */}
+                {/* O/P toggle omitted while perspective 3D mode is disabled. */}
               </div>
 
               <div style={{ fontSize: "11px", fontWeight: 700, marginBottom: "6px" }}>
