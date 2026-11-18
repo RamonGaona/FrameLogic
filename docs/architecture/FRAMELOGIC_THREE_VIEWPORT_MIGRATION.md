@@ -73,6 +73,28 @@ The separate drawing and PDF orthographic projection engine is unchanged.
 Keep this as a temporary mitigation pending investigation of the original
 perspective rendering issue with the real STEP assembly.
 
+## Phase 3a — FrameLogic camera controller (v0.1.188)
+
+FrameLogic now owns `FrameLogicCameraController` and a backend-neutral
+`FrameLogicCameraDriver` contract. It supplies active-camera access, CAD
+tool enable/disable, camera view orientation, look-at, zoom, and update
+subscriptions without an import from That Open.
+
+`ThatOpenViewportAdapter.createThatOpenCameraController` is the temporary
+implementation, delegating to the existing controls to preserve mouse
+navigation and camera lifecycle. The public core API now exposes
+`core.cameraNavigation`; the standard orientation controls and CAD tool
+locks use it, while specialized orbit/zoom and IFC/Fragments may still rely
+on `core.world`.
+
+**Important:** the user verified orthographic is the working camera.
+Perspective stays blocked in Model Space. No mode toggle is introduced in
+this phase, and Paper Space/PDF projections are unaffected.
+
+Next: migrate specialized navigation operations and camera state restore
+through richer port contracts, then implement an opt-in native Three.js
+backend after regression and performance checks on real STEP assemblies.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
