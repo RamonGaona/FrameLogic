@@ -1,6 +1,6 @@
 {
   "name": "framelogic",
-  "version": "0.1.183",
+  "version": "0.1.184",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace @framelogic/web --",
+    "version:patch": "node scripts/release/bump-version.mjs",
     "build": "npm run build --workspace @framelogic/web",
     "build:cloudflare": "npm install --include=dev --package-lock=false && npm install --no-save --package-lock=false @rolldown/binding-linux-x64-gnu@1.2.8 lightningcss-linux-x64-gnu@1.33.0 && npm run build",
     "typecheck": "npm run typecheck --workspaces --if-present",
