@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.188 — 2026-11-18 (fase 3a: controlador de cámara de FrameLogic)
+
+- **Arquitectura de cámara:** nuevo `FrameLogicCameraController` independiente de That Open y `FrameLogicCameraDriver` con operaciones de orientación, habilitación de navegación, `rotateTo`, `setLookAt`, `zoomTo` y suscripción a cambios. La cámara activa se obtiene mediante un proveedor dinámico.
+- **Adaptador temporal:** `createThatOpenCameraController` traduce estas operaciones al CameraControls existente sin modificar el motor de renderizado, la velocidad de zoom, el comportamiento de la rueda ni los controles de ratón.
+- **Model Space CAD:** `core.cameraNavigation` se expone a las herramientas; girar a Norte/Este/Sur/Oeste, elegir vistas TOP/BOTTOM/FRONT/BACK/LEFT/RIGHT/ISO, seguir orientación y bloquear/desbloquear la cámara durante los gizmos y operaciones CAD ahora pasan por la interfaz propia.
+- **Compatibilidad:** se mantienen `core.world`, controles especializados todavía dependientes de That Open y procesamiento IFC/Fragments. **Ortográfica sigue activa y perspectiva bloqueada** como en v0.1.187. Paper Space, planos, cortes y PDF no cambian.
+- **Pruebas:** nuevo test unitario para controlador, suscripciones, zoom, cambio de cámara y estados de bloqueo; nueva regresión que comprueba independencia de la API y su adopción por herramientas CAD, incluida en `test:camera`.
+- **Limitación:** esta etapa no crea todavía un visor Three.js completamente nativo ni demuestra una mejora de rendimiento. La investigación del fallo de perspectiva continúa pendiente.
+
+---
+
 ## v0.1.187 — 2026-11-18 (corrección: mantener ortográfica, bloquear perspectiva)
 
 - **Corrección de la mitigación anterior:** el usuario confirmó que la cámara **ORTOGRÁFICA funciona**, mientras que **PERSPECTIVA** ocasiona una deformación grave de los ensamblajes STEP. Se invierte la restricción introducida en v0.1.186.

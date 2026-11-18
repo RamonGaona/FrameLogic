@@ -5,6 +5,7 @@ import {
   attachFrameLogicViewportCamera,
   attachFrameLogicViewportRenderer,
   createFrameLogicViewportWorld,
+  createThatOpenCameraController,
   getFrameLogicViewportPort,
 } from "../viewport/ThatOpenViewportAdapter";
 import { restoreCadMouseNavigationBindings } from "../navigation/CadMouseNavigationController";
@@ -323,11 +324,11 @@ async function setCardinalDirection(
 ): Promise<void> {
 
   const controls =
-    world.camera.controls;
+    cameraNavigation;
 
 
   const polar =
-    controls.polarAngle;
+    controls.orientation.polar;
 
 
   let azimuth:
@@ -448,6 +449,11 @@ async function setCardinalDirection(
 
   const viewportPort =
     getFrameLogicViewportPort(world);
+
+  // Phase 3a: native camera navigation contract, initially driven by That Open.
+  // Keep the legacy world for existing IFC/Fragments and specialized controls.
+  const cameraNavigation =
+    createThatOpenCameraController(world);
 
 
   world.camera.controls.dollySpeed =
@@ -1264,8 +1270,7 @@ const cadWindowSelection =
       enabled,
     ) => {
 
-      world.camera.controls.enabled =
-        enabled;
+      cameraNavigation.setEnabled(enabled);
 
     },
     () => designPlacement.isPlacing,
@@ -1502,8 +1507,7 @@ const cadPointMove =
       enabled,
     ) => {
 
-      world.camera.controls.enabled =
-        enabled;
+      cameraNavigation.setEnabled(enabled);
 
     },
   );
@@ -1529,8 +1533,7 @@ const cadLineMove =
       enabled,
     ) => {
 
-      world.camera.controls.enabled =
-        enabled;
+      cameraNavigation.setEnabled(enabled);
 
     },
   );
@@ -1557,8 +1560,7 @@ const cadMixedMove =
       enabled,
     ) => {
 
-      world.camera.controls.enabled =
-        enabled;
+      cameraNavigation.setEnabled(enabled);
 
     },
   );
@@ -1591,8 +1593,7 @@ new DesignTransformController(
     enabled,
   ) => {
 
-    world.camera.controls.enabled =
-      enabled;
+    cameraNavigation.setEnabled(enabled);
 
   },
 
@@ -1626,8 +1627,7 @@ const designRotate =
       enabled,
     ) => {
 
-      world.camera.controls.enabled =
-        enabled;
+      cameraNavigation.setEnabled(enabled);
 
     },
 
@@ -1654,7 +1654,7 @@ const cadEntityRotate = new CadEntityRotateController({
   pointSelection: cadPointSelection,
   designSelection,
   history: cadHistory,
-  setCameraEnabled: enabled => { world.camera.controls.enabled = enabled; },
+  setCameraEnabled: enabled => { cameraNavigation.setEnabled(enabled); },
   onAxis: axis => cadNumericInput.showRotate(axis, false),
   onDeactivate: () => cadNumericInput.hide(),
 });
@@ -4518,11 +4518,11 @@ async function setStandardView(
 ): Promise<void> {
 
   const controls =
-    world.camera.controls;
+    cameraNavigation;
 
 
   const currentAzimuth =
-    controls.azimuthAngle;
+    controls.orientation.azimuth;
 
   switch (
     view
@@ -4642,19 +4642,7 @@ async function setStandardView(
 
 function getCameraOrientation():
   CameraOrientation {
-
-  return {
-
-    azimuth:
-      world.camera.controls
-        .azimuthAngle,
-
-    polar:
-      world.camera.controls
-        .polarAngle,
-
-  };
-
+  return cameraNavigation.orientation;
 }
 
 
@@ -4669,39 +4657,9 @@ function subscribeCameraOrientation(
         CameraOrientation,
     ) => void,
 ): () => void {
-
-  const handleUpdate =
-    (): void => {
-
-      callback(
-        getCameraOrientation(),
-      );
-
-    };
-
-
-  world.camera.controls.addEventListener(
-    "update",
-    handleUpdate,
-  );
-
-
-  // Estado inicial
-  handleUpdate();
-
-
-  return () => {
-
-    world.camera.controls.removeEventListener(
-      "update",
-      handleUpdate,
-    );
-
-  };
-
+  return cameraNavigation.subscribeOrientation(callback);
 }
 
-// ==========================================================
 // GET SELECTED PIECE INSTANCES
 // ==========================================================
 
@@ -5438,6 +5396,9 @@ function dispose(): void {
     // Native Three.js port for CAD tools; reads the active camera live.
     // The legacy world remains for IFC/Fragments and navigation controls.
     viewport: viewportPort,
+
+    // FrameLogic-owned camera operations for CAD; no That Open imports needed.
+    cameraNavigation,
 
     helpers,
 

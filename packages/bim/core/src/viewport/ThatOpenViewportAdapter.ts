@@ -1,5 +1,7 @@
 import * as OBC from "@thatopen/components";
 
+import { FrameLogicCameraController } from "./FrameLogicCameraController";
+
 import {
   createLiveFrameLogicViewport,
   type FrameLogicViewportPort,
@@ -69,4 +71,39 @@ export function getFrameLogicViewportPort(
       return world.renderer.three;
     },
   });
+}
+
+/**
+ * That Open adapter for FrameLogic camera navigation.
+ *
+ * Keep all vendor-specific CameraControls and update events here. The CAD
+ * feature layer only sees FrameLogicCameraController. This is intentionally
+ * an adapter, not yet a new native camera backend.
+ */
+export function createThatOpenCameraController(
+  world: FrameLogicViewportWorld,
+): FrameLogicCameraController {
+  const controls = world.camera.controls;
+  return new FrameLogicCameraController(
+    () => world.camera.three,
+    {
+      getAzimuth: () => controls.azimuthAngle,
+      getPolar: () => controls.polarAngle,
+      getEnabled: () => controls.enabled,
+      setEnabled: (enabled) => { controls.enabled = enabled; },
+      rotateTo: (azimuth, polar, transition) =>
+        controls.rotateTo(azimuth, polar, transition),
+      setLookAt: (position, target, transition) =>
+        controls.setLookAt(
+          position.x, position.y, position.z,
+          target.x, target.y, target.z,
+          transition,
+        ),
+      zoomTo: (zoom, transition) => controls.zoomTo(zoom, transition),
+      subscribeUpdate: (listener) => {
+        controls.addEventListener("update", listener);
+        return () => controls.removeEventListener("update", listener);
+      },
+    },
+  );
 }

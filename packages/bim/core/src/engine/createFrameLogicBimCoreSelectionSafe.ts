@@ -172,8 +172,7 @@ function resetMoveTransientState(
     );
 
 
-  core.world.camera.controls.enabled =
-    true;
+  core.cameraNavigation.setEnabled(true);
 
 
   if (
