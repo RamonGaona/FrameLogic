@@ -1,6 +1,9 @@
 import * as OBC from "@thatopen/components";
 
-import type { FrameLogicViewportPort } from "./FrameLogicViewportPort";
+import {
+  exposeFrameLogicViewport,
+  type FrameLogicViewportPort,
+} from "./FrameLogicViewportPort";
 
 /**
  * Transitional viewport backend.
@@ -50,10 +53,9 @@ export function attachFrameLogicViewportCamera(
 export function getFrameLogicViewportPort(
   world: FrameLogicViewportWorld,
 ): FrameLogicViewportPort {
-  return {
-    scene: world.scene.three,
-    camera: world.camera.three,
-    renderer: world.renderer.three,
-    canvas: world.renderer.three.domElement,
-  };
+  return exposeFrameLogicViewport(
+    world.scene.three,
+    world.camera.three,
+    world.renderer.three,
+  );
 }
