@@ -847,7 +847,7 @@ export function StepPieceEditor({
 
   const [projectionMode, setProjectionMode] =
     useState<CameraProjectionMode>(
-      "PERSPECTIVE",
+      "ORTHOGRAPHIC",
     );
 
 
@@ -2439,7 +2439,7 @@ export function StepPieceEditor({
                     ),
                   )
                 }
-                {/* Orthographic mode temporarily disabled for 3D rendering. */}
+                {/* Perspective toggle is temporarily hidden: orthographic mode works. */}
               </div>
 
               <div
