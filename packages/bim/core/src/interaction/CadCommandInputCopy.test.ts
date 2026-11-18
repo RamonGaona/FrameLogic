@@ -105,3 +105,70 @@ describe("typed P / PU / PUN / PUNTO / POINT starts native CAD points", () => {
     expect(startPoint).toHaveBeenCalledOnce();
   });
 });
+
+
+class FloatingHudTestElement extends EventTarget {
+  style: Record<string, string> = {};
+  dataset: Record<string, string> = {};
+  children: FloatingHudTestElement[] = [];
+  textContent = "";
+  append(...items: FloatingHudTestElement[]) { this.children.push(...items); }
+  remove() { this.children.length = 0; }
+}
+
+describe("PUNTO keyboard capture in the isolated piece editor", () => {
+  it("keeps all letters including T in one text command and restores the shortcut after Enter", () => {
+    const body = new FloatingHudTestElement();
+    const canvas = new FloatingHudTestElement();
+    const startPoint = vi.fn(() => true);
+    const startTrim = vi.fn(() => true);
+    const win = Object.assign(new EventTarget(), {
+      innerWidth: 1200, innerHeight: 800,
+      __frameLogicStartPointTextCommand: startPoint,
+      __frameLogicStartTrimTextCommand: startTrim,
+      alert: vi.fn(),
+      __frameLogicTextCommandInputActive: undefined as (() => boolean) | undefined,
+    });
+
+    // TRIM registers its capture handler before the command HUD does.
+    // The same guard used by CadTrimController must reserve T for "PUNTO".
+    let trimShortcuts = 0;
+    win.addEventListener("keydown", event => {
+      const key = (event as KeyboardEvent).key.toLowerCase();
+      if (key === "t" && !win.__frameLogicTextCommandInputActive?.()) {
+        trimShortcuts++;
+        event.stopImmediatePropagation();
+      }
+    }, true);
+    vi.stubGlobal("window", win);
+    vi.stubGlobal("HTMLElement", FloatingHudTestElement);
+    vi.stubGlobal("document", {
+      createElement: () => new FloatingHudTestElement(),
+      body,
+    });
+    const controller = new CadCommandInputController({
+      domElement: canvas as unknown as HTMLElement,
+      hasActiveCommand: () => false,
+      startLine: () => true,
+    });
+    const keyDown = (key: string): void => {
+      const event = Object.assign(new Event("keydown", {cancelable:true}), {
+        key, ctrlKey:false, metaKey:false, altKey:false,
+      });
+      win.dispatchEvent(event);
+    };
+    keyDown("p");
+    expect(win.__frameLogicTextCommandInputActive?.()).toBe(true);
+    for (const letter of ["u", "n", "t", "o"]) keyDown(letter);
+    expect(body.children[0]!.children[0]!.textContent).toBe("PUNTO▌");
+    expect(trimShortcuts).toBe(0);
+    keyDown("Enter");
+    expect(startPoint).toHaveBeenCalledOnce();
+    expect(startTrim).not.toHaveBeenCalled();
+    expect(win.__frameLogicTextCommandInputActive?.()).toBe(false);
+    keyDown("t");
+    expect(trimShortcuts).toBe(1);
+    controller.dispose();
+    expect(win.__frameLogicTextCommandInputActive).toBeUndefined();
+  });
+});
