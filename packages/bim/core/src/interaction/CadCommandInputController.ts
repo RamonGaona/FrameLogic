@@ -34,6 +34,8 @@ interface FrameLogicCommandWindow extends Window {
   __frameLogicStartRotateReferenceCommand?: () => boolean;
   __frameLogicStartCircleCommand?: () => boolean;
   __frameLogicStartPointTextCommand?: () => boolean;
+  /** True only while the floating CAD text-command buffer is collecting input. */
+  __frameLogicTextCommandInputActive?: () => boolean;
   __frameLogicStartTrimTextCommand?: () => boolean;
   __frameLogicStartPolylineEditCommand?: () => boolean;
   __frameLogicCopyBaseCommandActive?: () => boolean;
@@ -101,7 +103,7 @@ function normalizeCommand(
  *
  * - C / CIRCULO / CIRCLE + Enter: círculo.
  * - COPY / COPYBASE / COPIAR + Enter: copia por punto base y destino.
- * - P / POINT / PUNTO + Enter: punto, T / TRIM + Enter: recorte.
+ * - P / PU / PUN / PUNTO / POINT + Enter: punto, T / TRIM + Enter: recorte.
  * - L / LINE + Enter: línea.
  * - LL / LINEA PARALELA + Enter: línea paralela.
  * - REC / RECTANGULO + Enter: rectángulo.
@@ -124,6 +126,11 @@ export class CadCommandInputController {
   private readonly suggestionElement: HTMLDivElement;
 
   private command = "";
+  private readonly previousTextCommandActive =
+    commandRuntime().__frameLogicTextCommandInputActive;
+  private readonly textCommandActive = (): boolean =>
+    (this.visible && this.command.length > 0 && !this.disposed)
+    || Boolean(this.previousTextCommandActive?.());
   private visible = false;
   private disposed = false;
   private pointerX = 180;
@@ -178,6 +185,8 @@ export class CadCommandInputController {
       this.suggestionElement,
     );
     document.body.append(this.root);
+
+    commandRuntime().__frameLogicTextCommandInputActive = this.textCommandActive;
 
     window.addEventListener(
       "keydown",
@@ -388,7 +397,8 @@ export class CadCommandInputController {
       return;
     }
 
-    if (command === "P" || command === "POINT" || command === "PUNTO") {
+    if (command === "P" || command === "PU" || command === "PUN"
+      || command === "POINT" || command === "PUNTO") {
       const started = commandRuntime().__frameLogicStartPointTextCommand?.();
       this.hide();
       if (!started) window.alert("No se pudo iniciar PUNTO.");
@@ -613,6 +623,9 @@ export class CadCommandInputController {
       true,
     );
 
+    if (commandRuntime().__frameLogicTextCommandInputActive === this.textCommandActive) {
+      commandRuntime().__frameLogicTextCommandInputActive = this.previousTextCommandActive;
+    }
     this.root.remove();
   }
 }
