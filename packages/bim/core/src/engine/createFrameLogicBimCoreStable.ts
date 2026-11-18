@@ -403,8 +403,7 @@ function installStableMoveAxisClick(
           );
 
 
-        core.world.camera.controls.enabled =
-          true;
+        core.cameraNavigation.setEnabled(true);
 
 
         event.preventDefault();
