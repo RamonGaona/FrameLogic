@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.183 — 2026-11-17 (orientación geométrica real de inserciones por línea)
+
+- Corrección de **Insertar (demo)**: la versión anterior giraba algunas `.flpiece` 90° porque suponía que `coordinateSystem.xAxis` siempre coincidía con el largo físico de la pieza. Es un eje editable de ingeniería, no necesariamente el longitudinal del STEP.
+- La orientación ahora se detecta a partir de los vértices de la **geometría real** y sus transformaciones internas: determina la dirección principal (funciona para piezas longitudinales X, Y o Z, y para geometría oblicua) y la alinea con la línea CAD en 3D.
+- Si la pieza tiene eje de referencia `MAIN` compatible, se conserva su sentido. En ausencia de esa referencia se usa un sentido nativo reproducible.
+- La colocación usa el **extremo físico inicial** de la geometría, no presupone que el origen guardado esté allí. Se conserva el desplazamiento transversal del origen de ingeniería, pero las piezas dejan de sobresalir por delante del inicio de la línea debido a un origen longitudinal situado al otro extremo.
+- Se conservan las longitudes y códigos de DB, los archivos `.flpiece` originales, el orden de POSITIONS, permisos de carpeta, instancias reales y Undo/Redo. No se rotan ni reescriben los archivos de pieza; solo cambia la transformación de las nuevas instancias.
+- Tests de orientación nativa en X/Y/Z, 3D inclinado e invertido, eje principal invertido, extremo geométrico, prototipos inválidos y regresión de inserción real.
+
+---
+
 ## v0.1.182 — 2026-11-17 (carga automática de .flpiece en inserción por línea)
 
 - **Insertar (demo)** ya utiliza geometría de piezas auténticas `.flpiece`, seleccionada por el código de `POSITIONS.json` y longitud de `DBFrameLogic.json`. La secuencia sigue la dirección y longitud de la línea CAD, sin recortar piezas ni modificar los JSON.
