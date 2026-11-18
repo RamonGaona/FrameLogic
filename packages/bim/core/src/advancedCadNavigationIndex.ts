@@ -132,9 +132,9 @@ export async function createBimCore(
   cadCopy =
     new CadCopyController({
       domElement:
-        renderer.three.domElement,
+        core.viewport.canvas,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       designModel:
         core.designModel,
       lineScene:
@@ -199,9 +199,9 @@ export async function createBimCore(
   cadStretch =
     new CadStretchController({
       domElement:
-        renderer.three.domElement,
+        core.viewport.canvas,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       designModel:
         core.designModel,
       lineScene:
@@ -229,9 +229,9 @@ export async function createBimCore(
   cadPolylineEdit =
     new CadPolylineEditController({
       domElement:
-        renderer.three.domElement,
+        core.viewport.canvas,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       designModel:
         core.designModel,
       lineScene:
