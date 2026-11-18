@@ -74,6 +74,8 @@ export interface ProjectCameraStateControllerOptions {
     () => ProjectCameraProjection;
   readonly toggleProjection:
     () => Promise<ProjectCameraProjection>;
+  /** Temporary Model Space workaround: restore old orthographic snapshots in perspective. */
+  readonly allowOrthographic?: boolean;
 }
 
 /**
@@ -237,9 +239,15 @@ export class ProjectCameraStateController {
     snapshot:
       ProjectModelSpaceCameraSnapshot,
   ): Promise<void> {
+    // An older .flproject may contain an orthographic view. Restore its
+    // position/orientation, but do not turn orthographic rendering back on.
+    const targetProjection = this.options.allowOrthographic === false
+      ? "PERSPECTIVE"
+      : snapshot.projection;
+
     if (
       this.options.getProjectionMode()
-      !== snapshot.projection
+      !== targetProjection
     ) {
       await this.options
         .toggleProjection();
@@ -269,7 +277,7 @@ export class ProjectCameraStateController {
     );
 
     if (
-      snapshot.projection
+      targetProjection
       === "ORTHOGRAPHIC"
     ) {
       const ortho =
