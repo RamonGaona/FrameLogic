@@ -24,6 +24,7 @@ function fixture(withRealDefinition: boolean) {
     designModel:{
       pieceDefinitions:{
         findByCode:(code:string)=>withRealDefinition&&code==="REC6000"?definition:undefined,
+        getAll:()=>withRealDefinition?[definition]:[],
       },
       registerPieceInstance:(input: {
         id?:string;definitionId:string;name?:string;
@@ -71,6 +72,34 @@ describe("sequential demo placement",()=>{
     redo();expect(registered).toHaveLength(1);
     placed.clearTemporaryReferences();
     expect(registered).toHaveLength(1);
+  });
+  it("in strict mode rejects incomplete real geometry before inserting any piece",()=>{
+    const {core,registered,recordOperation,scene}=fixture(true);
+    expect(()=>insertLinePositionDemo(core,plan,{x:9000,y:500,z:0},{
+      requireRealGeometry:true,
+    })).toThrow(/REC3000/);
+    expect(registered).toHaveLength(0);
+    expect(recordOperation).not.toHaveBeenCalled();
+    expect(scene.children).toHaveLength(0);
+  });
+  it("creates no temporary references when all codes have real loaded geometry",()=>{
+    const {core,registered}=fixture(true);
+    const pieces=core.designModel.pieceDefinitions as unknown as {
+      getAll:()=>Array<{id:string;code:string;geometryAssetId:string;coordinateSystem:{
+        origin:{x:number;y:number;z:number};xAxis:{x:number;y:number;z:number};
+      }}>;
+    };
+    const originals=pieces.getAll();
+    pieces.getAll=()=>[...originals,{
+      id:"def-2",code:"REC3000",geometryAssetId:"asset-2",
+      coordinateSystem:{origin:{x:0,y:0,z:0},xAxis:{x:1,y:0,z:0}},
+    }];
+    const result=insertLinePositionDemo(core,plan,{x:9000,y:500,z:0},{
+      requireRealGeometry:true,
+    });
+    expect(result.realPieces).toBe(2);
+    expect(result.temporaryReferences).toBe(0);
+    expect(registered).toHaveLength(2);
   });
   it("uses visible temporary 3D references for unavailable assets without adding fake definitions",()=>{
     const {core,scene,registered,recordOperation}=fixture(false);
