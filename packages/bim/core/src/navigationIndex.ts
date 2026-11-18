@@ -286,6 +286,8 @@ export async function createBimCore(
         core.getCameraProjectionMode(),
       toggleProjection: () =>
         core.toggleCameraProjection(),
+      // Model Space perspective-only workaround; do not affect Drawing/PDF.
+      allowOrthographic: false,
     });
 
   const baseDispose =
