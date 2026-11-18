@@ -15,6 +15,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.182 — 2026-11-17 (carga automática de .flpiece en inserción por línea)
+
+- **Insertar (demo)** ya utiliza geometría de piezas auténticas `.flpiece`, seleccionada por el código de `POSITIONS.json` y longitud de `DBFrameLogic.json`. La secuencia sigue la dirección y longitud de la línea CAD, sin recortar piezas ni modificar los JSON.
+- Nuevo botón **Carpeta FLPIECE**: el usuario autoriza explícitamente su carpeta local (p. ej. `D:\\Documents\\FrameLogic\\FLPIECE\\`) con File System Access API. El permiso de lectura puede recordarse en IndexedDB, sin almacenar archivos ni rutas secretas. Si el navegador no admite carpetas, el botón **Elegir .flpiece** permite seleccionar varios archivos de una vez.
+- Localiza archivos `<codigo>.flpiece` independientemente de mayúsculas y valida que el código interno coincida con el esperado. Solo acepta piezas FrameLogic `READY`, reutilizando el mismo parser y geometría STEP/IFC y la caché visual GLB opcional de **Abrir pieza**.
+- Conserva origen, ejes locales, SNAPs y metadatos técnicos de cada pieza. Cada código se importa una sola vez como `PieceDefinition` y se reutiliza para crear todas sus instancias colocadas según el eje de la línea.
+- **Validación estricta antes de insertar:** si falta una geometría real, es inválida o su código no coincide, la operación informa el problema y no crea instancias ni referencias naranjas engañosas. La secuencia real usa Undo/Redo agrupado, respeta el sentido inicio-fin y muestra las piezas importadas y reutilizadas.
+- Se mantienen las casillas General/Proyecto/Puntal, la confirmación con longitud ocupada/sobrante y el límite de 250 instancias. La carpeta y los archivos elegidos solo se utilizan con permiso de lectura; no se sobrescriben ni convierten.
+- Pruebas de indexación por código, detección de archivos duplicados, precarga y validación de `.flpiece`, reutilización de definiciones, preservación de origen/SNAP, modo de inserción completamente real e integración del selector de carpeta.
+
+---
+
 ## v0.1.181 — 2026-11-17 (demo de inserción secuencial a lo largo de una línea)
 
 - **Comando P:** corregida la sugerencia del HUD de comandos: `P` ahora anuncia **P / PUNTO** en vez de **PEDIT**. `PE` y `PEDIT` siguen mostrando el editor de polilíneas; conserva el fix de TRIM al escribir PUNTO.
