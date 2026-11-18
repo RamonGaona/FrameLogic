@@ -164,7 +164,7 @@ export async function createBimCore(
 
   const cadCircleScene =
     new CadCircleSceneController(
-      core.world.scene.three,
+      core.viewport.scene,
       core.designModel,
     );
 
@@ -172,11 +172,11 @@ export async function createBimCore(
     new CadCirclePlacementController({
       container,
       domElement:
-        renderer.three.domElement,
+        core.viewport.canvas,
       scene:
-        core.world.scene.three,
+        core.viewport.scene,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       designModel:
         core.designModel,
       circleScene:
@@ -216,11 +216,11 @@ export async function createBimCore(
     new CadRectanglePlacementController({
       container,
       domElement:
-        renderer.three.domElement,
+        core.viewport.canvas,
       scene:
-        core.world.scene.three,
+        core.viewport.scene,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       designModel:
         core.designModel,
       lineScene:
@@ -260,11 +260,11 @@ export async function createBimCore(
     new CadParallelLineController({
       container,
       domElement:
-        renderer.three.domElement,
+        core.viewport.canvas,
       scene:
-        core.world.scene.three,
+        core.viewport.scene,
       cameraProvider: () =>
-        core.world.camera.three,
+        core.viewport.camera,
       designModel:
         core.designModel,
       lineScene:
@@ -291,8 +291,8 @@ export async function createBimCore(
   // Native CAD circles participate in the shared SNAP engine and can be
   // selected/measured/edited directly with 4 draggable cardinal grips.
   const cadCircleModelSpace = new CadCircleModelSpaceController({
-    domElement: renderer.three.domElement,
-    cameraProvider: () => core.world.camera.three,
+    domElement: core.viewport.canvas,
+    cameraProvider: () => core.viewport.camera,
     designModel: core.designModel,
     circles: cadCircleScene,
     workPlane: core.cadWorkPlane,
