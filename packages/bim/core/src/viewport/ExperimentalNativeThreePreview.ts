@@ -1,6 +1,10 @@
 import * as THREE from "three";
 
 import type { FrameLogicViewportPort } from "./FrameLogicViewportPort";
+import {
+  pickNativeProjectPieceInstance,
+  type NativeProjectInstanceTarget,
+} from "./NativeProjectPiecePicker";
 
 const PREVIEW_WIDTH = 320;
 const PREVIEW_HEIGHT = 200;
@@ -40,6 +44,15 @@ export interface ExperimentalNativeThreePreviewOptions {
   readonly height?: number;
   readonly title?: string;
   readonly onClose?: () => void;
+  /** Optional CAD-owned selection. No mesh state is edited by this viewer. */
+  readonly getInstanceTargets?: () => readonly NativeProjectInstanceTarget[];
+  readonly onSelectInstance?: (instanceId: string) => boolean;
+  readonly getSelectedInstanceIds?: () => readonly string[];
+  /** Dispatch existing persistent CAD commands in the primary Model Space. */
+  readonly onStartMove?: () => boolean;
+  readonly onStartRotate?: () => boolean;
+  readonly onUndo?: () => boolean;
+  readonly onRedo?: () => boolean;
 }
 
 export interface ExperimentalNativeThreePreviewHandle {
@@ -73,6 +86,8 @@ export function mountExperimentalNativeThreePreview(
   let lastSample = 0;
   let sampleFrames = 0;
   const camera = new THREE.OrthographicCamera();
+  const canSelect = Boolean(options.getInstanceTargets && options.onSelectInstance);
+  let selectionGesture: { id: number; x: number; y: number } | null = null;
 
   renderer.setPixelRatio(1);
   renderer.setSize(width, height, false);
@@ -101,16 +116,93 @@ export function mountExperimentalNativeThreePreview(
   header.append(title, close);
 
   const status = document.createElement("div");
-  status.textContent = "Vista secundaria de diagnóstico · solo lectura";
+  status.textContent = canSelect
+    ? "Selección nativa · edición persistente con gizmo en Model Space"
+    : "Vista secundaria de diagnóstico · solo lectura";
   status.style.cssText = "padding:4px 8px 7px;color:#cbd5e1";
-  renderer.domElement.style.cssText = "display:block;width:100%;height:auto;pointer-events:none";
-  panel.append(header, renderer.domElement, status);
+
+  // In CAD-connected mode, the second renderer supplies only hit-tested
+  // PieceInstance IDs. Selection, edit commands, history and serialization
+  // are all performed by the authoritative Model Space on its own canvas.
+  const actionStatus = document.createElement("div");
+  actionStatus.style.cssText = "padding:5px 8px;color:#d1fae5";
+  actionStatus.textContent = "Clic en una pieza para seleccionarla · editar en Model Space";
+  const toolbar = document.createElement("div");
+  toolbar.style.cssText = "display:flex;gap:5px;flex-wrap:wrap;padding:6px 8px 0";
+
+  const makeAction = (label: string, handler: (() => boolean) | undefined) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.style.cssText = "font:inherit;color:inherit;background:#334155;border:1px solid #64748b;border-radius:4px;padding:5px 8px;cursor:pointer";
+    button.addEventListener("click", () => {
+      if (disposed || !handler) return;
+      const did = handler();
+      actionStatus.textContent = did
+        ? `${label}: comando aplicado en Model Space. Los cambios usan el historial y .flproject.`
+        : `${label}: no se pudo ejecutar; selecciona una pieza editable en Model Space.`;
+    });
+    toolbar.append(button);
+    return button;
+  };
+
+  const moveButton = canSelect
+    ? makeAction("Mover", options.onStartMove) : null;
+  const rotateButton = canSelect
+    ? makeAction("Rotar", options.onStartRotate) : null;
+  if (canSelect) {
+    makeAction("Deshacer", options.onUndo);
+    makeAction("Rehacer", options.onRedo);
+  }
+
+  const onPointerDown = (event: PointerEvent): void => {
+    if (!canSelect || event.button !== 0) return;
+    selectionGesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  };
+  const onPointerUp = (event: PointerEvent): void => {
+    const start = selectionGesture;
+    selectionGesture = null;
+    if (!start || disposed || start.id !== event.pointerId
+      || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) return;
+    const getTargets = options.getInstanceTargets;
+    const select = options.onSelectInstance;
+    if (!getTargets || !select) return;
+    if (!(options.viewport.camera instanceof THREE.OrthographicCamera)) return;
+    // Use the same camera/frustum as the most recent native render.
+    const id = pickNativeProjectPieceInstance(
+      event.clientX, event.clientY,
+      renderer.domElement.getBoundingClientRect(), camera, getTargets(),
+    );
+    if (!id) {
+      actionStatus.textContent = "Sin pieza seleccionable en esta posición.";
+    } else {
+      actionStatus.textContent = select(id)
+        ? `Pieza seleccionada: ${id}. Usa Mover o Rotar para editarla en Model Space.`
+        : "La pieza está oculta o bloqueada; no se puede seleccionar.";
+    }
+  };
+  const onPointerCancel = (): void => { selectionGesture = null; };
+  renderer.domElement.style.cssText = canSelect
+    ? "display:block;width:100%;height:auto;pointer-events:auto;cursor:crosshair"
+    : "display:block;width:100%;height:auto;pointer-events:none";
+  if (canSelect) {
+    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointerup", onPointerUp);
+    renderer.domElement.addEventListener("pointercancel", onPointerCancel);
+  }
+  panel.append(header, renderer.domElement);
+  if (canSelect) panel.append(toolbar, actionStatus);
+  panel.append(status);
   options.host.appendChild(panel);
 
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
     close.removeEventListener("click", dispose);
+    renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+    renderer.domElement.removeEventListener("pointerup", onPointerUp);
+    renderer.domElement.removeEventListener("pointercancel", onPointerCancel);
+    selectionGesture = null;
     if (frame !== null) window.cancelAnimationFrame(frame);
     panel.remove();
     // Only own the extra renderer. Geometry, materials, scene and textures
@@ -130,6 +222,11 @@ export function mountExperimentalNativeThreePreview(
       } else {
         copyNativeOrthographicPreviewCamera(source, width, height, camera);
         renderer.render(options.viewport.scene, camera);
+        if (canSelect) {
+          const hasPiece = Boolean(options.getSelectedInstanceIds?.().length);
+          if (moveButton) moveButton.disabled = !hasPiece;
+          if (rotateButton) rotateButton.disabled = !hasPiece;
+        }
         sampleFrames++;
         if (!lastSample) lastSample = now;
         const elapsed = now - lastSample;

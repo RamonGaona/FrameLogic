@@ -458,6 +458,27 @@ The panel owns only its extra renderer and camera. CAD pointer input, snaps, num
 
 This is NOT a complete native CAD backend integration. Before replacing the default renderer, implement native semantic identity and authoritative CAD commands, IFC/DWG/2D parity, project persistence and Paper Space integration. Keep the original Model Space as fallback.
 
+## Phase 3o — native view selection, authoritative CAD commands (v0.1.203)
+
+Priority agreed with the user: **IFC is the last integration phase**, while
+STEP, .flproject persistence, assembly commands, DWG/DXF and Paper Space
+are prioritized. Do not remove or regress existing IFC support meanwhile.
+
+The second live-project Three.js renderer now optionally picks existing
+DesignScene PieceInstance roots from the current orthographic scene using
+its own click/raycast, but delegates selection to the CAD DesignSelection
+controller. Selecting a hidden/unselectable piece must not force a selection.
+The panel provides Move, Rotate, Undo and Redo buttons which call the
+existing Model Space CAD command APIs. The production gizmos, snap logic,
+assembly-aware transforms, history and .flproject serializer therefore
+remain the source of truth. Editing continues on the **primary** Model Space
+canvas, not by dragging the secondary renderer's mesh directly.
+
+This is the first interaction bridge, NOT complete native transform
+ownership: it does not yet port the native STEP gizmos into the authoritative
+project viewport, nor guarantee all project/assembly/DWG use cases. Future
+steps: persistent STEP native gizmo input, hierarchical Ctrl-copy and SNAP,
+DWG reference command parity and Paper Space; IFC adapter integration last.
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,

@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.203 — 2026-11-19 (selección Three.js conectada a comandos CAD persistentes; IFC aplazado)
+
+- **Primera interacción real CAD desde la vista nativa:** la ventana **Vista Three.js del proyecto** ya permite seleccionar una instancia de pieza desde sus mallas mediante raycast ortográfico. La selección se identifica en `DesignSceneController.getInstanceEntries()` y se aplica en `DesignSelectionController.selectSingle()`, respetando los filtros y bloqueos existentes. Las referencias CAD y geometría de ayuda sin identidad de pieza no se convierten en supuestas piezas seleccionables.
+- **Mover y Rotar con comandos del proyecto:** los botones de la vista Three.js invocan `startMoveCommand()` y `startRotateCommand()` del Model Space. El gizmo se utiliza en el Model Space principal; los cambios se escriben mediante los comandos actuales de piezas y ensambles, con el mismo historial CAD y el formato `.flproject`, no con una matriz temporal de un objeto Three.js duplicado.
+- **Historial compartido:** botones Deshacer y Rehacer envían las acciones a `undoCadAction()` / `redoCadAction()`. No hay un segundo historial nativo ni se altera el esquema del proyecto. El clic de selección no modifica la geometría ni crea una entrada en Undo.
+- **Aislamiento y seguridad:** la antigua vista diagnóstica mantiene `pointer-events:none` si no recibe un adaptador de selección; en la vista conectada se activan los eventos solamente sobre su canvas y se liberan al cerrar. No se duplican el proyecto, los objetos, los materiales ni la lógica de los snaps.
+- **Prioridad acordada:** primero STEP, transformaciones de piezas, ensambles, archivos `.flproject`, DWG/DXF y Paper Space; **IFC queda para la última etapa**, sin eliminar el soporte existente. Todavía no se permite mover el propio gizmo desde la vista secundaria ni se ha sustituido el backend principal. Para mover, rotar y Ctrl-copiar se continúa usando el gizmo real de Model Space.
+- **Pruebas:** selección de pieza frontal, filtrado de objetos ocultos, coordenadas de canvas, no modificación de matrices, integración con comandos, preservación de proyectos y regresiones. Validación funcional con proyectos reales permanece pendiente.
+
+---
 ## v0.1.202 — 2026-11-19 (vista Three.js del proyecto en Model Space)
 
 - **Integración visual entre dominios:** la página principal incorpora el botón **Vista Three.js del proyecto**, que dibuja la escena Three.js activa del Model Space, sin reimportar STEP ni duplicar definiciones: mallas STEP, referencias IFC/Fragments, geometría DWG/DXF y ensambles presentes en la escena se comparten sin conversión.
