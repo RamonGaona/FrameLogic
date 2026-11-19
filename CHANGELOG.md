@@ -15,6 +15,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.196 — 2026-11-19 (fase 3i: MOVER HASTA / COPIAR HASTA por eje con siguiente clic de referencia)
+
+- **Paridad con el gizmo original:** un **clic corto** (sin arrastrar) en las flechas X/Y/Z del gizmo Three.js nativo `?threeNative=1` **arma el eje**. El **siguiente clic** en una referencia geométrica visible realiza **MOVER HASTA**: el **pivote del gizmo** alcanza la coordenada de la referencia proyectada **exclusivamente sobre el eje seleccionado**, manteniendo invariables las otras dos coordenadas. El arrastre normal del eje de v0.1.194 continúa funcionando.
+- **Ctrl + Copiar hasta:** si Ctrl se utiliza al seleccionar el eje, o se mantiene al hacer clic en el destino, la operación crea una nueva copia visual y mueve **solo la copia**, sin desplazar la pieza original. El modo de Ctrl-copia armada permanece activo para permitir **varias copias sucesivas** con nuevos clics de destino, manteniendo el pivote original; Esc termina la secuencia. No se crean copias con un clic de distancia cero ni mientras se elige la referencia.
+- **Controles visibles:** botón **Hasta** sobre el eje elegido y botón **Copiar hasta** como alternativa al clic corto sobre las flechas. El estado del modo y eje armado aparece junto a la selección, y se distinguen claramente el marcador verde de SNAP exacto del indicador ámbar de cara STEP aproximada. Para cambiar de eje, se puede elegir otro botón o hacer clic corto en otra flecha.
+- **Referencias de destino:** se buscan primero vértices, puntos medios, centros de círculos y otros SNAPs **B-Rep exactos** de las instancias STEP visibles, usando la transformación visual actual de cada instancia; si no hay un SNAP cercano, se acepta el punto obtenido por raycast de una **cara STEP visible**. La referencia por cara es **aproximada** (triangulación) y no debe presentarse como precisión B-Rep; referencias ausentes, distancias cero, no finitas o superiores a 1.000.000 mm no desplazan nada y dejan el modo armado para reintentar.
+- **Historial y cancelación:** MOVER HASTA registra una transformación Undo/Redo; COPIAR HASTA registra una copia independiente por clic, Undo retira únicamente la copia y Redo la restaura. Esc cancela el modo armado sin movimiento ni duplicación. El movimiento libre, copia arrastrada, copia numérica y COPYBASE de v0.1.195 no se sustituyen.
+- **Alcance experimental:** operaciones temporales de visualización, **solo para un STEP de producto único inequívoco**. El archivo STEP y los sólidos OpenCascade originales permanecen intactos; sin persistencia en `.flproject`. Los STEP con múltiples productos o atribución geométrica ambigua siguen bloqueados; no se altera la cámara ortográfica ni el Model Space estable, IFC, DWG, planos o PDF.
+- **Pruebas:** proyección X/Y/Z positiva/negativa del destino sobre el pivote, cero/inválidos, prioridad de SNAP B-Rep sobre superficie, raycast visible aproximado, copia repetida Ctrl con original fijo, Undo/Redo e integración de la máquina de clic corto, incluidas en `test:camera`.
+
+---
+
 ## v0.1.195 — 2026-11-18 (fase 3h: Ctrl-copia segura y COPYBASE con B-Rep exacto)
 
 - **Ctrl + gizmo XYZ:** en `?threeNative=1`, Ctrl + arrastrar una flecha crea una **copia visual independiente** del archivo STEP aislado y desplaza únicamente la copia. **El original permanece inmóvil**. Si se pulsa Ctrl después de iniciar un movimiento, el original recupera inmediatamente su posición inicial y la copia continúa el arrastre; el modo copia queda activado para esa operación aunque luego se suelte Ctrl.
