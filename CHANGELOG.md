@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.207 — 2026-11-19 (Three.js como Model Space principal sin bloquear las herramientas CAD)
+
+- **Vista principal Three.js desde el arranque:** se activa por defecto el editor nativo sobre el renderer/escena/cámara reales del Model Space. No se abre otro renderer ni se duplica el proyecto; la escena existente sigue representando piezas STEP, ensambles, capas y geometría DWG/DXF. El botón de herramientas Three.js puede desactivarse manualmente; añadir `?cadLegacy=1` al URL evita activar las herramientas nativas y deja únicamente los controles CAD anteriores.
+- **Conservar las funciones existentes:** se eliminó la captura de mouse que antes se instalaba en toda la pantalla durante el modo nativo incluso estando en Seleccionar. La capa transparente ahora se instala exclusivamente al elegir **Mover** o **Rotar** y se retira al volver a Seleccionar. Fuera de esos gestos, los controles CAD originales reciben sin interferencias eventos de mouse para dibujar líneas/puntos, usar snaps, modificar DWG/DXF, seleccionar y mover ensambles, abrir `.flproject`, generar cortes y trabajar en Paper Space/PDF. Se mantiene el mismo modelo e historial.
+- **Interacción y navegación:** la cámara principal no se deshabilita al abrir FrameLogic. Solo al activar un gizmo nativo se suspende la navegación; se restaura con su estado previo al volver a Seleccionar. Pulsar Escape en reposo sigue ejecutando su función histórica. Al pulsar otros botones de FrameLogic, el modo nativo de gizmo se desactiva automáticamente y se libera el canvas. El panel nativo es plegable para no ocultar los controles habituales.
+- **Comandos persistentes:** las operaciones nativas de una PieceInstance siguen actualizando DesignModel con CadHistory y `.flproject`, con movimiento numérico XYZ y giros exactos de +90° por eje; no se guardan transformaciones temporales de un visor aparte. Se conserva el SNAP, Ctrl-copia, jerarquías de ensamble y las herramientas DWG/Paper Space existentes por medio de sus controladores CAD originales.
+- **Límites pendientes:** la renderización de Model Space ya era nativa THREE.WebGLRenderer aunque gestionada por That Open. Este incremento la consolida como superficie gráfica principal y hace nativos los gizmos de pieza; **NO** elimina todavía la gestión de mundo/cámara de That Open ni migra la edición directa de DWG, SNAP avanzado, Ctrl-copia y ensambles multinivel a los nuevos gizmos. En esos casos las herramientas CAD antiguas siguen disponibles. IFC queda para el final. La interacción real con archivos grandes y Paper Space aún requiere comprobación manual.
+- **Pruebas:** contratos de arranque por defecto, no bloqueo del canvas, retorno a CAD, proyecto/planos preservados, entrada y limpieza de eventos y las regresiones existentes de cámara/gizmos/DWG/PDF.
+
+---
 ## v0.1.206 — 2026-11-19 (edición Three.js integrada en el Model Space principal, sin segundo WebGL)
 
 - **Corrección al reporte v0.1.205:** las vistas Three.js secundarias podían mostrar gizmos que no respondían y no compartían las coordenadas de mouse/cámara del Model Space principal. Los estados de edición del proyecto no deben depender de un canvas/renderizador duplicado.
