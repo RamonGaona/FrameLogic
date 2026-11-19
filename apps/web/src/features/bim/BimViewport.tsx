@@ -1966,8 +1966,8 @@ export function BimViewport() {
         type="button"
         data-native-step-workspace-launch="true"
         title={lastImportedStepName
-          ? `Abrir en otra pestaña el último STEP importado: ${lastImportedStepName}. Movimiento y rotación solo visuales; no regresa cambios a este proyecto.`
-          : "Abrir visor STEP Three.js en otra pestaña. Importa un STEP aquí para transferirlo automáticamente."}
+          ? `Visor STEP Three.js solo para diagnóstico: ${lastImportedStepName}. Los cambios aquí NO se guardan en .flproject. Para trabajar, usa el Model Space Three.js principal.`
+          : "Visor STEP Three.js solo para diagnóstico: no reemplaza el Model Space ni permite guardar cambios del proyecto."}
         style={{
           position: "absolute", left: 16, bottom: 16, zIndex: 40,
           padding: "7px 10px", borderRadius: 6,
@@ -1983,7 +1983,7 @@ export function BimViewport() {
           }
         }}
       >
-        {lastImportedStepName ? "Visor Three.js · último STEP" : "Visor STEP Three.js"}
+        {lastImportedStepName ? "STEP · visor de pruebas" : "STEP · pruebas"}
       </button>
 
       <button
