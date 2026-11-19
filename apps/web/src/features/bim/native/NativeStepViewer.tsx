@@ -44,6 +44,7 @@ import {
   type NativeMoveGizmo,
 } from "./NativeStepMoveGizmo";
 import { NativeStepRotateRingClick } from "./NativeStepRotateRingClick";
+import { receiveNativeStepHandoff } from "./NativeStepHandoff";
 import {
   createNativeRotateGizmo,
   nativeRotationAngleToReference,
@@ -432,6 +433,28 @@ export function NativeStepViewer() {
       renderer, scene, camera, modelRoot, state, disposed: false,
     };
     runtimeRef.current = runtime;
+    // The full Model Space stays open in another tab. This receiver accepts
+    // exactly one same-origin user-approved STEP File with a one-time ticket.
+    const handoffTicket = new URLSearchParams(window.location.search).get("handoff");
+    const closeStepHandoff = handoffTicket
+      ? receiveNativeStepHandoff(
+        handoffTicket,
+        (file) => {
+          if (runtime.disposed) return;
+          setMoveStatus(`STEP recibido del Model Space: ${file.name}. Importando en visor nativo…`);
+          void loadStepFiles([file]);
+          // Do not leave the handoff token in a reusable address.
+          const clean = new URL(window.location.href);
+          clean.searchParams.delete("handoff");
+          window.history.replaceState(window.history.state, "", clean.toString());
+        },
+        () => {
+          if (!runtime.disposed) {
+            setMoveStatus("No se recibió el STEP desde Model Space. Puedes abrirlo manualmente con Abrir STEP / Ensamblaje.");
+          }
+        },
+      )
+      : () => {};
 
     let width = Math.max(host.clientWidth, 1);
     let height = Math.max(host.clientHeight, 1);
@@ -1128,6 +1151,7 @@ export function NativeStepViewer() {
       aliveRef.current = false;
       loadGeneration.current += 1;
       runtime.disposed = true;
+      closeStepHandoff();
       window.cancelAnimationFrame(frame);
       observer.disconnect();
       canvas.removeEventListener("pointerdown", down);
