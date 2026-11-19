@@ -231,6 +231,19 @@ describe("Standalone native Three.js test route", () => {
     expect(viewer).not.toContain("createBimCore(");
   });
 
+  it("restores same-ring double-click +90 degrees in the native rotation mode", () => {
+    const native = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const tracker = read("../apps/web/src/features/bim/native/NativeStepRotateRingClick.ts");
+    expect(native).toContain("new NativeStepRotateRingClick()");
+    expect(native).toContain("rotateClickRef.current.shortClick(");
+    expect(native).toContain("moveRef.current.rotateBy(source, axis, 90, pivot, copy)");
+    expect(native).toContain('data-native-rotate-controls="true"');
+    expect(native).toContain("nativeRotationAngleToReference(");
+    expect(native).toContain('gizmoMode === "ROTATE"');
+    expect(tracker).toContain("at - previous.at <= 650");
+    expect(tracker).toContain("<= 14");
+  });
+
   it("keeps perspective blocked and existing CAD drawings untouched", () => {
     const engine = read("../packages/bim/core/src/engine/createBimCore.ts");
     const drawing = read("../packages/bim/core/src/drawing/AssemblyViewShadingRenderer.ts");
