@@ -73,7 +73,7 @@ export function sizeNativeProjectRotationRings(
   camera.updateMatrixWorld(true);
   const viewDirection = camera.getWorldDirection(new THREE.Vector3());
   for (const child of group.children) {
-    const axis = child.userData["nativeProjectRotateAxis"];
+    const axis: unknown = child.userData["nativeProjectRotateAxis"];
     if (axis === "X" || axis === "Y" || axis === "Z") {
       // An edge-on ring is not reliably clickable or draggable; hide it
       // rather than teasing a dead tool. Numeric ±90 rotations remain usable.
@@ -101,7 +101,7 @@ export function pickNativeProjectRotationRing(
   const hits = raycaster.intersectObject(group, true);
   for (const hit of hits) {
     if (!hit.object.visible) continue;
-    const axis = hit.object.userData["nativeProjectRotateAxis"];
+    const axis: unknown = hit.object.userData["nativeProjectRotateAxis"];
     if (axis === "X" || axis === "Y" || axis === "Z") {
       // An edge-on torus collapses into a line on screen and can raycast over
       // the gizmo centre, causing a no-op/incorrect-axis rotation. Never arm
