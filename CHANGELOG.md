@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.189 — 2026-11-18 (fase 3b: vista Three.js nativa experimental)
+
+- **Diagnóstico opt-in:** nuevo `ExperimentalNativeThreePreview` para renderizar el mismo escenario CAD en una vista secundaria mediante un `THREE.WebGLRenderer` independiente, utilizando una copia `THREE.OrthographicCamera` ajustada a la proporción del panel. Solo se crea si se abre Model Space con `?threePreview=1`; no aparece en sesiones normales. Un botón permite cerrarlo sin alterar el visor principal.
+- **Límites de la prueba:** este segundo renderer es exclusivamente visual y de solo lectura; comparte la escena y los recursos geométricos con el visor principal, pero no su contexto WebGL. No dispone todavía de controles CAD propios, snaps, edición ni soporte IFC/Fragments validado. Los FPS mostrados son orientativos y **no pueden compararse directamente** con el visor principal porque ambos renderizan simultáneamente.
+- **Aislamiento y limpieza:** tamaño y relación de aspecto independientes, pixel ratio limitado, cámara clonada sin modificar la original y cierre del contexto WebGL secundario al desmontar. No se destruyen mallas, materiales o texturas compartidas con el visor estable. Fallos del renderer experimental se aíslan con registro de error.
+- **Controles desacoplados:** `FrameLogicCameraController` incorpora objetivo, distancia, cámara ortográfica activa, zoom mínimo y configuración mutable de botones CAD, sin exponer tipos de That Open. Inicio de Model Space, restauración de estado de cámara de `.flproject` y configuración de navegación CAD ya utilizan el puerto FrameLogic, conservando compatibilidad de archivos.
+- **Seguridad:** permanece activo el visor That Open como único renderer de producción y la cámara de Model Space **ORTOGRÁFICA** (perspectiva deshabilitada). IFC, ensamblajes STEP, gizmos, snapping, Paper Space y PDF no se modifican funcionalmente.
+- **Pruebas:** verificación de geometría de la cámara ortográfica clonada y protección de la inicialización experimental, así como regresiones de interfaces de cámara y limpieza. Se requiere prueba visual manual con los modelos STEP reales antes de considerar el renderer alternativo apto para reemplazar al actual.
+
+---
+
 ## v0.1.188 — 2026-11-18 (fase 3a: controlador de cámara de FrameLogic)
 
 - **Arquitectura de cámara:** nuevo `FrameLogicCameraController` independiente de That Open y `FrameLogicCameraDriver` con operaciones de orientación, habilitación de navegación, `rotateTo`, `setLookAt`, `zoomTo` y suscripción a cambios. La cámara activa se obtiene mediante un proveedor dinámico.
