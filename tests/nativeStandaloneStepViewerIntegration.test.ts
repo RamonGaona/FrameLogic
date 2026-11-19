@@ -215,6 +215,22 @@ describe("Standalone native Three.js test route", () => {
     expect(gizmo).toContain("CENTER_MIN_HIT_RADIUS_PX");
   });
 
+  it("keeps the Three.js gizmo consistently sized while orthographic zoom changes", () => {
+    const viewer = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const gizmo = read("../apps/web/src/features/bim/native/NativeStepMoveGizmo.ts");
+    expect(gizmo).toContain("updateNativeMoveGizmoScreenScale(");
+    expect(gizmo).toContain("NATIVE_GIZMO_TARGET_LENGTH_PX = 96");
+    expect(gizmo).toContain("(camera.top - camera.bottom) / camera.zoom");
+    expect(gizmo).toContain("gizmo.group.scale.setScalar(scale)");
+    expect(gizmo).toContain("getNativeMoveGizmoWorldAxisLength(");
+    expect(viewer).toContain("updateNativeMoveGizmoScreenScale(");
+    expect(viewer).toContain("getNativeMoveGizmoWorldAxisLength(moveGizmoRef.current)");
+    expect(viewer).toContain("renderer.render(scene, camera)");
+    expect(viewer).toContain("pickNativeMoveCenter(");
+    expect(viewer).toContain("pickNativeMoveAxis(");
+    expect(viewer).not.toContain("createBimCore(");
+  });
+
   it("keeps perspective blocked and existing CAD drawings untouched", () => {
     const engine = read("../packages/bim/core/src/engine/createBimCore.ts");
     const drawing = read("../packages/bim/core/src/drawing/AssemblyViewShadingRenderer.ts");

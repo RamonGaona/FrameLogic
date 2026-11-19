@@ -385,6 +385,28 @@ exact SNAP visual overlap and the existing centre/axis behavior.
 The production That Open CAD viewport, native orthographic camera,
 STEP/OCCT geometry, IFC/DWG/Paper Space and project persistence are unchanged.
 
+## Phase 3l — orthographic zoom-invariant XYZ gizmo size (v0.1.199)
+
+The user reported the XYZ gizmo was enormous when zoomed into a STEP
+and barely visible when zoomed out. Native Three.js rendering now scales
+only the **visual gizmo group** each frame to target approximately 96 CSS
+pixels of axis length. The world-per-pixel factor uses the orthographic
+camera's vertical frustum and zoom, divided by the actual viewport height;
+small viewports receive a smaller target. This does not change STEP mesh
+scale, OpenCascade B-Rep topology, object position, pivot world coordinate,
+model units or any saved history.
+
+Hit-testing and pointer capture use the current effective gizmo scale.
+The drag controller receives **scaled world-axis length** so its axis
+projection continues returning exact world-millimetre displacement.
+Gizmo scale updates before render, on hover, and before pointer-down;
+centre highlighting and SNAP-overlap priority from v0.1.198 are retained.
+
+Tests cover stable projected axis length at near/far camera frusta,
+centre and arrow picking, numerical drag invariance in mm, and invalid
+viewport guards. No changes to stable CAD, IFC, DWG, Paper Space/PDF,
+project persistence or orthographic-only experimental policy.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
