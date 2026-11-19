@@ -164,6 +164,22 @@ export function NativeStepViewer() {
     setMoveHistory({ undo: moveRef.current.canUndo, redo: moveRef.current.canRedo });
   }
 
+  function focusNativeTarget(target: NativeIsolatedStepTarget | null): void {
+    const runtime = runtimeRef.current;
+    const mesh = target?.meshes[0] as THREE.Mesh<
+      THREE.BufferGeometry, THREE.MeshStandardMaterial
+    > | undefined;
+    // Undo(COPY) detaches the copy. Never leave a selection referring to it.
+    const valid = runtime && mesh && mesh.parent
+      ? mesh : null;
+    const scope = valid && runtime
+      ? resolveNativeStepPartScope(runtime.modelRoot, valid) : null;
+    setSelection(selectionRef.current.setSelected(valid, scope?.meshes));
+    partScopeRef.current = scope;
+    refreshMoveUi();
+    setSnap(null);
+  }
+
   useEffect(() => {
     aliveRef.current = true;
     const host = canvasHost.current;
@@ -270,7 +286,7 @@ export function NativeStepViewer() {
           moveGizmoRef.current, camera, e.clientX, e.clientY,
           canvas.getBoundingClientRect(),
         );
-        if (axis && moveRef.current.beginDrag(moveTargetRef.current, axis)) {
+        if (axis && moveRef.current.beginDrag(moveTargetRef.current, axis, e.ctrlKey)) {
           moveDrag = {
             id: e.pointerId, axis, startX: e.clientX, startY: e.clientY,
             pivot: moveGizmoRef.current.group.position.clone(),
@@ -299,7 +315,7 @@ export function NativeStepViewer() {
           e.clientX - moveDrag.startX, e.clientY - moveDrag.startY,
           width, height,
         );
-        if (distance !== null && moveRef.current.previewDrag(distance)) {
+        if (distance !== null && moveRef.current.previewDrag(distance, e.ctrlKey)) {
           refreshMoveUi();
           clearSnap();
         }
@@ -328,13 +344,24 @@ export function NativeStepViewer() {
     };
     const up = (e: PointerEvent) => {
       if (moveDrag?.id === e.pointerId) {
+        if (e.type === "pointerup" && e.ctrlKey) {
+          moveRef.current.enableCopyDuringDrag();
+        }
         const committed = moveRef.current.endDrag(e.type === "pointerup");
+        const outcome = moveRef.current.lastResult;
         moveDrag = null;
         if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
-        refreshMoveUi();
+        if (committed && outcome?.kind === "COPY") {
+          focusNativeTarget(outcome.target);
+        } else {
+          refreshMoveUi();
+        }
+        clearSnap();
         setMoveStatus(committed
-          ? "Desplazamiento visual confirmado (deshacer disponible)."
-          : "Desplazamiento cancelado.");
+          ? outcome?.kind === "COPY"
+            ? "Copia visual confirmada: original inmóvil. Deshacer disponible."
+            : "Desplazamiento visual confirmado (deshacer disponible)."
+          : "Desplazamiento o copia cancelada.");
         return;
       }
       if (pointer?.id !== e.pointerId) return;
@@ -371,6 +398,31 @@ export function NativeStepViewer() {
     };
     const contextMenu = (e: Event) => e.preventDefault();
     const escapeSelection = (e: KeyboardEvent) => {
+      if (e.key === "Control" && moveDrag) {
+        // Ctrl pressed midway through a move switches to COPY; any movement
+        // already applied to the original is restored immediately.
+        if (moveRef.current.enableCopyDuringDrag()) {
+          refreshMoveUi();
+          setMoveStatus("Ctrl + arrastrar: se mueve la copia; original inmóvil.");
+        }
+        return;
+      }
+      const focused = e.target;
+      const editable = focused instanceof HTMLElement
+        && Boolean(focused.closest('input, textarea, [contenteditable="true"]'));
+      if (!editable && (e.ctrlKey || e.metaKey) && !moveDrag) {
+        const key = e.key.toLowerCase();
+        if (key === "z" && !e.shiftKey) {
+          e.preventDefault();
+          undoMove();
+          return;
+        }
+        if (key === "y" || (key === "z" && e.shiftKey)) {
+          e.preventDefault();
+          redoMove();
+          return;
+        }
+      }
       if (e.key !== "Escape") return;
       if (moveDrag) {
         const pointerId = moveDrag.id;
@@ -578,7 +630,7 @@ export function NativeStepViewer() {
     );
   }
 
-  function moveNumeric(): void {
+  function moveNumeric(copy = false): void {
     const target = moveTargetRef.current;
     const amount = Number(moveAmount.trim().replace(",", "."));
     if (!target) {
@@ -589,30 +641,45 @@ export function NativeStepViewer() {
       setMoveStatus("Distancia inválida. Introduce un número no nulo de hasta 1.000.000 mm.");
       return;
     }
-    if (moveRef.current.moveBy(target, moveAxis, amount)) {
-      refreshMoveUi();
+    const committed = copy
+      ? moveRef.current.copyBy(target, moveAxis, amount)
+      : moveRef.current.moveBy(target, moveAxis, amount);
+    if (committed) {
+      const outcome = moveRef.current.lastResult;
+      if (outcome?.kind === "COPY") focusNativeTarget(outcome.target);
+      else refreshMoveUi();
       setSnap(null);
-      setMoveStatus(`Desplazamiento visual: ${moveAxis} ${amount} mm. Deshacer disponible.`);
+      setMoveStatus(copy
+        ? `Copia visual: ${moveAxis} ${amount} mm. Original inmóvil; deshacer disponible.`
+        : `Desplazamiento visual: ${moveAxis} ${amount} mm. Deshacer disponible.`);
     }
   }
 
   function undoMove(): void {
     if (!moveRef.current.undo()) return;
-    refreshMoveUi();
+    const outcome = moveRef.current.lastResult;
+    if (outcome) focusNativeTarget(outcome.target);
+    else refreshMoveUi();
     setSnap(null);
-    setMoveStatus("Desplazamiento visual deshecho.");
+    setMoveStatus(outcome?.kind === "COPY_UNDONE"
+      ? "Copia deshecha: original restaurado e inmóvil."
+      : "Desplazamiento visual deshecho.");
   }
 
   function redoMove(): void {
     if (!moveRef.current.redo()) return;
-    refreshMoveUi();
+    const outcome = moveRef.current.lastResult;
+    if (outcome) focusNativeTarget(outcome.target);
+    else refreshMoveUi();
     setSnap(null);
-    setMoveStatus("Desplazamiento visual rehecho.");
+    setMoveStatus(outcome?.kind === "COPY"
+      ? "Copia visual restaurada; original inmóvil."
+      : "Desplazamiento visual rehecho.");
   }
 
   function backToCurrentViewer(): void {
     if (!window.confirm(
-      "Este visor permite movimientos visuales temporales: no se modifican ni guardan los STEP originales. ¿Regresar al FrameLogic habitual?",
+      "Este visor permite movimientos y copias visuales temporales: no se modifican ni guardan los STEP originales. ¿Regresar al FrameLogic habitual?",
     )) return;
     window.location.assign(window.location.pathname);
   }
@@ -690,8 +757,8 @@ export function NativeStepViewer() {
             )}
             <div data-native-move-status="true" style={{ color: moveEligible ? "#86efac" : "#fcd34d" }}>
               {moveEligible
-                ? "Gizmo de movimiento XYZ (solo vista): arrastra las flechas o introduce mm."
-                : "Movimiento bloqueado: este STEP no es un único producto inequívoco."}
+                ? "Gizmo XYZ: arrastra para mover · Ctrl + arrastrar para copiar (original inmóvil) · Mover/Copiar por mm."
+                : "Movimiento y copia bloqueados: STEP con varios productos o identidad ambigua."}
             </div>
             {moveEligible && (
               <div data-native-move-controls="true" style={{
@@ -715,7 +782,9 @@ export function NativeStepViewer() {
                     }} />
                   <span>mm</span>
                   <button type="button" style={buttonStyle}
-                    onClick={moveNumeric}>Mover</button>
+                    onClick={(event) => moveNumeric(event.ctrlKey)}>Mover</button>
+                  <button type="button" style={buttonStyle}
+                    onClick={() => moveNumeric(true)}>Copiar</button>
                 </div>
               </div>
             )}
@@ -746,9 +815,9 @@ export function NativeStepViewer() {
         </div>
         {moveStatus && <div role="status" style={{ color: "#fcd34d" }}>{moveStatus}</div>}
         <div style={{ color: "#ffdb8d" }}>
-          Traslación temporal en Three.js: no guarda cambios en STEP, .flproject
-          ni en la topología OCCT. No admite copiar con Ctrl ni mover subpiezas
-          de archivos STEP que contengan varios productos.
+          Movimiento y Ctrl-copia temporales en Three.js: no se guardan cambios
+          en STEP, .flproject ni en la topología OCCT. No admite mover ni copiar
+          subpiezas de un STEP que contenga varios productos.
         </div>
         <div data-native-brep-snap-status="true" style={{ color: "#99e6c9" }}>
           {snap ? `${NATIVE_SNAP_LABELS[snap.kind]} · ${snap.point.x.toFixed(2)}, ${snap.point.y.toFixed(2)}, ${snap.point.z.toFixed(2)} mm`
