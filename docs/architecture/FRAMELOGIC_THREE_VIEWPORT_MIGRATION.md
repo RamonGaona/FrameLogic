@@ -303,6 +303,39 @@ subsequent migrations and must not be claimed here.
 The normal That Open-backed CAD viewer, orthographic camera safety guard,
 IFC/Fragments, DWG and Paper Space/PDF remain unchanged.
 
+## Phase 3i — short-click axis HASTA and Ctrl-copy until reference (v0.1.196)
+
+This phase restores the stable Model Space move-axis interaction model in
+the native Three.js experimental STEP viewer: **short click a gizmo axis**
+to arm the X/Y/Z translation and **click a reference** to place the gizmo
+pivot at that reference's coordinate, projected along the selected axis.
+The other two coordinates remain unchanged. A normal axis drag still
+translates continuously; the short click alone must not move or copy
+anything.
+
+Press Ctrl either when arming the axis or on the next destination click
+to make **COPIAR HASTA** instead of move. The original loaded STEP group
+remains fixed. A Ctrl-armed axis stays active for repeated copies at
+further references until Escape; the original pivot is retained for each
+click (no accumulation). The explicit **Hasta** and **Copiar hasta** buttons
+provide equivalent modes for the UI-selected axis. Invalid, missing or
+same-axis zero-distance targets leave the mode armed to retry.
+
+Destination reference priority: visible indexed **exact OpenCascade B-Rep
+SNAPs**, obtained from each native STEP instance's current world
+placement; when none is near the click, fall back to a **visible triangle
+surface intersection** via raycast. Surface hits are marked amber and
+labelled approximate, never misrepresented as exact B-Rep geometry.
+The axis correction is calculated from the original scoped gizmo pivot,
+not a 3D free displacement to the clicked point.
+
+Existing local MOVE/COPY undo/redo and Ctrl-copy isolation apply unchanged.
+No STEP B-Rep or .flproject persistence is created here. The operation is
+an experimental *visual placement only*, limited to independently imported
+single-product STEP files with unambiguous source identity. Multi-product
+STEP content remains blocked. The production CAD viewer, camera's
+orthographic safety restriction, IFC, DWG and Paper Space/PDF are unchanged.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
