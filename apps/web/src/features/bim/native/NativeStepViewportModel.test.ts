@@ -57,6 +57,28 @@ describe("Native STEP viewer geometry and independent orthographic camera", () =
     disposeNativeStepMeshGroup(group);
   });
 
+  it("never assigns a STEP product when geometry IDs are ambiguous", () => {
+    const m = (id: string) => ({
+      id,
+      positions: new Float32Array([0, 0, 0, 2, 0, 0, 0, 2, 0]),
+      indices: new Uint32Array([0, 1, 2]),
+    });
+    const group = buildNativeStepMeshGroup({
+      brepDocumentId: "source",
+      meshes: [m("duplicate"), m("duplicate"), m("shared")],
+      products: [
+        { id: "A", geometryIds: ["duplicate", "shared"], childIds: [] },
+        { id: "B", geometryIds: ["shared"], childIds: [] },
+      ],
+    });
+    expect(group.children).toHaveLength(3);
+    for (const child of group.children) {
+      expect(child.userData["stepProductAmbiguous"]).toBe(true);
+      expect(child.userData["stepProductId"]).toBeUndefined();
+    }
+    disposeNativeStepMeshGroup(group);
+  });
+
   it("fits a long STEP assembly and preserves a native Z-up orthographic camera", () => {
     const bounds = new THREE.Box3(
       new THREE.Vector3(0, -20, -20),
