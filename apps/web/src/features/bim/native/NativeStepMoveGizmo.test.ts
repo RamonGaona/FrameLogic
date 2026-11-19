@@ -6,6 +6,9 @@ import {
   nativeMoveAxisDistanceFromPixels,
   pickNativeMoveAxis,
   pickNativeMoveCenter,
+  getNativeMoveCenterScreenPosition,
+  isNativeSnapCoveredByMoveCenter,
+  setNativeMoveCenterHovered,
 } from "./NativeStepMoveGizmo";
 
 function camera() {
@@ -44,6 +47,59 @@ describe("Native Three.js movement gizmo preview", () => {
     expect(pickNativeMoveCenter(gizmo, c, x, y, rect)).toBe(true);
     expect(pickNativeMoveCenter(gizmo, c, rect.left - 1, y, rect)).toBe(false);
     expect(gizmo.group.position.toArray()).toEqual([5, 8, 3]);
+    gizmo.dispose();
+  });
+
+  it("highlights the centre on hover, then restores its original appearance", () => {
+    const gizmo = createNativeMoveGizmo(new THREE.Vector3(), 250);
+    const original = gizmo.centerHandle.material.color.clone();
+    const axis = gizmo.group.children[1] as THREE.Group;
+    const axisMaterial = (axis.children[0] as THREE.Mesh<
+      THREE.BufferGeometry, THREE.MeshBasicMaterial
+    >).material;
+    const axisColor = axisMaterial.color.clone();
+    setNativeMoveCenterHovered(gizmo, true);
+    expect(gizmo.centerHandle.material.color.equals(original)).toBe(false);
+    expect(gizmo.centerHandle.scale.x).toBe(1.6);
+    expect(gizmo.centerHandle.material.opacity).toBe(1);
+    expect(gizmo.centerHandle.renderOrder).toBeGreaterThan(0);
+    expect(gizmo.centerHandle.material.depthTest).toBe(false);
+    expect(axisMaterial.color.equals(axisColor)).toBe(true);
+    setNativeMoveCenterHovered(gizmo, false);
+    expect(gizmo.centerHandle.material.color.equals(original)).toBe(true);
+    expect(gizmo.centerHandle.scale.toArray()).toEqual([1, 1, 1]);
+    expect(gizmo.centerHandle.material.opacity).toBeCloseTo(0.98);
+    gizmo.dispose();
+  });
+
+  it("has a screen-space centre hit radius even at zoomed-out scales", () => {
+    const gizmo = createNativeMoveGizmo(new THREE.Vector3(), 25);
+    const c = camera();
+    c.left = -2000; c.right = 2000;
+    c.top = 2000; c.bottom = -2000;
+    c.updateProjectionMatrix();
+    const rect = { left: 20, top: 30, width: 400, height: 400 };
+    const center = getNativeMoveCenterScreenPosition(gizmo, c, rect);
+    expect(center).not.toBeNull();
+    expect(center!.hitRadiusPx).toBeGreaterThanOrEqual(13);
+    const x = rect.left + center!.x;
+    const y = rect.top + center!.y;
+    expect(pickNativeMoveCenter(gizmo, c, x + 12, y, rect)).toBe(true);
+    expect(pickNativeMoveCenter(gizmo, c, x + 40, y, rect)).toBe(false);
+    gizmo.dispose();
+  });
+
+  it("gives centre visual priority over a coincident exact SNAP but not distant snaps", () => {
+    const gizmo = createNativeMoveGizmo(new THREE.Vector3(), 300);
+    const c = camera();
+    const rect = { width: 400, height: 400 };
+    const center = getNativeMoveCenterScreenPosition(gizmo, c, rect)!;
+    expect(isNativeSnapCoveredByMoveCenter(gizmo, c, {
+      screenX: center.x, screenY: center.y,
+    }, rect)).toBe(true);
+    expect(isNativeSnapCoveredByMoveCenter(gizmo, c, {
+      screenX: center.x + 50, screenY: center.y,
+    }, rect)).toBe(false);
     gizmo.dispose();
   });
 
