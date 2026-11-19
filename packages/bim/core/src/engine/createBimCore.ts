@@ -4118,7 +4118,7 @@ async function toggleCameraProjection():
 
   // ProjectionManager cambia el boton central a ZOOM en ORTHO y DOLLY
   // en PERSPECTIVA. Recuperar la orbita CAD sin modificar la rueda-zoom.
-  restoreCadMouseNavigationBindings(world.camera.controls);
+  restoreCadMouseNavigationBindings(cameraNavigation.mouseBindings);
 
 
   // --------------------------------------------------------

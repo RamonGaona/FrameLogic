@@ -95,6 +95,36 @@ Next: migrate specialized navigation operations and camera state restore
 through richer port contracts, then implement an opt-in native Three.js
 backend after regression and performance checks on real STEP assemblies.
 
+## Phase 3b — native Three.js read-only diagnostic and camera state ports (v0.1.189)
+
+The user reported seven successful manual tests of v0.1.188: orthographic
+camera, view cube, snaps after navigation, gizmos, large assemblies, project
+reopen, IFC and Paper Space.
+
+A **secondary native Three.js WebGLRenderer** can now be enabled in Model Space
+with `?threePreview=1` appended to the deployed application URL. It renders
+the existing scene using an independent native orthographic camera cloned from
+the active Model Space camera. The read-only overlay has its own renderer,
+context and disposal lifecycle; closing it or leaving Model Space must not
+dispose any shared STEP/IFC geometry or change the stable viewport.
+
+**This is not yet a full native CAD backend:** it shares the live scene,
+borrows the current camera orientation, and cannot edit, select or navigate
+independently. IFC/Fragments compatibility has not been validated. Running
+two renderers simultaneously uses more GPU memory and their FPS are not
+comparable as isolated benchmark results. Without the query opt-in, exactly
+one production renderer remains active.
+
+Model Space camera initialization, legacy project camera save/restore and CAD
+mouse-button bindings now use the FrameLogic camera controller; the remaining
+vendor-specific controls (precision camera, Zoom Extents and related operations)
+need their own ports in subsequent phases.
+
+The perspective camera remains disabled, orthographic is the only supported
+Model Space projection, and drawing/PDF pipelines are unaffected. Before
+using the preview for decisions, visually compare real STEP assemblies and
+confirm explicit cleanup on close.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,

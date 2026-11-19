@@ -3,7 +3,7 @@ import { mountAutomationPanel } from "./mountAutomationPanel";
 import { mountLocalChatPanel } from "./mountLocalChatPanel";
 import { FrameLogicSettingsWindow } from "./settings/FrameLogicSettingsWindow";
 import { LineFillDemoTool } from "./LineFillDemoTool";
-import { connectAutomationBridge } from "@framelogic/bim-core";
+import { connectAutomationBridge, mountExperimentalNativeThreePreview } from "@framelogic/bim-core";
 import { loadPieceVisualPackage, type LoadedPieceVisualPackage } from "@framelogic/bim-core";
 import {
   useEffect,
@@ -990,8 +990,30 @@ export function BimViewport() {
             const disposeAutomationPanel = mountAutomationPanel(instance);
             const disposeClashDetectionPanel = mountClashDetectionPanel(instance);
             const disposeLocalChatPanel = mountLocalChatPanel(instance);
+
+            // Explicit diagnostic opt-in only: never create a second WebGL
+            // context for ordinary projects or production users.
+            let disposeNativePreview: (() => void) | undefined;
+            if (new URLSearchParams(window.location.search).get("threePreview") === "1") {
+              try {
+                const preview = mountExperimentalNativeThreePreview({
+                  host: container.parentElement ?? container,
+                  viewport: instance.viewport,
+                });
+                disposeNativePreview = () => preview.dispose();
+              } catch (error) {
+                // An unsupported GPU/material must not block the stable visor.
+                console.warn("Three.js experimental preview unavailable:", error);
+              }
+            }
             const disposeWithPanel = instance.dispose;
-            instance.dispose = () => { disposeClashDetectionPanel(); disposeLocalChatPanel(); disposeAutomationPanel(); disposeWithPanel(); };
+            instance.dispose = () => {
+              disposeNativePreview?.();
+              disposeClashDetectionPanel();
+              disposeLocalChatPanel();
+              disposeAutomationPanel();
+              disposeWithPanel();
+            };
             if (import.meta.env.DEV) {
               let disconnect: (() => void) | undefined;
               const devWindow = window as typeof window & { frameLogicConnectAutomation?: (token: string) => void };
