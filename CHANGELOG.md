@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.192 — 2026-11-18 (fase 3e: snaps exactos B-Rep y referencias de producto STEP)
+
+- **Snaps STEP nativos basados en OpenCascade:** el visor autónomo `?threeNative=1` registra en la carga un índice de vértices, puntos medios de aristas, centros de círculos y orígenes de ejes cilíndricos extraídos de la topología **B-Rep exacta** de OpenCascade, usando la misma escala `modelScale` que el motor CAD existente. No se convierten los vértices triangulados visuales en snaps exactos.
+- **Cursor y precisión:** al seleccionar una malla y acercar el cursor a un punto indexado, un marcador verde muestra el tipo de snap y sus coordenadas en milímetros. La consulta usa la cámara ortográfica actual, tolerancia en píxeles CSS, límites de proyección y actualización controlada durante el movimiento del cursor. Los gestos de órbita, pan y zoom no ejecutan snaps.
+- **Identidad de archivo y producto:** las mallas conservan el identificador `brepDocumentId` y, cuando el árbol de productos STEP relaciona `geometryIds` con una malla, exponen su identificador y nombre de producto. El índice de snaps se consulta **solo para el documento STEP de la malla seleccionada**, incluso si se han importado archivos con nombres iguales.
+- **Alcance actual:** el índice B-Rep pertenece al **archivo STEP completo**, no a una subpieza individual de ese archivo. Los snaps son una ayuda visual de consulta: no se aplican todavía a mover/copiar/alinear, no reemplazan la precisión del Model Space principal y pueden incluir topología que queda oculta tras otras superficies. No se implementan aún intersecciones ni el punto más cercano sobre una arista.
+- **Compatibilidad y limpieza:** se descartan marcadores durante navegación, deselección, cambio de vista y recarga de STEP. Los índices se liberan al desmontar. Se conservan la cámara ortográfica, el visor CAD principal, IFC, gizmos existentes, proyectos y Paper Space/PDF.
+- **Pruebas:** nuevos tests para escala B-Rep en mm, vértices, puntos medios, centros, selección por documento, recorte de cámara, etiquetas de producto y ruta sin geometría derivada. Integrados en `test:camera`. Pendiente la verificación manual con ensamblajes STEP reales.
+
+---
+
 ## v0.1.191 — 2026-11-18 (fase 3d: selección visual STEP en Three.js nativo)
 
 - **Selección de mallas STEP:** el visor autónomo `?threeNative=1` permite seleccionar por clic izquierdo la malla visible más cercana mediante `THREE.Raycaster`, sin depender de That Open. Cada malla se identifica por su nombre y archivo STEP de origen; un recuadro muestra triángulos y dimensiones aproximadas en milímetros. No modifica la geometría CAD ni la transformación.
