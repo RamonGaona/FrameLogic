@@ -59,7 +59,7 @@ export class NativeStepSelectionController {
     this.originalEmissive.copy(mesh.material.emissive);
     this.originalIntensity = mesh.material.emissiveIntensity;
     mesh.material.emissive.setHex(0x15a9e8);
-    mesh.material.emissiveIntensity = 0.85;
+    mesh.material.emissiveIntensity = 1.25;
     return this.describe(mesh);
   }
 
