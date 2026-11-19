@@ -73,9 +73,9 @@ describe("native gizmo edits authoritative FrameLogic transforms, not visual clo
     expect(rig.recorded).toHaveLength(0);
     expect(rig.bridge.finish(true)).toBe(true);
     expect(rig.recorded).toHaveLength(1);
-    expect(rig.recorded[0].label).toBe("MOVE");
-    expect(rig.recorded[0].before.get("piece-1")?.position.x).toBe(0);
-    expect(rig.recorded[0].after.get("piece-1")?.position.x).toBe(125);
+    expect(rig.recorded.at(0)?.label).toBe("MOVE");
+    expect(rig.recorded.at(0)?.before.get("piece-1")?.position.x).toBe(0);
+    expect(rig.recorded.at(0)?.after.get("piece-1")?.position.x).toBe(125);
     // .flproject reads pieceInstances; it must receive the updated transform.
     expect(rig.changes.at(-1)?.position).toEqual({ x: 125, y: 0, z: -30 });
   });
@@ -102,7 +102,7 @@ describe("native gizmo edits authoritative FrameLogic transforms, not visual clo
     expect(rig.object.position.x).toBeCloseTo(10);
     expect(rig.object.position.y).toBeCloseTo(0);
     expect(rig.bridge.finish(true)).toBe(true);
-    expect(rig.recorded[0].after.get("piece-1")?.position.x).toBeCloseTo(10);
+    expect(rig.recorded.at(0)?.after.get("piece-1")?.position.x).toBeCloseTo(10);
   });
 
   it("rejects hidden, locked and multiply-selected pieces", () => {
