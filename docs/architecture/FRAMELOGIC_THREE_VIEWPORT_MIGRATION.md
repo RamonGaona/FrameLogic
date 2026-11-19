@@ -407,6 +407,48 @@ centre and arrow picking, numerical drag invariance in mm, and invalid
 viewport guards. No changes to stable CAD, IFC, DWG, Paper Space/PDF,
 project persistence or orthographic-only experimental policy.
 
+## Phase 3m — interoperable session entry without replacing Model Space (v0.1.201)
+
+The default URL `https://framelogic-dev.pages.dev/` continues to load the
+**complete existing FrameLogic CAD workspace**, not the standalone STEP experiment.
+This safeguards IFC, CAD drawing/editing, DWG/DXF, assemblies, config,
+project persistence, sections and Paper Space while the new renderer matures.
+
+When a user imports a STEP/STP as a piece from the Model Space interface, the
+browser keeps the **most recently imported original File** in current-tab
+memory. The `Visor STEP Three.js` launcher opens a **separate tab**, preserving
+the active .flproject and any unsaved work in the existing tab. If the File is
+eligible and below the 256 MiB local handoff cap, the tabs exchange it through
+a single-use `BroadcastChannel` ticket for a maximum of 20 seconds. No cloud
+upload, localStorage, IndexedDB, persistent cache or server-side transfer is
+created. On failure the native viewer retains manual STEP import. Users can
+still open the native viewer without first importing a piece.
+
+**This does not synchronize project changes:** native MOVE/ROTATE/COPY remain
+visual-only and only in the native tab; they cannot be saved into .flproject
+or applied back to the CAD project. Reopening a .flproject is not a promise of
+a transferable original STEP file, and only the latest explicit STEP import
+is eligible. Native operations remain restricted to unambiguous, standalone
+single-product STEP documents. The user's IFC/DWG/PDF work stays on the
+primary Model Space tab.
+
+Before considering the native renderer as the default full FrameLogic engine:
+
+1. Implement a proper project/semantic model adapter for STEP piece instances,
+   subassemblies and independent B-Rep product ownership.
+2. Reuse authoritative domain Move/Rotate/Copy commands and .flproject
+   serializer (not standalone THREE.Group state) with shared Undo/Redo.
+3. Connect IFC/Fragments, DWG/DXF and CAD primitives without converting STEP
+   to IFC or silently dropping references.
+4. Integrate native camera events and snaps with WorkPlane, tools, ViewCube,
+   drawing sheets/sections/BOM and Paper Space/PDF.
+5. Validate geometry, accuracy and stability on real large user STEP/DWG/IFC
+   projects, memory ownership, automated tests, browser workflows and rollback.
+6. Only then enable a reversible native-backend default behind a feature
+   switch, with the existing complete Model Space as fallback.
+
+`?threeNative=1` remains a separate, opt-in STEP viewer for this increment.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,

@@ -17,8 +17,10 @@ describe("Standalone native Three.js test route", () => {
   it("can return to stable CAD and warns before leaving unsaved projects", () => {
     const cad = read("../apps/web/src/features/bim/BimViewport.tsx");
     const native = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
-    expect(cad).toContain('window.location.assign(`${window.location.pathname}?threeNative=1`)');
-    expect(cad).toContain("Guarda primero tu proyecto .flproject");
+    expect(cad).toContain("openNativeStepWorkspace(lastImportedStepFileRef.current)");
+    expect(cad).toContain('data-native-step-workspace-launch="true"');
+    expect(cad).not.toContain('window.location.assign(`${window.location.pathname}?threeNative=1`)');
+    expect(cad).toContain("lastImportedStepFileRef.current = file");
     expect(native).toContain("Volver al visor actual");
     expect(native).toContain("window.location.assign(window.location.pathname)");
   });
@@ -33,6 +35,22 @@ describe("Standalone native Three.js test route", () => {
     expect(native).not.toContain("createBimCore(");
     expect(native).not.toContain("OrthoPerspectiveCamera");
     expect(native).not.toContain("mountExperimentalNativeThreePreview");
+  });
+
+  it("receives the original STEP from Model Space without replacing the CAD session", () => {
+    const cad = read("../apps/web/src/features/bim/BimViewport.tsx");
+    const viewer = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const handoff = read("../apps/web/src/features/bim/native/NativeStepHandoff.ts");
+    expect(cad).toContain("lastImportedStepFileRef.current = file");
+    expect(cad).toContain("openNativeStepWorkspace(lastImportedStepFileRef.current)");
+    expect(viewer).toContain("receiveNativeStepHandoff(");
+    expect(viewer).toContain("void loadStepFiles([file])");
+    expect(viewer).toContain('clean.searchParams.delete("handoff")');
+    expect(viewer).toContain("closeStepHandoff()");
+    expect(handoff).toContain('url.searchParams.set("threeNative", "1")');
+    expect(handoff).toContain('window.open(url.toString(), "_blank")');
+    expect(handoff).not.toContain("localStorage");
+    expect(handoff).not.toContain("indexedDB");
   });
 
   it("selects STEP meshes by a click without entering edit or CAD navigation mode", () => {
