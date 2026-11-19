@@ -1359,7 +1359,7 @@ export function NativeStepViewer() {
 
   function backToCurrentViewer(): void {
     if (!window.confirm(
-      "Este visor permite movimientos y copias visuales temporales: no se modifican ni guardan los STEP originales. ¿Regresar al FrameLogic habitual?",
+      "Este visor permite movimientos, rotaciones y copias visuales temporales: no se modifican ni guardan los STEP originales. ¿Regresar al FrameLogic habitual?",
     )) return;
     window.location.assign(window.location.pathname);
   }
@@ -1445,7 +1445,21 @@ export function NativeStepViewer() {
               <div data-native-transform-target="true">
                 Punto base gizmo (mm): {transformTarget.pivot.toArray()
                   .map((value) => value.toFixed(2)).join(", ")}
-                {" · Rotación no implementada"}
+                {" · "}{gizmoMode === "ROTATE" ? "Eje de rotación global" : "Ejes de movimiento globales"}
+              </div>
+            )}
+            {moveEligible && (
+              <div data-native-gizmo-modes="true" style={{
+                display: "flex", gap: 6, borderTop: "1px solid #356273", paddingTop: 7,
+              }}>
+                <button type="button" style={{
+                  ...buttonStyle,
+                  borderColor: gizmoMode === "MOVE" ? "#43f2be" : "#64748b",
+                }} onClick={() => setNativeGizmoMode("MOVE")}>Mover XYZ</button>
+                <button type="button" style={{
+                  ...buttonStyle,
+                  borderColor: gizmoMode === "ROTATE" ? "#43f2be" : "#64748b",
+                }} onClick={() => setNativeGizmoMode("ROTATE")}>Rotar XYZ</button>
               </div>
             )}
             {moveEligible && (
@@ -1466,8 +1480,10 @@ export function NativeStepViewer() {
             )}
             <div data-native-move-status="true" style={{ color: moveEligible ? "#86efac" : "#fcd34d" }}>
               {moveEligible
-                ? "Gizmo XYZ: arrastra para mover · Ctrl + arrastrar para copiar · clic corto en un eje = HASTA (siguiente clic en referencia)."
-                : "Movimiento y copia bloqueados: STEP con varios productos o identidad ambigua."}
+                ? gizmoMode === "ROTATE"
+                  ? "Gizmo de rotación: arrastra un anillo para girar · Ctrl + arrastrar crea copia · clic corto arma ROTAR HASTA."
+                  : "Gizmo XYZ: arrastra para mover · Ctrl + arrastrar para copiar · clic corto en un eje = HASTA (siguiente clic en referencia)."
+                : "Movimiento, rotación y copia bloqueados: STEP con varios productos o identidad ambigua."}
               {armedUntil && (
                 <div data-native-axis-until-active="true" style={{
                   marginTop: 5, color: "#fcd34d",
@@ -1479,6 +1495,17 @@ export function NativeStepViewer() {
                     : " · Ctrl en el clic de destino copia; Esc cancela."}
                 </div>
               )}
+              {armedRotation && (
+                <div data-native-rotate-until-active="true" style={{
+                  marginTop: 5, color: "#fcd34d",
+                }}>
+                  {armedRotation.copy ? "COPIAR ROTANDO HASTA" : "ROTAR HASTA"} · eje {armedRotation.axis}
+                  {" · "}clic sobre SNAP B-Rep o cara visible
+                  {armedRotation.copy
+                    ? " · permite copias sucesivas; Esc termina."
+                    : " · Ctrl en el destino copia; Esc cancela."}
+                </div>
+              )}
               {snapBase && (
                 <div data-native-copybase-active="true" style={{ color: "#67e8f9" }}>
                   COPYBASE · base {snapBase.toArray().map(v => v.toFixed(2)).join(", ")} mm
@@ -1486,12 +1513,12 @@ export function NativeStepViewer() {
                 </div>
               )}
             </div>
-            {moveEligible && (
+            {moveEligible && gizmoMode === "MOVE" && (
               <button type="button" style={buttonStyle}
                 disabled={!snap || Boolean(snapBase)}
                 onClick={captureSnapBase}>Fijar base SNAP para copiar</button>
             )}
-            {moveEligible && (
+            {moveEligible && gizmoMode === "MOVE" && (
               <div data-native-move-controls="true" style={{
                 display: "flex", flexDirection: "column", gap: 6,
                 borderTop: "1px solid #356273", paddingTop: 8,
@@ -1532,6 +1559,49 @@ export function NativeStepViewer() {
                 </div>
               </div>
             )}
+            {moveEligible && gizmoMode === "ROTATE" && (
+              <div data-native-rotate-controls="true" style={{
+                display: "flex", flexDirection: "column", gap: 6,
+                borderTop: "1px solid #356273", paddingTop: 8,
+              }}>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                  {(["X", "Y", "Z"] as const).map((axis) => (
+                    <button key={axis} type="button" style={{
+                      ...buttonStyle,
+                      borderColor: moveAxis === axis ? "#43f2be" : "#64748b",
+                    }} onClick={() => setMoveAxis(axis)}>{axis}</button>
+                  ))}
+                  <input aria-label="Ángulo en grados" type="text"
+                    inputMode="decimal" value={rotationAmount}
+                    onChange={(event) => setRotationAmount(event.currentTarget.value)}
+                    style={{
+                      width: 85, padding: 7, borderRadius: 5,
+                      border: "1px solid #64748b", background: "#0b1520",
+                      color: "#f8fafc",
+                    }} />
+                  <span>°</span>
+                  <button type="button" style={buttonStyle}
+                    onClick={(event) => rotateNumeric(event.ctrlKey)}>Rotar</button>
+                  <button type="button" style={buttonStyle}
+                    onClick={() => rotateNumeric(true)}>Copiar rotando</button>
+                </div>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                  <button type="button" style={buttonStyle}
+                    onClick={(event) => armNativeRotationUntil(moveAxis, event.ctrlKey)}>
+                    Rotar hasta
+                  </button>
+                  <button type="button" style={buttonStyle}
+                    onClick={() => armNativeRotationUntil(moveAxis, true)}>
+                    Copiar hasta
+                  </button>
+                </div>
+                <div style={{ color: "#b9d4e7" }}>
+                  Al hacer clic corto en el anillo, su punto establece la dirección inicial;
+                  el siguiente SNAP fija el ángulo. Con los botones se usa +Y para X,
+                  +Z para Y y +X para Z. Las caras son referencias aproximadas.
+                </div>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 6 }}>
               <button type="button" style={buttonStyle}
                 disabled={!moveHistory.undo} onClick={undoMove}>Deshacer</button>
@@ -1542,6 +1612,7 @@ export function NativeStepViewer() {
               selectionRef.current.clear();
               clearArmedPivot();
               clearArmedUntil();
+              clearArmedRotation();
               snapPlacementRef.current = null;
               setSnapBase(null);
               partScopeRef.current = null;
@@ -1567,7 +1638,7 @@ export function NativeStepViewer() {
         </div>
         {moveStatus && <div role="status" style={{ color: "#fcd34d" }}>{moveStatus}</div>}
         <div style={{ color: "#ffdb8d" }}>
-          Movimiento y Ctrl-copia temporales en Three.js: no se guardan cambios
+          Movimiento, rotación y Ctrl-copia temporales en Three.js: no se guardan cambios
           en STEP, .flproject ni en la topología OCCT. No admite mover ni copiar
           subpiezas de un STEP que contenga varios productos.
         </div>
@@ -1609,7 +1680,7 @@ export function NativeStepViewer() {
             boxShadow: "0 0 10px #fff16b, inset 0 0 5px #fff16b",
           }}/>
       )}
-      {armedUntil && untilSurface && (
+      {(armedUntil || armedRotation) && untilSurface && (
         <div data-native-axis-until-surface-marker="true"
           aria-label="Punto de superficie STEP aproximado"
           style={{
