@@ -355,6 +355,9 @@ export function NativeStepViewer() {
     } | null = null;
     const canvas = renderer.domElement;
     let lastSnapQuery = -Infinity;
+    let pivotDrag: {
+      id: number; startX: number; startY: number;
+    } | null = null;
     let moveDrag: {
       id: number;
       axis: NativeMoveAxis;
@@ -366,6 +369,15 @@ export function NativeStepViewer() {
     const clearSnap = () => {
       setSnap((previous) => previous ? null : previous);
       setUntilSurface((previous) => previous ? null : previous);
+    };
+    const findPivotSnapAt = (x: number, y: number) => {
+      const target = moveTargetRef.current;
+      if (!target || armedPivotRef.current?.sourceKey !== target.key) return null;
+      updateNativeOrthographicCamera(camera, state, width / height);
+      return findNativeCopySnapDestination(
+        runtime.modelRoot, snapIndexRef.current, target, camera,
+        x, y, canvas.getBoundingClientRect(), 13,
+      );
     };
     const findUntilReferenceAt = (x: number, y: number): NativeAxisUntilReference | null => {
       const armed = armedUntilRef.current;
@@ -387,6 +399,14 @@ export function NativeStepViewer() {
       );
     };
     const updateSnapFromPointer = (event: PointerEvent) => {
+      if (armedPivotRef.current) {
+        const now = performance.now();
+        if (now - lastSnapQuery < 70) return;
+        lastSnapQuery = now;
+        setSnap(findPivotSnapAt(event.clientX, event.clientY));
+        setUntilSurface(null);
+        return;
+      }
       if (armedUntilRef.current) {
         const now = performance.now();
         if (now - lastSnapQuery < 70) return;
@@ -448,12 +468,25 @@ export function NativeStepViewer() {
       if (e.button === 0 && !e.shiftKey && moveTargetRef.current
         && moveGizmoRef.current) {
         updateNativeOrthographicCamera(camera, state, width / height);
+        if (pickNativeMoveCenter(
+          moveGizmoRef.current, camera, e.clientX, e.clientY,
+          canvas.getBoundingClientRect(),
+        )) {
+          // The centre never initiates a geometry transform. It owns the
+          // pointer gesture and accepts only a subsequent exact SNAP.
+          if (armNativePivot()) {
+            pivotDrag = { id: e.pointerId, startX: e.clientX, startY: e.clientY };
+            canvas.setPointerCapture(e.pointerId);
+            e.preventDefault();
+            return;
+          }
+        }
         const axis = pickNativeMoveAxis(
           moveGizmoRef.current, camera, e.clientX, e.clientY,
           canvas.getBoundingClientRect(),
         );
-        if (axis && armedUntilRef.current) {
-          armNativeUntil(axis, armedUntilRef.current.copy || e.ctrlKey);
+        if (axis && (armedUntilRef.current || armedPivotRef.current)) {
+          armNativeUntil(axis, armedUntilRef.current?.copy || e.ctrlKey);
           e.preventDefault();
           return;
         }
@@ -483,6 +516,14 @@ export function NativeStepViewer() {
       e.preventDefault();
     };
     const move = (e: PointerEvent) => {
+      if (pivotDrag) {
+        if (pivotDrag.id !== e.pointerId) return;
+        // Never drag the underlying piece or move the gizmo to an
+        // unverified screen-space position. Indicate exact SNAPs only.
+        updateSnapFromPointer(e);
+        e.preventDefault();
+        return;
+      }
       if (moveDrag) {
         if (moveDrag.id !== e.pointerId) return;
         const distance = nativeMoveAxisDistanceFromPixels(
@@ -518,6 +559,26 @@ export function NativeStepViewer() {
       e.preventDefault();
     };
     const up = (e: PointerEvent) => {
+      if (pivotDrag?.id === e.pointerId) {
+        const shortClick = Math.hypot(
+          e.clientX - pivotDrag.startX, e.clientY - pivotDrag.startY,
+        ) <= 5;
+        pivotDrag = null;
+        if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+        if (e.type !== "pointerup") {
+          clearArmedPivot();
+          clearSnap();
+          setMoveStatus("Reubicación de centro cancelada.");
+        } else if (!shortClick) {
+          const hit = findPivotSnapAt(e.clientX, e.clientY);
+          if (!hit || !placeNativePivot(hit.point)) {
+            setMoveStatus("Centro XYZ armado: arrastra o haz clic sobre un SNAP exacto; Esc cancela.");
+          }
+        } else {
+          setMoveStatus("Centro XYZ armado: siguiente clic en un SNAP B-Rep exacto. Esc cancela.");
+        }
+        return;
+      }
       if (moveDrag?.id === e.pointerId) {
         if (e.type === "pointerup" && e.ctrlKey) {
           moveRef.current.enableCopyDuringDrag();
@@ -555,6 +616,13 @@ export function NativeStepViewer() {
         && !pointer.pan && !pointer.moved;
       pointer = null;
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      if (wasClick && armedPivotRef.current) {
+        const hit = findPivotSnapAt(e.clientX, e.clientY);
+        if (!hit || !placeNativePivot(hit.point)) {
+          setMoveStatus("No hay SNAP B-Rep exacto en ese punto; el centro sigue armado. Esc cancela.");
+        }
+        return;
+      }
       if (wasClick && armedUntilRef.current) {
         const armed = armedUntilRef.current;
         const source = moveTargetRef.current;
@@ -613,6 +681,7 @@ export function NativeStepViewer() {
         return;
       }
       if (wasClick) {
+        clearArmedPivot();
         clearArmedUntil();
         snapPlacementRef.current = null;
         setSnapBase(null);
@@ -670,6 +739,21 @@ export function NativeStepViewer() {
         }
       }
       if (e.key !== "Escape") return;
+      if (pivotDrag) {
+        const pointerId = pivotDrag.id;
+        pivotDrag = null;
+        if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+        clearArmedPivot();
+        clearSnap();
+        setMoveStatus("Reubicación del centro XYZ cancelada; pieza inmóvil.");
+        return;
+      }
+      if (armedPivotRef.current) {
+        clearArmedPivot();
+        clearSnap();
+        setMoveStatus("Reubicación del centro XYZ cancelada; pieza inmóvil.");
+        return;
+      }
       if (armedUntilRef.current) {
         clearArmedUntil();
         clearSnap();
@@ -752,6 +836,7 @@ export function NativeStepViewer() {
       canvas.removeEventListener("contextmenu", contextMenu);
       window.removeEventListener("keydown", escapeSelection);
       selectionRef.current.dispose();
+      armedPivotRef.current = null;
       armedUntilRef.current = null;
       snapPlacementRef.current = null;
       moveRef.current.reset();
@@ -826,6 +911,7 @@ export function NativeStepViewer() {
       if (meshes === 0) throw new Error("El STEP no contiene mallas visualizables.");
 
       selectionRef.current.clear();
+      clearArmedPivot();
       clearArmedUntil();
       snapPlacementRef.current = null;
       setSnapBase(null);
@@ -897,6 +983,7 @@ export function NativeStepViewer() {
   }
 
   function captureSnapBase(): void {
+    clearArmedPivot();
     clearArmedUntil();
     const target = moveTargetRef.current;
     if (!target || !snap || snap.brepDocumentId !== target.documentId) {
@@ -913,6 +1000,7 @@ export function NativeStepViewer() {
   }
 
   function moveNumeric(copy = false): void {
+    clearArmedPivot();
     clearArmedUntil();
     const target = moveTargetRef.current;
     const amount = Number(moveAmount.trim().replace(",", "."));
