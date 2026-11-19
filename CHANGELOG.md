@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.205 — 2026-11-19 (gizmo Mover explícito y rotación interactiva desde Three.js)
+
+- **Incidencia reportada tras v0.1.204:** el gizmo Mover se activaba automáticamente al seleccionar la pieza y sí permitía mover; el de Rotar no reaccionaba al arrastre en la vista nativa.
+- **Selección sin transformación involuntaria:** el visor de proyecto Three.js ahora inicia en estado `select`. Seleccionar otra pieza también restaura ese estado; solo al pulsar **Mover** se adjunta el gizmo de traslación. El modo activo queda identificado con `aria-pressed` y los controles requieren una pieza editable, visible y desbloqueada.
+- **Rotación funcional e independiente:** **Rotar** desadjunta el TransformControls de movimiento y muestra anillos propios XYZ sobre la escena compartida. La detección de anillos ocurre en el canvas secundario, con zonas de clic ampliadas y escala ortográfica constante. El arrastre calcula el ángulo por intersección de rayo con el plano perpendicular al eje seleccionado; la orientación se aplica a la instancia CAD real mediante el puente persistente (no una transformación solamente visual). Soltar registra una operación ROTATE con el historial normal y guardado `.flproject`; Escape, pérdida de foco o cierre restauran el estado anterior.
+- **Rotación exacta de respaldo:** botones X +90°, Y +90° y Z +90° giran la pieza mediante el mismo puente CAD, incluso cuando uno de los anillos está de canto respecto a la cámara.
+- **Sin regresiones al movimiento:** el TransformControls de traslación existente continúa funcionando dentro del visor. El backend principal y las funciones de ensambles, DWG/DXF, Paper Space y .flproject no se reemplazan. IFC permanece como última fase.
+- **Pruebas:** proyección de anillos, selección exacta Z, drag +90°, zoom ortográfico, modo inicial de selección, aplicación de matriz y cancelación. Aún queda comprobar de forma manual con archivos reales y navegadores de producción.
+
+---
 ## v0.1.204 — 2026-11-19 (corrección: gizmo Three.js ya puede transformar piezas del proyecto)
 
 - **Incidencia confirmada:** en v0.1.203 la vista secundaria dibujaba los gizmos del Model Space pero no recibían interacción porque su `TransformControls` estaba conectado al canvas principal. Los botones Mover/Rotar solo activaban herramientas del canvas principal; desde la vista Three.js no se podía arrastrar una pieza.
