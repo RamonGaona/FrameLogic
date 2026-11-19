@@ -1101,11 +1101,6 @@ export function BimViewport() {
                     instance.cadHistory.recordTransform(label, before, ids),
                   cancelActiveCommand: () => instance.cancelActiveCadCommand(),
                 });
-                // Do not let a previously armed legacy CAD gizmo or command
-                // own input while the native primary-mode overlay is active.
-                instance.cancelActiveCadCommand();
-                instance.designTransform.deactivate();
-                instance.designRotate.deactivate();
                 const panel = mountNativePrimaryProjectEditor({
                   host: container,
                   scene: instance.viewport.scene,
@@ -1119,8 +1114,15 @@ export function BimViewport() {
                   },
                   undo: () => instance.undoCadAction(),
                   redo: () => instance.redoCadAction(),
-                  navigationWasEnabled: instance.cameraNavigation.enabled,
+                  getNavigationEnabled: () => instance.cameraNavigation.enabled,
                   setNavigationEnabled: (enabled) => instance.cameraNavigation.setEnabled(enabled),
+                  beforeNativeEdit: () => {
+                    // Preserve normal CAD navigation and pointer input until
+                    // a user explicitly arms a native move or rotate gizmo.
+                    instance.cancelActiveCadCommand();
+                    instance.designTransform.deactivate();
+                    instance.designRotate.deactivate();
+                  },
                   onClose: () => {
                     edit.finish(false);
                     disposeNativePrimary = undefined;
@@ -1136,9 +1138,16 @@ export function BimViewport() {
             };
             nativePrimaryEditorToggleRef.current = toggleNativePrimaryEditor;
 
-            // Preserve the original diagnostic URL opt-in for regressions.
-            if (new URLSearchParams(window.location.search).get("threePreview") === "1") {
+            // Native Three.js tools are available in Model Space from initial
+            // load with the existing STEP/DWG/project/assembly/drawing core.
+            // By default they do not intercept a single legacy CAD pointer
+            // event; only an explicitly armed gizmo temporarily owns input.
+            // ?cadLegacy=1 is the immediate safe rollback for regressions.
+            const viewportFlags = new URLSearchParams(window.location.search);
+            if (viewportFlags.get("threePreview") === "1") {
               toggleNativeProjectPreview();
+            } else if (viewportFlags.get("cadLegacy") !== "1") {
+              toggleNativePrimaryEditor();
             }
             const disposeWithPanel = instance.dispose;
             instance.dispose = () => {
@@ -1947,6 +1956,7 @@ export function BimViewport() {
       <div
         ref={containerRef}
         className="bim-viewport"
+        data-framelogic-main-renderer="three"
         onContextMenu={handleViewportContextMenu}
       />
 
@@ -1981,7 +1991,7 @@ export function BimViewport() {
         data-native-project-inspection="true"
         data-native-primary-mode="true"
         aria-pressed={nativePrimaryEditorOpen}
-        title="Herramientas Three.js sobre el Model Space PRINCIPAL: sin visor duplicado. Los proyectos .flproject, DWG/DXF, ensambles y Paper Space siguen bajo los controladores CAD originales. Pulsa Volver a CAD para usar las herramientas tradicionales."
+        title="Three.js es la vista gráfica principal de FrameLogic. Esta opción activa/desactiva sus controles de gizmo sin cambiar el proyecto ni los controladores DWG/DXF, ensambles, .flproject, SNAP o Paper Space. Respaldo: ?cadLegacy=1."
         style={{
           position: "absolute", left: 16, bottom: 54, zIndex: 53,
           padding: "7px 10px", borderRadius: 6,
@@ -1997,7 +2007,7 @@ export function BimViewport() {
           nativePrimaryEditorToggleRef.current();
         }}
       >
-        {nativePrimaryEditorOpen ? "Salir de edición Three.js" : "Editar en Three.js · Model Space"}
+        {nativePrimaryEditorOpen ? "Three.js principal · controles activos" : "Activar controles Three.js"}
       </button>
 
       <ViewCube
