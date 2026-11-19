@@ -15,6 +15,14 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.209 — 2026-11-19 (panel de capas legible y accesible)
+
+- **Capas rediseñadas:** se corrige el grid desalineado que comprimía los nombres: cada fila reserva siete celdas explícitas (activar, nombre flexible, color, visibilidad, bloqueo, SNAP y eliminar). Los layers del sistema mantienen una celda vacía para conservar la alineación.
+- **Lectura y navegación:** cabecera «Capas» con contador, fila activa destacada, nombres priorizados y truncados solo cuando es necesario, iconos SVG coherentes, estados distinguibles, scroll compacto, controles con foco visible y adaptación a pantallas estrechas.
+- **Comportamiento preservado:** las acciones siguen utilizando los callbacks existentes para activar, mostrar/ocultar, bloquear, habilitar SNAP, cambiar color, crear/eliminar y asignar selección; las subcapas internas de DWG/DXF continúan fuera de este panel.
+- **Mantenimiento:** estilos concentrados en LayerPanel.css para evitar duplicaciones con index.css y nueva regresión visual/funcional integrada en test:instance-tree.
+- **Validación:** cambios de interfaz y pruebas estáticas preparados; la comprobación visual con proyectos reales y la publicación dependen de CI y despliegue.
+
 ## v0.1.208 — 2026-11-19 (un solo Model Space Three.js, sin visores ni cambios de modo duplicados)
 
 - **Interfaz unificada:** se retiran de Model Space los botones experimentales `Three.js principal · controles activos` y `STEP · pruebas`. FrameLogic abre siempre el **Model Space principal**, que ya usa el THREE.WebGLRenderer y la escena CAD reales. No hay un segundo canvas/proyecto ni una elección visual de motor.
