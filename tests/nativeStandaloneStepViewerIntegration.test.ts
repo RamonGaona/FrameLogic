@@ -39,7 +39,7 @@ describe("Standalone native Three.js test route", () => {
     const native = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
     const picker = read("../apps/web/src/features/bim/native/NativeStepSelectionController.ts");
     expect(native).toContain("pickNativeStepMesh(");
-    expect(native).toContain("setSelection(selectionRef.current.setSelected(mesh))");
+    expect(native).toContain("setSelection(selectionRef.current.setSelected(");
     expect(native).toContain('e.type === "pointerup" && pointer.button === 0');
     expect(native).toContain('!pointer.pan && !pointer.moved');
     expect(native).toContain("selectionRef.current.clear()");
@@ -55,7 +55,7 @@ describe("Standalone native Three.js test route", () => {
     expect(native).toContain("disposeNativeStepMeshGroup(runtime.modelRoot)");
     expect(native).toContain("selectionRef.current.dispose()");
     expect(native).toContain("window.removeEventListener(\"keydown\", escapeSelection)");
-    expect(native).toContain("selectionRef.current.clear();\n      setSelection(null);\n      setSnap(null);\n      const previous");
+    expect(native).toContain("selectionRef.current.clear();\n      partScopeRef.current = null;\n      setSelection(null);\n      setTransformTarget(null);\n      setSnap(null);\n      const previous");
   });
 
   it("indexes only OpenCascade B-Rep exact snaps for the selected STEP document", () => {
@@ -77,6 +77,20 @@ describe("Standalone native Three.js test route", () => {
     expect(model).toContain('object.userData["brepDocumentId"]');
     expect(native).toContain("snapIndexRef.current.clear()");
     expect(native).toContain("snapIndexRef.current = stagedSnapIndex");
+  });
+
+  it("filters STEP snaps spatially and by visible surface, never claiming exact subshape ownership", () => {
+    const native = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const scope = read("../apps/web/src/features/bim/native/NativeStepPartScope.ts");
+    const model = read("../apps/web/src/features/bim/native/NativeStepViewportModel.ts");
+    expect(native).toContain("resolveNativeStepPartScope(runtime.modelRoot, mesh)");
+    expect(native).toContain("isSnapWithinNativePartScope(candidate.point, partScope)");
+    expect(native).toContain("isNativeSnapVisible(candidate.point, camera, runtime.modelRoot)");
+    expect(native).toContain("prepareNativeStepTransformTarget(partScope)");
+    expect(native).toContain('data-native-transform-target="true"');
+    expect(scope).toContain("editable: false");
+    expect(scope).not.toContain("@thatopen/components");
+    expect(model).toContain('object.userData["stepProductAmbiguous"] = true;');
   });
 
   it("keeps perspective blocked and existing CAD drawings untouched", () => {
