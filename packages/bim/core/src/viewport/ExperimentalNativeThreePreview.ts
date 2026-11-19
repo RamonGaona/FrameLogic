@@ -195,7 +195,7 @@ export function mountExperimentalNativeThreePreview(
     gizmo.setSpace("world");
     gizmo.setSize(0.9);
     setNativeMode = (mode) => {
-      if (disposed || !nativeEdit.getTarget() || nativeDrag) return false;
+      if (disposed || !nativeEdit?.getTarget() || nativeDrag) return false;
       nativeMode = mode;
       gizmo.setMode(mode);
       return true;
