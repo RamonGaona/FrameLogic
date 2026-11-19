@@ -125,6 +125,34 @@ Model Space projection, and drawing/PDF pipelines are unaffected. Before
 using the preview for decisions, visually compare real STEP assemblies and
 confirm explicit cleanup on close.
 
+## Phase 3c — standalone native STEP renderer (v0.1.190)
+
+After the user validated the native read-only secondary preview, FrameLogic
+introduces `?threeNative=1`: a **separate visual-only route** with a single
+THREE.WebGLRenderer, independent native orthographic camera and orbit/pan/zoom
+handlers. `App.tsx` lazy-loads either the existing BimViewport or this native
+viewer, never both in one tab. The standard CAD viewer has an explicit
+experimental switch that warns about unsaved projects; the native viewer has
+a return action. The previous `?threePreview=1` overlay remains optional.
+
+STEP files are read through the *existing* OCCT adapter; the standalone
+viewer builds its own Three.js meshes in millimetres and disposes its own
+GPU resources. It reports measured STEP load time, displayed draw calls,
+FPS, geometric counts and optionally the browser's JavaScript heap. System
+RAM and VRAM cannot be measured reliably through standard browser APIs.
+
+The standalone viewer does **not** yet support IFC/Fragments or any CAD
+editing, selection, snapping, gizmos, project saving or Paper Space. Those
+features remain available only in the stable That Open-backed viewport.
+Experimental FPS and load metrics should be compared on the same device,
+browser, viewport dimensions, and same STEP, with one tab/render backend
+active at a time. The OCCT visual-only test excludes exact-feature extraction,
+so load times are *not* equivalent to full CAD project import times.
+
+Next: independently mount STEP model collections and later add safe
+selection/snap/editing adapters, only after validating exact behaviour and
+memory usage on the user's large real-world STEP assemblies.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
