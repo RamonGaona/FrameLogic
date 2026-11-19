@@ -116,7 +116,9 @@ export function mountExperimentalNativeThreePreview(
   header.append(title, close);
 
   const status = document.createElement("div");
-  status.textContent = "Vista secundaria de diagnóstico · solo lectura";
+  status.textContent = canSelect
+    ? "Selección nativa · edición persistente con gizmo en Model Space"
+    : "Vista secundaria de diagnóstico · solo lectura";
   status.style.cssText = "padding:4px 8px 7px;color:#cbd5e1";
 
   // In CAD-connected mode, the second renderer supplies only hit-tested
