@@ -23,6 +23,7 @@ import {
 
 
 export * from "./advancedCadNavigationIndex";
+export { mountExperimentalNativeThreePreview } from "./viewport/ExperimentalNativeThreePreview";
 
 export {
   CadPolylineGripController,
