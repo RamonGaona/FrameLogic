@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.206 — 2026-11-19 (edición Three.js integrada en el Model Space principal, sin segundo WebGL)
+
+- **Corrección al reporte v0.1.205:** las vistas Three.js secundarias podían mostrar gizmos que no respondían y no compartían las coordenadas de mouse/cámara del Model Space principal. Los estados de edición del proyecto no deben depender de un canvas/renderizador duplicado.
+- **Modo Three.js en el viewport principal:** botón **Editar en Three.js · Model Space**. En vez de abrir otra ventana con otro renderizador, utiliza el **mismo** THREE.Scene, THREE.WebGLRenderer, canvas y cámara de producción, gestionados mediante FrameLogicViewportPort. Un panel transparente temporal captura las interacciones nativas sobre el canvas real y permite **Volver a CAD** inmediatamente. Se conserva el visor de diagnóstico anterior solo con ?threePreview=1.
+- **Mover/Rotar directamente en el proyecto:** seleccionar una PieceInstance desde ese viewport, elegir explícitamente Mover o Rotar y arrastrar sus controles con la cámara del Model Space. La rotación usa los anillos XYZ de hit amplio/ray-plane y admite giros exactos X/Y/Z +90°. El adaptador NativeProjectCadEditBridge aplica la posición y orientación en las instancias del DesignModel. Undo/Redo e histórico siguen en CadHistoryController; Escape cancela y restaura el estado previo.
+- **Compatibilidad conservada:** el canvas principal contiene STEP, ensambles y las capas DWG/DXF ya cargadas; no se reimporta nada, ni se crea un estado de proyecto paralelo. La serialización .flproject, importación CAD, textos, vistas, BOM, Paper Space y PDF continúan mediante los controladores existentes. Al desactivar el modo se restablecen cámara, mouse y herramientas CAD. Tampoco se altera la integración IFC existente, aplazada como última prioridad.
+- **Límites honestos de la fase:** el renderizador principal ya era un THREE.WebGLRenderer envuelto en That Open. Esta fase une herramientas nativas en **el canvas principal**, pero no sustituye todavía todos los subsistemas internos de That Open ni permite manipular referencias DWG/DXF con el gizmo nativo, copiar ensambles multinivel, SNAP exacto o usar herramientas de Paper Space mientras está activo el modo nativo de arrastre. Para dichos casos, salir con Volver a CAD mantiene el flujo original. No anunciar migración total hasta paridad funcional y tests reales.
+- **Pruebas:** contrato de un único canvas/escena/renderer, persistencia CAD/historial, preservación de DWG/DXF y Paper Space, bloqueo de entrada mientras se usa el gizmo, limpieza al cerrar, regresiones de geometría y TypeScript/CI. Validación real con proyectos del usuario queda pendiente.
+
+---
 ## v0.1.205 — 2026-11-19 (gizmo Mover explícito y rotación interactiva desde Three.js)
 
 - **Incidencia reportada tras v0.1.204:** el gizmo Mover se activaba automáticamente al seleccionar la pieza y sí permitía mover; el de Rotar no reaccionaba al arrastre en la vista nativa.

@@ -518,6 +518,29 @@ and one final history entry is recorded on pointer release. Escape, lost
 focus or closing the inspector cancels the drag. Numeric +90-degree turns
 around X/Y/Z provide exact rotation when a ring is viewed edge-on.
 IFC remains deferred until the last integration phase.
+## Phase 3r — native input in the AUTHORITATIVE Model Space (v0.1.206)
+
+The secondary native viewer's separate WebGL/camera/pointer handlers caused
+visible but unusable MOVE/ROTATE gizmos in real user projects. An alternate
+renderer cannot replace the production canvas without breaking all CAD,
+DWG/DXF, assembly, snap, .flproject and Paper Space controllers bound to it.
+
+Instead, an explicit native editing mode now binds THREE.TransformControls
+and custom XYZ rotation rings to the **existing production WebGL scene**.
+The main renderer is already THREE.WebGLRenderer exposed by the That Open
+FrameLogicViewportPort; no second WebGLRenderer, camera or project is created.
+A transparent, transient hit layer matches the existing canvas bounds and
+owns mouse input only until Volver a CAD / Escape. The legacy CAD gizmos are
+deactivated when entering and native helpers are disposed on exit. The
+production renderer continues rendering all loaded STEP, DWG/DXF and
+assembly visuals; the .flproject, history and Paper Space controllers are
+unchanged and restore normal input after leaving native edit.
+
+This creates a primary-canvas native tool mode, NOT yet a fully autonomous
+backend replacing That Open camera/world/IFC lifecycle. Full CAD parity
+still requires native reference gizmos, assembly group transactions, exact
+snapping, all drawing input tools on native events and browser QA with real
+projects. IFC remains last. Maintain reversible legacy tools as fallback.
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,

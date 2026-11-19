@@ -82,7 +82,7 @@ describe("Native Three.js shared-project gizmo direct edit regression", () => {
   it("preserves diagnostic read-only mode and defers IFC", () => {
     expect(preview).toContain("const nativeEdit = canSelect ? options.nativeEdit : undefined");
     expect(preview).toContain('pointer-events:none');
-    expect(web).toContain("Vista Three.js del proyecto");
+    expect(web).toContain("Editar en Three.js · Model Space");
     expect(preview).not.toContain("loadIfc");
     expect(bridge).not.toContain("Ifc");
     expect(preview).toContain("options.onClose?.()");

@@ -1,6 +1,7 @@
 import { mountClashDetectionPanel } from "./mountClashDetectionPanel";
 import { openNativeStepWorkspace } from "./native/NativeStepHandoff";
 import { NativeProjectCadEditBridge } from "./native/NativeProjectCadEditBridge";
+import { mountNativePrimaryProjectEditor } from "./native/NativePrimaryProjectEditor";
 import { mountAutomationPanel } from "./mountAutomationPanel";
 import { mountLocalChatPanel } from "./mountLocalChatPanel";
 import { FrameLogicSettingsWindow } from "./settings/FrameLogicSettingsWindow";
@@ -218,6 +219,8 @@ export function BimViewport() {
   // inspection does not own its scene, commands or .flproject persistence.
   const nativeProjectPreviewToggleRef = useRef<(() => void) | null>(null);
   const [nativeProjectPreviewOpen, setNativeProjectPreviewOpen] = useState(false);
+  const nativePrimaryEditorToggleRef = useRef<(() => void) | null>(null);
+  const [nativePrimaryEditorOpen, setNativePrimaryEditorOpen] = useState(false);
 
 
   const [cameraOrientation, setCameraOrientation] =
@@ -1066,6 +1069,73 @@ export function BimViewport() {
               }
             };
             nativeProjectPreviewToggleRef.current = toggleNativeProjectPreview;
+
+            // Primary-mode Three.js tools operate on the SAME production
+            // WebGL canvas, scene and live project. No duplicate renderer,
+            // project or drawing controllers: .flproject, DWG/DXF, assemblies
+            // and Paper Space remain owned by the existing CAD engine.
+            let disposeNativePrimary: (() => void) | undefined;
+            const toggleNativePrimaryEditor = (): void => {
+              if (disposeNativePrimary) {
+                disposeNativePrimary();
+                return;
+              }
+              // A preview renders a separate viewport: never run both.
+              if (disposeNativePreview) disposeNativePreview();
+              try {
+                const edit = new NativeProjectCadEditBridge({
+                  selectedIds: () => instance.designSelection.getSelectedIds(),
+                  isEditable: (id) => {
+                    const piece = instance.designModel.pieceInstances.get(id);
+                    const layer = piece ? instance.designModel.layers.get(piece.layerId) : null;
+                    return Boolean(piece
+                      && layer?.visible !== false && layer?.locked !== true
+                      && instance.designModel.isPieceLocked?.(id) !== true);
+                  },
+                  getInstanceObject: (id) => instance.designScene.getInstanceObject(id),
+                  capture: (ids) => instance.cadHistory.capture(ids),
+                  apply: (id, transform) => Boolean(
+                    instance.updateDesignPieceInstanceTransform(id, transform),
+                  ),
+                  record: (label, before, ids) =>
+                    instance.cadHistory.recordTransform(label, before, ids),
+                  cancelActiveCommand: () => instance.cancelActiveCadCommand(),
+                });
+                // Do not let a previously armed legacy CAD gizmo or command
+                // own input while the native primary-mode overlay is active.
+                instance.cancelActiveCadCommand();
+                instance.designTransform.deactivate();
+                instance.designRotate.deactivate();
+                const panel = mountNativePrimaryProjectEditor({
+                  host: container,
+                  scene: instance.viewport.scene,
+                  getCamera: () => instance.viewport.camera,
+                  canvas: instance.viewport.canvas,
+                  editor: edit,
+                  getInstanceTargets: () => instance.designScene.getInstanceEntries(),
+                  selectInstance: (id) => {
+                    instance.designSelection.selectSingle(id);
+                    return instance.designSelection.isSelected(id);
+                  },
+                  undo: () => instance.undoCadAction(),
+                  redo: () => instance.redoCadAction(),
+                  navigationWasEnabled: instance.cameraNavigation.enabled,
+                  setNavigationEnabled: (enabled) => instance.cameraNavigation.setEnabled(enabled),
+                  onClose: () => {
+                    edit.finish(false);
+                    disposeNativePrimary = undefined;
+                    if (!disposed) setNativePrimaryEditorOpen(false);
+                  },
+                });
+                disposeNativePrimary = () => panel.dispose();
+                if (!disposed) setNativePrimaryEditorOpen(true);
+              } catch (error) {
+                console.warn("No se pudo activar el modo Three.js principal:", error);
+                if (!disposed) setNativePrimaryEditorOpen(false);
+              }
+            };
+            nativePrimaryEditorToggleRef.current = toggleNativePrimaryEditor;
+
             // Preserve the original diagnostic URL opt-in for regressions.
             if (new URLSearchParams(window.location.search).get("threePreview") === "1") {
               toggleNativeProjectPreview();
@@ -1073,6 +1143,8 @@ export function BimViewport() {
             const disposeWithPanel = instance.dispose;
             instance.dispose = () => {
               nativeProjectPreviewToggleRef.current = null;
+              nativePrimaryEditorToggleRef.current = null;
+              disposeNativePrimary?.();
               disposeNativePreview?.();
               disposeClashDetectionPanel();
               disposeLocalChatPanel();
@@ -1907,24 +1979,25 @@ export function BimViewport() {
       <button
         type="button"
         data-native-project-inspection="true"
-        aria-pressed={nativeProjectPreviewOpen}
-        title="Vista Three.js del proyecto: selecciona una pieza y ARRASTRA directamente los ejes del gizmo Three.js para moverla o rotarla. El historial y .flproject se guardan en el modelo CAD real. IFC queda para después."
+        data-native-primary-mode="true"
+        aria-pressed={nativePrimaryEditorOpen}
+        title="Herramientas Three.js sobre el Model Space PRINCIPAL: sin visor duplicado. Los proyectos .flproject, DWG/DXF, ensambles y Paper Space siguen bajo los controladores CAD originales. Pulsa Volver a CAD para usar las herramientas tradicionales."
         style={{
-          position: "absolute", left: 16, bottom: 54, zIndex: 40,
+          position: "absolute", left: 16, bottom: 54, zIndex: 53,
           padding: "7px 10px", borderRadius: 6,
-          border: nativeProjectPreviewOpen ? "1px solid #43f2be" : "1px solid #64748b",
+          border: nativePrimaryEditorOpen ? "1px solid #43f2be" : "1px solid #64748b",
           background: "#172435", color: "#e2e8f0",
           cursor: "pointer", fontSize: 12,
         }}
         onClick={() => {
-          if (!nativeProjectPreviewToggleRef.current) {
-            window.alert("El motor CAD todavía está iniciando. Intenta abrir la vista Three.js cuando aparezca Model Space.");
+          if (!nativePrimaryEditorToggleRef.current) {
+            window.alert("El Model Space principal todavía está iniciando.");
             return;
           }
-          nativeProjectPreviewToggleRef.current();
+          nativePrimaryEditorToggleRef.current();
         }}
       >
-        {nativeProjectPreviewOpen ? "Cerrar vista Three.js del proyecto" : "Vista Three.js del proyecto"}
+        {nativePrimaryEditorOpen ? "Salir de edición Three.js" : "Editar en Three.js · Model Space"}
       </button>
 
       <ViewCube

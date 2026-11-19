@@ -22,7 +22,7 @@ describe("Native Three.js shared project scene inspection", () => {
     const web = read("../apps/web/src/features/bim/BimViewport.tsx");
     const preview = read("../packages/bim/core/src/viewport/ExperimentalNativeThreePreview.ts");
     expect(web).toContain('data-native-project-inspection="true"');
-    expect(web).toContain("nativeProjectPreviewToggleRef.current()");
+    expect(web).toContain("toggleNativeProjectPreview();");
     expect(web).toContain("mountExperimentalNativeThreePreview({");
     expect(web).toContain("viewport: instance.viewport");
     expect(web).toContain("width: 640");
