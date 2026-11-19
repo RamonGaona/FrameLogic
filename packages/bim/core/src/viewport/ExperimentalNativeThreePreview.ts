@@ -350,14 +350,16 @@ export function mountExperimentalNativeThreePreview(
         : "No se modificó la rotación.";
   };
 
+  const onRotatePointerUp = (event: PointerEvent): void => {
+    if (ringDrag?.id === event.pointerId) finishRotateGesture(true);
+  };
+
   if (rotateRings) {
     // Capture runs before other listeners so rotation rings beat picking a
     // mesh directly behind them and the translate TransformControls handler.
     renderer.domElement.addEventListener("pointerdown", onRotatePointerDown, true);
     renderer.domElement.addEventListener("pointermove", onRotatePointerMove);
-    renderer.domElement.addEventListener("pointerup", (event) => {
-      if (ringDrag?.id === event.pointerId) finishRotateGesture(true);
-    });
+    renderer.domElement.addEventListener("pointerup", onRotatePointerUp);
   }
 
   const cancelNativeDrag = (): void => {
@@ -476,33 +478,54 @@ export function mountExperimentalNativeThreePreview(
         status.textContent = "Vista no disponible: cámara 3D no ortográfica";
       } else {
         copyNativeOrthographicPreviewCamera(source, width, height, camera);
-        if (nativeEdit && gizmo && gizmoPivot && !nativeDrag) {
+        if (nativeEdit && gizmo && gizmoPivot && rotateRings && !nativeDrag && !ringDrag) {
           const target = nativeEdit.getTarget();
           if (target) {
             if (trackedNativeId !== target.id) {
               gizmo.detach();
               trackedNativeId = target.id;
+              // A new selection returns to explicit SELECT mode to avoid
+              // accidentally moving a second piece with the previous gizmo.
+              nativeMode = "select";
+              moveButton?.setAttribute("aria-pressed", "false");
+              rotateButton?.setAttribute("aria-pressed", "false");
             }
             gizmoPivot.position.copy(target.position);
             gizmoPivot.quaternion.copy(target.quaternion);
             gizmoPivot.updateMatrixWorld(true);
-            if (!gizmo.object) gizmo.attach(gizmoPivot);
+            rotateRings.group.position.copy(target.position);
+            rotateRings.group.quaternion.identity();
+            sizeNativeProjectRotationRings(
+              rotateRings.group, camera,
+              renderer.domElement.getBoundingClientRect().height || height,
+            );
+            rotateRings.group.visible = nativeMode === "rotate";
+            if (nativeMode === "translate") {
+              if (!gizmo.object) gizmo.attach(gizmoPivot);
+            } else {
+              gizmo.detach();
+            }
           } else {
             trackedNativeId = null;
+            nativeMode = "select";
             gizmo.detach();
+            rotateRings.group.visible = false;
           }
         }
         renderer.render(options.viewport.scene, camera);
-        if (gizmoScene && gizmo?.object) {
+        if (gizmoScene && (gizmo?.object || rotateRings?.group.visible)) {
           renderer.clearDepth();
+          const oldAutoClear = renderer.autoClear;
           renderer.autoClear = false;
           renderer.render(gizmoScene, camera);
-          renderer.autoClear = true;
+          renderer.autoClear = oldAutoClear;
         }
         if (canSelect) {
-          const hasPiece = Boolean(options.getSelectedInstanceIds?.().length);
-          if (moveButton) moveButton.disabled = !hasPiece;
-          if (rotateButton) rotateButton.disabled = !hasPiece;
+          const hasEditablePiece = nativeEdit
+            ? Boolean(nativeEdit.getTarget()) : Boolean(options.getSelectedInstanceIds?.().length);
+          if (moveButton) moveButton.disabled = !hasEditablePiece;
+          if (rotateButton) rotateButton.disabled = !hasEditablePiece;
+          for (const shortcut of rotationShortcuts) shortcut.disabled = !hasEditablePiece;
         }
         sampleFrames++;
         if (!lastSample) lastSample = now;
