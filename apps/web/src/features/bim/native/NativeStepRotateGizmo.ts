@@ -46,6 +46,18 @@ export function createNativeRotateGizmo(
     ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), NATIVE_MOVE_AXES[axis]);
     ring.name = `Rotación ${axis}`;
     ring.userData["nativeRotateAxis"] = axis;
+    // The visible torus is thin. A larger *transparent* raycast target gives
+    // each ring a comfortable hit tolerance at the constant screen size.
+    const hitArea = new THREE.Mesh(
+      new THREE.TorusGeometry(length * 0.82, length * 0.075, 8, 96),
+      new THREE.MeshBasicMaterial({
+        color: colors[axis], transparent: true, opacity: 0,
+        depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+      }),
+    );
+    hitArea.name = `Zona de selección rotación ${axis}`;
+    hitArea.userData["nativeRotateAxis"] = axis;
+    ring.add(hitArea);
     group.add(ring);
   }
   return {
