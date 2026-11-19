@@ -81,32 +81,26 @@ export async function createBimCore(
    * permitimos bajar hasta 1e-8 para inspeccionar DWG de 226 000 mm o
    * incluso varios kilómetros sin bloquear la rueda artificialmente.
    */
+  // Use FrameLogic camera navigation instead of That Open controls.
   const cameraControls =
-    core.world.camera.controls as
-      typeof core.world.camera.controls
-      & {
-        minZoom: number;
-      };
+    core.cameraNavigation;
 
-  cameraControls.minZoom =
-    MODEL_SPACE_MIN_ORTHO_ZOOM;
+  cameraControls.setMinimumZoom(
+    MODEL_SPACE_MIN_ORTHO_ZOOM,
+  );
 
   const diagonal =
     STANDARD_START_DISTANCE_MM
     / Math.sqrt(3);
 
   await cameraControls.setLookAt(
-    diagonal,
-    diagonal,
-    diagonal,
-    0,
-    0,
-    0,
+    new THREE.Vector3(diagonal, diagonal, diagonal),
+    new THREE.Vector3(0, 0, 0),
     false,
   );
 
   const orthoCamera =
-    core.world.camera.threeOrtho;
+    core.cameraNavigation.orthographicCamera;
   const orthoFrustumHeight =
     Math.abs(
       orthoCamera.top
@@ -276,12 +270,8 @@ export async function createBimCore(
     new ProjectCameraStateController({
       projectPackage:
         core.projectPackage,
-      cameraProvider: () =>
-        core.viewport.camera,
-      orthoCameraProvider: () =>
-        core.world.camera.threeOrtho,
-      controls:
-        core.world.camera.controls,
+      cameraNavigation:
+        core.cameraNavigation,
       getProjectionMode: () =>
         core.getCameraProjectionMode(),
       toggleProjection: () =>
