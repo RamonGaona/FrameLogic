@@ -1836,6 +1836,8 @@ export function BimViewport() {
           const result = openNativeStepWorkspace(lastImportedStepFileRef.current);
           if (!result.opened) {
             window.alert("El navegador bloqueó la nueva pestaña. Permite ventanas emergentes para FrameLogic y vuelve a intentarlo.");
+          } else if (lastImportedStepFileRef.current && !result.handoffAvailable) {
+            window.alert("La transferencia automática del STEP no está disponible (requiere navegador compatible y archivo de hasta 256 MiB). El visor Three.js se abrió igualmente: usa Abrir STEP / Ensamblaje para cargarlo manualmente.");
           }
         }}
       >
