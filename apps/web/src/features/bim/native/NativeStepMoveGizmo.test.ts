@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   createNativeMoveGizmo,
+  getNativeMoveGizmoWorldAxisLength,
+  updateNativeMoveGizmoScreenScale,
   nativeMoveAxisDistanceFromPixels,
   pickNativeMoveAxis,
   pickNativeMoveCenter,
@@ -100,6 +102,103 @@ describe("Native Three.js movement gizmo preview", () => {
     expect(isNativeSnapCoveredByMoveCenter(gizmo, c, {
       screenX: center.x + 50, screenY: center.y,
     }, rect)).toBe(false);
+    gizmo.dispose();
+  });
+
+  it("keeps projected gizmo axis length stable at near and far zoom levels", () => {
+    const gizmo = createNativeMoveGizmo(new THREE.Vector3(), 5000);
+    const c = camera();
+    const viewport = { width: 800, height: 600 };
+    const projectedLength = () => {
+      gizmo.group.updateMatrixWorld(true);
+      const pivot = gizmo.group.position.clone().project(c);
+      const axisEnd = gizmo.group.position.clone().add(
+        new THREE.Vector3(getNativeMoveGizmoWorldAxisLength(gizmo), 0, 0),
+      ).project(c);
+      return Math.hypot(
+        (axisEnd.x - pivot.x) * viewport.width / 2,
+        (axisEnd.y - pivot.y) * viewport.height / 2,
+      );
+    };
+    expect(updateNativeMoveGizmoScreenScale(gizmo, c, viewport.width, viewport.height))
+      .toBe(true);
+    const initialPixels = projectedLength();
+    const initialScale = gizmo.group.scale.x;
+
+    c.left *= 0.1; c.right *= 0.1;
+    c.top *= 0.1; c.bottom *= 0.1;
+    c.updateProjectionMatrix();
+    expect(updateNativeMoveGizmoScreenScale(gizmo, c, viewport.width, viewport.height))
+      .toBe(true);
+    expect(gizmo.group.scale.x).toBeCloseTo(initialScale * 0.1);
+    expect(projectedLength()).toBeCloseTo(initialPixels, 6);
+
+    c.left *= 100; c.right *= 100;
+    c.top *= 100; c.bottom *= 100;
+    c.updateProjectionMatrix();
+    expect(updateNativeMoveGizmoScreenScale(gizmo, c, viewport.width, viewport.height))
+      .toBe(true);
+    expect(gizmo.group.scale.x).toBeCloseTo(initialScale * 10);
+    expect(projectedLength()).toBeCloseTo(initialPixels, 6);
+    expect(gizmo.group.position.toArray()).toEqual([0, 0, 0]);
+    gizmo.dispose();
+  });
+
+  it("keeps centre hover and axis picking usable across camera zoom levels", () => {
+    const gizmo = createNativeMoveGizmo(new THREE.Vector3(), 250);
+    const c = camera();
+    const rect = { left: 0, top: 0, width: 700, height: 600 };
+    for (const scale of [0.01, 1, 100]) {
+      c.left = -100 * scale; c.right = 100 * scale;
+      c.top = 100 * scale; c.bottom = -100 * scale;
+      c.updateProjectionMatrix();
+      expect(updateNativeMoveGizmoScreenScale(gizmo, c, rect.width, rect.height))
+        .toBe(true);
+      const center = getNativeMoveCenterScreenPosition(gizmo, c, rect)!;
+      expect(center.hitRadiusPx).toBeGreaterThanOrEqual(13);
+      expect(pickNativeMoveCenter(gizmo, c, center.x, center.y, rect)).toBe(true);
+
+      gizmo.group.updateMatrixWorld(true);
+      const arrow = (gizmo.group.children[1] as THREE.Group).children[1];
+      const pixel = arrow.getWorldPosition(new THREE.Vector3()).project(c);
+      const x = (pixel.x + 1) * rect.width * 0.5;
+      const y = (1 - pixel.y) * rect.height * 0.5;
+      expect(pickNativeMoveAxis(gizmo, c, x, y, rect)).toBe("X");
+    }
+    gizmo.dispose();
+  });
+
+  it("preserves millimetre drag distances with a scaled screen-space gizmo", () => {
+    const gizmo = createNativeMoveGizmo(new THREE.Vector3(), 5000);
+    const c = camera();
+    const rect = { width: 800, height: 600 };
+    for (const visibleHeight of [100, 1000, 10000]) {
+      c.top = visibleHeight / 2; c.bottom = -visibleHeight / 2;
+      c.left = -visibleHeight * 2 / 3;
+      c.right = visibleHeight * 2 / 3;
+      c.updateProjectionMatrix();
+      expect(updateNativeMoveGizmoScreenScale(gizmo, c, rect.width, rect.height))
+        .toBe(true);
+      const length = getNativeMoveGizmoWorldAxisLength(gizmo);
+      const pivot = gizmo.group.position.clone();
+      const start = pivot.clone().project(c);
+      const end = pivot.clone().add(new THREE.Vector3(150, 0, 0)).project(c);
+      const dx = (end.x - start.x) * rect.width * 0.5;
+      const dy = -(end.y - start.y) * rect.height * 0.5;
+      expect(nativeMoveAxisDistanceFromPixels(
+        c, pivot, "X", length, dx, dy, rect.width, rect.height,
+      )).toBeCloseTo(150, 6);
+    }
+    gizmo.dispose();
+  });
+
+  it("never changes the gizmo for invalid viewport dimensions", () => {
+    const gizmo = createNativeMoveGizmo(new THREE.Vector3(), 500);
+    const c = camera();
+    const original = gizmo.group.scale.clone();
+    expect(updateNativeMoveGizmoScreenScale(gizmo, c, 0, 600)).toBe(false);
+    expect(updateNativeMoveGizmoScreenScale(gizmo, c, NaN, 600)).toBe(false);
+    expect(gizmo.group.scale.equals(original)).toBe(true);
     gizmo.dispose();
   });
 
