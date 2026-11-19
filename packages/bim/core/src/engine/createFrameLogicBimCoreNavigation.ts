@@ -218,7 +218,7 @@ export async function createBimCore(
   const cadMouseNavigation =
     new CadMouseNavigationController({
       canvas,
-      controls: core.world.camera.controls,
+      controls: core.cameraNavigation.mouseBindings,
     });
 
   const buildVersion =
