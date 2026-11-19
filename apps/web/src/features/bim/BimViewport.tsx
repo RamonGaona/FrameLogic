@@ -1,5 +1,6 @@
 import { mountClashDetectionPanel } from "./mountClashDetectionPanel";
 import { openNativeStepWorkspace } from "./native/NativeStepHandoff";
+import { NativeProjectCadEditBridge } from "./native/NativeProjectCadEditBridge";
 import { mountAutomationPanel } from "./mountAutomationPanel";
 import { mountLocalChatPanel } from "./mountLocalChatPanel";
 import { FrameLogicSettingsWindow } from "./settings/FrameLogicSettingsWindow";
@@ -1011,6 +1012,24 @@ export function BimViewport() {
                 return;
               }
               try {
+                const nativeCadEdit = new NativeProjectCadEditBridge({
+                  selectedIds: () => instance.designSelection.getSelectedIds(),
+                  isEditable: (id) => {
+                    const piece = instance.designModel.pieceInstances.get(id);
+                    const layer = piece ? instance.designModel.layers.get(piece.layerId) : null;
+                    return Boolean(piece && layer?.visible !== false
+                      && layer?.locked !== true
+                      && instance.designModel.isPieceLocked?.(id) !== true);
+                  },
+                  getInstanceObject: (id) => instance.designScene.getInstanceObject(id),
+                  capture: (ids) => instance.cadHistory.capture(ids),
+                  apply: (id, transform) => Boolean(
+                    instance.updateDesignPieceInstanceTransform(id, transform),
+                  ),
+                  record: (label, before, ids) =>
+                    instance.cadHistory.recordTransform(label, before, ids),
+                  cancelActiveCommand: () => instance.cancelActiveCadCommand(),
+                });
                 const preview = mountExperimentalNativeThreePreview({
                   host: container.parentElement ?? container,
                   viewport: instance.viewport,
@@ -1018,9 +1037,11 @@ export function BimViewport() {
                   height: 360,
                   title: "Three.js · proyecto actual (solo vista)",
                   onClose: () => {
+                    nativeCadEdit.finish(false);
                     disposeNativePreview = undefined;
                     if (!disposed) setNativeProjectPreviewOpen(false);
                   },
+                  nativeEdit: nativeCadEdit,
                   // The native scene only picks an existing, visible
                   // PieceInstance. Model Space remains the single owner of
                   // selection, gizmos, persistent history and .flproject.
@@ -1887,7 +1908,7 @@ export function BimViewport() {
         type="button"
         data-native-project-inspection="true"
         aria-pressed={nativeProjectPreviewOpen}
-        title="Vista Three.js del proyecto: selecciona piezas con clic y usa Mover / Rotar para activar el gizmo real en Model Space. Los comandos, Undo/Redo y .flproject siguen en el CAD principal. IFC se integrará después."
+        title="Vista Three.js del proyecto: selecciona una pieza y ARRASTRA directamente los ejes del gizmo Three.js para moverla o rotarla. El historial y .flproject se guardan en el modelo CAD real. IFC queda para después."
         style={{
           position: "absolute", left: 16, bottom: 54, zIndex: 40,
           padding: "7px 10px", borderRadius: 6,
