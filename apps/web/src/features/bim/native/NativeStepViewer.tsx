@@ -33,6 +33,8 @@ import {
 } from "./NativeStepSelectionController";
 import {
   createNativeMoveGizmo,
+  getNativeMoveGizmoWorldAxisLength,
+  updateNativeMoveGizmoScreenScale,
   nativeMoveAxisDistanceFromPixels,
   pickNativeMoveAxis,
   pickNativeMoveCenter,
@@ -390,6 +392,7 @@ export function NativeStepViewer() {
         return;
       }
       updateNativeOrthographicCamera(camera, state, width / height);
+      updateNativeMoveGizmoScreenScale(gizmo, camera, width, height);
       const rect = canvas.getBoundingClientRect();
       const hovered = pickNativeMoveCenter(
         gizmo, camera, event.clientX, event.clientY, rect,
@@ -503,6 +506,9 @@ export function NativeStepViewer() {
       if (e.button === 0 && !e.shiftKey && moveTargetRef.current
         && moveGizmoRef.current) {
         updateNativeOrthographicCamera(camera, state, width / height);
+        updateNativeMoveGizmoScreenScale(
+          moveGizmoRef.current, camera, width, height,
+        );
         if (pickNativeMoveCenter(
           moveGizmoRef.current, camera, e.clientX, e.clientY,
           canvas.getBoundingClientRect(),
@@ -533,7 +539,7 @@ export function NativeStepViewer() {
           moveDrag = {
             id: e.pointerId, axis, startX: e.clientX, startY: e.clientY,
             pivot: moveGizmoRef.current.group.position.clone(),
-            axisLength: moveGizmoRef.current.axisLengthMm,
+            axisLength: getNativeMoveGizmoWorldAxisLength(moveGizmoRef.current),
           };
           canvas.setPointerCapture(e.pointerId);
           clearSnap();
@@ -838,6 +844,13 @@ export function NativeStepViewer() {
     const tick = (now: number) => {
       if (runtime.disposed) return;
       updateNativeOrthographicCamera(camera, state, width / height);
+      if (moveGizmoRef.current) {
+        // STEP geometry remains in millimetres; only the display gizmo
+        // compensates for zoom and viewport-size changes each frame.
+        updateNativeMoveGizmoScreenScale(
+          moveGizmoRef.current, camera, width, height,
+        );
+      }
       renderer.render(scene, camera);
       frames += 1;
       if (now - lastSample >= 1000) {
