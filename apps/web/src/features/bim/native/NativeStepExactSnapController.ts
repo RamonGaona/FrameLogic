@@ -95,6 +95,8 @@ export function findNativeExactSnap(
   tolerancePx = 13,
   /** Optional exact-candidate gate for product bounds and visibility. */
   acceptCandidate?: (candidate: NativeExactSnapPoint) => boolean,
+  /** Visual placement transform of an isolated STEP document (never changes B-Rep). */
+  worldTransform?: THREE.Matrix4,
 ): NativeExactSnapHit | null {
   if (!selectedDocumentId || canvasRect.width <= 0 || canvasRect.height <= 0
     || !Number.isFinite(tolerancePx) || tolerancePx <= 0) return null;
@@ -109,21 +111,27 @@ export function findNativeExactSnap(
 
   for (const candidate of points) {
     if (candidate.brepDocumentId !== selectedDocumentId) continue;
-    ndc.copy(candidate.point).project(camera);
+    ndc.copy(candidate.point);
+    if (worldTransform) ndc.applyMatrix4(worldTransform);
+    ndc.project(camera);
     if (!Number.isFinite(ndc.x) || !Number.isFinite(ndc.y)
       || ndc.z < -1 || ndc.z > 1) continue;
     const candidateX = canvasRect.left + (ndc.x + 1) * 0.5 * canvasRect.width;
     const candidateY = canvasRect.top + (1 - ndc.y) * 0.5 * canvasRect.height;
     const distance = Math.hypot(candidateX - clientX, candidateY - clientY);
     if (distance > tolerancePx) continue;
-    // Evaluate the gate only after cheap camera/document/tolerance filters.
-    // If the nearest candidate is occluded, keep searching for a visible one.
-    if (acceptCandidate && !acceptCandidate(candidate)) continue;
+    // If the whole STEP file is visually placed elsewhere, retain native B-Rep
+    // coordinates and transform only projected world-space candidates.
+    const worldCandidate = worldTransform
+      ? { ...candidate, point: candidate.point.clone().applyMatrix4(worldTransform) }
+      : candidate;
+    // Evaluate expensive scope/occlusion gates only for nearby points.
+    if (acceptCandidate && !acceptCandidate(worldCandidate)) continue;
     if (best && distance > best.screenDistancePx + 0.25) continue;
     if (best && Math.abs(distance - best.screenDistancePx) <= 0.25
       && PRIORITY[candidate.kind] >= PRIORITY[best.kind]) continue;
     best = {
-      ...candidate,
+      ...worldCandidate,
       screenX: candidateX - canvasRect.left,
       screenY: candidateY - canvasRect.top,
       screenDistancePx: distance,
