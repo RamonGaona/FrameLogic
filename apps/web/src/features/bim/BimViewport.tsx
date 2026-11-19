@@ -1,4 +1,5 @@
 import { mountClashDetectionPanel } from "./mountClashDetectionPanel";
+import { openNativeStepWorkspace } from "./native/NativeStepHandoff";
 import { mountAutomationPanel } from "./mountAutomationPanel";
 import { mountLocalChatPanel } from "./mountLocalChatPanel";
 import { FrameLogicSettingsWindow } from "./settings/FrameLogicSettingsWindow";
@@ -198,6 +199,10 @@ export function BimViewport() {
     useRef<HTMLInputElement>(
       null,
     );
+  // Only the latest explicit STEP import is available to the native viewer.
+  // Project reopening is deliberately not advertised as a STEP handoff.
+  const lastImportedStepFileRef = useRef<File | null>(null);
+  const [lastImportedStepName, setLastImportedStepName] = useState<string | null>(null);
 
   const openFrameLogicPieceInputRef =
     useRef<HTMLInputElement>(
@@ -1428,6 +1433,10 @@ export function BimViewport() {
         bimCore,
         definition,
       );
+      if (isStepFile(file.name)) {
+        lastImportedStepFileRef.current = file;
+        setLastImportedStepName(file.name);
+      }
     }
     catch (
       error
@@ -1787,6 +1796,8 @@ export function BimViewport() {
   function handleClearModels(): void {
     bimCoreRef.current
       ?.clearModels();
+    lastImportedStepFileRef.current = null;
+    setLastImportedStepName(null);
     refreshModels();
   }
 
@@ -1807,11 +1818,14 @@ export function BimViewport() {
         onContextMenu={handleViewportContextMenu}
       />
 
-      {/* Read-only experiment in a separate route: the current CAD renderer
-          is unmounted before Three.js starts, preventing double rendering. */}
+      {/* The stable Model Space must never be unmounted or lose unsaved CAD
+          work just to inspect a standalone STEP in the native renderer. */}
       <button
         type="button"
-        title="Visor STEP nativo experimental: solo visualización, sin comandos CAD ni IFC"
+        data-native-step-workspace-launch="true"
+        title={lastImportedStepName
+          ? `Abrir en otra pestaña el último STEP importado: ${lastImportedStepName}. Movimiento y rotación solo visuales; no regresa cambios a este proyecto.`
+          : "Abrir visor STEP Three.js en otra pestaña. Importa un STEP aquí para transferirlo automáticamente."}
         style={{
           position: "absolute", left: 16, bottom: 16, zIndex: 40,
           padding: "7px 10px", borderRadius: 6,
@@ -1819,15 +1833,13 @@ export function BimViewport() {
           color: "#e2e8f0", cursor: "pointer", fontSize: 12,
         }}
         onClick={() => {
-          const proceed = window.confirm(
-            "El visor Three.js experimental es solo de lectura y abrirá una sesión independiente. " +
-            "Guarda primero tu proyecto .flproject: los cambios sin guardar se perderán. ¿Continuar?",
-          );
-          if (!proceed) return;
-          window.location.assign(`${window.location.pathname}?threeNative=1`);
+          const result = openNativeStepWorkspace(lastImportedStepFileRef.current);
+          if (!result.opened) {
+            window.alert("El navegador bloqueó la nueva pestaña. Permite ventanas emergentes para FrameLogic y vuelve a intentarlo.");
+          }
         }}
       >
-        Visor Three.js experimental
+        {lastImportedStepName ? "Visor Three.js · último STEP" : "Visor STEP Three.js"}
       </button>
 
       <ViewCube
