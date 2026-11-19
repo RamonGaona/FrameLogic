@@ -12,6 +12,11 @@ export interface NativeMoveGizmo {
   dispose(): void;
 }
 
+const CENTER_BASE_COLOR = 0xf7e6a0;
+const CENTER_HOVER_COLOR = 0xfff16b;
+const CENTER_MIN_HIT_RADIUS_PX = 13;
+const CENTER_MAX_HIT_RADIUS_PX = 24;
+
 const COLORS: Readonly<Record<NativeMoveAxis, number>> = {
   X: 0xf06464,
   Y: 0x65d482,
@@ -32,11 +37,15 @@ export function createNativeMoveGizmo(
   const centerHandle = new THREE.Mesh(
     new THREE.SphereGeometry(Math.max(radius * 2.8, length * 0.058), 16, 12),
     new THREE.MeshBasicMaterial({
-      color: 0xf7e6a0, depthTest: false, transparent: true, opacity: 0.98,
+      color: CENTER_BASE_COLOR, depthTest: false, depthWrite: false,
+      transparent: true, opacity: 0.98,
     }),
   );
   centerHandle.name = "Centro XYZ · punto base del gizmo";
   centerHandle.userData["nativeMovePivotCenter"] = true;
+  // Always render centre after XYZ arrows. DOM snap markers overlapping the
+  // centre are suppressed separately in NativeStepViewer.
+  centerHandle.renderOrder = 100;
   // Keep the neutral pivot visible and selectable without altering geometry.
   group.add(centerHandle);
 
@@ -84,7 +93,61 @@ export function createNativeMoveGizmo(
   };
 }
 
-/** Centre picker takes precedence over nearby axis arrows. */
+/** Centre appearance changes only; the handle never transforms the STEP geometry. */
+export function setNativeMoveCenterHovered(
+  gizmo: NativeMoveGizmo,
+  hovered: boolean,
+): void {
+  gizmo.centerHandle.material.color.setHex(
+    hovered ? CENTER_HOVER_COLOR : CENTER_BASE_COLOR,
+  );
+  gizmo.centerHandle.material.opacity = hovered ? 1 : 0.98;
+  gizmo.centerHandle.scale.setScalar(hovered ? 1.6 : 1);
+}
+
+/** Screen-space centre picker stays usable when the gizmo is very small. */
+export function getNativeMoveCenterScreenPosition(
+  gizmo: NativeMoveGizmo,
+  camera: THREE.OrthographicCamera,
+  rect: Pick<DOMRect, "width" | "height">,
+): { x: number; y: number; hitRadiusPx: number } | null {
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  camera.updateMatrixWorld(true);
+  gizmo.group.updateMatrixWorld(true);
+  const point = gizmo.centerHandle.getWorldPosition(new THREE.Vector3()).project(camera);
+  if (![point.x, point.y, point.z].every(Number.isFinite)
+    || point.z < -1 || point.z > 1) return null;
+
+  const spanX = camera.right - camera.left;
+  if (!(spanX > 0) || !(camera.zoom > 0)) return null;
+  const worldRadius = gizmo.centerHandle.geometry.parameters.radius
+    * gizmo.group.getWorldScale(new THREE.Vector3()).x;
+  const projectedRadiusPx = worldRadius * camera.zoom * rect.width / spanX;
+  return {
+    x: (point.x + 1) * rect.width * 0.5,
+    y: (1 - point.y) * rect.height * 0.5,
+    hitRadiusPx: THREE.MathUtils.clamp(
+      projectedRadiusPx + 4,
+      CENTER_MIN_HIT_RADIUS_PX,
+      CENTER_MAX_HIT_RADIUS_PX,
+    ),
+  };
+}
+
+/** A SNAP coincident with the gizmo centre must not cover it in the DOM. */
+export function isNativeSnapCoveredByMoveCenter(
+  gizmo: NativeMoveGizmo,
+  camera: THREE.OrthographicCamera,
+  snap: Pick<{ screenX: number; screenY: number }, "screenX" | "screenY">,
+  rect: Pick<DOMRect, "width" | "height">,
+): boolean {
+  const center = getNativeMoveCenterScreenPosition(gizmo, camera, rect);
+  if (!center) return false;
+  return Math.hypot(snap.screenX - center.x, snap.screenY - center.y)
+    <= center.hitRadiusPx + 7;
+}
+
+/** Centre has pointer priority over a coincident B-Rep SNAP and nearby axes. */
 export function pickNativeMoveCenter(
   gizmo: NativeMoveGizmo,
   camera: THREE.OrthographicCamera,
@@ -92,15 +155,11 @@ export function pickNativeMoveCenter(
   clientY: number,
   rect: Pick<DOMRect, "left" | "top" | "width" | "height">,
 ): boolean {
-  if (rect.width <= 0 || rect.height <= 0) return false;
-  const x = (clientX - rect.left) / rect.width;
-  const y = (clientY - rect.top) / rect.height;
-  if (x < 0 || x > 1 || y < 0 || y > 1) return false;
-  camera.updateMatrixWorld(true);
-  gizmo.group.updateMatrixWorld(true);
-  const ray = new THREE.Raycaster();
-  ray.setFromCamera(new THREE.Vector2(x * 2 - 1, 1 - y * 2), camera);
-  return ray.intersectObject(gizmo.centerHandle, false).length > 0;
+  const center = getNativeMoveCenterScreenPosition(gizmo, camera, rect);
+  if (!center) return false;
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+  return Math.hypot(x - center.x, y - center.y) <= center.hitRadiusPx;
 }
 
 export function pickNativeMoveAxis(

@@ -191,10 +191,28 @@ describe("Standalone native Three.js test route", () => {
     expect(viewer).toContain("Centro XYZ reubicado con SNAP exacto");
     expect(viewer).toContain("clearArmedPivot()");
     expect(gizmo).toContain('centerHandle.userData["nativeMovePivotCenter"] = true');
-    expect(gizmo).toContain("ray.intersectObject(gizmo.centerHandle, false)");
+    expect(gizmo).toContain("getNativeMoveCenterScreenPosition(gizmo, camera, rect)");
+    expect(gizmo).toContain("CENTER_MIN_HIT_RADIUS_PX");
     expect(pivot).toContain('const OFFSET_KEY = "nativeGizmoPivotOffsetMm"');
     expect(pivot).not.toContain("updateTransform(");
     expect(viewer).not.toContain("createBimCore(");
+  });
+
+  it("gives the highlighted native XYZ centre priority over coincident SNAP markers", () => {
+    const viewer = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const gizmo = read("../apps/web/src/features/bim/native/NativeStepMoveGizmo.ts");
+    expect(viewer).toContain("updateCenterHoverFromPointer(e)");
+    expect(viewer).toContain("setNativeMoveCenterHovered(gizmo, hovered)");
+    expect(viewer).toContain("canvas.style.cursor = hovered");
+    expect(viewer).toContain('data-native-center-hover-marker="true"');
+    expect(viewer).toContain('data-native-brep-snap-marker="true"');
+    expect(viewer).toContain("snap && !centerCoversSnap");
+    expect(viewer).toContain("isNativeSnapCoveredByMoveCenter(");
+    expect(viewer).toContain("pointerEvents: \"none\"");
+    expect(viewer).toContain("Centro XYZ · clic para reubicar el pivote (prioridad sobre SNAP)");
+    expect(gizmo).toContain("centerHandle.renderOrder = 100");
+    expect(gizmo).toContain("CENTER_HOVER_COLOR");
+    expect(gizmo).toContain("CENTER_MIN_HIT_RADIUS_PX");
   });
 
   it("keeps perspective blocked and existing CAD drawings untouched", () => {

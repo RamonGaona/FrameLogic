@@ -36,6 +36,9 @@ import {
   nativeMoveAxisDistanceFromPixels,
   pickNativeMoveAxis,
   pickNativeMoveCenter,
+  getNativeMoveCenterScreenPosition,
+  isNativeSnapCoveredByMoveCenter,
+  setNativeMoveCenterHovered,
   type NativeMoveGizmo,
 } from "./NativeStepMoveGizmo";
 import {
@@ -137,6 +140,9 @@ export function NativeStepViewer() {
   const snapPlacementRef = useRef<NativeCopySnapBase | null>(null);
   const armedPivotRef = useRef<{ readonly sourceKey: string } | null>(null);
   const [pivotArmed, setPivotArmed] = useState(false);
+  const [centerHoverPoint, setCenterHoverPoint] = useState<{
+    x: number; y: number;
+  } | null>(null);
   const armedUntilRef = useRef<{
     readonly sourceKey: string;
     readonly axis: NativeMoveAxis;
@@ -370,6 +376,34 @@ export function NativeStepViewer() {
       setSnap((previous) => previous ? null : previous);
       setUntilSurface((previous) => previous ? null : previous);
     };
+    const clearCenterHover = () => {
+      if (moveGizmoRef.current) {
+        setNativeMoveCenterHovered(moveGizmoRef.current, false);
+      }
+      canvas.style.cursor = "";
+      setCenterHoverPoint((previous) => previous ? null : previous);
+    };
+    const updateCenterHoverFromPointer = (event: PointerEvent) => {
+      const gizmo = moveGizmoRef.current;
+      if (!gizmo || !moveTargetRef.current) {
+        clearCenterHover();
+        return;
+      }
+      updateNativeOrthographicCamera(camera, state, width / height);
+      const rect = canvas.getBoundingClientRect();
+      const hovered = pickNativeMoveCenter(
+        gizmo, camera, event.clientX, event.clientY, rect,
+      );
+      setNativeMoveCenterHovered(gizmo, hovered);
+      canvas.style.cursor = hovered ? "pointer" : "";
+      const center = hovered
+        ? getNativeMoveCenterScreenPosition(gizmo, camera, rect) : null;
+      setCenterHoverPoint((previous) => {
+        if (!center) return previous ? null : previous;
+        if (previous?.x === center.x && previous?.y === center.y) return previous;
+        return { x: center.x, y: center.y };
+      });
+    };
     const findPivotSnapAt = (x: number, y: number) => {
       const target = moveTargetRef.current;
       if (!target || armedPivotRef.current?.sourceKey !== target.key) return null;
@@ -463,6 +497,7 @@ export function NativeStepViewer() {
     };
     const down = (e: PointerEvent) => {
       if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+      clearCenterHover();
       // The handles live outside the STEP model root, so a gizmo click
       // cannot accidentally select or orbit a CAD mesh.
       if (e.button === 0 && !e.shiftKey && moveTargetRef.current
@@ -517,6 +552,7 @@ export function NativeStepViewer() {
     };
     const move = (e: PointerEvent) => {
       if (pivotDrag) {
+        clearCenterHover();
         if (pivotDrag.id !== e.pointerId) return;
         // Never drag the underlying piece or move the gizmo to an
         // unverified screen-space position. Indicate exact SNAPs only.
@@ -525,6 +561,7 @@ export function NativeStepViewer() {
         return;
       }
       if (moveDrag) {
+        clearCenterHover();
         if (moveDrag.id !== e.pointerId) return;
         const distance = nativeMoveAxisDistanceFromPixels(
           camera, moveDrag.pivot, moveDrag.axis, moveDrag.axisLength,
@@ -539,9 +576,11 @@ export function NativeStepViewer() {
         return;
       }
       if (!pointer) {
+        updateCenterHoverFromPointer(e);
         updateSnapFromPointer(e);
         return;
       }
+      clearCenterHover();
       if (pointer.id !== e.pointerId) return;
       const dx = e.clientX - pointer.x;
       const dy = e.clientY - pointer.y;
@@ -786,6 +825,7 @@ export function NativeStepViewer() {
     };
     canvas.addEventListener("pointerdown", down);
     canvas.addEventListener("pointermove", move);
+    canvas.addEventListener("pointerleave", clearCenterHover);
     canvas.addEventListener("pointerup", up);
     canvas.addEventListener("pointercancel", up);
     canvas.addEventListener("wheel", wheel, { passive: false });
@@ -830,6 +870,8 @@ export function NativeStepViewer() {
       observer.disconnect();
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("pointerleave", clearCenterHover);
+      canvas.style.cursor = "";
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointercancel", up);
       canvas.removeEventListener("wheel", wheel);
@@ -1057,6 +1099,19 @@ export function NativeStepViewer() {
 
   const fileNames = loadedNames.length > 0 ? loadedNames.join(", ") : "Ningún STEP abierto";
 
+  // An exact SNAP marker is an HTML overlay above the WebGL canvas. Never
+  // let it visually obscure the centre handle where they coincide.
+  const centerCoversSnap = Boolean(
+    snap && moveGizmoRef.current && runtimeRef.current
+    && isNativeSnapCoveredByMoveCenter(
+      moveGizmoRef.current, runtimeRef.current.camera, snap,
+      {
+        width: canvasHost.current?.clientWidth ?? 0,
+        height: canvasHost.current?.clientHeight ?? 0,
+      },
+    ),
+  );
+
   return (
     <main style={{
       width: "100vw", height: "100vh", overflow: "hidden",
@@ -1249,15 +1304,16 @@ export function NativeStepViewer() {
           en STEP, .flproject ni en la topología OCCT. No admite mover ni copiar
           subpiezas de un STEP que contenga varios productos.
         </div>
-        <div data-native-brep-snap-status="true" style={{ color: untilSurface ? "#fcd34d" : "#99e6c9" }}>
-          {snap ? `${NATIVE_SNAP_LABELS[snap.kind]} · ${snap.point.x.toFixed(2)}, ${snap.point.y.toFixed(2)}, ${snap.point.z.toFixed(2)} mm`
+        <div data-native-brep-snap-status="true" style={{ color: centerHoverPoint ? "#fff1a6" : untilSurface ? "#fcd34d" : "#99e6c9" }}>
+          {centerHoverPoint ? "Centro XYZ · clic para reubicar el pivote (prioridad sobre SNAP)"
+            : snap ? `${NATIVE_SNAP_LABELS[snap.kind]} · ${snap.point.x.toFixed(2)}, ${snap.point.y.toFixed(2)}, ${snap.point.z.toFixed(2)} mm`
             : untilSurface
               ? `Cara STEP (aprox.) · ${untilSurface.point.x.toFixed(2)}, ${untilSurface.point.y.toFixed(2)}, ${untilSurface.point.z.toFixed(2)} mm`
               : "SNAP: sin punto detectado"}
         </div>
         {error ? <div role="alert" style={{ color: "#fca5a5" }}>{error}</div> : null}
       </section>
-      {snap && (
+      {snap && !centerCoversSnap && (
         <div data-native-brep-snap-marker="true" aria-label={NATIVE_SNAP_LABELS[snap.kind]}
           style={{
             position: "absolute", zIndex: 4, pointerEvents: "none",
@@ -1272,6 +1328,19 @@ export function NativeStepViewer() {
             fontSize: 11, lineHeight: 1,
           }}>+</span>
         </div>
+      )}
+      {centerHoverPoint && (
+        <div data-native-center-hover-marker="true"
+          aria-label="Centro del gizmo XYZ resaltado"
+          style={{
+            position: "absolute", zIndex: 6, pointerEvents: "none",
+            left: centerHoverPoint.x, top: centerHoverPoint.y,
+            transform: "translate(-50%, -50%)",
+            width: 24, height: 24, borderRadius: "50%",
+            border: "2px solid #fff16b",
+            background: "#fff16b22",
+            boxShadow: "0 0 10px #fff16b, inset 0 0 5px #fff16b",
+          }}/>
       )}
       {armedUntil && untilSurface && (
         <div data-native-axis-until-surface-marker="true"
