@@ -55,7 +55,7 @@ describe("Standalone native Three.js test route", () => {
     expect(native).toContain("disposeNativeStepMeshGroup(runtime.modelRoot)");
     expect(native).toContain("selectionRef.current.dispose()");
     expect(native).toContain("window.removeEventListener(\"keydown\", escapeSelection)");
-    expect(native).toContain("selectionRef.current.clear();\n      clearArmedUntil();\n      snapPlacementRef.current = null;\n      setSnapBase(null);\n      moveRef.current.reset();");
+    expect(native).toContain("selectionRef.current.clear();\n      clearArmedPivot();\n      clearArmedUntil();\n      snapPlacementRef.current = null;\n      setSnapBase(null);\n      moveRef.current.reset();");
     expect(native).toContain("moveGizmoRef.current?.dispose()");
     expect(native).toContain("disposeNativeStepMeshGroup(previous)");
   });
@@ -171,6 +171,29 @@ describe("Standalone native Three.js test route", () => {
     expect(until).toContain("raycaster.intersectObject(root, true)");
     expect(until).toContain('kind: "SURFACE_POINT"');
     expect(until).toContain("dot(NATIVE_MOVE_AXES[axis])");
+    expect(viewer).not.toContain("createBimCore(");
+  });
+
+  it("moves only the native gizmo centre to an exact B-Rep SNAP, preserving piece geometry", () => {
+    const viewer = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const gizmo = read("../apps/web/src/features/bim/native/NativeStepMoveGizmo.ts");
+    const pivot = read("../apps/web/src/features/bim/native/NativeStepGizmoPivot.ts");
+    expect(viewer).toContain("pickNativeMoveCenter(");
+    expect(viewer).toContain("armNativePivot()");
+    expect(viewer).toContain("if (wasClick && armedPivotRef.current)");
+    expect(viewer).toContain("const hit = findPivotSnapAt(e.clientX, e.clientY)");
+    expect(viewer).toContain("placeNativePivot(hit.point)");
+    expect(viewer).toContain("setNativeStepGizmoPivot(scope, point)");
+    expect(viewer).toContain("getNativeStepGizmoPivot(scope)");
+    expect(viewer).toContain("resetNativeStepGizmoPivot(scope)");
+    expect(viewer).toContain('data-native-pivot-tools="true"');
+    expect(viewer).toContain("Restablecer centro");
+    expect(viewer).toContain("Centro XYZ reubicado con SNAP exacto");
+    expect(viewer).toContain("clearArmedPivot()");
+    expect(gizmo).toContain('centerHandle.userData["nativeMovePivotCenter"] = true');
+    expect(gizmo).toContain("ray.intersectObject(gizmo.centerHandle, false)");
+    expect(pivot).toContain('const OFFSET_KEY = "nativeGizmoPivotOffsetMm"');
+    expect(pivot).not.toContain("updateTransform(");
     expect(viewer).not.toContain("createBimCore(");
   });
 
