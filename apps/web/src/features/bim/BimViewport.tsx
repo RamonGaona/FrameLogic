@@ -3,7 +3,7 @@ import { mountAutomationPanel } from "./mountAutomationPanel";
 import { mountLocalChatPanel } from "./mountLocalChatPanel";
 import { FrameLogicSettingsWindow } from "./settings/FrameLogicSettingsWindow";
 import { LineFillDemoTool } from "./LineFillDemoTool";
-import { connectAutomationBridge } from "@framelogic/bim-core";
+import { connectAutomationBridge, mountExperimentalNativeThreePreview } from "@framelogic/bim-core";
 import { loadPieceVisualPackage, type LoadedPieceVisualPackage } from "@framelogic/bim-core";
 import {
   useEffect,
