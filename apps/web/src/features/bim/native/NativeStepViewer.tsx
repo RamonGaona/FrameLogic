@@ -17,6 +17,11 @@ import {
   type NativeExactSnapPoint,
 } from "./NativeStepExactSnapController";
 import {
+  findNativeCopySnapDestination,
+  nativeCopySnapOffset,
+  type NativeCopySnapBase,
+} from "./NativeStepSnapPlacement";
+import {
   NativeStepSelectionController,
   pickNativeStepMesh,
   type NativeStepSelectionInfo,
@@ -118,6 +123,8 @@ export function NativeStepViewer() {
   const moveTargetRef = useRef<NativeIsolatedStepTarget | null>(null);
   const moveGizmoRef = useRef<NativeMoveGizmo | null>(null);
   const moveGizmoKeyRef = useRef<string | null>(null);
+  const snapPlacementRef = useRef<NativeCopySnapBase | null>(null);
+  const [snapBase, setSnapBase] = useState<THREE.Vector3 | null>(null);
   const snapIndexRef = useRef(new Map<string, readonly NativeExactSnapPoint[]>());
   const [snap, setSnap] = useState<NativeExactSnapHit | null>(null);
   const [loading, setLoading] = useState(false);
@@ -165,6 +172,8 @@ export function NativeStepViewer() {
   }
 
   function focusNativeTarget(target: NativeIsolatedStepTarget | null): void {
+    snapPlacementRef.current = null;
+    setSnapBase(null);
     const runtime = runtimeRef.current;
     const mesh = target?.meshes[0] as THREE.Mesh<
       THREE.BufferGeometry, THREE.MeshStandardMaterial
@@ -247,7 +256,24 @@ export function NativeStepViewer() {
       axisLength: number;
     } | null = null;
     const clearSnap = () => setSnap((previous) => previous ? null : previous);
+    const findDestinationAt = (x: number, y: number) => {
+      const target = moveTargetRef.current;
+      if (!target || snapPlacementRef.current?.sourceKey !== target.key) return null;
+      updateNativeOrthographicCamera(camera, state, width / height);
+      return findNativeCopySnapDestination(
+        runtime.modelRoot, snapIndexRef.current, target, camera,
+        x, y, canvas.getBoundingClientRect(), 13,
+      );
+    };
     const updateSnapFromPointer = (event: PointerEvent) => {
+      if (snapPlacementRef.current) {
+        const now = performance.now();
+        if (now - lastSnapQuery < 70) return;
+        lastSnapQuery = now;
+        const destination = findDestinationAt(event.clientX, event.clientY);
+        setSnap(destination);
+        return;
+      }
       const selected = selectionRef.current.selectedMesh;
       const id = selected?.userData["brepDocumentId"];
       const partScope = partScopeRef.current;
@@ -287,6 +313,9 @@ export function NativeStepViewer() {
           canvas.getBoundingClientRect(),
         );
         if (axis && moveRef.current.beginDrag(moveTargetRef.current, axis, e.ctrlKey)) {
+          // Drag and two-point COPYBASE are exclusive interaction modes.
+          snapPlacementRef.current = null;
+          setSnapBase(null);
           moveDrag = {
             id: e.pointerId, axis, startX: e.clientX, startY: e.clientY,
             pivot: moveGizmoRef.current.group.position.clone(),
@@ -369,7 +398,25 @@ export function NativeStepViewer() {
         && !pointer.pan && !pointer.moved;
       pointer = null;
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      if (wasClick && snapPlacementRef.current) {
+        const base = snapPlacementRef.current;
+        const source = moveTargetRef.current;
+        const destination = findDestinationAt(e.clientX, e.clientY);
+        const offset = source && destination
+          ? nativeCopySnapOffset(base, source, destination) : null;
+        if (source && offset && moveRef.current.copyTo(source, offset)) {
+          const copy = moveRef.current.lastResult?.target ?? null;
+          focusNativeTarget(copy);
+          setMoveStatus("Copia por SNAP B-Rep colocada en destino exacto; original inmóvil.");
+        } else {
+          setMoveStatus("Selecciona otro SNAP de destino válido; Esc cancela COPYBASE.");
+        }
+        clearSnap();
+        return;
+      }
       if (wasClick) {
+        snapPlacementRef.current = null;
+        setSnapBase(null);
         // A click selects the nearest visible STEP triangle, never an orbit
         // drag or pan. Click empty space or press Escape to clear selection.
         updateNativeOrthographicCamera(camera, state, width / height);
@@ -424,6 +471,13 @@ export function NativeStepViewer() {
         }
       }
       if (e.key !== "Escape") return;
+      if (snapPlacementRef.current) {
+        snapPlacementRef.current = null;
+        setSnapBase(null);
+        clearSnap();
+        setMoveStatus("Copia por SNAP cancelada; original inmóvil.");
+        return;
+      }
       if (moveDrag) {
         const pointerId = moveDrag.id;
         moveRef.current.endDrag(false);
@@ -493,6 +547,7 @@ export function NativeStepViewer() {
       canvas.removeEventListener("contextmenu", contextMenu);
       window.removeEventListener("keydown", escapeSelection);
       selectionRef.current.dispose();
+      snapPlacementRef.current = null;
       moveRef.current.reset();
       moveGizmoRef.current?.dispose();
       moveGizmoRef.current = null;
@@ -565,6 +620,8 @@ export function NativeStepViewer() {
       if (meshes === 0) throw new Error("El STEP no contiene mallas visualizables.");
 
       selectionRef.current.clear();
+      snapPlacementRef.current = null;
+      setSnapBase(null);
       moveRef.current.reset();
       moveGizmoRef.current?.dispose();
       moveGizmoRef.current = null;
@@ -628,6 +685,21 @@ export function NativeStepViewer() {
         new THREE.Box3().setFromObject(runtime.modelRoot), aspect,
       ),
     );
+  }
+
+  function captureSnapBase(): void {
+    const target = moveTargetRef.current;
+    if (!target || !snap || snap.brepDocumentId !== target.documentId) {
+      setMoveStatus("Selecciona una pieza aislada y acerca el cursor a un SNAP B-Rep exacto.");
+      return;
+    }
+    snapPlacementRef.current = {
+      sourceKey: target.key,
+      sourcePointMm: snap.point.clone(),
+    };
+    setSnapBase(snap.point.clone());
+    setSnap(null);
+    setMoveStatus("COPYBASE: haz clic en el SNAP de destino. Esc cancela; el original no se mueve.");
   }
 
   function moveNumeric(copy = false): void {
@@ -759,7 +831,18 @@ export function NativeStepViewer() {
               {moveEligible
                 ? "Gizmo XYZ: arrastra para mover · Ctrl + arrastrar para copiar (original inmóvil) · Mover/Copiar por mm."
                 : "Movimiento y copia bloqueados: STEP con varios productos o identidad ambigua."}
+              {snapBase && (
+                <div data-native-copybase-active="true" style={{ color: "#67e8f9" }}>
+                  COPYBASE · base {snapBase.toArray().map(v => v.toFixed(2)).join(", ")} mm
+                  · clic sobre SNAP destino (Esc cancela)
+                </div>
+              )}
             </div>
+            {moveEligible && (
+              <button type="button" style={buttonStyle}
+                disabled={!snap || Boolean(snapBase)}
+                onClick={captureSnapBase}>Fijar base SNAP para copiar</button>
+            )}
             {moveEligible && (
               <div data-native-move-controls="true" style={{
                 display: "flex", flexDirection: "column", gap: 6,
