@@ -38,12 +38,14 @@ export function resolveNativeIsolatedStepTarget(
   if (!(parent instanceof THREE.Group)
     || parent.userData["nativeStepDocument"] !== true
     || parent.userData["brepDocumentId"] !== scope.documentId
+    || (parent.userData["nativeStepInstanceId"] ?? parent.uuid) !== scope.instanceId
     || parent.children.length !== scope.meshes.length) return null;
 
   for (const child of parent.children) {
     if (!(child instanceof THREE.Mesh)
       || child.userData["brepDocumentId"] !== scope.documentId
       || child.userData["stepProductId"] !== scope.productId
+      || (child.userData["nativeStepInstanceId"] ?? child.parent?.uuid) !== scope.instanceId
       || child.userData["stepProductAmbiguous"] === true
       || !scope.meshes.includes(child)) return null;
   }
