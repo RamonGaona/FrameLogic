@@ -46,7 +46,7 @@ describe("Standalone native Three.js test route", () => {
     expect(native).toContain('buildNativeStepMeshGroup(document, file.name)');
     expect(native).toContain('data-native-step-selection="true"');
     expect(picker).toContain("raycaster.intersectObject(root, true)");
-    expect(picker).toContain("mesh.material.emissive.setHex(");
+    expect(picker).toContain("typed.material.emissive.setHex(");
     expect(native).not.toContain("createBimCore(");
   });
 
