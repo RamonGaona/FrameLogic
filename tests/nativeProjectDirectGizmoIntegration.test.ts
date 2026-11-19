@@ -83,7 +83,7 @@ describe("Native Three.js shared-project gizmo direct edit regression", () => {
     expect(preview).toContain("const nativeEdit = canSelect ? options.nativeEdit : undefined");
     expect(preview).toContain('pointer-events:none');
     expect(web).toContain('data-framelogic-main-renderer="three"');
-    expect(web).toContain("Three.js principal · controles activos");
+    expect(web).not.toContain("Three.js principal · controles activos");
     expect(preview).not.toContain("loadIfc");
     expect(bridge).not.toContain("Ifc");
     expect(preview).toContain("options.onClose?.()");

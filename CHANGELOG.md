@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.208 — 2026-11-19 (un solo Model Space Three.js, sin visores ni cambios de modo duplicados)
+
+- **Interfaz unificada:** se retiran de Model Space los botones experimentales `Three.js principal · controles activos` y `STEP · pruebas`. FrameLogic abre siempre el **Model Space principal**, que ya usa el THREE.WebGLRenderer y la escena CAD reales. No hay un segundo canvas/proyecto ni una elección visual de motor.
+- **Transformaciones dentro del mismo espacio de trabajo:** las herramientas nativas de mover, rotar, Undo/Redo y giros/distancias exactos siguen montadas en el mismo viewport bajo un panel plegable **Transformar · mover y rotar**. Se elimina el botón `Volver a CAD`; **Cerrar herramientas** cancela operaciones pendientes, vuelve a Seleccionar y pliega el panel, **sin desactivar** las herramientas Three.js ni interrumpir la sesión del proyecto.
+- **Sin pérdidas CAD:** el motor de proyecto y todos los controladores originales siguen activos: importación STEP, referencias DWG/DXF y textos CAD, ensambles jerárquicos, copia/Move/Hasta y SNAP existente, archivos `.flproject`, Undo/Redo, BOM, vistas, cotas, Paper Space y PDF. El controlador de entrada CAD recibe eventos normales fuera de un gesto de gizmo nativo.
+- **Diagnóstico disponible sin contaminar la interfaz:** la vista STEP aislada (`?threeNative=1`) y la vista diagnóstica de la escena (`?threePreview=1`) permanecen accesibles solamente por URL, no como botones habituales. Se elimina el almacenamiento temporal del último STEP para lanzar una segunda pestaña; los STEP del proyecto mantienen su importación y sus fuentes normales. `?cadLegacy=1` conserva el retorno a la interacción CAD previa.
+- **Limitación técnica vigente:** el WebGL de Model Space es Three.js, pero That Open aún gestiona parte de la cámara y el ciclo de vida. No se declara migración completa de todos los gizmos nativos DWG/ensambles/Paper Space ni eliminación de That Open; esos desarrollos se conservan operativos en los controladores actuales hasta alcanzar paridad. IFC sigue para la última fase.
+- **Pruebas:** contratos de único Model Space visible, ausencia de lanzadores experimentales, controles de transformación persistentes, serialización y planos, diagnóstico solo por URL y regresiones de los comandos existentes. Queda pendiente probar manualmente con proyectos reales y el mouse del usuario.
+
+---
 ## v0.1.207 — 2026-11-19 (Three.js como Model Space principal sin bloquear las herramientas CAD)
 
 - **Vista principal Three.js desde el arranque:** se activa por defecto el editor nativo sobre el renderer/escena/cámara reales del Model Space. No se abre otro renderer ni se duplica el proyecto; la escena existente sigue representando piezas STEP, ensambles, capas y geometría DWG/DXF. El botón de herramientas Three.js puede desactivarse manualmente; añadir `?cadLegacy=1` al URL evita activar las herramientas nativas y deja únicamente los controles CAD anteriores.

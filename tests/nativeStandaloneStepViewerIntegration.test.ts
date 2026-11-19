@@ -14,13 +14,14 @@ describe("Standalone native Three.js test route", () => {
     expect(app).toContain("if (nativeViewer) return;");
   });
 
-  it("can return to stable CAD and warns before leaving unsaved projects", () => {
+  it("keeps STEP diagnostics outside the primary Three.js Model Space interface", () => {
     const cad = read("../apps/web/src/features/bim/BimViewport.tsx");
     const native = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
-    expect(cad).toContain("openNativeStepWorkspace(lastImportedStepFileRef.current)");
-    expect(cad).toContain('data-native-step-workspace-launch="true"');
+    expect(cad).not.toContain("openNativeStepWorkspace(lastImportedStepFileRef.current)");
+    expect(cad).not.toContain('data-native-step-workspace-launch="true"');
     expect(cad).not.toContain('window.location.assign(`${window.location.pathname}?threeNative=1`)');
-    expect(cad).toContain("lastImportedStepFileRef.current = file");
+    expect(cad).not.toContain("lastImportedStepFileRef.current = file");
+    expect(cad).toContain('data-framelogic-main-renderer="three"');
     expect(native).toContain("Volver al visor actual");
     expect(native).toContain("window.location.assign(window.location.pathname)");
   });
@@ -37,12 +38,12 @@ describe("Standalone native Three.js test route", () => {
     expect(native).not.toContain("mountExperimentalNativeThreePreview");
   });
 
-  it("receives the original STEP from Model Space without replacing the CAD session", () => {
+  it("preserves diagnostic STEP transfer protocol without exposing a second workspace button", () => {
     const cad = read("../apps/web/src/features/bim/BimViewport.tsx");
     const viewer = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
     const handoff = read("../apps/web/src/features/bim/native/NativeStepHandoff.ts");
-    expect(cad).toContain("lastImportedStepFileRef.current = file");
-    expect(cad).toContain("openNativeStepWorkspace(lastImportedStepFileRef.current)");
+    expect(cad).not.toContain("lastImportedStepFileRef.current = file");
+    expect(cad).not.toContain("openNativeStepWorkspace(lastImportedStepFileRef.current)");
     expect(viewer).toContain("receiveNativeStepHandoff(");
     expect(viewer).toContain("void loadStepFiles([file])");
     expect(viewer).toContain('clean.searchParams.delete("handoff")');

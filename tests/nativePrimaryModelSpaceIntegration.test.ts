@@ -11,7 +11,7 @@ describe("Native Three.js editing uses the primary Model Space, not an isolated 
   const packageProject = read("../packages/bim/core/src/project/FrameLogicProjectPackageController.ts");
 
   it("binds the native gizmo to the one live CAD WebGL scene, active camera and viewport canvas", () => {
-    expect(main).toContain('data-native-primary-mode="true"');
+    expect(main).toContain('data-framelogic-main-renderer="three"');
     expect(main).toContain("mountNativePrimaryProjectEditor({");
     expect(main).toContain("host: container,");
     expect(main).toContain("scene: instance.viewport.scene");
@@ -53,7 +53,7 @@ describe("Native Three.js editing uses the primary Model Space, not an isolated 
     expect(native).toContain("options.getNavigationEnabled()");
     expect(native).toContain("options.setNavigationEnabled(navigationBeforeNativeDrag)");
     expect(native).toContain("input.remove()");
-    expect(native).toContain("Volver a CAD");
+    expect(native).toContain("Cerrar herramientas");
     expect(native).toContain('mode: "select" | "translate" | "rotate"');
     expect(native).not.toContain("loadIfc");
     expect(native).not.toContain("loadDwg");

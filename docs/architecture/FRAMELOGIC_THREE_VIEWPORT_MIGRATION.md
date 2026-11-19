@@ -569,6 +569,33 @@ was already Three.js; the practical change here is safely making its native
 gizmo tools available on the main viewport without sacrificing CAD workflows.
 IFC migration remains last. Browser QA with real projects is mandatory
 before removal of legacy infrastructure.
+## Phase 3t — one user-facing Three.js Model Space (v0.1.208)
+
+FrameLogic now has **one primary user-facing Model Space**. Its scene,
+active camera, canvas and WebGL renderer are the existing live Three.js
+objects exposed via `FrameLogicViewportPort`. Two obsolete user buttons
+are removed: the toggle labelled `Three.js principal · controles activos`
+and the parallel `STEP · pruebas` viewer launcher. They did not select
+another production backend and confused users into thinking there were two
+Model Space versions. Default Three.js tools continue mounting automatically.
+
+The small native Move/Rotate tool group is now labelled
+`Transformar · mover y rotar` and stays folded when not in use. Its
+`Cerrar herramientas` button returns to Select and collapses that group
+rather than disabling the native editor or abandoning the project's
+authoritative scene. All original CAD pointer handlers remain active outside
+an explicitly armed native gizmo, so IFC, DWG/DXF, hierarchy, original SNAP
+and Copy, .flproject, drawing and Paper Space/PDF can keep using their
+existing supported code paths. No geometry, source or project is cloned.
+
+Only diagnostic URL routes remain: `?threePreview=1` and `?threeNative=1`.
+`?cadLegacy=1` is the safe rollback for native editing input problems.
+
+**Do not claim complete removal of That Open**: it still wraps production
+camera/world and provides Fragments/IFC integration. STEP, DWG and Paper
+Space have not all been rewritten with brand-new native CAD manipulators.
+Replacing those wrappers requires parity tests with real projects before
+the legacy code can safely be removed. IFC stays the final migration phase.
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,

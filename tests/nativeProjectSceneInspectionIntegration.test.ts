@@ -21,7 +21,7 @@ describe("Native Three.js shared project scene inspection", () => {
   it("only creates an extra renderer on deliberate user action or original preview URL flag", () => {
     const web = read("../apps/web/src/features/bim/BimViewport.tsx");
     const preview = read("../packages/bim/core/src/viewport/ExperimentalNativeThreePreview.ts");
-    expect(web).toContain('data-native-project-inspection="true"');
+    expect(web).not.toContain('data-native-project-inspection="true"');
     expect(web).toContain("toggleNativeProjectPreview();");
     expect(web).toContain("mountExperimentalNativeThreePreview({");
     expect(web).toContain("viewport: instance.viewport");
@@ -51,6 +51,6 @@ describe("Native Three.js shared project scene inspection", () => {
     expect(core).toContain("new FrameLogicProjectPackageController({");
     expect(core).toContain("new DrawingWorkspaceController({");
     expect(core).toContain("new DrawingProductionController(");
-    expect(web).toContain("Visor STEP Three.js");
+    expect(web).not.toContain('data-native-step-workspace-launch="true"');
   });
 });

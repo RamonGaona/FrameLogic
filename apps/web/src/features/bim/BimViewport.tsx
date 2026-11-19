@@ -1,5 +1,4 @@
 import { mountClashDetectionPanel } from "./mountClashDetectionPanel";
-import { openNativeStepWorkspace } from "./native/NativeStepHandoff";
 import { NativeProjectCadEditBridge } from "./native/NativeProjectCadEditBridge";
 import { mountNativePrimaryProjectEditor } from "./native/NativePrimaryProjectEditor";
 import { mountAutomationPanel } from "./mountAutomationPanel";
@@ -201,11 +200,6 @@ export function BimViewport() {
     useRef<HTMLInputElement>(
       null,
     );
-  // Only the latest explicit STEP import is available to the native viewer.
-  // Project reopening is deliberately not advertised as a STEP handoff.
-  const lastImportedStepFileRef = useRef<File | null>(null);
-  const [lastImportedStepName, setLastImportedStepName] = useState<string | null>(null);
-
   const openFrameLogicPieceInputRef =
     useRef<HTMLInputElement>(
       null,
@@ -215,13 +209,6 @@ export function BimViewport() {
     useRef<PrecisionBimCoreInstance | null>(
       null,
     );
-  // Optional native Three.js view of the exact *active* CAD scene. This
-  // inspection does not own its scene, commands or .flproject persistence.
-  const nativeProjectPreviewToggleRef = useRef<(() => void) | null>(null);
-  const [nativeProjectPreviewOpen, setNativeProjectPreviewOpen] = useState(false);
-  const nativePrimaryEditorToggleRef = useRef<(() => void) | null>(null);
-  const [nativePrimaryEditorOpen, setNativePrimaryEditorOpen] = useState(false);
-
 
   const [cameraOrientation, setCameraOrientation] =
     useState<CameraOrientation>({
@@ -1042,7 +1029,6 @@ export function BimViewport() {
                   onClose: () => {
                     nativeCadEdit.finish(false);
                     disposeNativePreview = undefined;
-                    if (!disposed) setNativeProjectPreviewOpen(false);
                   },
                   nativeEdit: nativeCadEdit,
                   // The native scene only picks an existing, visible
@@ -1060,15 +1046,12 @@ export function BimViewport() {
                   onRedo: () => instance.redoCadAction(),
                 });
                 disposeNativePreview = () => preview.dispose();
-                if (!disposed) setNativeProjectPreviewOpen(true);
               } catch (error) {
                 // Unsupported fragments/materials must NEVER stop the
                 // authoritative Model Space and its save/restore workflow.
                 console.warn("Three.js project inspection unavailable:", error);
-                if (!disposed) setNativeProjectPreviewOpen(false);
               }
             };
-            nativeProjectPreviewToggleRef.current = toggleNativeProjectPreview;
 
             // Primary-mode Three.js tools operate on the SAME production
             // WebGL canvas, scene and live project. No duplicate renderer,
@@ -1126,20 +1109,17 @@ export function BimViewport() {
                   onClose: () => {
                     edit.finish(false);
                     disposeNativePrimary = undefined;
-                    if (!disposed) setNativePrimaryEditorOpen(false);
                   },
                 });
                 disposeNativePrimary = () => panel.dispose();
-                if (!disposed) setNativePrimaryEditorOpen(true);
               } catch (error) {
                 console.warn("No se pudo activar el modo Three.js principal:", error);
-                if (!disposed) setNativePrimaryEditorOpen(false);
               }
             };
-            nativePrimaryEditorToggleRef.current = toggleNativePrimaryEditor;
 
-            // Native Three.js tools are available in Model Space from initial
-            // load with the existing STEP/DWG/project/assembly/drawing core.
+            // Three.js is the permanent Model Space surface: this is the same
+            // CAD scene, geometry, camera, model and persistence as before.
+            // Keep the diagnostic viewer behind an explicit URL flag only.
             // By default they do not intercept a single legacy CAD pointer
             // event; only an explicitly armed gizmo temporarily owns input.
             // ?cadLegacy=1 is the immediate safe rollback for regressions.
@@ -1151,8 +1131,6 @@ export function BimViewport() {
             }
             const disposeWithPanel = instance.dispose;
             instance.dispose = () => {
-              nativeProjectPreviewToggleRef.current = null;
-              nativePrimaryEditorToggleRef.current = null;
               disposeNativePrimary?.();
               disposeNativePreview?.();
               disposeClashDetectionPanel();
@@ -1574,10 +1552,6 @@ export function BimViewport() {
         bimCore,
         definition,
       );
-      if (isStepFile(file.name)) {
-        lastImportedStepFileRef.current = file;
-        setLastImportedStepName(file.name);
-      }
     }
     catch (
       error
@@ -1937,8 +1911,6 @@ export function BimViewport() {
   function handleClearModels(): void {
     bimCoreRef.current
       ?.clearModels();
-    lastImportedStepFileRef.current = null;
-    setLastImportedStepName(null);
     refreshModels();
   }
 
@@ -1960,55 +1932,9 @@ export function BimViewport() {
         onContextMenu={handleViewportContextMenu}
       />
 
-      {/* The stable Model Space must never be unmounted or lose unsaved CAD
-          work just to inspect a standalone STEP in the native renderer. */}
-      <button
-        type="button"
-        data-native-step-workspace-launch="true"
-        title={lastImportedStepName
-          ? `Visor STEP Three.js solo para diagnóstico: ${lastImportedStepName}. Los cambios aquí NO se guardan en .flproject. Para trabajar, usa el Model Space Three.js principal.`
-          : "Visor STEP Three.js solo para diagnóstico: no reemplaza el Model Space ni permite guardar cambios del proyecto."}
-        style={{
-          position: "absolute", left: 16, bottom: 16, zIndex: 40,
-          padding: "7px 10px", borderRadius: 6,
-          border: "1px solid #64748b", background: "#172435",
-          color: "#e2e8f0", cursor: "pointer", fontSize: 12,
-        }}
-        onClick={() => {
-          const result = openNativeStepWorkspace(lastImportedStepFileRef.current);
-          if (!result.opened) {
-            window.alert("El navegador bloqueó la nueva pestaña. Permite ventanas emergentes para FrameLogic y vuelve a intentarlo.");
-          } else if (lastImportedStepFileRef.current && !result.handoffAvailable) {
-            window.alert("La transferencia automática del STEP no está disponible (requiere navegador compatible y archivo de hasta 256 MiB). El visor Three.js se abrió igualmente: usa Abrir STEP / Ensamblaje para cargarlo manualmente.");
-          }
-        }}
-      >
-        {lastImportedStepName ? "STEP · visor de pruebas" : "STEP · pruebas"}
-      </button>
-
-      <button
-        type="button"
-        data-native-project-inspection="true"
-        data-native-primary-mode="true"
-        aria-pressed={nativePrimaryEditorOpen}
-        title="Three.js es la vista gráfica principal de FrameLogic. Esta opción activa/desactiva sus controles de gizmo sin cambiar el proyecto ni los controladores DWG/DXF, ensambles, .flproject, SNAP o Paper Space. Respaldo: ?cadLegacy=1."
-        style={{
-          position: "absolute", left: 16, bottom: 54, zIndex: 53,
-          padding: "7px 10px", borderRadius: 6,
-          border: nativePrimaryEditorOpen ? "1px solid #43f2be" : "1px solid #64748b",
-          background: "#172435", color: "#e2e8f0",
-          cursor: "pointer", fontSize: 12,
-        }}
-        onClick={() => {
-          if (!nativePrimaryEditorToggleRef.current) {
-            window.alert("El Model Space principal todavía está iniciando.");
-            return;
-          }
-          nativePrimaryEditorToggleRef.current();
-        }}
-      >
-        {nativePrimaryEditorOpen ? "Three.js principal · controles activos" : "Activar controles Three.js"}
-      </button>
+      {/* Three.js is the permanent Model Space renderer. The STEP-only
+          experimental viewer and native-mode toggle are diagnostic routes,
+          never alternate workspaces or buttons in the CAD interface. */}
 
       <ViewCube
         orientation={cameraOrientation}
