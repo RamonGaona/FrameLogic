@@ -575,9 +575,41 @@ export function NativeStepViewer() {
     );
   }
 
+  function moveNumeric(): void {
+    const target = moveTargetRef.current;
+    const amount = Number(moveAmount.trim().replace(",", "."));
+    if (!target) {
+      setMoveStatus("Movimiento bloqueado: se necesita un STEP con un único producto inequívoco.");
+      return;
+    }
+    if (!Number.isFinite(amount) || Math.abs(amount) > 1_000_000 || amount === 0) {
+      setMoveStatus("Distancia inválida. Introduce un número no nulo de hasta 1.000.000 mm.");
+      return;
+    }
+    if (moveRef.current.moveBy(target, moveAxis, amount)) {
+      refreshMoveUi();
+      setSnap(null);
+      setMoveStatus(`Desplazamiento visual: ${moveAxis} ${amount} mm. Deshacer disponible.`);
+    }
+  }
+
+  function undoMove(): void {
+    if (!moveRef.current.undo()) return;
+    refreshMoveUi();
+    setSnap(null);
+    setMoveStatus("Desplazamiento visual deshecho.");
+  }
+
+  function redoMove(): void {
+    if (!moveRef.current.redo()) return;
+    refreshMoveUi();
+    setSnap(null);
+    setMoveStatus("Desplazamiento visual rehecho.");
+  }
+
   function backToCurrentViewer(): void {
     if (!window.confirm(
-      "Este visor experimental es solo de lectura. Los archivos STEP cargados no se guardan. ¿Regresar al FrameLogic habitual?",
+      "Este visor permite movimientos visuales temporales: no se modifican ni guardan los STEP originales. ¿Regresar al FrameLogic habitual?",
     )) return;
     window.location.assign(window.location.pathname);
   }
@@ -650,9 +682,46 @@ export function NativeStepViewer() {
               <div data-native-transform-target="true">
                 Pivote futuro gizmo (mm): {transformTarget.pivot.toArray()
                   .map((value) => value.toFixed(2)).join(", ")}
-                {" · Solo preparación; movimiento y rotación desactivados"}
+                {" · Rotación no implementada"}
               </div>
             )}
+            <div data-native-move-status="true" style={{ color: moveEligible ? "#86efac" : "#fcd34d" }}>
+              {moveEligible
+                ? "Gizmo de movimiento XYZ (solo vista): arrastra las flechas o introduce mm."
+                : "Movimiento bloqueado: este STEP no es un único producto inequívoco."}
+            </div>
+            {moveEligible && (
+              <div data-native-move-controls="true" style={{
+                display: "flex", flexDirection: "column", gap: 6,
+                borderTop: "1px solid #356273", paddingTop: 8,
+              }}>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                  {(["X", "Y", "Z"] as const).map((axis) => (
+                    <button key={axis} type="button" style={{
+                      ...buttonStyle,
+                      borderColor: moveAxis === axis ? "#43f2be" : "#64748b",
+                    }} onClick={() => setMoveAxis(axis)}>{axis}</button>
+                  ))}
+                  <input aria-label="Distancia en milímetros" type="text"
+                    inputMode="decimal" value={moveAmount}
+                    onChange={(event) => setMoveAmount(event.currentTarget.value)}
+                    style={{
+                      width: 85, padding: 7, borderRadius: 5,
+                      border: "1px solid #64748b", background: "#0b1520",
+                      color: "#f8fafc",
+                    }} />
+                  <span>mm</span>
+                  <button type="button" style={buttonStyle}
+                    onClick={moveNumeric}>Mover</button>
+                </div>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 6 }}>
+              <button type="button" style={buttonStyle}
+                disabled={!moveHistory.undo} onClick={undoMove}>Deshacer</button>
+              <button type="button" style={buttonStyle}
+                disabled={!moveHistory.redo} onClick={redoMove}>Rehacer</button>
+            </div>
             <button type="button" style={buttonStyle} onClick={() => {
               selectionRef.current.clear();
               partScopeRef.current = null;
@@ -671,6 +740,12 @@ export function NativeStepViewer() {
           límites del producto o malla seleccionada y por su visibilidad.
           La atribución por pieza es espacial, no topológica definitiva;
           en ensamblajes con piezas superpuestas puede ser aproximada.
+        </div>
+        {moveStatus && <div role="status" style={{ color: "#fcd34d" }}>{moveStatus}</div>}
+        <div style={{ color: "#ffdb8d" }}>
+          Traslación temporal en Three.js: no guarda cambios en STEP, .flproject
+          ni en la topología OCCT. No admite copiar con Ctrl ni mover subpiezas
+          de archivos STEP que contengan varios productos.
         </div>
         <div data-native-brep-snap-status="true" style={{ color: "#99e6c9" }}>
           {snap ? `${NATIVE_SNAP_LABELS[snap.kind]} · ${snap.point.x.toFixed(2)}, ${snap.point.y.toFixed(2)}, ${snap.point.z.toFixed(2)} mm`
