@@ -19,6 +19,9 @@ describe("native project rotation rings under inspector camera", () => {
   it("starts hidden until explicit Rotate and picks the XY-screen Z ring", () => {
     const rings = createNativeProjectRotationRings();
     sizeNativeProjectRotationRings(rings.group, camera, 400);
+    expect(rings.group.children[0]?.visible).toBe(false); // X is edge-on
+    expect(rings.group.children[1]?.visible).toBe(false); // Y is edge-on
+    expect(rings.group.children[2]?.visible).toBe(true);  // Z faces camera
     rings.group.visible = false;
     expect(pickNativeProjectRotationRing(rings.group, camera, 350, 350, rect)).toBeNull();
     rings.group.visible = true;
