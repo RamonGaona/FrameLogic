@@ -12,7 +12,19 @@ describe("Native Three.js shared-project gizmo direct edit regression", () => {
   it("creates interactive Three.js TransformControls bound to the inspector canvas, not the main canvas", () => {
     expect(preview).toContain("new TransformControls(camera, renderer.domElement)");
     expect(preview).toContain("gizmoScene.add(gizmo.getHelper())");
-    expect(preview).toContain("gizmo.setMode(nativeMode)");
+    expect(preview).toContain('let nativeMode: "select" | "translate" | "rotate" = "select"');
+    expect(preview).toContain('gizmo.setMode("translate")');
+    expect(preview).toContain('if (mode === "rotate")');
+    expect(preview).toContain("gizmo.detach()");
+    expect(preview).toContain("rotateRings.group.visible = true");
+    expect(preview).toContain("createNativeProjectRotationRings()");
+    expect(preview).toContain("pickNativeProjectRotationRing(");
+    expect(preview).toContain('nativeEdit.begin("rotate")');
+    expect(preview).toContain("nativeProjectRotationDragAngle(");
+    expect(preview).toContain("nativeProjectRotationFromStart(");
+    expect(preview).toContain("nativeEdit.preview(drag.pivot, orientation)");
+    expect(preview).toContain("finishRotateGesture(true)");
+    expect(preview).toContain("finishRotateGesture(false)");
     expect(preview).toContain("renderer.clearDepth()");
     expect(preview).toContain("renderer.render(gizmoScene, camera)");
     expect(preview).toContain("nativeEdit.begin(nativeMode)");
@@ -21,6 +33,24 @@ describe("Native Three.js shared-project gizmo direct edit regression", () => {
     expect(preview).toContain("selectionGesture = null");
     expect(preview).toContain("gizmoPointerGesture = true");
     expect(preview).toContain("gizmo?.dispose()");
+  });
+
+  it("does not automatically arm Move on selecting a piece and enables explicit Rotate", () => {
+    expect(preview).toContain('nativeMode = "select"');
+    expect(preview).toContain('if (nativeMode === "translate")');
+    expect(preview).toContain('rotateRings.group.visible = nativeMode === "rotate"');
+    expect(preview).toContain('nativeMode !== "translate"');
+    expect(preview).toContain('moveButton.setAttribute("aria-pressed"');
+    expect(preview).toContain('rotateButton.setAttribute("aria-pressed"');
+    expect(preview).toContain("sizeNativeProjectRotationRings(");
+    expect(preview).toContain('new THREE.Scene()');
+  });
+
+  it("provides tested exact 90-degree turns if an axis ring is viewed edge-on", () => {
+    expect(preview).toContain('for (const axis of ["X", "Y", "Z"] as const)');
+    expect(preview).toContain('makeAction(`${axis} +90°`');
+    expect(preview).toContain('nativeEdit.begin("rotate")');
+    expect(preview).toContain('nativeEdit.finish(true)');
   });
 
   it("commits to real CAD model and CAD history instead of a temporary THREE.Group", () => {
