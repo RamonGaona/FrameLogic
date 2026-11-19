@@ -58,7 +58,11 @@ export class NativeProjectCadEditBridge {
     readonly before: NativeProjectTransformSnapshot;
   } | null = null;
 
-  constructor(private readonly dependencies: NativeProjectCadEditDependencies) {}
+  private readonly dependencies: NativeProjectCadEditDependencies;
+
+  constructor(dependencies: NativeProjectCadEditDependencies) {
+    this.dependencies = dependencies;
+  }
 
   getTarget(): NativeProjectEditTarget | null {
     const ids = this.dependencies.selectedIds();
