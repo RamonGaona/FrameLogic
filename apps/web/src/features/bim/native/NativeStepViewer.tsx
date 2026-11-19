@@ -525,10 +525,13 @@ export function NativeStepViewer() {
           const exact = reference?.kind === "BREP_SNAP";
           clearSnap();
           setUntilSurface(null);
-          if (!copy) clearArmedUntil();
+          // Only a deliberately armed COPY mode repeats. Ctrl pressed
+          // solely on the destination creates ONE copy and finishes, so
+          // the next ordinary click cannot accidentally move the source.
+          if (!armed.copy) clearArmedUntil();
           refreshMoveUi();
           setMoveStatus(copy
-            ? `COPIAR HASTA ${armed.axis} aplicado (${exact ? "SNAP B-Rep exacto" : "cara STEP aproximada"}). Original inmóvil; clic para otra copia o Esc.`
+            ? `COPIAR HASTA ${armed.axis} aplicado (${exact ? "SNAP B-Rep exacto" : "cara STEP aproximada"}). Original inmóvil.${armed.copy ? " Clic para otra copia o Esc." : ""}`
             : `MOVER HASTA ${armed.axis} aplicado (${exact ? "SNAP B-Rep exacto" : "cara STEP aproximada"}).`);
         } else {
           setMoveStatus("No fue posible completar HASTA; selecciona otra referencia.");
