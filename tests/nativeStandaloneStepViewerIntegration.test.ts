@@ -55,7 +55,7 @@ describe("Standalone native Three.js test route", () => {
     expect(native).toContain("disposeNativeStepMeshGroup(runtime.modelRoot)");
     expect(native).toContain("selectionRef.current.dispose()");
     expect(native).toContain("window.removeEventListener(\"keydown\", escapeSelection)");
-    expect(native).toContain("selectionRef.current.clear();\n      moveRef.current.reset();");
+    expect(native).toContain("selectionRef.current.clear();\n      snapPlacementRef.current = null;\n      setSnapBase(null);\n      moveRef.current.reset();");
     expect(native).toContain("moveGizmoRef.current?.dispose()");
     expect(native).toContain("disposeNativeStepMeshGroup(previous)");
   });
