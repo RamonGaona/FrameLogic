@@ -213,6 +213,10 @@ export function BimViewport() {
     useRef<PrecisionBimCoreInstance | null>(
       null,
     );
+  // Optional native Three.js view of the exact *active* CAD scene. This
+  // inspection does not own its scene, commands or .flproject persistence.
+  const nativeProjectPreviewToggleRef = useRef<(() => void) | null>(null);
+  const [nativeProjectPreviewOpen, setNativeProjectPreviewOpen] = useState(false);
 
 
   const [cameraOrientation, setCameraOrientation] =
@@ -996,23 +1000,45 @@ export function BimViewport() {
             const disposeClashDetectionPanel = mountClashDetectionPanel(instance);
             const disposeLocalChatPanel = mountLocalChatPanel(instance);
 
-            // Explicit diagnostic opt-in only: never create a second WebGL
-            // context for ordinary projects or production users.
+            // User-initiated inspection uses the *same* live project scene
+            // (STEP instances, IFC/Fragments, DWG/DXF CAD overlays and other
+            // current Model Space objects). This is a second renderer only,
+            // not a second project or a replacement for CAD interaction.
             let disposeNativePreview: (() => void) | undefined;
-            if (new URLSearchParams(window.location.search).get("threePreview") === "1") {
+            const toggleNativeProjectPreview = (): void => {
+              if (disposeNativePreview) {
+                disposeNativePreview();
+                return;
+              }
               try {
                 const preview = mountExperimentalNativeThreePreview({
                   host: container.parentElement ?? container,
                   viewport: instance.viewport,
+                  width: 640,
+                  height: 360,
+                  title: "Three.js · proyecto actual (solo vista)",
+                  onClose: () => {
+                    disposeNativePreview = undefined;
+                    if (!disposed) setNativeProjectPreviewOpen(false);
+                  },
                 });
                 disposeNativePreview = () => preview.dispose();
+                if (!disposed) setNativeProjectPreviewOpen(true);
               } catch (error) {
-                // An unsupported GPU/material must not block the stable visor.
-                console.warn("Three.js experimental preview unavailable:", error);
+                // Unsupported fragments/materials must NEVER stop the
+                // authoritative Model Space and its save/restore workflow.
+                console.warn("Three.js project inspection unavailable:", error);
+                if (!disposed) setNativeProjectPreviewOpen(false);
               }
+            };
+            nativeProjectPreviewToggleRef.current = toggleNativeProjectPreview;
+            // Preserve the original diagnostic URL opt-in for regressions.
+            if (new URLSearchParams(window.location.search).get("threePreview") === "1") {
+              toggleNativeProjectPreview();
             }
             const disposeWithPanel = instance.dispose;
             instance.dispose = () => {
+              nativeProjectPreviewToggleRef.current = null;
               disposeNativePreview?.();
               disposeClashDetectionPanel();
               disposeLocalChatPanel();
@@ -1842,6 +1868,29 @@ export function BimViewport() {
         }}
       >
         {lastImportedStepName ? "Visor Three.js · último STEP" : "Visor STEP Three.js"}
+      </button>
+
+      <button
+        type="button"
+        data-native-project-inspection="true"
+        aria-pressed={nativeProjectPreviewOpen}
+        title="Previsualización Three.js de la escena CAD actual. Usa la misma geometría de Model Space, incluidas las referencias visibles. Es solo lectura: IFC, DWG/DXF, ensambles, historial, .flproject y Paper Space se siguen editando desde el motor principal."
+        style={{
+          position: "absolute", left: 16, bottom: 54, zIndex: 40,
+          padding: "7px 10px", borderRadius: 6,
+          border: nativeProjectPreviewOpen ? "1px solid #43f2be" : "1px solid #64748b",
+          background: "#172435", color: "#e2e8f0",
+          cursor: "pointer", fontSize: 12,
+        }}
+        onClick={() => {
+          if (!nativeProjectPreviewToggleRef.current) {
+            window.alert("El motor CAD todavía está iniciando. Intenta abrir la vista Three.js cuando aparezca Model Space.");
+            return;
+          }
+          nativeProjectPreviewToggleRef.current();
+        }}
+      >
+        {nativeProjectPreviewOpen ? "Cerrar vista Three.js del proyecto" : "Vista Three.js del proyecto"}
       </button>
 
       <ViewCube
