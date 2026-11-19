@@ -176,6 +176,33 @@ and release of the selected asset without mutating STEP mesh coordinates.
 Next: map mesh selection to semantic part identities and CAD snapping using
 the exact STEP B-Rep interface, before migrating gizmos or editing commands.
 
+## Phase 3e — exact STEP B-Rep snap preview (v0.1.192)
+
+The native `?threeNative=1` viewer now reads the same loaded OpenCascade
+B-Rep document index used by CAD precision features. During import it indexes
+the exact topological vertex coordinates, edge midpoints, analytic circle
+centres and cylinder-axis origins (scaled to millimetres using the B-Rep
+`modelScale`). On pointer hover, if a STEP mesh is selected, a small marker
+and numerical coordinate readout show candidates projected through the native
+orthographic camera. Mesh triangulation is **not** used to create alleged
+exact snap points; the indexed geometry and camera clip bounds are authoritative.
+
+Native STEP meshes also carry their originating B-Rep document id and product
+node identity (when `StepProductNode.geometryIds` references that mesh).
+The selected document id scopes snap queries, avoiding hits from separate
+imported files even if filenames happen to match.
+
+**Limitations:** B-Rep topology is indexed per STEP document, not per visual
+submesh/product. Snap queries therefore may show exact points from other
+parts contained in the same file. The markers are read-only; they are not yet
+used by gizmos, edits, aligned placements or persistence. Hidden-surface
+occlusion and exact edge-nearest/intersection snaps are not solved here.
+Large models still require future spatial indexing for scalable hover queries.
+
+The production CAD viewport, IFC/Fragments and Paper Space/PDF continue to
+use their established implementations. Only the native experimental route
+adds the snap display. Keep the orthographic-only camera safety restriction.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
