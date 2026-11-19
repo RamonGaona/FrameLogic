@@ -166,7 +166,8 @@ describe("Ctrl-copy via native Three.js gizmo", () => {
     selection.setSelected(copy);
     selection.clear();
     expect(copy.material.emissive.toArray()).toEqual(expected.toArray());
-    expect(original.selected.material.emissive.equals(expected)).toBe(false);
+    // Selecting the clone restores the original's unselected material.
+    expect(original.selected.material.emissive.equals(expected)).toBe(true);
     selection.dispose();
     history.reset();
     disposeNativeStepMeshGroup(root);
