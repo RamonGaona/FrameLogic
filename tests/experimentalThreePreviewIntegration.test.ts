@@ -29,7 +29,7 @@ describe("Experimental native Three.js renderer boundaries", () => {
     const state = read("../packages/bim/core/src/project/ProjectCameraStateController.ts");
     const mouse = read("../packages/bim/core/src/engine/createFrameLogicBimCoreNavigation.ts");
     const core = read("../packages/bim/core/src/engine/createBimCore.ts");
-    expect(navigation).toContain("core.cameraNavigation.setMinimumZoom(");
+    expect(navigation).toContain("cameraControls.setMinimumZoom(");
     expect(navigation).toContain("cameraNavigation:\n        core.cameraNavigation");
     expect(state).toContain("readonly cameraNavigation:\n    FrameLogicCameraController");
     expect(mouse).toContain("controls: core.cameraNavigation.mouseBindings");
