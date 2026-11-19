@@ -364,6 +364,27 @@ ineligible for native visual edits.
 The production CAD viewer and orthographic safety restriction, IFC,
 DWG/DXF, and Paper Space/PDF remain untouched.
 
+## Phase 3k — central gizmo hover and SNAP overlay priority (v0.1.198)
+
+The user validated the centre relocation feature and requested that the
+native XYZ centre **highlight under the pointer** and **remain above an
+overlapping exact SNAP marker**. The centre sphere now changes color and
+scale on hover, with a 24px non-interactive HTML halo. Pointer hit-testing
+uses a stable CSS-pixel tolerance instead of tiny geometric ray intersections,
+remaining usable when an imported STEP is zoomed out.
+
+Rendering and selection priority are explicit: the centre mesh is drawn
+after XYZ axis arrows, and the native HTML SNAP indicator is suppressed
+when its screen-space position overlaps the projected centre's hit region.
+SNAPs elsewhere remain fully available. The centre click continues to arm
+its read-only exact-B-Rep pivot relocation; the hover state never changes
+the STEP mesh or transform history.
+
+Regression tests cover hover appearance and cleanup, pointer detection,
+exact SNAP visual overlap and the existing centre/axis behavior.
+The production That Open CAD viewport, native orthographic camera,
+STEP/OCCT geometry, IFC/DWG/Paper Space and project persistence are unchanged.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
