@@ -44,6 +44,13 @@ import {
   type NativeMoveGizmo,
 } from "./NativeStepMoveGizmo";
 import {
+  createNativeRotateGizmo,
+  nativeRotationAngleToReference,
+  nativeRotationDegreesFromPixels,
+  nativeRotationStartReference,
+  pickNativeRotateRing,
+} from "./NativeStepRotateGizmo";
+import {
   getNativeStepBrepWorldTransform,
   NativeStepMoveController,
   resolveNativeIsolatedStepTarget,
@@ -136,6 +143,8 @@ export function NativeStepViewer() {
   const selectionRef = useRef(new NativeStepSelectionController());
   const partScopeRef = useRef<NativeStepPartScope | null>(null);
   const moveRef = useRef(new NativeStepMoveController());
+  const gizmoModeRef = useRef<"MOVE" | "ROTATE">("MOVE");
+  const [gizmoMode, setGizmoMode] = useState<"MOVE" | "ROTATE">("MOVE");
   const moveTargetRef = useRef<NativeIsolatedStepTarget | null>(null);
   const moveGizmoRef = useRef<NativeMoveGizmo | null>(null);
   const moveGizmoKeyRef = useRef<string | null>(null);
@@ -151,6 +160,18 @@ export function NativeStepViewer() {
     readonly pivot: THREE.Vector3;
     readonly copy: boolean;
   } | null>(null);
+  const armedRotationRef = useRef<{
+    readonly sourceKey: string;
+    readonly axis: NativeMoveAxis;
+    readonly pivot: THREE.Vector3;
+    readonly from: THREE.Vector3;
+    readonly copy: boolean;
+  } | null>(null);
+  const [armedRotation, setArmedRotation] = useState<{
+    readonly axis: NativeMoveAxis;
+    readonly copy: boolean;
+  } | null>(null);
+  const [rotationAmount, setRotationAmount] = useState("90");
   const [armedUntil, setArmedUntil] = useState<{
     readonly axis: NativeMoveAxis;
     readonly copy: boolean;
@@ -199,7 +220,9 @@ export function NativeStepViewer() {
     if (target && runtime && scope) {
       if (!moveGizmoRef.current) {
         const diagonal = scope.bounds.getSize(new THREE.Vector3()).length();
-        const gizmo = createNativeMoveGizmo(pivot!, diagonal);
+        const gizmo = gizmoModeRef.current === "ROTATE"
+          ? createNativeRotateGizmo(pivot!, diagonal)
+          : createNativeMoveGizmo(pivot!, diagonal);
         runtime.scene.add(gizmo.group);
         moveGizmoRef.current = gizmo;
         moveGizmoKeyRef.current = target.key;
@@ -209,6 +232,31 @@ export function NativeStepViewer() {
       }
     }
     setMoveHistory({ undo: moveRef.current.canUndo, redo: moveRef.current.canRedo });
+  }
+
+  function clearArmedRotation(): void {
+    armedRotationRef.current = null;
+    setArmedRotation(null);
+    setUntilSurface(null);
+  }
+
+  function setNativeGizmoMode(mode: "MOVE" | "ROTATE"): void {
+    if (moveRef.current.isDragging || moveRef.current.isRotating) return;
+    gizmoModeRef.current = mode;
+    setGizmoMode(mode);
+    clearArmedPivot();
+    clearArmedUntil();
+    clearArmedRotation();
+    snapPlacementRef.current = null;
+    setSnapBase(null);
+    setSnap(null);
+    moveGizmoRef.current?.dispose();
+    moveGizmoRef.current = null;
+    moveGizmoKeyRef.current = null;
+    refreshMoveUi();
+    setMoveStatus(mode === "ROTATE"
+      ? "Gizmo de rotación: arrastra un anillo X/Y/Z o haz clic corto para ROTAR HASTA una referencia."
+      : "Gizmo de movimiento XYZ activado.");
   }
 
   function clearArmedUntil(): void {
@@ -230,6 +278,7 @@ export function NativeStepViewer() {
       return false;
     }
     clearArmedUntil();
+    clearArmedRotation();
     snapPlacementRef.current = null;
     setSnapBase(null);
     armedPivotRef.current = { sourceKey: target.key };
@@ -269,6 +318,7 @@ export function NativeStepViewer() {
       return false;
     }
     clearArmedPivot();
+    clearArmedRotation();
     snapPlacementRef.current = null;
     setSnapBase(null);
     const pivot = getNativeStepGizmoPivot(scope);
@@ -285,9 +335,42 @@ export function NativeStepViewer() {
     return true;
   }
 
+  function armNativeRotationUntil(
+    axis: NativeMoveAxis,
+    copy = false,
+    from?: THREE.Vector3,
+  ): boolean {
+    const target = moveTargetRef.current;
+    const scope = partScopeRef.current;
+    if (!target || !scope || scope.key !== target.key) {
+      setMoveStatus("ROTAR HASTA requiere un STEP independiente de producto único.");
+      return false;
+    }
+    clearArmedPivot();
+    clearArmedUntil();
+    snapPlacementRef.current = null;
+    setSnapBase(null);
+    const pivot = getNativeStepGizmoPivot(scope);
+    // The exact centre is a local STEP anchor: rotation must keep it fixed.
+    if (!setNativeStepGizmoPivot(scope, pivot)) return false;
+    armedRotationRef.current = {
+      sourceKey: target.key, axis, pivot,
+      from: from?.clone() ?? nativeRotationStartReference(pivot, axis), copy,
+    };
+    setArmedRotation({ axis, copy });
+    setMoveAxis(axis);
+    setSnap(null);
+    setUntilSurface(null);
+    setMoveStatus(copy
+      ? `COPIAR ROTANDO HASTA · eje ${axis}: clic en SNAP o cara visible; Esc termina.`
+      : `ROTAR HASTA · eje ${axis}: clic en SNAP o cara visible; Ctrl copia.`);
+    return true;
+  }
+
   function focusNativeTarget(target: NativeIsolatedStepTarget | null): void {
     clearArmedPivot();
     clearArmedUntil();
+    clearArmedRotation();
     snapPlacementRef.current = null;
     setSnapBase(null);
     const runtime = runtimeRef.current;
@@ -366,6 +449,14 @@ export function NativeStepViewer() {
     let pivotDrag: {
       id: number; startX: number; startY: number;
     } | null = null;
+    let rotateDrag: {
+      id: number;
+      axis: NativeMoveAxis;
+      startX: number;
+      startY: number;
+      pivot: THREE.Vector3;
+      from: THREE.Vector3;
+    } | null = null;
     let moveDrag: {
       id: number;
       axis: NativeMoveAxis;
@@ -417,7 +508,7 @@ export function NativeStepViewer() {
       );
     };
     const findUntilReferenceAt = (x: number, y: number): NativeAxisUntilReference | null => {
-      const armed = armedUntilRef.current;
+      const armed = armedUntilRef.current ?? armedRotationRef.current;
       const target = moveTargetRef.current;
       if (!armed || !target || armed.sourceKey !== target.key) return null;
       updateNativeOrthographicCamera(camera, state, width / height);
@@ -444,7 +535,7 @@ export function NativeStepViewer() {
         setUntilSurface(null);
         return;
       }
-      if (armedUntilRef.current) {
+      if (armedUntilRef.current || armedRotationRef.current) {
         const now = performance.now();
         if (now - lastSnapQuery < 70) return;
         lastSnapQuery = now;
@@ -522,29 +613,59 @@ export function NativeStepViewer() {
             return;
           }
         }
-        const axis = pickNativeMoveAxis(
-          moveGizmoRef.current, camera, e.clientX, e.clientY,
-          canvas.getBoundingClientRect(),
-        );
-        if (axis && (armedUntilRef.current || armedPivotRef.current)) {
-          armNativeUntil(axis, armedUntilRef.current?.copy || e.ctrlKey);
-          e.preventDefault();
-          return;
-        }
-        if (axis && moveRef.current.beginDrag(moveTargetRef.current, axis, e.ctrlKey)) {
-          // Drag and two-point COPYBASE are exclusive interaction modes.
-          clearArmedUntil();
-          snapPlacementRef.current = null;
-          setSnapBase(null);
-          moveDrag = {
-            id: e.pointerId, axis, startX: e.clientX, startY: e.clientY,
-            pivot: moveGizmoRef.current.group.position.clone(),
-            axisLength: getNativeMoveGizmoWorldAxisLength(moveGizmoRef.current),
-          };
-          canvas.setPointerCapture(e.pointerId);
-          clearSnap();
-          e.preventDefault();
-          return;
+        if (gizmoModeRef.current === "ROTATE") {
+          const ring = pickNativeRotateRing(
+            moveGizmoRef.current, camera, e.clientX, e.clientY,
+            canvas.getBoundingClientRect(),
+          );
+          if (ring && (armedRotationRef.current || armedPivotRef.current)) {
+            armNativeRotationUntil(ring.axis, armedRotationRef.current?.copy || e.ctrlKey, ring.worldPoint);
+            e.preventDefault();
+            return;
+          }
+          if (ring && partScopeRef.current) {
+            const pivot = moveGizmoRef.current.group.position.clone();
+            if (setNativeStepGizmoPivot(partScopeRef.current, pivot)
+              && moveRef.current.beginRotation(moveTargetRef.current, ring.axis, pivot, e.ctrlKey)) {
+              clearArmedRotation();
+              clearArmedUntil();
+              snapPlacementRef.current = null;
+              setSnapBase(null);
+              rotateDrag = {
+                id: e.pointerId, axis: ring.axis,
+                startX: e.clientX, startY: e.clientY, pivot,
+                from: ring.worldPoint,
+              };
+              canvas.setPointerCapture(e.pointerId);
+              clearSnap();
+              e.preventDefault();
+              return;
+            }
+          }
+        } else {
+          const axis = pickNativeMoveAxis(
+            moveGizmoRef.current, camera, e.clientX, e.clientY,
+            canvas.getBoundingClientRect(),
+          );
+          if (axis && (armedUntilRef.current || armedPivotRef.current)) {
+            armNativeUntil(axis, armedUntilRef.current?.copy || e.ctrlKey);
+            e.preventDefault();
+            return;
+          }
+          if (axis && moveRef.current.beginDrag(moveTargetRef.current, axis, e.ctrlKey)) {
+            clearArmedUntil();
+            snapPlacementRef.current = null;
+            setSnapBase(null);
+            moveDrag = {
+              id: e.pointerId, axis, startX: e.clientX, startY: e.clientY,
+              pivot: moveGizmoRef.current.group.position.clone(),
+              axisLength: getNativeMoveGizmoWorldAxisLength(moveGizmoRef.current),
+            };
+            canvas.setPointerCapture(e.pointerId);
+            clearSnap();
+            e.preventDefault();
+            return;
+          }
         }
       }
       pointer = {
@@ -563,6 +684,21 @@ export function NativeStepViewer() {
         // Never drag the underlying piece or move the gizmo to an
         // unverified screen-space position. Indicate exact SNAPs only.
         updateSnapFromPointer(e);
+        e.preventDefault();
+        return;
+      }
+      if (rotateDrag) {
+        clearCenterHover();
+        if (rotateDrag.id !== e.pointerId) return;
+        const degrees = nativeRotationDegreesFromPixels(
+          camera, rotateDrag.pivot, rotateDrag.axis,
+          rotateDrag.startX, rotateDrag.startY, e.clientX, e.clientY,
+          canvas.getBoundingClientRect(),
+        );
+        if (degrees !== null && moveRef.current.previewRotation(degrees, e.ctrlKey)) {
+          refreshMoveUi();
+          clearSnap();
+        }
         e.preventDefault();
         return;
       }
@@ -624,6 +760,35 @@ export function NativeStepViewer() {
         }
         return;
       }
+      if (rotateDrag?.id === e.pointerId) {
+        if (e.type === "pointerup" && e.ctrlKey) {
+          moveRef.current.enableCopyDuringRotation();
+        }
+        const shortClick = e.type === "pointerup"
+          && Math.hypot(e.clientX - rotateDrag.startX, e.clientY - rotateDrag.startY) <= 5;
+        const axis = rotateDrag.axis;
+        const from = rotateDrag.from.clone();
+        const copy = Boolean(moveRef.current.isRotating
+          && (e.ctrlKey || Boolean(moveRef.current.activeRotationCopy)));
+        const committed = moveRef.current.endRotation(e.type === "pointerup" && !shortClick);
+        const outcome = moveRef.current.lastResult;
+        rotateDrag = null;
+        if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+        if (shortClick) {
+          refreshMoveUi();
+          armNativeRotationUntil(axis, copy, from);
+          return;
+        }
+        if (committed && outcome?.kind === "COPY") focusNativeTarget(outcome.target);
+        else refreshMoveUi();
+        clearSnap();
+        setMoveStatus(committed
+          ? outcome?.kind === "COPY"
+            ? "Copia rotada confirmada; original inmóvil. Deshacer disponible."
+            : "Rotación visual confirmada. Deshacer disponible."
+          : "Rotación o copia cancelada.");
+        return;
+      }
       if (moveDrag?.id === e.pointerId) {
         if (e.type === "pointerup" && e.ctrlKey) {
           moveRef.current.enableCopyDuringDrag();
@@ -665,6 +830,37 @@ export function NativeStepViewer() {
         const hit = findPivotSnapAt(e.clientX, e.clientY);
         if (!hit || !placeNativePivot(hit.point)) {
           setMoveStatus("No hay SNAP B-Rep exacto en ese punto; el centro sigue armado. Esc cancela.");
+        }
+        return;
+      }
+      if (wasClick && armedRotationRef.current) {
+        const armed = armedRotationRef.current;
+        const source = moveTargetRef.current;
+        const reference = findUntilReferenceAt(e.clientX, e.clientY);
+        const degrees = reference ? nativeRotationAngleToReference(
+          armed.pivot, armed.axis, armed.from, reference.point,
+        ) : null;
+        if (!source || source.key !== armed.sourceKey || degrees === null) {
+          setMoveStatus(reference
+            ? "Referencia radial alineada o inválida; selecciona otro punto o Esc."
+            : "No hay SNAP ni cara STEP visible; selecciona otra referencia o Esc.");
+          return;
+        }
+        const copy = armed.copy || e.ctrlKey;
+        const committed = moveRef.current.rotateBy(
+          source, armed.axis, degrees, armed.pivot, copy,
+        );
+        if (committed) {
+          const exact = reference?.kind === "BREP_SNAP";
+          clearSnap();
+          setUntilSurface(null);
+          if (!armed.copy) clearArmedRotation();
+          refreshMoveUi();
+          setMoveStatus(copy
+            ? `COPIAR ROTANDO HASTA ${armed.axis} (${degrees.toFixed(2)}°, ${exact ? "SNAP exacto" : "cara aproximada"}). Original inmóvil.${armed.copy ? " Otra copia o Esc." : ""}`
+            : `ROTAR HASTA ${armed.axis} (${degrees.toFixed(2)}°, ${exact ? "SNAP exacto" : "cara aproximada"}).`);
+        } else {
+          setMoveStatus("No fue posible completar la rotación; selecciona otra referencia.");
         }
         return;
       }
@@ -728,6 +924,7 @@ export function NativeStepViewer() {
       if (wasClick) {
         clearArmedPivot();
         clearArmedUntil();
+        clearArmedRotation();
         snapPlacementRef.current = null;
         setSnapBase(null);
         // A click selects the nearest visible STEP triangle, never an orbit
@@ -746,7 +943,7 @@ export function NativeStepViewer() {
         setTransformTarget(partScope ? prepareNativeStepTransformTarget(partScope) : null);
         refreshMoveUi();
         setMoveStatus(partScope && !resolveNativeIsolatedStepTarget(partScope)
-          ? "Movimiento bloqueado: el STEP contiene varios productos o referencias ambiguas."
+          ? "Transformación bloqueada: el STEP contiene varios productos o referencias ambiguas."
           : "");
         clearSnap();
       }
@@ -758,6 +955,13 @@ export function NativeStepViewer() {
     };
     const contextMenu = (e: Event) => e.preventDefault();
     const escapeSelection = (e: KeyboardEvent) => {
+      if (e.key === "Control" && rotateDrag) {
+        if (moveRef.current.enableCopyDuringRotation()) {
+          refreshMoveUi();
+          setMoveStatus("Ctrl + rotar: se transforma la copia; el original queda intacto.");
+        }
+        return;
+      }
       if (e.key === "Control" && moveDrag) {
         // Ctrl pressed midway through a move switches to COPY; any movement
         // already applied to the original is restored immediately.
@@ -770,7 +974,7 @@ export function NativeStepViewer() {
       const focused = e.target;
       const editable = focused instanceof HTMLElement
         && Boolean(focused.closest('input, textarea, [contenteditable="true"]'));
-      if (!editable && (e.ctrlKey || e.metaKey) && !moveDrag) {
+      if (!editable && (e.ctrlKey || e.metaKey) && !moveDrag && !rotateDrag) {
         const key = e.key.toLowerCase();
         if (key === "z" && !e.shiftKey) {
           e.preventDefault();
@@ -799,6 +1003,12 @@ export function NativeStepViewer() {
         setMoveStatus("Reubicación del centro XYZ cancelada; pieza inmóvil.");
         return;
       }
+      if (armedRotationRef.current) {
+        clearArmedRotation();
+        clearSnap();
+        setMoveStatus("ROTAR HASTA cancelado; sin cambios en la pieza.");
+        return;
+      }
       if (armedUntilRef.current) {
         clearArmedUntil();
         clearSnap();
@@ -810,6 +1020,16 @@ export function NativeStepViewer() {
         setSnapBase(null);
         clearSnap();
         setMoveStatus("Copia por SNAP cancelada; original inmóvil.");
+        return;
+      }
+      if (rotateDrag) {
+        const pointerId = rotateDrag.id;
+        moveRef.current.endRotation(false);
+        rotateDrag = null;
+        if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+        refreshMoveUi();
+        clearSnap();
+        setMoveStatus("Rotación cancelada; original restaurado.");
         return;
       }
       if (moveDrag) {
@@ -893,6 +1113,7 @@ export function NativeStepViewer() {
       selectionRef.current.dispose();
       armedPivotRef.current = null;
       armedUntilRef.current = null;
+      armedRotationRef.current = null;
       snapPlacementRef.current = null;
       moveRef.current.reset();
       moveGizmoRef.current?.dispose();
@@ -968,6 +1189,7 @@ export function NativeStepViewer() {
       selectionRef.current.clear();
       clearArmedPivot();
       clearArmedUntil();
+      clearArmedRotation();
       snapPlacementRef.current = null;
       setSnapBase(null);
       moveRef.current.reset();
@@ -1040,6 +1262,7 @@ export function NativeStepViewer() {
   function captureSnapBase(): void {
     clearArmedPivot();
     clearArmedUntil();
+    clearArmedRotation();
     const target = moveTargetRef.current;
     if (!target || !snap || snap.brepDocumentId !== target.documentId) {
       setMoveStatus("Selecciona una pieza aislada y acerca el cursor a un SNAP B-Rep exacto.");
@@ -1057,6 +1280,7 @@ export function NativeStepViewer() {
   function moveNumeric(copy = false): void {
     clearArmedPivot();
     clearArmedUntil();
+    clearArmedRotation();
     const target = moveTargetRef.current;
     const amount = Number(moveAmount.trim().replace(",", "."));
     if (!target) {
@@ -1081,6 +1305,34 @@ export function NativeStepViewer() {
     }
   }
 
+  function rotateNumeric(copy = false): void {
+    clearArmedPivot();
+    clearArmedUntil();
+    clearArmedRotation();
+    const target = moveTargetRef.current;
+    const scope = partScopeRef.current;
+    const degrees = Number(rotationAmount.trim().replace(",", "."));
+    if (!target || !scope || !Number.isFinite(degrees)
+      || Math.abs(degrees) > 3600 || Math.abs(degrees) < 1e-8) {
+      setMoveStatus("Rotación inválida: selecciona un STEP independiente y un ángulo de hasta ±3600°.");
+      return;
+    }
+    const pivot = getNativeStepGizmoPivot(scope);
+    if (!setNativeStepGizmoPivot(scope, pivot)) return;
+    const committed = moveRef.current.rotateBy(target, moveAxis, degrees, pivot, copy);
+    if (!committed) {
+      setMoveStatus("Rotación sin cambio efectivo (por ejemplo, 360° exactos).");
+      return;
+    }
+    const outcome = moveRef.current.lastResult;
+    if (outcome?.kind === "COPY") focusNativeTarget(outcome.target);
+    else refreshMoveUi();
+    setSnap(null);
+    setMoveStatus(copy
+      ? `Copia rotada ${degrees}° sobre ${moveAxis}; original inmóvil.`
+      : `Rotación ${degrees}° sobre ${moveAxis}; deshacer disponible.`);
+  }
+
   function undoMove(): void {
     if (!moveRef.current.undo()) return;
     const outcome = moveRef.current.lastResult;
@@ -1089,6 +1341,7 @@ export function NativeStepViewer() {
     setSnap(null);
     setMoveStatus(outcome?.kind === "COPY_UNDONE"
       ? "Copia deshecha: original restaurado e inmóvil."
+      : outcome?.kind === "ROTATE" ? "Rotación visual deshecha."
       : "Desplazamiento visual deshecho.");
   }
 
@@ -1100,6 +1353,7 @@ export function NativeStepViewer() {
     setSnap(null);
     setMoveStatus(outcome?.kind === "COPY"
       ? "Copia visual restaurada; original inmóvil."
+      : outcome?.kind === "ROTATE" ? "Rotación visual rehecha."
       : "Desplazamiento visual rehecho.");
   }
 
