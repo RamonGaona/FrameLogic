@@ -12,6 +12,9 @@ function fixture() {
   let azimuth = Math.PI / 4;
   let polar = Math.PI / 3;
   const listeners = new Set<() => void>();
+  let minZoom = 0;
+  const mouseButtons = { left: 0, middle: 1, right: 2, wheel: 8 };
+  const ortho = new THREE.OrthographicCamera();
   const rotateTo = vi.fn(async (nextAzimuth: number, nextPolar: number) => {
     azimuth = nextAzimuth;
     polar = nextPolar;
@@ -30,6 +33,11 @@ function fixture() {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
+    getDistance: () => 100,
+    getTarget: (target) => target.set(1, 2, 3),
+    getOrthographicCamera: () => ortho,
+    setMinimumZoom: (value) => { minZoom = value; },
+    getMouseButtons: () => mouseButtons,
   };
   const camera = new FrameLogicCameraController(() => activeCamera, driver);
   return {
@@ -38,6 +46,9 @@ function fixture() {
     rotateTo,
     setLookAt,
     zoomTo,
+    getMinimumZoom: () => minZoom,
+    mouseButtons,
+    ortho,
     replaceCamera: (replacement: THREE.Camera) => { activeCamera = replacement; },
   };
 }
@@ -72,6 +83,18 @@ describe("FrameLogicCameraController", () => {
     expect(f.camera.orientation).toEqual({ azimuth: 1, polar: 2 });
     expect(f.setLookAt).toHaveBeenCalledWith(position, target, false);
     expect(f.zoomTo).toHaveBeenCalledWith(0.2, false);
+  });
+
+  it("exposes target, native ortho camera and minimum zoom through FrameLogic", () => {
+    const f = fixture();
+    const target = new THREE.Vector3();
+    expect(f.camera.distance).toBe(100);
+    expect(f.camera.getTarget(target)).toBe(target);
+    expect(target.toArray()).toEqual([1, 2, 3]);
+    expect(f.camera.orthographicCamera).toBe(f.ortho);
+    f.camera.setMinimumZoom(1e-8);
+    expect(f.getMinimumZoom()).toBe(1e-8);
+    expect(f.camera.mouseBindings.mouseButtons).toBe(f.mouseButtons);
   });
 
   it("emits initial and updated camera orientations and unsubscribes", () => {
