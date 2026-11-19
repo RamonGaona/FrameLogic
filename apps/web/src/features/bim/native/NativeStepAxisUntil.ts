@@ -77,5 +77,11 @@ export function nativeAxisUntilOffset(
     .sub(pivotWorldMm).dot(NATIVE_MOVE_AXES[axis]);
   if (!Number.isFinite(distance) || Math.abs(distance) < 1e-9
     || Math.abs(distance) > 1_000_000) return null;
-  return NATIVE_MOVE_AXES[axis].clone().multiplyScalar(distance);
+  // Explicit zero components avoid negative-zero artifacts for negative
+  // distances on another axis (without changing the signed axis distance).
+  return new THREE.Vector3(
+    axis === "X" ? distance : 0,
+    axis === "Y" ? distance : 0,
+    axis === "Z" ? distance : 0,
+  );
 }
