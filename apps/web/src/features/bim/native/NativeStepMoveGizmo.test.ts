@@ -5,6 +5,7 @@ import {
   createNativeMoveGizmo,
   nativeMoveAxisDistanceFromPixels,
   pickNativeMoveAxis,
+  pickNativeMoveCenter,
 } from "./NativeStepMoveGizmo";
 
 function camera() {
@@ -20,7 +21,8 @@ function camera() {
 describe("Native Three.js movement gizmo preview", () => {
   it("constructs X/Y/Z axes without modifying the STEP mesh root", () => {
     const gizmo = createNativeMoveGizmo(new THREE.Vector3(1, 2, 3), 500);
-    expect(gizmo.group.children).toHaveLength(3);
+    expect(gizmo.group.children).toHaveLength(4);
+    expect(gizmo.centerHandle.userData["nativeMovePivotCenter"]).toBe(true);
     expect(gizmo.group.position.toArray()).toEqual([1, 2, 3]);
     const allAxes: string[] = [];
     gizmo.group.traverse((object) => {
@@ -30,6 +32,19 @@ describe("Native Three.js movement gizmo preview", () => {
     expect(new Set(allAxes)).toEqual(new Set(["X", "Y", "Z"]));
     gizmo.dispose();
     expect(gizmo.group.parent).toBeNull();
+  });
+
+  it("centre picker locates the pivot without touching STEP mesh geometry", () => {
+    const gizmo = createNativeMoveGizmo(new THREE.Vector3(5, 8, 3), 300);
+    const c = camera();
+    const pivot = gizmo.group.position.clone().project(c);
+    const rect = { left: 50, top: 40, width: 400, height: 400 };
+    const x = rect.left + (pivot.x + 1) * rect.width * 0.5;
+    const y = rect.top + (1 - pivot.y) * rect.height * 0.5;
+    expect(pickNativeMoveCenter(gizmo, c, x, y, rect)).toBe(true);
+    expect(pickNativeMoveCenter(gizmo, c, rect.left - 1, y, rect)).toBe(false);
+    expect(gizmo.group.position.toArray()).toEqual([5, 8, 3]);
+    gizmo.dispose();
   });
 
   it("converts projected X-axis screen motion to world millimetres", () => {
