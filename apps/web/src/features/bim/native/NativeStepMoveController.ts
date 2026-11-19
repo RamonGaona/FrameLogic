@@ -118,7 +118,7 @@ function applyRotation(
   const parentWorld = group.parent.matrixWorld;
   const original = new THREE.Matrix4()
     .compose(before.position, before.quaternion, group.scale);
-  const rotate = new THREE.Matrix4().makeTranslation(...pivot.toArray())
+  const rotate = new THREE.Matrix4().makeTranslation(pivot.x, pivot.y, pivot.z)
     .multiply(new THREE.Matrix4().makeRotationAxis(
       NATIVE_MOVE_AXES[axis], THREE.MathUtils.degToRad(degrees),
     ))
