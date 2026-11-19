@@ -114,6 +114,23 @@ function cloneIsolatedStepTarget(
     } else {
       child.material = child.material.clone();
     }
+    // Restore the source's original material values, not the selection glow
+    // that was active when group.clone(true) copied the STEP meshes.
+    const rgb = child.userData["nativeSelectionBaseRgb"];
+    const intensity = child.userData["nativeSelectionBaseIntensity"];
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    if (Array.isArray(rgb) && rgb.length === 3 && rgb.every(Number.isFinite)) {
+      for (const material of materials) {
+        if (material instanceof THREE.MeshStandardMaterial) {
+          material.emissive.fromArray(rgb);
+          if (typeof intensity === "number" && Number.isFinite(intensity)) {
+            material.emissiveIntensity = intensity;
+          }
+        }
+      }
+    }
+    delete child.userData["nativeSelectionBaseRgb"];
+    delete child.userData["nativeSelectionBaseIntensity"];
     child.userData["nativeStepInstanceId"] = group.uuid;
     meshes.push(child);
   });
