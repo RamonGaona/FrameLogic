@@ -55,7 +55,7 @@ describe("Standalone native Three.js test route", () => {
     expect(native).toContain("disposeNativeStepMeshGroup(runtime.modelRoot)");
     expect(native).toContain("selectionRef.current.dispose()");
     expect(native).toContain("window.removeEventListener(\"keydown\", escapeSelection)");
-    expect(native).toContain("selectionRef.current.clear();\n      snapPlacementRef.current = null;\n      setSnapBase(null);\n      moveRef.current.reset();");
+    expect(native).toContain("selectionRef.current.clear();\n      clearArmedUntil();\n      snapPlacementRef.current = null;\n      setSnapBase(null);\n      moveRef.current.reset();");
     expect(native).toContain("moveGizmoRef.current?.dispose()");
     expect(native).toContain("disposeNativeStepMeshGroup(previous)");
   });
@@ -147,6 +147,30 @@ describe("Standalone native Three.js test route", () => {
     expect(placement).toContain("sourceBase.sourcePointMm");
     expect(core).toContain("copyTo(target: NativeIsolatedStepTarget, offsetMm: THREE.Vector3)");
     expect(viewer).toContain("Copia por SNAP B-Rep colocada en destino exacto");
+  });
+
+  it("arms HASTA on short axis click and projects next reference along selected XYZ axis", () => {
+    const viewer = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const until = read("../apps/web/src/features/bim/native/NativeStepAxisUntil.ts");
+    expect(viewer).toContain('const shortClick = e.type === "pointerup"');
+    expect(viewer).toContain("armNativeUntil(axis, copy)");
+    expect(viewer).toContain("if (wasClick && armedUntilRef.current)");
+    expect(viewer).toContain("nativeAxisUntilOffset(armed.pivot, armed.axis, reference.point)");
+    expect(viewer).toContain("const copy = armed.copy || e.ctrlKey");
+    expect(viewer).toContain("moveRef.current.copyTo(source, offset)");
+    expect(viewer).toContain("moveRef.current.moveBy(source, armed.axis");
+    expect(viewer).toContain("if (!copy) clearArmedUntil()");
+    expect(viewer).toContain('data-native-axis-until-active="true"');
+    expect(viewer).toContain("Copiar hasta");
+    expect(viewer).toContain("Hasta");
+    expect(viewer).toContain('data-native-axis-until-surface-marker="true"');
+    expect(viewer).toContain("Cara STEP (aprox.)");
+    expect(viewer).toContain("clearArmedUntil()");
+    expect(until).toContain("findNativeCopySnapDestination(");
+    expect(until).toContain("raycaster.intersectObject(root, true)");
+    expect(until).toContain('kind: "SURFACE_POINT"');
+    expect(until).toContain("dot(NATIVE_MOVE_AXES[axis])");
+    expect(viewer).not.toContain("createBimCore(");
   });
 
   it("keeps perspective blocked and existing CAD drawings untouched", () => {
