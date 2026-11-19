@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.201 — 2026-11-19 (primer puente seguro del Model Space al visor STEP Three.js)
+
+- **Página principal conservada:** `https://framelogic-dev.pages.dev/` mantiene el FrameLogic completo y su motor CAD actual para IFC, DWG/DXF, piezas, ensambles, snaps, herramientas, configuración, proyectos y Paper Space. No se sustituye por la ruta STEP experimental, porque sus transformaciones aún no son operaciones CAD persistentes y no admite todos los formatos.
+- **Abrir sin cerrar el proyecto:** el botón `Visor STEP Three.js` inicia una **pestaña independiente** en vez de reemplazar el Model Space, evitando perder la sesión y los cambios CAD sin guardar. En la página principal se puede continuar trabajando con el mismo proyecto mientras se comprueba el nuevo motor.
+- **Transferencia local del último STEP:** tras importar explícitamente una pieza STEP/STP desde Model Space se conserva el `File` original en memoria de la pestaña, y al abrir el visor nativo se entrega automáticamente al segundo tab por `BroadcastChannel`, con ticket aleatorio de un solo uso, validación de extensión/tamaño y cierre automático a los 20 segundos. Límite de transferencia 256 MiB; si falla, el visor nativo mantiene su botón de importación manual. No se sube ni almacena una nueva copia en servidores, IndexedDB ni localStorage.
+- **Contrato y límites visibles:** la transferencia no clona el estado de un proyecto `.flproject` ni devuelve transformaciones del visor nativo al CAD. MOVE, ROTATE, Ctrl-copia, ROTAR HASTA y demás herramientas STEP nativas siguen siendo visuales y temporales. Los datos persistentes y el historial del FrameLogic principal no se alteran.
+- **Pruebas y documentación:** nueva suite de protocolo y seguridad de transferencia, integración de rutas sin pérdida del Model Space y actualización de la hoja de ruta para la migración completa del renderer. Antes de sustituir That Open se requieren identidad de piezas/ensambles, comandos CAD persistentes, IFC/Fragments, DWG/DXF, Paper Space/PDF y pruebas con proyectos reales. Verificaciones CI y publicación sujetas a ejecución independiente.
+
+---
+
 ## v0.1.200 — 2026-11-19 (gizmo de rotación XYZ nativo, copias y referencias)
 
 - **Rotación XYZ sobre Three.js:** el visor experimental `?threeNative=1` incorpora el modo **Rotar XYZ** con anillos X/Y/Z coloreados, arrastre de rotación y entrada numérica en grados. Se mantienen los comandos y controles del gizmo de movimiento de v0.1.194–v0.1.199 sin sustituirlos.
