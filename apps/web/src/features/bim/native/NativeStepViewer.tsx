@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 
 import { OcctStepGeometryAdapter } from "../step/OcctStepGeometryAdapter";
 import {
@@ -40,7 +41,7 @@ const EMPTY_STATS: NativeViewerStats = {
   jsHeapMb: null, meshes: 0, stepTriangles: 0, loadMs: null, files: 0,
 };
 
-const buttonStyle: React.CSSProperties = {
+const buttonStyle: CSSProperties = {
   border: "1px solid #64748b", borderRadius: 5, padding: "7px 11px",
   background: "#263445", color: "#f8fafc", font: "inherit", cursor: "pointer",
 };
