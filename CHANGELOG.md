@@ -15,6 +15,18 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.195 — 2026-11-18 (fase 3h: Ctrl-copia segura y COPYBASE con B-Rep exacto)
+
+- **Ctrl + gizmo XYZ:** en `?threeNative=1`, Ctrl + arrastrar una flecha crea una **copia visual independiente** del archivo STEP aislado y desplaza únicamente la copia. **El original permanece inmóvil**. Si se pulsa Ctrl después de iniciar un movimiento, el original recupera inmediatamente su posición inicial y la copia continúa el arrastre; el modo copia queda activado para esa operación aunque luego se suelte Ctrl.
+- **Distancias numéricas:** los botones **Mover** y **Copiar** permiten distancias con signo en milímetros por X/Y/Z; también se puede mantener Ctrl al pulsar Mover para copiar. Se mantienen la cámara ortográfica y los ejes del gizmo de v0.1.194.
+- **COPYBASE con snaps exactos:** cuando una pieza STEP aislada está seleccionada, se puede acercar el cursor a un punto B-Rep exacto, pulsar **Fijar base SNAP para copiar** y hacer clic sobre el SNAP de destino de ese u otro archivo STEP visible. La copia se sitúa usando la diferencia vectorial XYZ de los puntos exactos, sin reconstruir ni modificar el B-Rep. Los filtros de visibilidad de v0.1.193 permanecen activos; los puntos se representan con las matrices de colocación de cada instancia.
+- **Identidad de instancia y materiales independientes:** cada archivo original y cada copia visual disponen de un identificador de instancia distinto, aunque compartan referencia de topología OpenCascade. Selección, resaltado, gizmo y snaps se resuelven por instancia para evitar seleccionar o mover simultáneamente original y copia. Las geometrías y materiales GPU de cada copia se clonan; el resaltado temporal de la pieza fuente no se hereda como color permanente.
+- **Undo/Redo de copias:** deshacer retira solo la copia de la escena; rehacer la reincorpora sin alterar el original. Esc cancela y elimina una copia en previsualización, libera el puntero y deshace su desplazamiento provisional. Al importar nuevos STEP o salir, se limpian las copias abandonadas y se descarta el historial local; también hay atajos Ctrl+Z / Ctrl+Y fuera de entradas de texto.
+- **Protecciones y límites:** movimiento y copia únicamente sobre **archivos STEP completos con un producto inequívoco**. Los archivos multiproducto/ambiguos siguen bloqueados para operaciones; COPYBASE usa puntos B-Rep a nivel de archivo, todavía sin asignación topológica certificada por subpieza. Los movimientos/copias son **visuales y temporales**, no alteran el sólido OCCT ni se guardan en `.flproject` o STEP. No se ha habilitado la copia CAD persistente de ensamblajes, ni rotación nativa, ni operaciones de fabricación.
+- **Pruebas:** Ctrl-copia al iniciar y durante el arrastre, posición original inmutable, instancias y materiales independientes, Esc, Undo/Redo, copias encadenadas, liberación de recursos, proyección B-Rep y COPYBASE exacto integrados en `test:camera`, junto a las regresiones existentes.
+
+---
+
 ## v0.1.194 — 2026-11-18 (fase 3g: primer gizmo nativo de movimiento, seguro y reversible)
 
 - **Movimiento XYZ experimental:** el visor autónomo `?threeNative=1` muestra flechas X, Y y Z para desplazar en milímetros un **archivo STEP aislado**, solo cuando todas sus mallas pertenecen inequívocamente a un mismo producto STEP y un documento B-Rep. Se puede arrastrar un eje en pantalla o introducir una distancia numérica con signo. Una orientación que proyecta un eje a casi cero píxeles bloquea el arrastre de ese eje y permite usar la entrada numérica.

@@ -11,6 +11,9 @@ export function buildNativeStepMeshGroup(
   const group = new THREE.Group();
   group.name = "STEP · Three.js nativo";
   group.userData["nativeStepDocument"] = true;
+  // An instance id distinguishes original and Ctrl-copied visual STEP files
+  // even though both share the same read-only B-Rep topology source.
+  group.userData["nativeStepInstanceId"] = group.uuid;
   if (document.brepDocumentId) {
     group.userData["brepDocumentId"] = document.brepDocumentId;
   }
@@ -51,6 +54,7 @@ export function buildNativeStepMeshGroup(
     const object = new THREE.Mesh(geometry, material);
     object.name = mesh.id;
     object.userData["sourceFileName"] = sourceFileName;
+    object.userData["nativeStepInstanceId"] = group.uuid;
     if (document.brepDocumentId) {
       object.userData["brepDocumentId"] = document.brepDocumentId;
     }

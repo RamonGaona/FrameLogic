@@ -55,7 +55,7 @@ describe("Standalone native Three.js test route", () => {
     expect(native).toContain("disposeNativeStepMeshGroup(runtime.modelRoot)");
     expect(native).toContain("selectionRef.current.dispose()");
     expect(native).toContain("window.removeEventListener(\"keydown\", escapeSelection)");
-    expect(native).toContain("selectionRef.current.clear();\n      moveRef.current.reset();");
+    expect(native).toContain("selectionRef.current.clear();\n      snapPlacementRef.current = null;\n      setSnapBase(null);\n      moveRef.current.reset();");
     expect(native).toContain("moveGizmoRef.current?.dispose()");
     expect(native).toContain("disposeNativeStepMeshGroup(previous)");
   });
@@ -112,6 +112,41 @@ describe("Standalone native Three.js test route", () => {
     expect(mover).toContain('parent.children.length !== scope.meshes.length');
     expect(gizmo).toContain("new THREE.CylinderGeometry(");
     expect(viewer).not.toContain("createBimCore(");
+  });
+
+  it("keeps Ctrl-copies independent and reversible, including Ctrl pressed mid-drag", () => {
+    const viewer = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const mover = read("../apps/web/src/features/bim/native/NativeStepMoveController.ts");
+    const model = read("../apps/web/src/features/bim/native/NativeStepViewportModel.ts");
+    const scope = read("../apps/web/src/features/bim/native/NativeStepPartScope.ts");
+    expect(viewer).toContain("beginDrag(moveTargetRef.current, axis, e.ctrlKey)");
+    expect(viewer).toContain("previewDrag(distance, e.ctrlKey)");
+    expect(viewer).toContain("moveRef.current.enableCopyDuringDrag()");
+    expect(viewer).toContain('outcome?.kind === "COPY"');
+    expect(viewer).toContain("focusNativeTarget(outcome.target)");
+    expect(viewer).toContain("moveRef.current.copyBy(target, moveAxis, amount)");
+    expect(viewer).toContain('onClick={() => moveNumeric(true)}>Copiar');
+    expect(mover).toContain("drag.source.group.position.copy(drag.before)");
+    expect(mover).toContain('kind: "COPY_UNDONE"');
+    expect(mover).toContain("cloneIsolatedStepTarget(");
+    expect(scope).toContain('child.userData["nativeStepInstanceId"]');
+    expect(model).toContain('group.userData["nativeStepInstanceId"] = group.uuid');
+    expect(viewer).not.toContain("createBimCore(");
+  });
+
+  it("places native visual copies using exact B-Rep source/destination points", () => {
+    const viewer = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const placement = read("../apps/web/src/features/bim/native/NativeStepSnapPlacement.ts");
+    const core = read("../apps/web/src/features/bim/native/NativeStepMoveController.ts");
+    expect(viewer).toContain("findNativeCopySnapDestination(");
+    expect(viewer).toContain("nativeCopySnapOffset(base, source, destination)");
+    expect(viewer).toContain("moveRef.current.copyTo(source, offset)");
+    expect(viewer).toContain("Fijar base SNAP para copiar");
+    expect(viewer).toContain('data-native-copybase-active="true"');
+    expect(placement).toContain("findNativeExactSnap(");
+    expect(placement).toContain("sourceBase.sourcePointMm");
+    expect(core).toContain("copyTo(target: NativeIsolatedStepTarget, offsetMm: THREE.Vector3)");
+    expect(viewer).toContain("Copia por SNAP B-Rep colocada en destino exacto");
   });
 
   it("keeps perspective blocked and existing CAD drawings untouched", () => {
