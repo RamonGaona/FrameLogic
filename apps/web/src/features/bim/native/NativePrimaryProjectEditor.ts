@@ -128,6 +128,52 @@ export function mountNativePrimaryProjectEditor(
     if (activeMove || ringDrag) return;
     setMessage(options.redo() ? "Última operación CAD rehecha." : "No hay cambios para rehacer.");
   });
+  // Reliable exact-distance alternative when a thin gizmo handle is
+  // difficult to pick (touchpads, small screens or a nearly edge-on axis).
+  // Uses exactly the same authoritative PieceInstance + CadHistory transaction
+  // as mouse dragging. No separate visual-only mesh manipulation.
+  const distanceLabel = document.createElement("label");
+  distanceLabel.textContent = "Distancia (mm): ";
+  distanceLabel.style.cssText = "display:flex;gap:4px;align-items:center;color:#e2e8f0";
+  const distanceInput = document.createElement("input");
+  distanceInput.type = "number";
+  distanceInput.min = "0.001";
+  distanceInput.step = "any";
+  distanceInput.value = "100";
+  distanceInput.style.cssText = "width:76px;padding:4px;background:#0f172a;color:#f1f5f9;border:1px solid #64748b";
+  distanceLabel.append(distanceInput);
+  actions.append(distanceLabel);
+  for (const axis of ["X", "Y", "Z"] as const) {
+    for (const sign of [-1, 1] as const) {
+      addButton(`${axis} ${sign === 1 ? "+" : "−"}mm`, () => {
+        if (disposed || activeMove || ringDrag) return;
+        const amount = Number(distanceInput.value);
+        if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000) {
+          setMessage("Introduce una distancia válida en mm, mayor que cero.");
+          return;
+        }
+        const target = editor.getTarget();
+        if (!target || !editor.begin("translate")) {
+          setMessage("Selecciona una pieza editable antes de mover.");
+          return;
+        }
+        const delta = new THREE.Vector3(
+          axis === "X" ? amount * sign : 0,
+          axis === "Y" ? amount * sign : 0,
+          axis === "Z" ? amount * sign : 0,
+        );
+        const applied = editor.preview(target.position.clone().add(delta), target.quaternion);
+        if (!applied) {
+          editor.finish(false);
+          setMessage("No se pudo aplicar el movimiento; restaurado.");
+          return;
+        }
+        const saved = editor.finish(true);
+        setMessage(saved ? `Movimiento ${axis} ${sign === 1 ? "+" : "−"}${amount} mm registrado en proyecto.`
+          : "No hubo cambios.");
+      });
+    }
+  }
   for (const axis of ["X", "Y", "Z"] as const) {
     addButton(`${axis} +90°`, () => {
       if (disposed || activeMove || ringDrag) return;
