@@ -12,6 +12,8 @@ export interface NativeStepPartScope {
   readonly key: string;
   readonly kind: "STEP_PRODUCT" | "VISUAL_MESH";
   readonly documentId: string;
+  /** An independent visual STEP instance, not the shared OCCT document. */
+  readonly instanceId: string;
   readonly productId: string | null;
   readonly productName: string | null;
   readonly meshes: readonly THREE.Mesh[];
@@ -27,6 +29,9 @@ export function resolveNativeStepPartScope(
 ): NativeStepPartScope | null {
   const documentId = selected.userData["brepDocumentId"];
   if (typeof documentId !== "string" || !documentId) return null;
+  const instanceId = typeof selected.userData["nativeStepInstanceId"] === "string"
+    ? selected.userData["nativeStepInstanceId"] as string
+    : selected.parent?.uuid ?? selected.uuid;
   const productId = selected.userData["stepProductId"];
   const validProductId = typeof productId === "string" && productId.length > 0
     && selected.userData["stepProductAmbiguous"] !== true
@@ -37,6 +42,8 @@ export function resolveNativeStepPartScope(
     modelRoot.traverse((child) => {
       if (child instanceof THREE.Mesh
         && child.userData["brepDocumentId"] === documentId
+        && (typeof child.userData["nativeStepInstanceId"] === "string"
+          ? child.userData["nativeStepInstanceId"] : child.parent?.uuid) === instanceId
         && child.userData["stepProductId"] === validProductId
         && child.userData["stepProductAmbiguous"] !== true) meshes.push(child);
     });
@@ -52,10 +59,12 @@ export function resolveNativeStepPartScope(
     ? selected.userData["stepProductName"] as string : null;
 
   return {
-    key: validProductId ? `${documentId}:product:${validProductId}`
-      : `${documentId}:visual:${selected.uuid}`,
+    key: validProductId
+      ? `${documentId}:instance:${instanceId}:product:${validProductId}`
+      : `${documentId}:instance:${instanceId}:visual:${selected.uuid}`,
     kind: validProductId ? "STEP_PRODUCT" : "VISUAL_MESH",
     documentId,
+    instanceId,
     productId: validProductId,
     productName,
     meshes,
