@@ -541,6 +541,34 @@ backend replacing That Open camera/world/IFC lifecycle. Full CAD parity
 still requires native reference gizmos, assembly group transactions, exact
 snapping, all drawing input tools on native events and browser QA with real
 projects. IFC remains last. Maintain reversible legacy tools as fallback.
+## Phase 3s — default primary Three.js + nonintrusive CAD input (v0.1.207)
+
+The graphical Model Space uses one authoritative THREE.Scene, THREE.Camera
+and THREE.WebGLRenderer, with Three.js editing tools mounted automatically.
+The previous v0.1.206 opt-in native editing layer intercepted the *whole*
+canvas from the moment it mounted, blocking original CAD mouse commands.
+This is unacceptable for DWG/DXF, assembly editing, SNAP, drawing and PDF.
+
+In v0.1.207 native tools mount on startup but do NOT create a hit overlay or
+disable navigation while in Select mode. All Model Space CAD commands still
+receive pointer/keyboard events, including DWG/DXF line and block references
+and commands that create Paper Space and PDF views. Only arming a specific
+native Move/Rotate operation attaches the temporary hit layer and suspends
+the camera. Select, Escape, or clicking another CAD ribbon/tool restores
+the prior input state. The native toolbar is collapsed by default.
+
+The core CAD model and .flproject serialization are unchanged, as are the
+multi-level assembly and drawing controllers. A query parameter
+`?cadLegacy=1` skips the native tools and restores the previous interaction
+configuration; `?threePreview=1` retains the diagnostic secondary view.
+
+**This does not replace the entire That Open world/camera management**:
+those adapters still own lifecycle and remain necessary until native camera,
+input, IFC and drawing dependencies achieve parity. The production renderer
+was already Three.js; the practical change here is safely making its native
+gizmo tools available on the main viewport without sacrificing CAD workflows.
+IFC migration remains last. Browser QA with real projects is mandatory
+before removal of legacy infrastructure.
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
