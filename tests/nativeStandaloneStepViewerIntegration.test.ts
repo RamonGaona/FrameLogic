@@ -159,7 +159,8 @@ describe("Standalone native Three.js test route", () => {
     expect(viewer).toContain("const copy = armed.copy || e.ctrlKey");
     expect(viewer).toContain("moveRef.current.copyTo(source, offset)");
     expect(viewer).toContain("moveRef.current.moveBy(source, armed.axis");
-    expect(viewer).toContain("if (!copy) clearArmedUntil()");
+    expect(viewer).toContain("if (!armed.copy) clearArmedUntil()");
+    expect(viewer).toContain("const copy = armed.copy || e.ctrlKey");
     expect(viewer).toContain('data-native-axis-until-active="true"');
     expect(viewer).toContain("Copiar hasta");
     expect(viewer).toContain("Hasta");
