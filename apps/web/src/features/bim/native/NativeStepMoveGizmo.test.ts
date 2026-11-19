@@ -147,6 +147,12 @@ describe("Native Three.js movement gizmo preview", () => {
   it("keeps centre hover and axis picking usable across camera zoom levels", () => {
     const gizmo = createNativeMoveGizmo(new THREE.Vector3(), 250);
     const c = camera();
+    // Keep the handles in front of the camera even when zoomed far out:
+    // only the orthographic frustum changes, not the world coordinates.
+    c.position.set(50000, -55000, 60000);
+    c.lookAt(0, 0, 0);
+    c.far = 1_000_000;
+    c.updateMatrixWorld(true);
     const rect = { left: 0, top: 0, width: 700, height: 600 };
     for (const scale of [0.01, 1, 100]) {
       c.left = -100 * scale; c.right = 100 * scale;
