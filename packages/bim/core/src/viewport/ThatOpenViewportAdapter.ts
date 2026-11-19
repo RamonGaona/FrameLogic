@@ -104,6 +104,13 @@ export function createThatOpenCameraController(
         controls.addEventListener("update", listener);
         return () => controls.removeEventListener("update", listener);
       },
+      getDistance: () => controls.distance,
+      getTarget: (target) => controls.getTarget(target),
+      getOrthographicCamera: () => world.camera.threeOrtho,
+      setMinimumZoom: (value) => {
+        (controls as typeof controls & { minZoom: number }).minZoom = value;
+      },
+      getMouseButtons: () => controls.mouseButtons,
     },
   );
 }
