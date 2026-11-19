@@ -27,7 +27,7 @@ describe("Native Three.js shared project scene inspection", () => {
     expect(web).toContain("viewport: instance.viewport");
     expect(web).toContain("width: 640");
     expect(web).toContain("height: 360");
-    expect(web).toContain('new URLSearchParams(window.location.search).get("threePreview") === "1"');
+    expect(web).toContain('viewportFlags.get("threePreview") === "1"');
     expect(web).toContain("disposeNativePreview?.()");
     expect(web).toContain("disposeWithPanel()");
     expect(preview).toContain("readonly onClose?: () => void");
