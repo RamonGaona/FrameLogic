@@ -1,10 +1,8 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
 } from "react";
-
-import {
-  BimViewport,
-} from "./features/bim/BimViewport";
 
 import {
   installCadLayerPanelLayout,
@@ -18,35 +16,54 @@ import {
   installStepImportWarmup,
 } from "./features/bim/step/installStepImportWarmup";
 
+/**
+ * Separate route chunks: the native visual test must not mount
+ * createBimCore/That Open or start a second renderer in the same tab.
+ */
+const BimViewport = lazy(async () => {
+  const module = await import("./features/bim/BimViewport");
+  return { default: module.BimViewport };
+});
+
+const NativeStepViewer = lazy(async () => {
+  const module = await import("./features/bim/native/NativeStepViewer");
+  return { default: module.NativeStepViewer };
+});
 
 function App() {
+  const nativeViewer =
+    new URLSearchParams(window.location.search).get("threeNative") === "1";
 
-  useEffect(
-    () => {
-      const uninstallModelSpacePanelLayout =
-        installModelSpacePanelLayout();
+  useEffect(() => {
+    if (nativeViewer) return;
 
-      const uninstallCadLayerPanelLayout =
-        installCadLayerPanelLayout();
+    const uninstallModelSpacePanelLayout =
+      installModelSpacePanelLayout();
 
-      const uninstallStepImportWarmup =
-        installStepImportWarmup();
+    const uninstallCadLayerPanelLayout =
+      installCadLayerPanelLayout();
 
-      return () => {
-        uninstallStepImportWarmup();
-        uninstallCadLayerPanelLayout();
-        uninstallModelSpacePanelLayout();
-      };
-    },
-    [],
-  );
+    const uninstallStepImportWarmup =
+      installStepImportWarmup();
 
+    return () => {
+      uninstallStepImportWarmup();
+      uninstallCadLayerPanelLayout();
+      uninstallModelSpacePanelLayout();
+    };
+  }, [nativeViewer]);
 
   return (
-    <BimViewport />
+    <Suspense fallback={
+      <div style={{
+        color: "#e2e8f0", background: "#14202b",
+        padding: 24, fontFamily: "system-ui, sans-serif",
+        minHeight: "100vh",
+      }}>Cargando FrameLogic...</div>
+    }>
+      {nativeViewer ? <NativeStepViewer /> : <BimViewport />}
+    </Suspense>
   );
-
 }
-
 
 export default App;

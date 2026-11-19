@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.190 — 2026-11-18 (fase 3c: visor STEP nativo autónomo)
+
+- **Visor nativo aislado:** nueva ruta experimental `?threeNative=1`, con carga de uno o varios archivos `.step/.stp` mediante el adaptador OpenCascade existente, conversión directa a mallas Three.js propias y `THREE.WebGLRenderer` único. La aplicación usa importaciones dinámicas mutuamente excluyentes: en esta ruta **no se monta** `createBimCore` ni el renderer That Open.
+- **Navegación propia:** cámara `THREE.OrthographicCamera` Z-arriba, órbita con botón izquierdo o central, pan con botón derecho o Mayús+izquierdo y zoom con rueda; vistas ISO, TOP, FRONT, RIGHT y encuadre automático por límites del ensamblaje STEP, conservando milímetros sin escala oculta. Perspectiva permanece deshabilitada.
+- **Elección reversible:** botón «Visor Three.js experimental» en Model Space con confirmación para guardar el proyecto antes de cambiar de ruta; botón «Volver al visor actual» en el visor nativo. Se navega en la **misma pestaña** para evitar renderizadores simultáneos. El modelo cargado en el modo nativo no se guarda ni transfiere al editor CAD.
+- **Diagnóstico:** FPS aproximados, llamadas de dibujo, triángulos STEP y del render, número de mallas y geometrías GPU, tiempo de importación STEP y uso de heap JavaScript solo si el navegador lo expone. No se afirma medir RAM total o VRAM ni mejora cuantificada; los resultados deben compararse con el mismo archivo y condiciones de prueba. El STEP sigue pasando por la carga B-Rep de OCCT, aunque sin extracción de features exactos para este visor visual.
+- **Seguridad y alcance:** la prueba nativa es **solo visualización**; no incluye todavía selección, gizmos, snaps, edición, guardado, IFC/Fragments ni PDF. La ruta principal de FrameLogic, Paper Space y el visor dual experimental previo `?threePreview=1` siguen intactos; la limpieza libera el contexto WebGL y geometría propiedad de la prueba, además de los documentos B-Rep cargados.
+- **Regresiones:** pruebas del encuadre Z-arriba, mallas STEP en mm, navegación y liberación de recursos, con guardas que impiden montar That Open simultáneamente en la ruta nativa. Requiere validación manual con el ensamblaje STEP real del usuario antes de promover esta opción.
+
+---
+
 ## v0.1.189 — 2026-11-18 (fase 3b: vista Three.js nativa experimental)
 
 - **Diagnóstico opt-in:** nuevo `ExperimentalNativeThreePreview` para renderizar el mismo escenario CAD en una vista secundaria mediante un `THREE.WebGLRenderer` independiente, utilizando una copia `THREE.OrthographicCamera` ajustada a la proporción del panel. Solo se crea si se abre Model Space con `?threePreview=1`; no aparece en sesiones normales. Un botón permite cerrarlo sin alterar el visor principal.
