@@ -73,6 +73,13 @@ describe("Three.js STEP rotation gizmo, parity with move gizmo", () => {
     const picked = pickNativeRotateRing(gizmo, c,
       (point.x + 1) * 300, (1 - point.y) * 300, rect);
     expect(picked?.axis).toBe("Z");
+    // A click slightly outside the visible thin ring still reaches its
+    // transparent hit target, making mouse selection practical.
+    const offsetPx = 5;
+    const pickedNear = pickNativeRotateRing(gizmo, c,
+      (point.x + 1) * 300 + offsetPx / Math.SQRT2,
+      (1 - point.y) * 300 - offsetPx / Math.SQRT2, rect);
+    expect(pickedNear?.axis).toBe("Z");
     const previous = gizmo.group.scale.x;
     c.zoom = 4;
     c.updateProjectionMatrix();
