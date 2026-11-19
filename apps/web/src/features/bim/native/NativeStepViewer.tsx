@@ -1121,9 +1121,25 @@ export function NativeStepViewer() {
             ).join(" × ")}</div>
             {transformTarget && (
               <div data-native-transform-target="true">
-                Pivote futuro gizmo (mm): {transformTarget.pivot.toArray()
+                Punto base gizmo (mm): {transformTarget.pivot.toArray()
                   .map((value) => value.toFixed(2)).join(", ")}
                 {" · Rotación no implementada"}
+              </div>
+            )}
+            {moveEligible && (
+              <div data-native-pivot-tools="true" style={{
+                display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6,
+                borderTop: "1px solid #356273", paddingTop: 7,
+              }}>
+                <button type="button" style={buttonStyle}
+                  onClick={armNativePivot}>Mover centro XYZ</button>
+                <button type="button" style={buttonStyle}
+                  onClick={resetNativePivot}>Restablecer centro</button>
+                <span style={{ color: pivotArmed ? "#fcd34d" : "#b9d4e7" }}>
+                  {pivotArmed
+                    ? "Centro armado · siguiente clic en SNAP exacto · Esc cancela"
+                    : "Clic corto en esfera central, después SNAP exacto (sin mover pieza)"}
+                </span>
               </div>
             )}
             <div data-native-move-status="true" style={{ color: moveEligible ? "#86efac" : "#fcd34d" }}>
@@ -1202,6 +1218,7 @@ export function NativeStepViewer() {
             </div>
             <button type="button" style={buttonStyle} onClick={() => {
               selectionRef.current.clear();
+              clearArmedPivot();
               clearArmedUntil();
               snapPlacementRef.current = null;
               setSnapBase(null);
@@ -1216,6 +1233,10 @@ export function NativeStepViewer() {
         ) : (
           <div style={{ color: "#8ca3b9" }}>Selección: ninguna</div>
         )}
+        <div style={{ color: "#a5cde0" }}>
+          El centro XYZ puede cambiar de ubicación sin mover la pieza. Solo acepta
+          SNAPs B-Rep exactos y no modifica el historial de transformaciones.
+        </div>
         <div style={{ color: "#a5cde0" }}>
           SNAP B-Rep: los puntos provienen de OpenCascade, filtrados por los
           límites del producto o malla seleccionada y por su visibilidad.
