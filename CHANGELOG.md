@@ -15,6 +15,19 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.200 — 2026-11-19 (gizmo de rotación XYZ nativo, copias y referencias)
+
+- **Rotación XYZ sobre Three.js:** el visor experimental `?threeNative=1` incorpora el modo **Rotar XYZ** con anillos X/Y/Z coloreados, arrastre de rotación y entrada numérica en grados. Se mantienen los comandos y controles del gizmo de movimiento de v0.1.194–v0.1.199 sin sustituirlos.
+- **Pivote compartido:** el centro resaltado se puede recolocar desde el propio gizmo en un SNAP B-Rep exacto. La rotación usa el centro elegido como punto fijo, conservado en coordenadas locales de la instancia STEP, incluso tras rotar, copiar y deshacer. Cambiar el centro nunca mueve la pieza ni genera una transformación en el historial.
+- **Ctrl-copia de rotación:** Ctrl al empezar o durante el arrastre crea una instancia visual independiente, devuelve el original a su posición y orientación anterior y rota solamente la copia. También se admite copia por ángulo numérico; Esc cancela una previsualización sin dejar copias residuales.
+- **ROTAR HASTA / COPIAR HASTA:** un clic corto sobre un anillo arma el eje y usa el punto del anillo como dirección angular inicial; el siguiente clic elige referencia B-Rep exacta (prioritaria) o cara triangulada aproximada. El ángulo firmado se calcula proyectando ambas direcciones sobre el plano ortogonal al eje, sin inventar precisión en caras. Los botones numéricos de HASTA usan como dirección inicial +Y para X, +Z para Y y +X para Z. Ctrl en el destino crea una copia; el modo Copiar hasta explícito permite varias copias consecutivas.
+- **Doble clic +90° (compatibilidad histórica):** dos clics cortos sobre el mismo anillo X/Y/Z de la misma instancia, con hasta 650 ms y 14 px entre ambos, aplican un único giro positivo de 90°; Ctrl realiza el giro sobre una copia. Los clics sobre anillos diferentes, movimientos de arrastre y Escape no se confunden con dobles clics. Se reutiliza el comportamiento documentado para los gizmos tradicionales en las versiones v0.1.108, v0.1.111 y v0.1.135.
+- **Undo/Redo único:** movimientos, rotaciones y copias comparten el historial reversible de sesión. Los puntos SNAP B-Rep originales y las mallas GPU no se reescriben: su representación se proyecta con la matriz actual de la instancia. El gizmo conserva su tamaño visual respecto al zoom ortográfico y la prioridad del centro sobre SNAP.
+- **Límites:** se admite únicamente STEP aislado con producto único inequívoco en el visor nativo. Las operaciones son temporales, visuales y no persistidas en `.flproject` ni en el STEP; no constituyen una rotación B-Rep de fabricación. Se excluyen el Model Space estable, IFC, DWG/DXF, Paper Space y PDF.
+- **Pruebas previstas:** regresiones automatizadas sobre anillos, ángulos, pivote, copia Ctrl, cancelación y orden del historial, incorporadas a `test:camera`. La ejecución CI y comprobación manual en navegador requieren validación independiente.
+
+---
+
 ## v0.1.199 — 2026-11-19 (gizmo XYZ de tamaño constante frente al zoom de la cámara)
 
 - **Escala adaptativa en pantalla:** en el visor STEP Three.js nativo `?threeNative=1` el gizmo deja de agrandarse al acercar la cámara y de desaparecer al alejarla. En cámara ortográfica se calcula la relación milímetros/píxel a partir de `(camera.top - camera.bottom) / camera.zoom` y la altura real del viewport; los ejes se mantienen alrededor de **96 píxeles CSS**, ajustándose a pantallas pequeñas.

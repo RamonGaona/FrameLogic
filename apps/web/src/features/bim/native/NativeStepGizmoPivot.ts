@@ -3,6 +3,7 @@ import * as THREE from "three";
 import type { NativeStepPartScope } from "./NativeStepPartScope";
 
 const OFFSET_KEY = "nativeGizmoPivotOffsetMm";
+const LOCAL_KEY = "nativeGizmoPivotLocalMm";
 
 /**
  * The pivot is a *display-only* offset relative to the selected STEP
@@ -21,6 +22,14 @@ function owner(scope: NativeStepPartScope): THREE.Group | null {
 
 export function getNativeStepGizmoPivot(scope: NativeStepPartScope): THREE.Vector3 {
   const parent = owner(scope);
+  // A local anchor follows both translation and rotation of its STEP group.
+  // Keep the old offset as a fallback for existing in-memory instances.
+  const local = parent?.userData[LOCAL_KEY];
+  if (parent && Array.isArray(local) && local.length === 3
+    && local.every((value: unknown) => typeof value === "number" && Number.isFinite(value))) {
+    parent.updateMatrixWorld(true);
+    return parent.localToWorld(new THREE.Vector3(local[0], local[1], local[2]));
+  }
   const offset = parent?.userData[OFFSET_KEY];
   if (!Array.isArray(offset) || offset.length !== 3
     || !offset.every((value: unknown) => typeof value === "number" && Number.isFinite(value))) {
@@ -45,7 +54,11 @@ export function setNativeStepGizmoPivot(
   if (Math.max(Math.abs(offset.x), Math.abs(offset.y), Math.abs(offset.z)) > 1_000_000) {
     return false;
   }
+  parent.updateMatrixWorld(true);
+  const local = parent.worldToLocal(newWorldPivotMm.clone());
+  if (![...local.toArray()].every(Number.isFinite)) return false;
   parent.userData[OFFSET_KEY] = offset.toArray();
+  parent.userData[LOCAL_KEY] = local.toArray();
   return true;
 }
 
@@ -54,5 +67,6 @@ export function resetNativeStepGizmoPivot(scope: NativeStepPartScope): boolean {
   const parent = owner(scope);
   if (!parent) return false;
   delete parent.userData[OFFSET_KEY];
+  delete parent.userData[LOCAL_KEY];
   return true;
 }

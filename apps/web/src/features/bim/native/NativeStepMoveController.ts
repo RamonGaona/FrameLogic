@@ -73,7 +73,62 @@ type CopyEntry = {
   readonly parent: THREE.Object3D;
 };
 
-type HistoryEntry = MoveEntry | CopyEntry;
+type RotateSnapshot = {
+  readonly position: THREE.Vector3;
+  readonly quaternion: THREE.Quaternion;
+};
+type RotateEntry = {
+  readonly kind: "ROTATE";
+  readonly target: NativeIsolatedStepTarget;
+  readonly before: RotateSnapshot;
+  readonly after: RotateSnapshot;
+};
+type HistoryEntry = MoveEntry | CopyEntry | RotateEntry;
+
+interface RotationDragState {
+  readonly source: NativeIsolatedStepTarget;
+  readonly axis: NativeMoveAxis;
+  readonly pivot: THREE.Vector3;
+  readonly before: RotateSnapshot;
+  copy: NativeIsolatedStepTarget | null;
+}
+
+function captureRotation(group: THREE.Group): RotateSnapshot {
+  return { position: group.position.clone(), quaternion: group.quaternion.clone() };
+}
+
+function restoreRotation(group: THREE.Group, state: RotateSnapshot): void {
+  group.position.copy(state.position);
+  group.quaternion.copy(state.quaternion);
+  group.updateMatrixWorld(true);
+}
+
+/** Rotation is about a world-space pivot and a global XYZ axis, without
+ * editing STEP vertices or OpenCascade B-Rep coordinates. */
+function applyRotation(
+  group: THREE.Group,
+  before: RotateSnapshot,
+  axis: NativeMoveAxis,
+  pivot: THREE.Vector3,
+  degrees: number,
+): boolean {
+  if (![...pivot.toArray(), degrees].every(Number.isFinite)
+    || Math.abs(degrees) > 3600 || !group.parent) return false;
+  group.parent.updateMatrixWorld(true);
+  const parentWorld = group.parent.matrixWorld;
+  const original = new THREE.Matrix4()
+    .compose(before.position, before.quaternion, group.scale);
+  const rotate = new THREE.Matrix4().makeTranslation(pivot.x, pivot.y, pivot.z)
+    .multiply(new THREE.Matrix4().makeRotationAxis(
+      NATIVE_MOVE_AXES[axis], THREE.MathUtils.degToRad(degrees),
+    ))
+    .multiply(new THREE.Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z));
+  const transformed = parentWorld.clone().invert()
+    .multiply(rotate).multiply(parentWorld).multiply(original);
+  transformed.decompose(group.position, group.quaternion, group.scale);
+  group.updateMatrixWorld(true);
+  return true;
+}
 
 interface DragState {
   readonly source: NativeIsolatedStepTarget;
@@ -83,7 +138,7 @@ interface DragState {
 }
 
 export interface NativeMoveResult {
-  readonly kind: "MOVE" | "COPY" | "COPY_UNDONE";
+  readonly kind: "MOVE" | "ROTATE" | "COPY" | "COPY_UNDONE";
   readonly target: NativeIsolatedStepTarget;
 }
 
@@ -169,6 +224,7 @@ export class NativeStepMoveController {
   private readonly undoStack: HistoryEntry[] = [];
   private readonly redoStack: HistoryEntry[] = [];
   private drag: DragState | null = null;
+  private rotationDrag: RotationDragState | null = null;
   private result: NativeMoveResult | null = null;
 
   get canUndo(): boolean {
@@ -181,6 +237,14 @@ export class NativeStepMoveController {
 
   get isDragging(): boolean {
     return this.drag !== null;
+  }
+
+  get isRotating(): boolean {
+    return this.rotationDrag !== null;
+  }
+
+  get activeRotationCopy(): boolean {
+    return Boolean(this.rotationDrag?.copy);
   }
 
   get isCopying(): boolean {
@@ -196,7 +260,7 @@ export class NativeStepMoveController {
   }
 
   moveBy(target: NativeIsolatedStepTarget, axis: NativeMoveAxis, amountMm: number): boolean {
-    if (this.drag || !Number.isFinite(amountMm) || amountMm === 0) return false;
+    if (this.drag || this.rotationDrag || !Number.isFinite(amountMm) || amountMm === 0) return false;
     const before = target.group.position.clone();
     target.group.position.addScaledVector(NATIVE_MOVE_AXES[axis], amountMm);
     target.group.updateMatrixWorld(true);
@@ -220,7 +284,7 @@ export class NativeStepMoveController {
 
   /** Place an independent copy by the exact B-Rep base-to-destination offset. */
   copyTo(target: NativeIsolatedStepTarget, offsetMm: THREE.Vector3): boolean {
-    if (this.drag || ![offsetMm.x, offsetMm.y, offsetMm.z].every(Number.isFinite)
+    if (this.drag || this.rotationDrag || ![offsetMm.x, offsetMm.y, offsetMm.z].every(Number.isFinite)
       || offsetMm.lengthSq() < 1e-12
       || Math.max(Math.abs(offsetMm.x), Math.abs(offsetMm.y), Math.abs(offsetMm.z)) > 1_000_000) {
       return false;
@@ -240,7 +304,7 @@ export class NativeStepMoveController {
   }
 
   beginDrag(target: NativeIsolatedStepTarget, axis: NativeMoveAxis, copy = false): boolean {
-    if (this.drag) return false;
+    if (this.drag || this.rotationDrag) return false;
     this.result = null;
     this.drag = {
       source: target, axis, before: target.group.position.clone(), copy: null,
@@ -310,13 +374,106 @@ export class NativeStepMoveController {
     return true;
   }
 
+  /** One reversible rotation, or a distinct Ctrl-copy, around the chosen pivot. */
+  rotateBy(
+    target: NativeIsolatedStepTarget,
+    axis: NativeMoveAxis,
+    degrees: number,
+    pivot: THREE.Vector3,
+    copy = false,
+  ): boolean {
+    if (!Number.isFinite(degrees) || Math.abs(degrees) < 1e-8
+      || Math.abs(degrees) > 3600 || !this.beginRotation(target, axis, pivot, copy)) {
+      return false;
+    }
+    if (!this.previewRotation(degrees)) {
+      this.endRotation(false);
+      return false;
+    }
+    return this.endRotation(true);
+  }
+
+  beginRotation(
+    target: NativeIsolatedStepTarget,
+    axis: NativeMoveAxis,
+    pivot: THREE.Vector3,
+    copy = false,
+  ): boolean {
+    if (this.drag || this.rotationDrag || !target.group.parent
+      || ![...pivot.toArray()].every(Number.isFinite)) return false;
+    this.result = null;
+    this.rotationDrag = {
+      source: target, axis, pivot: pivot.clone(),
+      before: captureRotation(target.group), copy: null,
+    };
+    if (copy && !this.enableCopyDuringRotation()) {
+      this.rotationDrag = null;
+      return false;
+    }
+    return true;
+  }
+
+  /** Ctrl can be pressed after preview starts without moving the original. */
+  enableCopyDuringRotation(): boolean {
+    const drag = this.rotationDrag;
+    if (!drag) return false;
+    if (drag.copy) return true;
+    restoreRotation(drag.source.group, drag.before);
+    const copy = cloneIsolatedStepTarget(drag.source);
+    if (!copy) return false;
+    drag.copy = copy;
+    return true;
+  }
+
+  previewRotation(degrees: number, copy = false): boolean {
+    const drag = this.rotationDrag;
+    if (!drag || !Number.isFinite(degrees) || Math.abs(degrees) > 3600) return false;
+    if (copy && !this.enableCopyDuringRotation()) return false;
+    return applyRotation(
+      (drag.copy ?? drag.source).group, drag.before, drag.axis, drag.pivot, degrees,
+    );
+  }
+
+  endRotation(commit: boolean): boolean {
+    const drag = this.rotationDrag;
+    if (!drag) return false;
+    this.rotationDrag = null;
+    const active = drag.copy ?? drag.source;
+    const after = captureRotation(active.group);
+    const changed = drag.before.position.distanceToSquared(after.position) > 1e-12
+      || drag.before.quaternion.angleTo(after.quaternion) > 1e-7;
+    if (!commit || !changed) {
+      restoreRotation(drag.source.group, drag.before);
+      if (drag.copy) discardVisualCopy(drag.copy);
+      this.result = null;
+      return false;
+    }
+    if (drag.copy) {
+      restoreRotation(drag.source.group, drag.before);
+      const parent = drag.copy.group.parent;
+      if (!parent) {
+        discardVisualCopy(drag.copy);
+        return false;
+      }
+      this.record({ kind: "COPY", source: drag.source, copy: drag.copy, parent });
+      this.result = { kind: "COPY", target: drag.copy };
+    } else {
+      this.record({ kind: "ROTATE", target: drag.source, before: drag.before, after });
+      this.result = { kind: "ROTATE", target: drag.source };
+    }
+    return true;
+  }
+
   undo(): boolean {
-    if (this.drag) return false;
+    if (this.drag || this.rotationDrag) return false;
     const entry = this.undoStack.pop();
     if (!entry) return false;
     if (entry.kind === "COPY") {
       entry.copy.group.removeFromParent();
       this.result = { kind: "COPY_UNDONE", target: entry.source };
+    } else if (entry.kind === "ROTATE") {
+      restoreRotation(entry.target.group, entry.before);
+      this.result = { kind: "ROTATE", target: entry.target };
     } else {
       entry.target.group.position.copy(entry.before);
       entry.target.group.updateMatrixWorld(true);
@@ -327,13 +484,16 @@ export class NativeStepMoveController {
   }
 
   redo(): boolean {
-    if (this.drag) return false;
+    if (this.drag || this.rotationDrag) return false;
     const entry = this.redoStack.pop();
     if (!entry) return false;
     if (entry.kind === "COPY") {
       entry.parent.add(entry.copy.group);
       entry.copy.group.updateMatrixWorld(true);
       this.result = { kind: "COPY", target: entry.copy };
+    } else if (entry.kind === "ROTATE") {
+      restoreRotation(entry.target.group, entry.after);
+      this.result = { kind: "ROTATE", target: entry.target };
     } else {
       entry.target.group.position.copy(entry.after);
       entry.target.group.updateMatrixWorld(true);
@@ -345,6 +505,7 @@ export class NativeStepMoveController {
 
   reset(): void {
     this.endDrag(false);
+    this.endRotation(false);
     for (const entry of [...this.undoStack, ...this.redoStack]) {
       if (entry.kind === "COPY" && !entry.copy.group.parent) {
         discardVisualCopy(entry.copy);

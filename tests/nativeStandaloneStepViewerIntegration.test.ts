@@ -55,7 +55,7 @@ describe("Standalone native Three.js test route", () => {
     expect(native).toContain("disposeNativeStepMeshGroup(runtime.modelRoot)");
     expect(native).toContain("selectionRef.current.dispose()");
     expect(native).toContain("window.removeEventListener(\"keydown\", escapeSelection)");
-    expect(native).toContain("selectionRef.current.clear();\n      clearArmedPivot();\n      clearArmedUntil();\n      snapPlacementRef.current = null;\n      setSnapBase(null);\n      moveRef.current.reset();");
+    expect(native).toContain("selectionRef.current.clear();\n      clearArmedPivot();\n      clearArmedUntil();\n      clearArmedRotation();\n      rotateClickRef.current.reset();\n      snapPlacementRef.current = null;\n      setSnapBase(null);\n      moveRef.current.reset();");
     expect(native).toContain("moveGizmoRef.current?.dispose()");
     expect(native).toContain("disposeNativeStepMeshGroup(previous)");
   });
@@ -229,6 +229,19 @@ describe("Standalone native Three.js test route", () => {
     expect(viewer).toContain("pickNativeMoveCenter(");
     expect(viewer).toContain("pickNativeMoveAxis(");
     expect(viewer).not.toContain("createBimCore(");
+  });
+
+  it("restores same-ring double-click +90 degrees in the native rotation mode", () => {
+    const native = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const tracker = read("../apps/web/src/features/bim/native/NativeStepRotateRingClick.ts");
+    expect(native).toContain("new NativeStepRotateRingClick()");
+    expect(native).toContain("rotateClickRef.current.shortClick(");
+    expect(native).toContain("moveRef.current.rotateBy(source, axis, 90, pivot, copy)");
+    expect(native).toContain('data-native-rotate-controls="true"');
+    expect(native).toContain("nativeRotationAngleToReference(");
+    expect(native).toContain('gizmoMode === "ROTATE"');
+    expect(tracker).toContain("at - previous.at <= 650");
+    expect(tracker).toContain("<= 14");
   });
 
   it("keeps perspective blocked and existing CAD drawings untouched", () => {
