@@ -1807,6 +1807,29 @@ export function BimViewport() {
         onContextMenu={handleViewportContextMenu}
       />
 
+      {/* Read-only experiment in a separate route: the current CAD renderer
+          is unmounted before Three.js starts, preventing double rendering. */}
+      <button
+        type="button"
+        title="Visor STEP nativo experimental: solo visualización, sin comandos CAD ni IFC"
+        style={{
+          position: "absolute", left: 16, bottom: 16, zIndex: 40,
+          padding: "7px 10px", borderRadius: 6,
+          border: "1px solid #64748b", background: "#172435",
+          color: "#e2e8f0", cursor: "pointer", fontSize: 12,
+        }}
+        onClick={() => {
+          const proceed = window.confirm(
+            "El visor Three.js experimental es solo de lectura y abrirá una sesión independiente. " +
+            "Guarda primero tu proyecto .flproject: los cambios sin guardar se perderán. ¿Continuar?",
+          );
+          if (!proceed) return;
+          window.location.assign(`${window.location.pathname}?threeNative=1`);
+        }}
+      >
+        Visor Three.js experimental
+      </button>
+
       <ViewCube
         orientation={cameraOrientation}
         projectionMode={projectionMode}
