@@ -96,8 +96,10 @@ describe("Native MOVER HASTA / COPIAR HASTA axis picking", () => {
     expect(reference?.point.x).toBeCloseTo(20);
     expect(reference?.point.y).toBeCloseTo(-2);
     expect(reference?.point.z).toBeCloseTo(0);
-    expect(nativeAxisUntilOffset(f.scope.pivot, "X", reference!.point)
-      ?.toArray()).toEqual([20, 0, 0]);
+    const offset = nativeAxisUntilOffset(f.scope.pivot, "X", reference!.point)!;
+    expect(offset.x).toBeCloseTo(20, 9);
+    expect(offset.y).toBe(0);
+    expect(offset.z).toBe(0);
     disposeNativeStepMeshGroup(f.root);
   });
 
