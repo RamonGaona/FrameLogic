@@ -1,3 +1,16 @@
+// Reuse the same native Three.js project gizmo math in the AUTHORITATIVE
+// Model Space canvas; no second renderer or duplicate .flproject state.
+export {
+  createNativeProjectRotationRings,
+  pickNativeProjectRotationRing,
+  sizeNativeProjectRotationRings,
+  nativeProjectRotationDragAngle,
+  nativeProjectRotationFromStart,
+} from "./viewport/NativeProjectRotationRings";
+export type { NativeProjectRotateAxis } from "./viewport/NativeProjectRotationRings";
+export { pickNativeProjectPieceInstance } from "./viewport/NativeProjectPiecePicker";
+export type { NativeProjectInstanceTarget } from "./viewport/NativeProjectPiecePicker";
+
 export { ClashDetectionEngine } from "./clash/ClashDetectionEngine";
 export type { ClashRecord, ClashScan, ClashScanOptions, ClashKind, ClashReviewStatus } from "./clash/ClashDetectionEngine";
 import { ModelOperations } from "./automation/ModelOperations";
