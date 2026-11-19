@@ -1104,6 +1104,8 @@ export function BimViewport() {
                 // Do not let a previously armed legacy CAD gizmo or command
                 // own input while the native primary-mode overlay is active.
                 instance.cancelActiveCadCommand();
+                instance.designTransform.deactivate();
+                instance.designRotate.deactivate();
                 const panel = mountNativePrimaryProjectEditor({
                   host: container,
                   scene: instance.viewport.scene,
