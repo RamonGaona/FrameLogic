@@ -218,6 +218,27 @@ export class NativeStepMoveController {
     return this.endDrag(true);
   }
 
+  /** Place an independent copy by the exact B-Rep base-to-destination offset. */
+  copyTo(target: NativeIsolatedStepTarget, offsetMm: THREE.Vector3): boolean {
+    if (this.drag || ![offsetMm.x, offsetMm.y, offsetMm.z].every(Number.isFinite)
+      || offsetMm.lengthSq() < 1e-12
+      || Math.max(Math.abs(offsetMm.x), Math.abs(offsetMm.y), Math.abs(offsetMm.z)) > 1_000_000) {
+      return false;
+    }
+    const copy = cloneIsolatedStepTarget(target);
+    if (!copy) return false;
+    copy.group.position.copy(target.group.position).add(offsetMm);
+    copy.group.updateMatrixWorld(true);
+    const parent = copy.group.parent;
+    if (!parent) {
+      discardVisualCopy(copy);
+      return false;
+    }
+    this.record({ kind: "COPY", source: target, copy, parent });
+    this.result = { kind: "COPY", target: copy };
+    return true;
+  }
+
   beginDrag(target: NativeIsolatedStepTarget, axis: NativeMoveAxis, copy = false): boolean {
     if (this.drag) return false;
     this.result = null;
