@@ -10,6 +10,20 @@ export function buildNativeStepMeshGroup(
   const group = new THREE.Group();
   group.name = "STEP · Three.js nativo";
 
+  // The STEP product tree can associate a mesh with its original product
+  // node. This label is not yet an editable piece-instance identity.
+  const meshProducts = new Map<string, { id: string; name: string }>();
+  for (const product of document.products ?? []) {
+    for (const geometryId of product.geometryIds) {
+      if (!meshProducts.has(geometryId)) {
+        meshProducts.set(geometryId, {
+          id: product.id,
+          name: product.name || product.id,
+        });
+      }
+    }
+  }
+
   for (const mesh of document.meshes) {
     if (mesh.positions.length < 9 || mesh.indices.length < 3) continue;
 
@@ -31,6 +45,14 @@ export function buildNativeStepMeshGroup(
     const object = new THREE.Mesh(geometry, material);
     object.name = mesh.id;
     object.userData["sourceFileName"] = sourceFileName;
+    if (document.brepDocumentId) {
+      object.userData["brepDocumentId"] = document.brepDocumentId;
+    }
+    const product = meshProducts.get(mesh.id);
+    if (product) {
+      object.userData["stepProductId"] = product.id;
+      object.userData["stepProductName"] = product.name;
+    }
     group.add(object);
   }
   return group;
