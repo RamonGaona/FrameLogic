@@ -242,9 +242,11 @@ export function NativeStepViewer() {
           runtime.modelRoot, camera, e.clientX, e.clientY,
           canvas.getBoundingClientRect(),
         );
-        setSelection(selectionRef.current.setSelected(mesh));
         const partScope = mesh
           ? resolveNativeStepPartScope(runtime.modelRoot, mesh) : null;
+        setSelection(selectionRef.current.setSelected(
+          mesh, partScope?.meshes,
+        ));
         partScopeRef.current = partScope;
         setTransformTarget(partScope ? prepareNativeStepTransformTarget(partScope) : null);
         clearSnap();
