@@ -23,7 +23,9 @@ export interface NativePrimaryProjectEditorOptions {
   undo(): boolean;
   redo(): boolean;
   setNavigationEnabled(value: boolean): void;
-  navigationWasEnabled: boolean;
+  getNavigationEnabled(): boolean;
+  /** Close any active legacy CAD command only when native editing is armed. */
+  beforeNativeEdit(): void;
   onClose(): void;
 }
 
@@ -57,6 +59,7 @@ export function mountNativePrimaryProjectEditor(
     worldQuaternion: THREE.Quaternion;
   } | null = null;
   let frame = 0;
+  let navigationBeforeNativeDrag: boolean | null = null;
 
   const input = document.createElement("div");
   input.dataset.nativePrimaryInput = "true";
@@ -65,7 +68,11 @@ export function mountNativePrimaryProjectEditor(
     "touch-action:none", "background:transparent", "cursor:crosshair",
   ].join(";");
 
-  const toolbar = document.createElement("section");
+  // Default Model Space must remain fully interactive for CAD lines,
+  // DWG/DXF references, STEP, assemblies, SNAP, camera and Paper Space.
+  // The transparent capture surface is inserted ONLY while a native gizmo
+  // command is explicitly armed, never during ordinary model selection.
+  const toolbar = document.createElement("details");
   toolbar.dataset.nativePrimaryToolbar = "true";
   toolbar.setAttribute("aria-label", "Edición Three.js del Model Space principal");
   toolbar.style.cssText = [
@@ -75,16 +82,17 @@ export function mountNativePrimaryProjectEditor(
     "color:#f1f5f9", "font:12px system-ui,sans-serif",
     "box-shadow:0 5px 22px #0008",
   ].join(";");
-  const title = document.createElement("div");
-  title.textContent = "Three.js · Model Space principal";
-  title.style.cssText = "font-weight:bold;margin-bottom:5px";
+  const title = document.createElement("summary");
+  title.textContent = "Three.js · herramientas del Model Space";
+  title.style.cssText = "font-weight:bold;cursor:pointer";
+  toolbar.open = false;
   const actions = document.createElement("div");
   actions.style.cssText = "display:flex;gap:5px;flex-wrap:wrap";
   const info = document.createElement("div");
   info.style.cssText = "padding-top:6px;color:#cbd5e1";
-  info.textContent = "Selecciona una pieza aquí y pulsa Mover o Rotar. El proyecto y los planos siguen siendo los originales.";
+  info.textContent = "Selecciona una pieza en Model Space como siempre. Mover y Rotar activan el gizmo nativo; el resto de herramientas CAD, DWG/DXF y Paper Space permanecen disponibles.";
   toolbar.append(title, actions, info);
-  host.append(input, toolbar);
+  host.append(toolbar);
 
   const currentCamera = options.getCamera();
   const transform = new TransformControls(currentCamera, input);
@@ -197,8 +205,21 @@ export function mountNativePrimaryProjectEditor(
   function setMode(next: "select" | "translate" | "rotate"): void {
     if (disposed || activeMove || ringDrag) return;
     if (next !== "select" && !editor.getTarget()) {
-      setMessage("Selecciona primero una pieza editable. Las referencias DWG/DXF siguen disponibles en CAD.");
+      setMessage("Selecciona primero una pieza editable en el Model Space principal.");
       return;
+    }
+    if (mode === "select" && next !== "select") {
+      // Activate the native hit layer only during native gizmo commands.
+      // Otherwise all original pointer, SNAP and DWG/Paper Space controls
+      // must receive their normal browser events without interception.
+      options.beforeNativeEdit();
+      navigationBeforeNativeDrag = options.getNavigationEnabled();
+      options.setNavigationEnabled(false);
+      host.append(input);
+    } else if (mode !== "select" && next === "select") {
+      input.remove();
+      options.setNavigationEnabled(navigationBeforeNativeDrag ?? true);
+      navigationBeforeNativeDrag = null;
     }
     mode = next;
     if (mode !== "translate") transform.detach();
@@ -206,9 +227,10 @@ export function mountNativePrimaryProjectEditor(
     selectButton.setAttribute("aria-pressed", String(mode === "select"));
     moveButton.setAttribute("aria-pressed", String(mode === "translate"));
     rotateButton.setAttribute("aria-pressed", String(mode === "rotate"));
-    setMessage(mode === "select" ? "Seleccionar: clic en una pieza."
-      : mode === "translate" ? "Mover: arrastra un eje del gizmo del canvas principal."
-      : "Rotar: arrastra un anillo de eje visible; X/Y/Z +90° para giros exactos.");
+    setMessage(mode === "select"
+      ? "Selección y herramientas CAD habituales activas, incluidos DWG/DXF, SNAP y Paper Space."
+      : mode === "translate" ? "Mover: arrastra un eje Three.js; pulsa Seleccionar o Escape para volver a CAD."
+      : "Rotar: arrastra un anillo visible o usa giros exactos de +90°. Escape devuelve la selección CAD.");
   }
   setMode("select");
 
@@ -342,10 +364,18 @@ export function mountNativePrimaryProjectEditor(
       cancelGesture();
     } else if (mode !== "select") {
       event.preventDefault();
+      event.stopImmediatePropagation();
       setMode("select");
-    } else {
-      dispose();
     }
+    // Idle Escape continues to the original CAD selection/command handlers.
+  };
+  const onOutsidePointerDown = (event: PointerEvent): void => {
+    // Switching to ribbon tools, configuration, Project/Open or Paper Space
+    // returns input to the complete established CAD workflow automatically.
+    if (mode === "select" || toolbar.contains(event.target as Node)
+      || input.contains(event.target as Node)) return;
+    cancelGesture();
+    setMode("select");
   };
   const onBlur = (): void => { cancelGesture(); };
   input.addEventListener("pointerdown", onPointerDown, true);
@@ -354,6 +384,7 @@ export function mountNativePrimaryProjectEditor(
   input.addEventListener("pointercancel", onPointerCancel);
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("blur", onBlur);
+  document.addEventListener("pointerdown", onOutsidePointerDown, true);
 
   // All changes are drawn by the *existing* production Three.js renderer.
   // The frame only aligns helpers and the transparent hit layer to it.
@@ -393,8 +424,9 @@ export function mountNativePrimaryProjectEditor(
     }
     frame = window.requestAnimationFrame(tick);
   }
-  // Restore active camera navigation on exit, including if project is unloaded.
-  options.setNavigationEnabled(false);
+  // Three.js is the active production viewport by default; do NOT disable
+  // its CAD mouse navigation and do NOT install a capture overlay on startup.
+  // Only explicit Move/Rotate changes pointer ownership.
   tick();
 
   function dispose(): void {
@@ -408,6 +440,7 @@ export function mountNativePrimaryProjectEditor(
     input.removeEventListener("pointercancel", onPointerCancel);
     window.removeEventListener("keydown", onKeyDown, true);
     window.removeEventListener("blur", onBlur);
+    document.removeEventListener("pointerdown", onOutsidePointerDown, true);
     transform.removeEventListener("mouseDown", onMoveStart);
     transform.removeEventListener("objectChange", onObjectChange);
     transform.removeEventListener("mouseUp", onMoveEnd);
@@ -418,7 +451,10 @@ export function mountNativePrimaryProjectEditor(
     rings.dispose();
     input.remove();
     toolbar.remove();
-    options.setNavigationEnabled(options.navigationWasEnabled);
+    if (navigationBeforeNativeDrag !== null) {
+      options.setNavigationEnabled(navigationBeforeNativeDrag);
+      navigationBeforeNativeDrag = null;
+    }
     options.onClose();
   }
   return { dispose };

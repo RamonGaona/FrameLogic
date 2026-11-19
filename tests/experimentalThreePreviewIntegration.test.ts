@@ -7,7 +7,7 @@ const read = (path: string) =>
 describe("Experimental native Three.js renderer boundaries", () => {
   it("starts only through an explicit URL opt-in and leaves main rendering active", () => {
     const viewport = read("../apps/web/src/features/bim/BimViewport.tsx");
-    expect(viewport).toContain('new URLSearchParams(window.location.search).get("threePreview") === "1"');
+    expect(viewport).toContain('viewportFlags.get("threePreview") === "1"');
     expect(viewport).toContain("mountExperimentalNativeThreePreview({");
     expect(viewport).toContain("disposeNativePreview?.()");
     expect(viewport).toContain("disposeWithPanel()");

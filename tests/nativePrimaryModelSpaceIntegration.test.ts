@@ -50,7 +50,9 @@ describe("Native Three.js editing uses the primary Model Space, not an isolated 
     expect(drawing).toContain("new DrawingProductionController({");
     expect(drawing).toContain("new DrawingProfessionalController({");
     expect(main).toContain("disposeNativePrimary?.()");
-    expect(native).toContain("options.setNavigationEnabled(options.navigationWasEnabled)");
+    expect(native).toContain("options.getNavigationEnabled()");
+    expect(native).toContain("options.setNavigationEnabled(navigationBeforeNativeDrag)");
+    expect(native).toContain("input.remove()");
     expect(native).toContain("Volver a CAD");
     expect(native).toContain('mode: "select" | "translate" | "rotate"');
     expect(native).not.toContain("loadIfc");
@@ -70,6 +72,9 @@ describe("Native Three.js editing uses the primary Model Space, not an isolated 
     expect(native).toContain("pivot.removeFromParent()");
     expect(native).toContain("rings.dispose()");
     expect(native).toContain("options.setNavigationEnabled(false)");
+    expect(native).toContain("host.append(input)");
+    expect(native).toContain("host.append(toolbar)");
+    expect(native).not.toContain("host.append(input, toolbar)");
   });
 
   it("offers exact XYZ millimetre movement on the original CAD model even without pointer drag", () => {
