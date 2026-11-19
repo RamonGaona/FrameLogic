@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createOffsetSolidMaterials, createVisualEdgeGeometry } from "./ModelRenderEdgeStyle";
 
 import type {
   DesignSceneController,
@@ -63,6 +64,7 @@ export class ModelRenderModeController {
   private readonly edgeHelpers = new WeakMap<THREE.Mesh, THREE.LineSegments>();
   private readonly timer: number;
   private mode: ModelRenderMode = "SOLID";
+  private isolatedEditorActive = false;
   private disposed = false;
   private readonly qualitySelect: HTMLSelectElement;
   private readonly options: Options;
@@ -284,7 +286,14 @@ export class ModelRenderModeController {
       );
     }
     this.updatePanelPosition();
-    this.applyToAll(false);
+    // The editor reuses the same scene. Rebuild overlays on entry/exit even
+    // when LOD geometry did not change, so outline detail stays in sync.
+    const isolated = document.documentElement.getAttribute(
+      "data-framelogic-piece-workspace-active",
+    ) === "true";
+    const isolationChanged = this.isolatedEditorActive !== isolated;
+    this.isolatedEditorActive = isolated;
+    this.applyToAll(isolationChanged);
   }
 
   /**
@@ -314,7 +323,9 @@ export class ModelRenderModeController {
   }
 
   private applyToAll(force: boolean): void {
-    for (const [, root] of this.designScene.getInstanceEntries()) {
+    for (const [instanceId, root] of this.designScene.getInstanceEntries()) {
+      const detailedEditorEdges = this.isolatedEditorActive
+        && instanceId === this.options.preparedInstanceId?.();
       root.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
         const geometryChanged = this.displayedGeometry.get(object) !== object.geometry;
@@ -326,15 +337,15 @@ export class ModelRenderModeController {
           this.originals.set(object, {
             material: object.material,
           });
-          this.applyMode(object);
+          this.applyMode(object, detailedEditorEdges);
           return;
         }
-        if (force || geometryChanged) this.applyMode(object);
+        if (force || geometryChanged) this.applyMode(object, detailedEditorEdges);
       });
     }
   }
 
-  private applyMode(mesh: THREE.Mesh): void {
+  private applyMode(mesh: THREE.Mesh, detailedEditorEdges = false): void {
     const original = this.originals.get(mesh);
     if (!original) return;
 
@@ -342,9 +353,18 @@ export class ModelRenderModeController {
     this.removeEdges(mesh);
 
     if (this.mode === "SOLID" || this.mode === "SOLID_EDGES") {
-      mesh.material = original.material;
-      if (this.mode === "SOLID_EDGES") {
-        this.ensureEdges(mesh);
+      if (this.mode === "SOLID_EDGES" && detailedEditorEdges) {
+        // A slight depth bias on temporary fill materials prevents z-fighting
+        // with exact contours. Hidden edges still obey the depth buffer.
+        const materials = createOffsetSolidMaterials(original.material);
+        this.temporaryMaterials.set(mesh, materials);
+        mesh.material = Array.isArray(original.material)
+          ? materials
+          : materials[0] ?? original.material;
+        this.ensureEdges(mesh, 0x18242e, 1, true);
+      } else {
+        mesh.material = original.material;
+        if (this.mode === "SOLID_EDGES") this.ensureEdges(mesh);
       }
       return;
     }
@@ -421,6 +441,7 @@ export class ModelRenderModeController {
     mesh: THREE.Mesh,
     color = 0x32434b,
     opacity = 0.82,
+    detailedEditorEdges = false,
   ): void {
     const current = this.edgeHelpers.get(mesh);
     if (current) {
@@ -432,7 +453,7 @@ export class ModelRenderModeController {
      * 30° elimina diagonales coplanares y facetas suaves del tessellado,
      * manteniendo contornos, agujeros, chaflanes y cambios reales de cara.
      */
-    const geometry = new THREE.EdgesGeometry(mesh.geometry, 30);
+    const geometry = createVisualEdgeGeometry(mesh, detailedEditorEdges);
     const material = new THREE.LineBasicMaterial({
       color,
       transparent: opacity < 1,
@@ -443,7 +464,9 @@ export class ModelRenderModeController {
     });
     const lines = new THREE.LineSegments(geometry, material);
     lines.name = "FrameLogicRenderEdges";
-    lines.renderOrder = 4;
+    // Draw editor edges after selected highlight (order 12), not through
+    // the solid: depthTest remains enabled on the line material.
+    lines.renderOrder = detailedEditorEdges ? 14 : 4;
     lines.raycast = () => undefined;
     mesh.add(lines);
     this.edgeHelpers.set(mesh, lines);

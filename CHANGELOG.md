@@ -15,6 +15,13 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.210 — 2026-11-19 (aristas visibles al editar FLPIECE)
+
+- **Edición aislada:** Sólido + aristas dibuja los contornos a partir de la geometría visual detallada original, incluso si la malla visible está en modo Diseño/Básico, para conservar perímetros, perforaciones y placas.
+- **Contraste:** materiales de relleno temporales usan un desplazamiento mínimo de profundidad y las aristas del editor se dibujan después del resaltado de selección; se mantiene depthTest y no aparecen aristas ocultas.
+- **Sin alterar ingeniería:** se conservan geometría, niveles visuales, SNAP, origen, transformaciones, DesignModel y persistencia. La entrada/salida del editor regenera los contornos y libera recursos.
+- **Pruebas:** regresión de extracción de aristas detalladas, clones de material y sincronización del render. Pendiente comprobación visual en navegador con MPROP_CONFIGURABLE.
+
 ## v0.1.209 — 2026-11-19 (panel de capas legible y accesible)
 
 - **Capas rediseñadas:** se corrige el grid desalineado que comprimía los nombres: cada fila reserva siete celdas explícitas (activar, nombre flexible, color, visibilidad, bloqueo, SNAP y eliminar). Los layers del sistema mantienen una celda vacía para conservar la alineación.
