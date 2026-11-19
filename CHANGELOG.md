@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.198 — 2026-11-19 (centro XYZ resaltado con mouse y prioridad visual sobre SNAP)
+
+- **Hover centro XYZ:** al pasar el cursor por el centro del gizmo nativo Three.js (`?threeNative=1`), la esfera central cambia a amarillo brillante, aumenta temporalmente su tamaño y aparece un anillo luminoso de **24 px** sobre el centro. El cursor toma forma de puntero. Al salir o iniciar un arrastre, se restaura el aspecto normal; los ejes X/Y/Z y la pieza mantienen sus materiales.
+- **Prioridad del centro sobre SNAP:** el centro del gizmo se dibuja después de las flechas (render order alto y sin prueba de profundidad) y **tiene prioridad de selección**. Si un indicador HTML de SNAP B-Rep coincide en pantalla con el centro, **se oculta únicamente ese indicador**, evitando que cubra el centro; los SNAP separados siguen visibles. La etiqueta de estado muestra el centro XYZ mientras se encuentra bajo el puntero.
+- **Selección más cómoda:** la detección del centro se calcula en píxeles CSS, con radio mínimo de **13 px** y máximo de **24 px**, sin depender del tamaño físico de la pieza ni de la perspectiva. Los clics en el centro continúan activando su reubicación exacta de v0.1.197, sin mover la geometría.
+- **Regresiones:** pruebas de color/tamaño/restauración hover, radio de clic, ocultación selectiva del marcador coincidente e integración con la prioridad del centro. Sin cambios en Ctrl-copia, MOVER/COPIAR HASTA, SNAP B-Rep exactos, Undo/Redo ni en el Model Space estable.
+- **Alcance:** visor experimental ortográfico, no persistente; IFC/Fragments, DWG/DXF, planos/PDF y archivos STEP/.flproject no se modifican.
+
+---
+
 ## v0.1.197 — 2026-11-19 (fase 3j: reposicionamiento independiente del centro XYZ del gizmo nativo)
 
 - **Centro XYZ reubicable sin mover la pieza:** el gizmo Three.js nativo del visor `?threeNative=1` incorpora una esfera central identificable, cuyo **clic corto** arma la reposición del punto base. El **siguiente clic en un SNAP B-Rep exacto** coloca el centro XYZ allí **sin mover, copiar ni modificar ninguna malla o sólido STEP**. También se admite llevar el puntero desde el centro hasta un SNAP exacto y soltarlo; nunca se reubica por proyección libre de pantalla. El menú ofrece **Mover centro XYZ** y **Restablecer centro**.
