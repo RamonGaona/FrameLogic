@@ -336,6 +336,34 @@ single-product STEP files with unambiguous source identity. Multi-product
 STEP content remains blocked. The production CAD viewer, camera's
 orthographic safety restriction, IFC, DWG and Paper Space/PDF are unchanged.
 
+## Phase 3j — central XYZ gizmo pivot relocation (v0.1.197)
+
+Following user validation of v0.1.196 MOVER/COPIAR HASTA, the native
+orthographic STEP gizmo now includes a separately raycastable central XYZ
+handle. A short click arms **pivot relocation**; the next click on a visible
+**exact OpenCascade B-Rep SNAP** places only the gizmo centre at that 3D
+coordinate. Dragging the centre to an exact snap also completes the operation;
+dragging to empty space or arbitrary visible triangles never invents a
+new pivot point. Escape cancels without a transform or copy.
+
+The pivot is a world-space display offset stored in the STEP visual group
+relative to the product's current world bounding centre. It is independent
+of the underlying STEP B-Rep, vertices, mesh positions and copy/move history.
+It follows the mesh group's translation, and a Ctrl-cloned group inherits
+the relative pivot offset without linking source and copy afterwards.
+An explicit Reset centre button restores the default product centre.
+
+Subsequent MOVER HASTA and COPIAR HASTA operations start from this custom
+pivot, matching the established Model Space centre-handle semantics. Normal
+axis drag, Ctrl-copy, COPYBASE, selection, undo and redo remain intact.
+Pivot changes are not tracked as model-transform Undo history, because no
+geometry changes. The pivot is experimental/session-only and is not
+persisted into STEP or .flproject. Multi-product STEP assemblies remain
+ineligible for native visual edits.
+
+The production CAD viewer and orthographic safety restriction, IFC,
+DWG/DXF, and Paper Space/PDF remain untouched.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
