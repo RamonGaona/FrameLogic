@@ -1021,6 +1021,19 @@ export function BimViewport() {
                     disposeNativePreview = undefined;
                     if (!disposed) setNativeProjectPreviewOpen(false);
                   },
+                  // The native scene only picks an existing, visible
+                  // PieceInstance. Model Space remains the single owner of
+                  // selection, gizmos, persistent history and .flproject.
+                  getInstanceTargets: () => instance.designScene.getInstanceEntries(),
+                  onSelectInstance: (id) => {
+                    instance.designSelection.selectSingle(id);
+                    return instance.designSelection.isSelected(id);
+                  },
+                  getSelectedInstanceIds: () => instance.designSelection.getSelectedIds(),
+                  onStartMove: () => instance.startMoveCommand(),
+                  onStartRotate: () => instance.startRotateCommand(),
+                  onUndo: () => instance.undoCadAction(),
+                  onRedo: () => instance.redoCadAction(),
                 });
                 disposeNativePreview = () => preview.dispose();
                 if (!disposed) setNativeProjectPreviewOpen(true);
@@ -1874,7 +1887,7 @@ export function BimViewport() {
         type="button"
         data-native-project-inspection="true"
         aria-pressed={nativeProjectPreviewOpen}
-        title="Previsualización Three.js de la escena CAD actual. Usa la misma geometría de Model Space, incluidas las referencias visibles. Es solo lectura: IFC, DWG/DXF, ensambles, historial, .flproject y Paper Space se siguen editando desde el motor principal."
+        title="Vista Three.js del proyecto: selecciona piezas con clic y usa Mover / Rotar para activar el gizmo real en Model Space. Los comandos, Undo/Redo y .flproject siguen en el CAD principal. IFC se integrará después."
         style={{
           position: "absolute", left: 16, bottom: 54, zIndex: 40,
           padding: "7px 10px", borderRadius: 6,
