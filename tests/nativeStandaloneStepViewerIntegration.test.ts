@@ -55,7 +55,7 @@ describe("Standalone native Three.js test route", () => {
     expect(native).toContain("disposeNativeStepMeshGroup(runtime.modelRoot)");
     expect(native).toContain("selectionRef.current.dispose()");
     expect(native).toContain("window.removeEventListener(\"keydown\", escapeSelection)");
-    expect(native).toContain("selectionRef.current.clear();\n      setSelection(null);\n      const previous");
+    expect(native).toContain("selectionRef.current.clear();\n      setSelection(null);\n      setSnap(null);\n      const previous");
   });
 
   it("indexes only OpenCascade B-Rep exact snaps for the selected STEP document", () => {
