@@ -92,7 +92,16 @@ export function pickNativeProjectRotationRing(
   for (const hit of hits) {
     if (!hit.object.visible) continue;
     const axis = hit.object.userData["nativeProjectRotateAxis"];
-    if (axis === "X" || axis === "Y" || axis === "Z") return axis;
+    if (axis === "X" || axis === "Y" || axis === "Z") {
+      // An edge-on torus collapses into a line on screen and can raycast over
+      // the gizmo centre, causing a no-op/incorrect-axis rotation. Never arm
+      // an axis whose rotation plane is nearly parallel to the view ray.
+      // The exact +90-degree toolbar actions remain available for that axis.
+      if (Math.abs(raycaster.ray.direction.dot(NATIVE_PROJECT_ROTATE_AXIS[axis])) < 0.12) {
+        continue;
+      }
+      return axis;
+    }
   }
   return null;
 }
