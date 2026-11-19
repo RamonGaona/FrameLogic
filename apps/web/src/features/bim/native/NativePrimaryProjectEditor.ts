@@ -89,6 +89,10 @@ export function mountNativePrimaryProjectEditor(
   const currentCamera = options.getCamera();
   const transform = new TransformControls(currentCamera, input);
   const pivot = new THREE.Object3D();
+  // TransformControls needs an object with a parent to calculate the
+  // correct world-space transform during pointerDown and pointerMove.
+  // It has no mesh and is never serialized as a CAD instance.
+  scene.add(pivot);
   // Only add the helper to the authoritative scene: the renderer is already
   // Three.WebGLRenderer. Neither helper nor pivot is a saved PieceInstance.
   scene.add(transform.getHelper());
@@ -363,6 +367,7 @@ export function mountNativePrimaryProjectEditor(
     transform.removeEventListener("mouseUp", onMoveEnd);
     transform.detach();
     transform.getHelper().removeFromParent();
+    pivot.removeFromParent();
     transform.dispose();
     rings.dispose();
     input.remove();
