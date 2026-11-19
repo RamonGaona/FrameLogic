@@ -11,7 +11,7 @@ describe("Native Three.js shared project scene inspection", () => {
     expect(preview).toContain("const source = options.viewport.camera");
     expect(core).toContain("core.viewport.scene");
     expect(core).toContain("core.viewport.canvas");
-    expect(core).toContain("core.projectPackage");
+    expect(core).toContain("projectPackage,");
     expect(preview).not.toContain("parseFrameLogicPiecePackage");
     expect(preview).not.toContain("loadIfc");
     expect(preview).not.toContain("loadDwg");
