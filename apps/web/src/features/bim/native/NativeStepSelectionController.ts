@@ -75,6 +75,11 @@ export class NativeStepSelectionController {
         emissive: typed.material.emissive.clone(),
         intensity: typed.material.emissiveIntensity,
       });
+      // A visual Ctrl-copy can be initiated while the source is highlighted.
+      // Store its unselected appearance in JSON-safe metadata, so the clone
+      // never inherits a stale selection highlight.
+      typed.userData["nativeSelectionBaseRgb"] = typed.material.emissive.toArray();
+      typed.userData["nativeSelectionBaseIntensity"] = typed.material.emissiveIntensity;
       typed.material.emissive.setHex(0x15a9e8);
       typed.material.emissiveIntensity = 1.25;
     }
@@ -85,6 +90,8 @@ export class NativeStepSelectionController {
     for (const item of this.highlighted) {
       item.mesh.material.emissive.copy(item.emissive);
       item.mesh.material.emissiveIntensity = item.intensity;
+      delete item.mesh.userData["nativeSelectionBaseRgb"];
+      delete item.mesh.userData["nativeSelectionBaseIntensity"];
     }
     this.highlighted.length = 0;
     this.selected = null;
