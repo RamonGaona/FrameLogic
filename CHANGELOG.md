@@ -15,6 +15,15 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.202 — 2026-11-19 (vista Three.js del proyecto en Model Space)
+
+- **Integración visual entre dominios:** la página principal incorpora el botón **Vista Three.js del proyecto**, que dibuja la escena Three.js activa del Model Space, sin reimportar STEP ni duplicar definiciones: mallas STEP, referencias IFC/Fragments, geometría DWG/DXF y ensambles presentes en la escena se comparten sin conversión.
+- **Proyecto .flproject intacto:** el panel usa el FrameLogicViewportPort vivo y sigue la cámara ortográfica. Las herramientas de selección, SNAP, movimiento, rotación, historial, guardado y restauración siguen siendo autoritativas en Model Space; la inspección adicional no modifica matrices ni proyecto.
+- **Activación reversible:** panel adicional 640×360, sin eventos CAD de ratón, con contextos y geometría de propiedad separada: al cerrar elimina solo su renderer/cámara, nunca los materiales ni mallas del proyecto. Se mantiene ?threePreview=1 y la ruta STEP ?threeNative=1.
+- **Límites:** no es todavía editor CAD nativo, no incorpora comandos persistentes de movimiento/rotación ni migra IFC/DWG/Paper Space. La compatibilidad de materiales IFC y rendimiento requieren validación con archivos reales; Paper Space/PDF permanece en la interfaz principal.
+- **Regresiones:** comprobar fuente de escena compartida, cámara activa, una sola sesión de proyecto, independencia de comandos y limpieza de recursos. CI y pruebas manuales son verificaciones independientes.
+
+---
 ## v0.1.201 — 2026-11-19 (primer puente seguro del Model Space al visor STEP Three.js)
 
 - **Página principal conservada:** `https://framelogic-dev.pages.dev/` mantiene el FrameLogic completo y su motor CAD actual para IFC, DWG/DXF, piezas, ensambles, snaps, herramientas, configuración, proyectos y Paper Space. No se sustituye por la ruta STEP experimental, porque sus transformaciones aún no son operaciones CAD persistentes y no admite todos los formatos.
