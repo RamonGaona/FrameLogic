@@ -1,5 +1,7 @@
 import * as THREE from "three";
 
+import type { FrameLogicCameraController } from "../viewport/FrameLogicCameraController";
+
 import type {
   FrameLogicProjectPackage,
   FrameLogicProjectPackageController,
@@ -34,42 +36,11 @@ interface ProjectPackageWithCamera
     ProjectModelSpaceCameraSnapshot;
 }
 
-interface CameraControlsRuntime {
-  readonly azimuthAngle: number;
-  readonly polarAngle: number;
-  readonly distance: number;
-  getTarget?: (
-    target: THREE.Vector3,
-  ) => THREE.Vector3;
-  setLookAt: (
-    positionX: number,
-    positionY: number,
-    positionZ: number,
-    targetX: number,
-    targetY: number,
-    targetZ: number,
-    enableTransition?: boolean,
-  ) => Promise<void>;
-  rotateTo: (
-    azimuth: number,
-    polar: number,
-    enableTransition?: boolean,
-  ) => Promise<void>;
-  zoomTo: (
-    zoom: number,
-    enableTransition?: boolean,
-  ) => Promise<void>;
-}
-
 export interface ProjectCameraStateControllerOptions {
   readonly projectPackage:
     FrameLogicProjectPackageController;
-  readonly cameraProvider:
-    () => THREE.Camera;
-  readonly orthoCameraProvider:
-    () => THREE.OrthographicCamera;
-  readonly controls:
-    CameraControlsRuntime;
+  readonly cameraNavigation:
+    FrameLogicCameraController;
   readonly getProjectionMode:
     () => ProjectCameraProjection;
   readonly toggleProjection:
@@ -175,38 +146,15 @@ export class ProjectCameraStateController {
 
   private captureCamera():
     ProjectModelSpaceCameraSnapshot {
-    const camera =
-      this.options.cameraProvider();
     const controls =
-      this.options.controls;
+      this.options.cameraNavigation;
+    const camera =
+      controls.camera;
 
     const target =
       new THREE.Vector3();
 
-    if (
-      typeof controls.getTarget
-      === "function"
-    ) {
-      controls.getTarget(
-        target,
-      );
-    }
-    else {
-      const direction =
-        new THREE.Vector3();
-      camera.getWorldDirection(
-        direction,
-      );
-
-      target.copy(
-        camera.position,
-      ).addScaledVector(
-        direction,
-        Number.isFinite(controls.distance)
-          ? controls.distance
-          : 1,
-      );
-    }
+    controls.getTarget(target);
 
     return {
       schema:
@@ -225,13 +173,11 @@ export class ProjectCameraStateController {
         z: target.z,
       },
       azimuth:
-        controls.azimuthAngle,
+        controls.orientation.azimuth,
       polar:
-        controls.polarAngle,
+        controls.orientation.polar,
       orthographicZoom:
-        this.options
-          .orthoCameraProvider()
-          .zoom,
+        controls.orthographicCamera.zoom,
     };
   }
 
@@ -255,15 +201,19 @@ export class ProjectCameraStateController {
     }
 
     const controls =
-      this.options.controls;
+      this.options.cameraNavigation;
 
     await controls.setLookAt(
-      snapshot.position.x,
-      snapshot.position.y,
-      snapshot.position.z,
-      snapshot.target.x,
-      snapshot.target.y,
-      snapshot.target.z,
+      new THREE.Vector3(
+        snapshot.position.x,
+        snapshot.position.y,
+        snapshot.position.z,
+      ),
+      new THREE.Vector3(
+        snapshot.target.x,
+        snapshot.target.y,
+        snapshot.target.z,
+      ),
       false,
     );
 
@@ -284,8 +234,7 @@ export class ProjectCameraStateController {
       && snapshot.projection === "ORTHOGRAPHIC"
     ) {
       const ortho =
-        this.options
-          .orthoCameraProvider();
+        controls.orthographicCamera;
 
       ortho.zoom =
         snapshot.orthographicZoom;
