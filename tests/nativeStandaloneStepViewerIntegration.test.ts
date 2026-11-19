@@ -58,6 +58,27 @@ describe("Standalone native Three.js test route", () => {
     expect(native).toContain("selectionRef.current.clear();\n      setSelection(null);\n      const previous");
   });
 
+  it("indexes only OpenCascade B-Rep exact snaps for the selected STEP document", () => {
+    const native = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const source = read("../apps/web/src/features/bim/native/NativeStepExactSnapController.ts");
+    const model = read("../apps/web/src/features/bim/native/NativeStepViewportModel.ts");
+    expect(native).toContain("getOpenCascadeBrepKernel()");
+    expect(native).toContain("indexNativeBrepSnapPoints(snapshot)");
+    expect(native).toContain("snapIndexRef.current.get(id) ?? []");
+    expect(native).toContain("findNativeExactSnap(");
+    expect(native).toContain("data-native-brep-snap-marker");
+    expect(native).toContain("data-native-brep-snap-status");
+    expect(source).toContain("document.modelScale");
+    expect(source).toContain("camera.updateMatrixWorld(true)");
+    expect(source).toContain("candidate.brepDocumentId !== selectedDocumentId");
+    expect(source).not.toContain("geometry.getAttribute");
+    expect(source).not.toContain("DERIVED_MESH");
+    expect(model).toContain('object.userData["stepProductId"]');
+    expect(model).toContain('object.userData["brepDocumentId"]');
+    expect(native).toContain("snapIndexRef.current.clear()");
+    expect(native).toContain("snapIndexRef.current = stagedSnapIndex");
+  });
+
   it("keeps perspective blocked and existing CAD drawings untouched", () => {
     const engine = read("../packages/bim/core/src/engine/createBimCore.ts");
     const drawing = read("../packages/bim/core/src/drawing/AssemblyViewShadingRenderer.ts");
