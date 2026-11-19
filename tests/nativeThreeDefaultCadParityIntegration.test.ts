@@ -73,7 +73,7 @@ describe("Three.js default Model Space preserves the complete FrameLogic CAD wor
   it("retains a diagnostic preview only through an explicit URL and keeps IFC integration deferred", () => {
     expect(web).toContain('viewportFlags.get("threePreview") === "1"');
     expect(web).toContain("toggleNativeProjectPreview()");
-    expect(web).toContain("Visor STEP Three.js");
+    expect(web).not.toContain('data-native-step-workspace-launch="true"');
     expect(web).toContain("disposeNativePrimary?.()");
     expect(native).not.toContain("IfcLoader");
   });
