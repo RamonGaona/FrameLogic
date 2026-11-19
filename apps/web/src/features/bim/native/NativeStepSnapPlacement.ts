@@ -12,7 +12,7 @@ export interface NativeCopySnapBase {
 }
 
 /**
- * Find a B-Rep snap on ANOTHER visible STEP document instance. The B-Rep
+ * Find a B-Rep snap on a visible STEP document instance, including the source. The B-Rep
  * snapshot remains read-only. Cloned instances share the original topology
  * but have their own world transform and selectable identity.
  */
@@ -26,11 +26,12 @@ export function findNativeCopySnapDestination(
   rect: Pick<DOMRect, "left" | "top" | "width" | "height">,
   tolerancePx = 13,
 ): NativeExactSnapHit | null {
+  // Verify source remains a live, independently loaded STEP group.
+  if (!source.group.parent) return null;
   let best: NativeExactSnapHit | null = null;
 
   for (const node of root.children) {
     if (!(node instanceof THREE.Group)
-      || node === source.group
       || node.visible === false
       || node.userData["nativeStepDocument"] !== true) continue;
     const documentId = node.userData["brepDocumentId"];
