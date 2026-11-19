@@ -153,6 +153,29 @@ Next: independently mount STEP model collections and later add safe
 selection/snap/editing adapters, only after validating exact behaviour and
 memory usage on the user's large real-world STEP assemblies.
 
+## Phase 3d — native STEP mesh selection (v0.1.191)
+
+The user confirmed that the standalone native orthographic viewer in v0.1.190
+works with a real STEP model. The `?threeNative=1` route now supports
+**read-only mesh selection**: a left click without drag raycasts the active
+STEP scene, highlights one mesh with reversible emissive material state, and
+shows its original STEP file, mesh identifier, approximate world bounds in
+millimetres and triangle count. Drag/pan/orbit/wheel remain camera gestures,
+and Escape, clicking empty space or reimporting clears the selection.
+
+This is **mesh-level**, not yet a robust CAD part/assembly identity model.
+It does not include precise B-Rep snapping, transformations, gizmos,
+history/undo, IFC, Fragments, drawings or project persistence. The current
+That Open-backed CAD remains unchanged. The standalone viewer still loads
+only STEP files and retains a single native WebGL context.
+
+The resource cleanup now disposes the active loaded native model when leaving
+this standalone route. Tests cover raycast, safe highlighting, restoration
+and release of the selected asset without mutating STEP mesh coordinates.
+
+Next: map mesh selection to semantic part identities and CAD snapping using
+the exact STEP B-Rep interface, before migrating gizmos or editing commands.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
