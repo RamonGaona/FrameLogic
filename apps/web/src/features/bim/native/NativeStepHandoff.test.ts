@@ -52,7 +52,11 @@ describe("same-origin Model Space to native Three.js STEP handoff", () => {
       static instances: LocalChannel[] = [];
       onmessage: ((event: { data: unknown }) => void) | null = null;
       closed = false;
-      constructor(readonly name: string) { LocalChannel.instances.push(this); }
+      readonly name: string;
+      constructor(name: string) {
+        this.name = name;
+        LocalChannel.instances.push(this);
+      }
       postMessage(data: unknown) {
         for (const receiver of LocalChannel.instances) {
           if (receiver !== this && !receiver.closed && receiver.name === this.name) {
