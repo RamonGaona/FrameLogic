@@ -70,6 +70,16 @@ export function sizeNativeProjectRotationRings(
   if (!(canvasHeightPx > 0) || !(camera.zoom > 0)) return;
   const mmPerCssPx = (camera.top - camera.bottom) / camera.zoom / canvasHeightPx;
   group.scale.setScalar(mmPerCssPx);
+  camera.updateMatrixWorld(true);
+  const viewDirection = camera.getWorldDirection(new THREE.Vector3());
+  for (const child of group.children) {
+    const axis = child.userData["nativeProjectRotateAxis"];
+    if (axis === "X" || axis === "Y" || axis === "Z") {
+      // An edge-on ring is not reliably clickable or draggable; hide it
+      // rather than teasing a dead tool. Numeric ±90 rotations remain usable.
+      child.visible = Math.abs(viewDirection.dot(NATIVE_PROJECT_ROTATE_AXIS[axis])) >= 0.12;
+    }
+  }
   group.updateMatrixWorld(true);
 }
 
