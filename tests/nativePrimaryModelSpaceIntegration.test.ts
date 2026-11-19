@@ -72,6 +72,18 @@ describe("Native Three.js editing uses the primary Model Space, not an isolated 
     expect(native).toContain("options.setNavigationEnabled(false)");
   });
 
+  it("offers exact XYZ millimetre movement on the original CAD model even without pointer drag", () => {
+    expect(native).toContain('distanceInput.type = "number"');
+    expect(native).toContain('distanceInput.value = "100"');
+    expect(native).toContain('for (const sign of [-1, 1] as const)');
+    expect(native).toContain('editor.begin("translate")');
+    expect(native).toContain("editor.preview(target.position.clone().add(delta), target.quaternion)");
+    expect(native).toContain("editor.finish(true)");
+    expect(native).toContain("editor.finish(false)");
+    expect(native).toContain("Number.isFinite(amount)");
+    expect(native).toContain("amount > 1_000_000");
+  });
+
   it("does not enable Move automatically and provides independent rotation rings and exact angles", () => {
     expect(native).toContain('let mode: "select" | "translate" | "rotate" = "select"');
     expect(native).toContain('setMode("select")');
