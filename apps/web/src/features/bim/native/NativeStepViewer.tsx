@@ -2,6 +2,11 @@ import * as THREE from "three";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
+// Injected by Vite from the root package.json, same source as CAD Model Space.
+declare const __FRAMELOGIC_VERSION__: string;
+const VERSION = typeof __FRAMELOGIC_VERSION__ === "string"
+  ? __FRAMELOGIC_VERSION__ : "dev";
+
 import { OcctStepGeometryAdapter } from "../step/OcctStepGeometryAdapter";
 import {
   buildNativeStepMeshGroup,
@@ -335,7 +340,7 @@ export function NativeStepViewer() {
         borderRadius: 9, padding: 12, maxWidth: "min(92vw, 580px)",
         display: "flex", flexDirection: "column", gap: 9, fontSize: 13,
       }}>
-        <strong style={{ fontSize: 15 }}>FrameLogic · Visor Three.js nativo experimental</strong>
+        <strong style={{ fontSize: 15 }}>FrameLogic v{VERSION} · Visor Three.js nativo experimental</strong>
         <div style={{ color: "#c4d5e7" }}>
           Motor autónomo · cámara ortográfica · unidades en mm · sin That Open
         </div>
