@@ -22,6 +22,19 @@ import {
   type NativeStepSelectionInfo,
 } from "./NativeStepSelectionController";
 import {
+  createNativeMoveGizmo,
+  nativeMoveAxisDistanceFromPixels,
+  pickNativeMoveAxis,
+  type NativeMoveGizmo,
+} from "./NativeStepMoveGizmo";
+import {
+  getNativeStepBrepWorldTransform,
+  NativeStepMoveController,
+  resolveNativeIsolatedStepTarget,
+  type NativeIsolatedStepTarget,
+  type NativeMoveAxis,
+} from "./NativeStepMoveController";
+import {
   isNativeSnapVisible,
   isSnapWithinNativePartScope,
   prepareNativeStepTransformTarget,
@@ -101,6 +114,10 @@ export function NativeStepViewer() {
   const adapterRef = useRef(new OcctStepGeometryAdapter());
   const selectionRef = useRef(new NativeStepSelectionController());
   const partScopeRef = useRef<NativeStepPartScope | null>(null);
+  const moveRef = useRef(new NativeStepMoveController());
+  const moveTargetRef = useRef<NativeIsolatedStepTarget | null>(null);
+  const moveGizmoRef = useRef<NativeMoveGizmo | null>(null);
+  const moveGizmoKeyRef = useRef<string | null>(null);
   const snapIndexRef = useRef(new Map<string, readonly NativeExactSnapPoint[]>());
   const [snap, setSnap] = useState<NativeExactSnapHit | null>(null);
   const [loading, setLoading] = useState(false);
@@ -108,7 +125,44 @@ export function NativeStepViewer() {
   const [loadedNames, setLoadedNames] = useState<string[]>([]);
   const [selection, setSelection] = useState<NativeStepSelectionInfo | null>(null);
   const [transformTarget, setTransformTarget] = useState<NativeStepTransformTarget | null>(null);
+  const [moveEligible, setMoveEligible] = useState(false);
+  const [moveAxis, setMoveAxis] = useState<NativeMoveAxis>("X");
+  const [moveAmount, setMoveAmount] = useState("100");
+  const [moveStatus, setMoveStatus] = useState("");
+  const [moveHistory, setMoveHistory] = useState({ undo: false, redo: false });
   const [stats, setStats] = useState<NativeViewerStats>(EMPTY_STATS);
+
+  function refreshMoveUi(): void {
+    const runtime = runtimeRef.current;
+    const selected = selectionRef.current.selectedMesh;
+    const scope = runtime && selected
+      ? resolveNativeStepPartScope(runtime.modelRoot, selected) : null;
+    partScopeRef.current = scope;
+    setTransformTarget(scope ? prepareNativeStepTransformTarget(scope) : null);
+    const target = resolveNativeIsolatedStepTarget(scope);
+    moveTargetRef.current = target;
+    setMoveEligible(Boolean(target));
+
+    const nextKey = target?.key ?? null;
+    if (moveGizmoKeyRef.current !== nextKey || !target) {
+      moveGizmoRef.current?.dispose();
+      moveGizmoRef.current = null;
+      moveGizmoKeyRef.current = null;
+    }
+    if (target && runtime && scope) {
+      if (!moveGizmoRef.current) {
+        const diagonal = scope.bounds.getSize(new THREE.Vector3()).length();
+        const gizmo = createNativeMoveGizmo(scope.pivot, diagonal);
+        runtime.scene.add(gizmo.group);
+        moveGizmoRef.current = gizmo;
+        moveGizmoKeyRef.current = target.key;
+      } else {
+        moveGizmoRef.current.group.position.copy(scope.pivot);
+        moveGizmoRef.current.group.updateMatrixWorld(true);
+      }
+    }
+    setMoveHistory({ undo: moveRef.current.canUndo, redo: moveRef.current.canRedo });
+  }
 
   useEffect(() => {
     aliveRef.current = true;
@@ -168,6 +222,14 @@ export function NativeStepViewer() {
     } | null = null;
     const canvas = renderer.domElement;
     let lastSnapQuery = -Infinity;
+    let moveDrag: {
+      id: number;
+      axis: NativeMoveAxis;
+      startX: number;
+      startY: number;
+      pivot: THREE.Vector3;
+      axisLength: number;
+    } | null = null;
     const clearSnap = () => setSnap((previous) => previous ? null : previous);
     const updateSnapFromPointer = (event: PointerEvent) => {
       const selected = selectionRef.current.selectedMesh;
@@ -190,6 +252,7 @@ export function NativeStepViewer() {
         (candidate) =>
           isSnapWithinNativePartScope(candidate.point, partScope)
           && isNativeSnapVisible(candidate.point, camera, runtime.modelRoot),
+        getNativeStepBrepWorldTransform(moveTargetRef.current),
       );
       setSnap((previous) => previous?.id === result?.id
         && previous?.screenX === result?.screenX
@@ -198,6 +261,27 @@ export function NativeStepViewer() {
     };
     const down = (e: PointerEvent) => {
       if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+      // The handles live outside the STEP model root, so a gizmo click
+      // cannot accidentally select or orbit a CAD mesh.
+      if (e.button === 0 && !e.shiftKey && moveTargetRef.current
+        && moveGizmoRef.current) {
+        updateNativeOrthographicCamera(camera, state, width / height);
+        const axis = pickNativeMoveAxis(
+          moveGizmoRef.current, camera, e.clientX, e.clientY,
+          canvas.getBoundingClientRect(),
+        );
+        if (axis && moveRef.current.beginDrag(moveTargetRef.current, axis)) {
+          moveDrag = {
+            id: e.pointerId, axis, startX: e.clientX, startY: e.clientY,
+            pivot: moveGizmoRef.current.group.position.clone(),
+            axisLength: moveGizmoRef.current.axisLengthMm,
+          };
+          canvas.setPointerCapture(e.pointerId);
+          clearSnap();
+          e.preventDefault();
+          return;
+        }
+      }
       pointer = {
         id: e.pointerId, button: e.button, x: e.clientX, y: e.clientY,
         startX: e.clientX, startY: e.clientY, moved: false,
@@ -208,6 +292,20 @@ export function NativeStepViewer() {
       e.preventDefault();
     };
     const move = (e: PointerEvent) => {
+      if (moveDrag) {
+        if (moveDrag.id !== e.pointerId) return;
+        const distance = nativeMoveAxisDistanceFromPixels(
+          camera, moveDrag.pivot, moveDrag.axis, moveDrag.axisLength,
+          e.clientX - moveDrag.startX, e.clientY - moveDrag.startY,
+          width, height,
+        );
+        if (distance !== null && moveRef.current.previewDrag(distance)) {
+          refreshMoveUi();
+          clearSnap();
+        }
+        e.preventDefault();
+        return;
+      }
       if (!pointer) {
         updateSnapFromPointer(e);
         return;
@@ -229,6 +327,16 @@ export function NativeStepViewer() {
       e.preventDefault();
     };
     const up = (e: PointerEvent) => {
+      if (moveDrag?.id === e.pointerId) {
+        const committed = moveRef.current.endDrag(e.type === "pointerup");
+        moveDrag = null;
+        if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+        refreshMoveUi();
+        setMoveStatus(committed
+          ? "Desplazamiento visual confirmado (deshacer disponible)."
+          : "Desplazamiento cancelado.");
+        return;
+      }
       if (pointer?.id !== e.pointerId) return;
       const wasClick = e.type === "pointerup" && pointer.button === 0
         && !pointer.pan && !pointer.moved;
@@ -249,6 +357,10 @@ export function NativeStepViewer() {
         ));
         partScopeRef.current = partScope;
         setTransformTarget(partScope ? prepareNativeStepTransformTarget(partScope) : null);
+        refreshMoveUi();
+        setMoveStatus(partScope && !resolveNativeIsolatedStepTarget(partScope)
+          ? "Movimiento bloqueado: el STEP contiene varios productos o referencias ambiguas."
+          : "");
         clearSnap();
       }
     };
@@ -260,10 +372,18 @@ export function NativeStepViewer() {
     const contextMenu = (e: Event) => e.preventDefault();
     const escapeSelection = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      if (moveDrag) {
+        moveRef.current.endDrag(false);
+        moveDrag = null;
+        refreshMoveUi();
+        setMoveStatus("Desplazamiento cancelado.");
+        return;
+      }
       selectionRef.current.clear();
       partScopeRef.current = null;
       setSelection(null);
       setTransformTarget(null);
+      refreshMoveUi();
       clearSnap();
     };
     canvas.addEventListener("pointerdown", down);
@@ -318,6 +438,11 @@ export function NativeStepViewer() {
       canvas.removeEventListener("contextmenu", contextMenu);
       window.removeEventListener("keydown", escapeSelection);
       selectionRef.current.dispose();
+      moveRef.current.reset();
+      moveGizmoRef.current?.dispose();
+      moveGizmoRef.current = null;
+      moveGizmoKeyRef.current = null;
+      moveTargetRef.current = null;
       partScopeRef.current = null;
       snapIndexRef.current.clear();
       // The root changes after each successful STEP import. Dispose the
@@ -385,9 +510,17 @@ export function NativeStepViewer() {
       if (meshes === 0) throw new Error("El STEP no contiene mallas visualizables.");
 
       selectionRef.current.clear();
+      moveRef.current.reset();
+      moveGizmoRef.current?.dispose();
+      moveGizmoRef.current = null;
+      moveGizmoKeyRef.current = null;
+      moveTargetRef.current = null;
       partScopeRef.current = null;
       setSelection(null);
       setTransformTarget(null);
+      setMoveEligible(false);
+      setMoveHistory({ undo: false, redo: false });
+      setMoveStatus("");
       setSnap(null);
       const previous = runtime.modelRoot;
       runtime.scene.remove(previous);
@@ -525,6 +658,8 @@ export function NativeStepViewer() {
               partScopeRef.current = null;
               setSelection(null);
               setTransformTarget(null);
+              refreshMoveUi();
+              setMoveStatus("");
               setSnap(null);
             }}>Deseleccionar</button>
           </div>
