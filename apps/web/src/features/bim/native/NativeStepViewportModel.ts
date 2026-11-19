@@ -5,6 +5,7 @@ import type { StepGeometryDocument } from "@framelogic/geometry";
 /** A visual-only mirror of STEP triangles; exact B-Rep stays in the STEP adapter. */
 export function buildNativeStepMeshGroup(
   document: Pick<StepGeometryDocument, "meshes">,
+  sourceFileName = "STEP",
 ): THREE.Group {
   const group = new THREE.Group();
   group.name = "STEP · Three.js nativo";
@@ -29,6 +30,7 @@ export function buildNativeStepMeshGroup(
     });
     const object = new THREE.Mesh(geometry, material);
     object.name = mesh.id;
+    object.userData["sourceFileName"] = sourceFileName;
     group.add(object);
   }
   return group;

@@ -35,6 +35,29 @@ describe("Standalone native Three.js test route", () => {
     expect(native).not.toContain("mountExperimentalNativeThreePreview");
   });
 
+  it("selects STEP meshes by a click without entering edit or CAD navigation mode", () => {
+    const native = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const picker = read("../apps/web/src/features/bim/native/NativeStepSelectionController.ts");
+    expect(native).toContain("pickNativeStepMesh(");
+    expect(native).toContain("setSelection(selectionRef.current.setSelected(mesh))");
+    expect(native).toContain('e.type === "pointerup" && pointer.button === 0');
+    expect(native).toContain('!pointer.pan && !pointer.moved');
+    expect(native).toContain("selectionRef.current.clear()");
+    expect(native).toContain('buildNativeStepMeshGroup(document, file.name)');
+    expect(native).toContain('data-native-step-selection="true"');
+    expect(picker).toContain("raycaster.intersectObject(root, true)");
+    expect(picker).toContain("mesh.material.emissive.setHex(");
+    expect(native).not.toContain("createBimCore(");
+  });
+
+  it("releases the active imported model, not merely the original empty group", () => {
+    const native = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    expect(native).toContain("disposeNativeStepMeshGroup(runtime.modelRoot)");
+    expect(native).toContain("selectionRef.current.dispose()");
+    expect(native).toContain("window.removeEventListener(\"keydown\", escapeSelection)");
+    expect(native).toContain("selectionRef.current.clear();\n      setSelection(null);\n      const previous");
+  });
+
   it("keeps perspective blocked and existing CAD drawings untouched", () => {
     const engine = read("../packages/bim/core/src/engine/createBimCore.ts");
     const drawing = read("../packages/bim/core/src/drawing/AssemblyViewShadingRenderer.ts");

@@ -9,6 +9,11 @@ const VERSION = typeof __FRAMELOGIC_VERSION__ === "string"
 
 import { OcctStepGeometryAdapter } from "../step/OcctStepGeometryAdapter";
 import {
+  NativeStepSelectionController,
+  pickNativeStepMesh,
+  type NativeStepSelectionInfo,
+} from "./NativeStepSelectionController";
+import {
   buildNativeStepMeshGroup,
   disposeNativeStepMeshGroup,
   fitNativeOrthographicCamera,
@@ -78,9 +83,11 @@ export function NativeStepViewer() {
   const loadGeneration = useRef(0);
   const brepDocuments = useRef<string[]>([]);
   const adapterRef = useRef(new OcctStepGeometryAdapter());
+  const selectionRef = useRef(new NativeStepSelectionController());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [loadedNames, setLoadedNames] = useState<string[]>([]);
+  const [selection, setSelection] = useState<NativeStepSelectionInfo | null>(null);
   const [stats, setStats] = useState<NativeViewerStats>(EMPTY_STATS);
 
   useEffect(() => {
@@ -135,12 +142,16 @@ export function NativeStepViewer() {
     const observer = new ResizeObserver(resize);
     observer.observe(host);
 
-    let pointer: { id: number; x: number; y: number; pan: boolean } | null = null;
+    let pointer: {
+      id: number; button: number; x: number; y: number;
+      startX: number; startY: number; moved: boolean; pan: boolean;
+    } | null = null;
     const canvas = renderer.domElement;
     const down = (e: PointerEvent) => {
       if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
       pointer = {
-        id: e.pointerId, x: e.clientX, y: e.clientY,
+        id: e.pointerId, button: e.button, x: e.clientX, y: e.clientY,
+        startX: e.clientX, startY: e.clientY, moved: false,
         pan: e.button === 2 || (e.button === 0 && e.shiftKey),
       };
       canvas.setPointerCapture(e.pointerId);
@@ -150,6 +161,9 @@ export function NativeStepViewer() {
       if (!pointer || pointer.id !== e.pointerId) return;
       const dx = e.clientX - pointer.x;
       const dy = e.clientY - pointer.y;
+      if (Math.hypot(e.clientX - pointer.startX, e.clientY - pointer.startY) > 5) {
+        pointer.moved = true;
+      }
       pointer.x = e.clientX;
       pointer.y = e.clientY;
       if (pointer.pan) {
@@ -162,20 +176,38 @@ export function NativeStepViewer() {
     };
     const up = (e: PointerEvent) => {
       if (pointer?.id !== e.pointerId) return;
+      const wasClick = e.type === "pointerup" && pointer.button === 0
+        && !pointer.pan && !pointer.moved;
       pointer = null;
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      if (wasClick) {
+        // A click selects the nearest visible STEP triangle, never an orbit
+        // drag or pan. Click empty space or press Escape to clear selection.
+        updateNativeOrthographicCamera(camera, state, width / height);
+        const mesh = pickNativeStepMesh(
+          runtime.modelRoot, camera, e.clientX, e.clientY,
+          canvas.getBoundingClientRect(),
+        );
+        setSelection(selectionRef.current.setSelected(mesh));
+      }
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
       wheelNativeCamera(state, e.deltaY);
     };
     const contextMenu = (e: Event) => e.preventDefault();
+    const escapeSelection = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      selectionRef.current.clear();
+      setSelection(null);
+    };
     canvas.addEventListener("pointerdown", down);
     canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerup", up);
     canvas.addEventListener("pointercancel", up);
     canvas.addEventListener("wheel", wheel, { passive: false });
     canvas.addEventListener("contextmenu", contextMenu);
+    window.addEventListener("keydown", escapeSelection);
 
     let frame = 0;
     let frames = 0;
@@ -219,7 +251,11 @@ export function NativeStepViewer() {
       canvas.removeEventListener("pointercancel", up);
       canvas.removeEventListener("wheel", wheel);
       canvas.removeEventListener("contextmenu", contextMenu);
-      disposeNativeStepMeshGroup(modelRoot);
+      window.removeEventListener("keydown", escapeSelection);
+      selectionRef.current.dispose();
+      // The root changes after each successful STEP import. Dispose the
+      // active model rather than the original empty startup group.
+      disposeNativeStepMeshGroup(runtime.modelRoot);
       for (const id of brepDocuments.current) adapterRef.current.disposeDocument(id);
       brepDocuments.current = [];
       runtimeRef.current = null;
@@ -259,7 +295,7 @@ export function NativeStepViewer() {
         });
         if (document.brepDocumentId) stagedBrep.push(document.brepDocumentId);
         if (!aliveRef.current || generation !== loadGeneration.current) return;
-        const group = buildNativeStepMeshGroup(document);
+        const group = buildNativeStepMeshGroup(document, file.name);
         staged.add(group);
         meshes += group.children.length;
         triangles += document.meshes.reduce(
@@ -268,6 +304,8 @@ export function NativeStepViewer() {
       }
       if (meshes === 0) throw new Error("El STEP no contiene mallas visualizables.");
 
+      selectionRef.current.clear();
+      setSelection(null);
       const previous = runtime.modelRoot;
       runtime.scene.remove(previous);
       disposeNativeStepMeshGroup(previous);
@@ -369,6 +407,28 @@ export function NativeStepViewer() {
         <div style={{ color: "#cbd5e1" }}>
           Arrastrar con izquierdo o rueda: orbitar · Derecho o Shift+izquierdo: desplazar · Rueda: zoom
         </div>
+        <div style={{ color: "#9dd9f6" }}>
+          Clic izquierdo sobre una malla: seleccionar · Clic en vacío o Esc: deseleccionar
+        </div>
+        {selection ? (
+          <div data-native-step-selection="true" style={{
+            background: "#173448", border: "1px solid #38a6d5",
+            padding: 9, borderRadius: 6, display: "flex", flexDirection: "column", gap: 4,
+          }}>
+            <strong>Malla seleccionada: {selection.meshId}</strong>
+            <div>Archivo: {selection.sourceFileName}</div>
+            <div>Triángulos: {selection.triangleCount.toLocaleString("es-CO")}</div>
+            <div>Dimensiones aproximadas (mm): {selection.boundsMm.map(
+              (value) => value.toFixed(1),
+            ).join(" × ")}</div>
+            <button type="button" style={buttonStyle} onClick={() => {
+              selectionRef.current.clear();
+              setSelection(null);
+            }}>Deseleccionar</button>
+          </div>
+        ) : (
+          <div style={{ color: "#8ca3b9" }}>Selección: ninguna</div>
+        )}
         {error ? <div role="alert" style={{ color: "#fca5a5" }}>{error}</div> : null}
       </section>
       <aside style={{

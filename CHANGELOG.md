@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.191 — 2026-11-18 (fase 3d: selección visual STEP en Three.js nativo)
+
+- **Selección de mallas STEP:** el visor autónomo `?threeNative=1` permite seleccionar por clic izquierdo la malla visible más cercana mediante `THREE.Raycaster`, sin depender de That Open. Cada malla se identifica por su nombre y archivo STEP de origen; un recuadro muestra triángulos y dimensiones aproximadas en milímetros. No modifica la geometría CAD ni la transformación.
+- **Resaltado reversible:** un resaltado azul de emisión ilumina la malla seleccionada. Al cambiar de selección, hacer clic en vacío, pulsar Escape, pulsar Deseleccionar o cargar otro conjunto STEP se recupera el material original sin recrear mallas. El control no altera snaps, gizmos ni la selección del Model Space estable.
+- **Gestos seguros:** el raycast se ejecuta solo al completar un clic izquierdo sin desplazamiento significativo; arrastrar para orbitar, desplazar con botón derecho/Mayús+izquierdo y la rueda siguen haciendo lo mismo. La selección solo afecta el visor experimental y no habilita todavía edición.
+- **Limpieza y memoria:** al salir se liberan ahora las geometrías del conjunto STEP activo (no únicamente el grupo vacío creado al inicio), además del renderer, documentos B-Rep y resaltado seleccionado. Se elimina el listener de Escape al desmontar.
+- **Regresiones:** pruebas unitarias de raycast, datos y restauración del resaltado, cambio de selección y liberación GPU; pruebas de integración de gestos, aislamiento CAD y limpieza incluidas en la suite de cámara/navegación. Se mantienen perspectiva bloqueada y Paper Space/IFC sin cambios.
+- **Pendiente:** selección de piezas y subensambles semánticos, snaps de B-Rep, gizmos, edición y proyectos `.flproject` en el visor nativo requieren nuevas fases; los números de mallas/triángulos y el rendimiento deben comprobarse con un ensamblaje STEP real.
+
+---
+
 ## v0.1.190 — 2026-11-18 (fase 3c: visor STEP nativo autónomo)
 
 - **Visor nativo aislado:** nueva ruta experimental `?threeNative=1`, con carga de uno o varios archivos `.step/.stp` mediante el adaptador OpenCascade existente, conversión directa a mallas Three.js propias y `THREE.WebGLRenderer` único. La aplicación usa importaciones dinámicas mutuamente excluyentes: en esta ruta **no se monta** `createBimCore` ni el renderer That Open.
