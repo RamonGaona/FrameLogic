@@ -502,6 +502,22 @@ references, IFC/Fragments, hidden/locked pieces and multi-selection cannot
 be transformed by this single-piece bridge; advanced native SNAP/Ctrl-copy
 and assembly-wide dragging remain planned. The production Model Space and
 Paper Space/PDF are untouched. IFC integration remains the final phase.
+## Phase 3q — independent project-native rotation rings and explicit tool arming (v0.1.205)
+
+The v0.1.204 inspector implicitly attached MOVE on selecting a PieceInstance.
+While Move was usable, rotation through TransformControls in the secondary
+canvas was not reliable. The inspector now starts in SELECT mode, resetting
+to SELECT when changing the selected PieceInstance. The user explicitly
+chooses Mover or Rotar. The existing Move TransformControls is attached
+only in MOVE mode and is detached for rotation.
+
+ROTATE uses dedicated large-hit-tolerance XYZ torus rings in the inspector
+overlay, with raycasts from the inspector canvas and signed ray/axis-plane
+rotation. Every preview passes through the authoritative CAD edit bridge,
+and one final history entry is recorded on pointer release. Escape, lost
+focus or closing the inspector cancels the drag. Numeric +90-degree turns
+around X/Y/Z provide exact rotation when a ring is viewed edge-on.
+IFC remains deferred until the last integration phase.
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
