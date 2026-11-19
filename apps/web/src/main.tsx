@@ -5,7 +5,10 @@ import './features/bim/frameLogicMain.css'
 import { installPieceWorkspaceChromeGuard } from './features/bim/installPieceWorkspaceChromeGuard.ts'
 import App from './App.tsx'
 
-installPieceWorkspaceChromeGuard()
+// The standalone Three.js test has no Model Space panels to guard.
+if (new URLSearchParams(window.location.search).get("threeNative") !== "1") {
+  installPieceWorkspaceChromeGuard()
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
