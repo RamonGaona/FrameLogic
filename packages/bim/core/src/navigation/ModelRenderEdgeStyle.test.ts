@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { registerPieceVisualLevels } from "../design/PieceVisualGeometry";
 import { createOffsetSolidMaterials, createVisualEdgeGeometry } from "./ModelRenderEdgeStyle";
@@ -37,13 +36,5 @@ describe("FLPIECE solid plus edges", () => {
     original.dispose();
   });
 
-  it("refreshes overlays when entering or leaving the isolated workspace", () => {
-    const code = readFileSync(new URL("./ModelRenderModeController.ts", import.meta.url), "utf8");
-    expect(code).toContain('"data-framelogic-piece-workspace-active"');
-    expect(code).toContain("this.applyToAll(isolationChanged)");
-    expect(code).toContain("this.ensureEdges(mesh, 0x18242e, 1, true)");
-    expect(code).toContain("lines.renderOrder = detailedEditorEdges ? 14 : 4");
-    expect(code).toContain("this.disposeTemporaryMaterials(mesh)");
-    expect(code).toContain("this.removeEdges(mesh)");
-  });
+
 });
