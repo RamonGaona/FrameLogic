@@ -8,6 +8,7 @@ import {
 export interface NativeMoveGizmo {
   readonly group: THREE.Group;
   readonly axisLengthMm: number;
+  readonly centerHandle: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
   dispose(): void;
 }
 
@@ -28,6 +29,16 @@ export function createNativeMoveGizmo(
   // Keep gizmo usable on mm-scale parts, without changing camera projection.
   const length = THREE.MathUtils.clamp(modelDiagonalMm * 0.2, 10, 1000);
   const radius = Math.max(0.5, length * 0.025);
+  const centerHandle = new THREE.Mesh(
+    new THREE.SphereGeometry(Math.max(radius * 2.8, length * 0.058), 16, 12),
+    new THREE.MeshBasicMaterial({
+      color: 0xf7e6a0, depthTest: false, transparent: true, opacity: 0.98,
+    }),
+  );
+  centerHandle.name = "Centro XYZ · punto base del gizmo";
+  centerHandle.userData["nativeMovePivotCenter"] = true;
+  // Keep the neutral pivot visible and selectable without altering geometry.
+  group.add(centerHandle);
 
   for (const axis of ["X", "Y", "Z"] as const) {
     const direction = NATIVE_MOVE_AXES[axis];
@@ -59,6 +70,7 @@ export function createNativeMoveGizmo(
   return {
     group,
     axisLengthMm: length,
+    centerHandle,
     dispose: () => {
       group.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
@@ -70,6 +82,25 @@ export function createNativeMoveGizmo(
       group.clear();
     },
   };
+}
+
+/** Centre picker takes precedence over nearby axis arrows. */
+export function pickNativeMoveCenter(
+  gizmo: NativeMoveGizmo,
+  camera: THREE.OrthographicCamera,
+  clientX: number,
+  clientY: number,
+  rect: Pick<DOMRect, "left" | "top" | "width" | "height">,
+): boolean {
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  const x = (clientX - rect.left) / rect.width;
+  const y = (clientY - rect.top) / rect.height;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return false;
+  camera.updateMatrixWorld(true);
+  gizmo.group.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2(x * 2 - 1, 1 - y * 2), camera);
+  return ray.intersectObject(gizmo.centerHandle, false).length > 0;
 }
 
 export function pickNativeMoveAxis(

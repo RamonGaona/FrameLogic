@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.197 — 2026-11-19 (fase 3j: reposicionamiento independiente del centro XYZ del gizmo nativo)
+
+- **Centro XYZ reubicable sin mover la pieza:** el gizmo Three.js nativo del visor `?threeNative=1` incorpora una esfera central identificable, cuyo **clic corto** arma la reposición del punto base. El **siguiente clic en un SNAP B-Rep exacto** coloca el centro XYZ allí **sin mover, copiar ni modificar ninguna malla o sólido STEP**. También se admite llevar el puntero desde el centro hasta un SNAP exacto y soltarlo; nunca se reubica por proyección libre de pantalla. El menú ofrece **Mover centro XYZ** y **Restablecer centro**.
+- **SNAP preciso, cancelación y estado:** el nuevo modo prioriza únicamente puntos OpenCascade B-Rep exactos visibles de archivos e instancias STEP de la sesión. Una referencia sin SNAP no cambia el pivote, la pieza ni la selección; Esc cancela y libera captura de puntero, sin crear un movimiento. Se muestran instrucciones claras y la coordenada mundial del punto base en mm.
+- **Identidad y persistencia de sesión:** el punto base se guarda como **offset de pivote por instancia STEP**, relativo al centro espacial actualizado del producto. Así acompaña a la pieza al moverla, deshacer/rehacer y trasladar copias; al copiar con Ctrl la nueva instancia **hereda el punto base relativo sin vincularlo al del original**. Reiniciar el centro de una copia no modifica el original.
+- **Integración con operaciones:** un MOVER HASTA o COPIAR HASTA posterior calcula el desplazamiento desde el **nuevo pivote**, no desde el centro de la caja de la pieza; el gizmo y su centro se actualizan con la transformación visual. Reposicionar el pivote no genera una entrada de Undo/Redo porque no cambia geometría; se conserva la historia de las traslaciones/copias como estaba.
+- **Seguridad:** la selección del centro no dispara arrastre de mallas, órbita ni copia. La operación permanece restringida a STEP independientes con producto único inequívoco. La posición del pivote es **temporal y visual**, no se guarda en `.flproject` ni altera B-Rep OpenCascade; STEP multipartes continúan bloqueados en el visor experimental. Model Space estable, IFC, DWG/DXF, Paper Space/PDF y cámara ortográfica no se modifican.
+- **Pruebas:** nuevos casos de pivote independiente, ausencia de mutación GPU/STEP, movimiento y Undo/Redo con pivote personalizado, herencia desacoplada al copiar, validación de coordenadas y raycast específico de la esfera central, además de regresiones de flujo de eventos.
+
+---
+
 ## v0.1.196 — 2026-11-19 (fase 3i: MOVER HASTA / COPIAR HASTA por eje con siguiente clic de referencia)
 
 - **Paridad con el gizmo original:** un **clic corto** (sin arrastrar) en las flechas X/Y/Z del gizmo Three.js nativo `?threeNative=1` **arma el eje**. El **siguiente clic** en una referencia geométrica visible realiza **MOVER HASTA**: el **pivote del gizmo** alcanza la coordenada de la referencia proyectada **exclusivamente sobre el eje seleccionado**, manteniendo invariables las otras dos coordenadas. El arrastre normal del eje de v0.1.194 continúa funcionando.
