@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.199 — 2026-11-19 (gizmo XYZ de tamaño constante frente al zoom de la cámara)
+
+- **Escala adaptativa en pantalla:** en el visor STEP Three.js nativo `?threeNative=1` el gizmo deja de agrandarse al acercar la cámara y de desaparecer al alejarla. En cámara ortográfica se calcula la relación milímetros/píxel a partir de `(camera.top - camera.bottom) / camera.zoom` y la altura real del viewport; los ejes se mantienen alrededor de **96 píxeles CSS**, ajustándose a pantallas pequeñas.
+- **Solo cambia el control visual:** la escala se aplica exclusivamente al `THREE.Group` temporal del gizmo, jamás a las piezas STEP, al B-Rep OpenCascade, al punto base real ni a los desplazamientos registrados en mm. Se recalcula durante el render para actualizarse inmediatamente ante zoom, encuadre y cambio de tamaño de la ventana, y también antes de la detección con el mouse.
+- **Movimiento exacto conservado:** el arrastre proyectado usa ahora la **longitud mundial efectiva del eje ya escalado** en vez de su longitud geométrica base, para conservar las distancias de movimiento/copia en milímetros independientemente del zoom.
+- **Compatibilidad:** los ejes X/Y/Z, centro resaltado y su prioridad sobre SNAP, reubicación de pivote, Ctrl-copia, MOVER/COPIAR HASTA, COPYBASE, Deshacer/Rehacer y selección permanecen activos. La cámara continúa ortográfica y no se toca el Model Space estable, IFC, DWG/DXF, Paper Space/PDF ni la persistencia.
+- **Pruebas:** se verifican longitudes proyectadas constantes al cambiar el zoom, detección de ejes y centro en varios niveles, arrastres que respetan los milímetros y resistencia a dimensiones de viewport no válidas.
+
+---
+
 ## v0.1.198 — 2026-11-19 (centro XYZ resaltado con mouse y prioridad visual sobre SNAP)
 
 - **Hover centro XYZ:** al pasar el cursor por el centro del gizmo nativo Three.js (`?threeNative=1`), la esfera central cambia a amarillo brillante, aumenta temporalmente su tamaño y aparece un anillo luminoso de **24 px** sobre el centro. El cursor toma forma de puntero. Al salir o iniciar un arrastre, se restaura el aspecto normal; los ejes X/Y/Z y la pieza mantienen sus materiales.
