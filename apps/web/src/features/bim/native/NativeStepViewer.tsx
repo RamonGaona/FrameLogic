@@ -35,6 +35,7 @@ import {
   createNativeMoveGizmo,
   nativeMoveAxisDistanceFromPixels,
   pickNativeMoveAxis,
+  pickNativeMoveCenter,
   type NativeMoveGizmo,
 } from "./NativeStepMoveGizmo";
 import {
@@ -44,6 +45,11 @@ import {
   type NativeIsolatedStepTarget,
   type NativeMoveAxis,
 } from "./NativeStepMoveController";
+import {
+  getNativeStepGizmoPivot,
+  resetNativeStepGizmoPivot,
+  setNativeStepGizmoPivot,
+} from "./NativeStepGizmoPivot";
 import {
   isNativeSnapVisible,
   isSnapWithinNativePartScope,
@@ -129,6 +135,8 @@ export function NativeStepViewer() {
   const moveGizmoRef = useRef<NativeMoveGizmo | null>(null);
   const moveGizmoKeyRef = useRef<string | null>(null);
   const snapPlacementRef = useRef<NativeCopySnapBase | null>(null);
+  const armedPivotRef = useRef<{ readonly sourceKey: string } | null>(null);
+  const [pivotArmed, setPivotArmed] = useState(false);
   const armedUntilRef = useRef<{
     readonly sourceKey: string;
     readonly axis: NativeMoveAxis;
@@ -165,7 +173,11 @@ export function NativeStepViewer() {
     const scope = runtime && selected
       ? resolveNativeStepPartScope(runtime.modelRoot, selected) : null;
     partScopeRef.current = scope;
-    setTransformTarget(scope ? prepareNativeStepTransformTarget(scope) : null);
+    const pivot = scope ? getNativeStepGizmoPivot(scope) : null;
+    setTransformTarget(scope ? {
+      ...prepareNativeStepTransformTarget(scope),
+      pivot: pivot!,
+    } : null);
     const target = resolveNativeIsolatedStepTarget(scope);
     moveTargetRef.current = target;
     setMoveEligible(Boolean(target));
@@ -179,12 +191,12 @@ export function NativeStepViewer() {
     if (target && runtime && scope) {
       if (!moveGizmoRef.current) {
         const diagonal = scope.bounds.getSize(new THREE.Vector3()).length();
-        const gizmo = createNativeMoveGizmo(scope.pivot, diagonal);
+        const gizmo = createNativeMoveGizmo(pivot!, diagonal);
         runtime.scene.add(gizmo.group);
         moveGizmoRef.current = gizmo;
         moveGizmoKeyRef.current = target.key;
       } else {
-        moveGizmoRef.current.group.position.copy(scope.pivot);
+        moveGizmoRef.current.group.position.copy(pivot!);
         moveGizmoRef.current.group.updateMatrixWorld(true);
       }
     }
@@ -197,6 +209,50 @@ export function NativeStepViewer() {
     setUntilSurface(null);
   }
 
+  function clearArmedPivot(): void {
+    armedPivotRef.current = null;
+    setPivotArmed(false);
+  }
+
+  function armNativePivot(): boolean {
+    const target = moveTargetRef.current;
+    const scope = partScopeRef.current;
+    if (!target || !scope || scope.key !== target.key) {
+      setMoveStatus("Centro del gizmo: selecciona un STEP de producto único.");
+      return false;
+    }
+    clearArmedUntil();
+    snapPlacementRef.current = null;
+    setSnapBase(null);
+    armedPivotRef.current = { sourceKey: target.key };
+    setPivotArmed(true);
+    setSnap(null);
+    setUntilSurface(null);
+    setMoveStatus("CENTRO XYZ: selecciona un SNAP B-Rep exacto para reubicar solo el gizmo. Esc cancela.");
+    return true;
+  }
+
+  function placeNativePivot(point: THREE.Vector3): boolean {
+    const target = moveTargetRef.current;
+    const scope = partScopeRef.current;
+    if (!target || !scope || armedPivotRef.current?.sourceKey !== target.key
+      || !setNativeStepGizmoPivot(scope, point)) return false;
+    clearArmedPivot();
+    refreshMoveUi();
+    setSnap(null);
+    setMoveStatus("Centro XYZ reubicado con SNAP exacto. La pieza no se movió; sin entrada Undo.");
+    return true;
+  }
+
+  function resetNativePivot(): void {
+    const scope = partScopeRef.current;
+    if (!scope || !resetNativeStepGizmoPivot(scope)) return;
+    clearArmedPivot();
+    refreshMoveUi();
+    setSnap(null);
+    setMoveStatus("Centro XYZ restablecido. Geometría y posición de la pieza sin cambios.");
+  }
+
   function armNativeUntil(axis: NativeMoveAxis, copy = false): boolean {
     const target = moveTargetRef.current;
     const scope = partScopeRef.current;
@@ -204,9 +260,10 @@ export function NativeStepViewer() {
       setMoveStatus("HASTA requiere una pieza STEP independiente seleccionada.");
       return false;
     }
+    clearArmedPivot();
     snapPlacementRef.current = null;
     setSnapBase(null);
-    const pivot = scope.pivot.clone();
+    const pivot = getNativeStepGizmoPivot(scope);
     armedUntilRef.current = {
       sourceKey: target.key, axis, pivot, copy,
     };
@@ -221,6 +278,7 @@ export function NativeStepViewer() {
   }
 
   function focusNativeTarget(target: NativeIsolatedStepTarget | null): void {
+    clearArmedPivot();
     clearArmedUntil();
     snapPlacementRef.current = null;
     setSnapBase(null);
