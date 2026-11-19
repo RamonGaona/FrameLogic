@@ -1,5 +1,13 @@
 import * as THREE from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
+import {
+  createNativeProjectRotationRings,
+  sizeNativeProjectRotationRings,
+  pickNativeProjectRotationRing,
+  nativeProjectRotationDragAngle,
+  nativeProjectRotationFromStart,
+  type NativeProjectRotateAxis,
+} from "./NativeProjectRotationRings";
 
 import type { FrameLogicViewportPort } from "./FrameLogicViewportPort";
 import {
@@ -100,8 +108,16 @@ export function mountExperimentalNativeThreePreview(
   const camera = new THREE.OrthographicCamera();
   const canSelect = Boolean(options.getInstanceTargets && options.onSelectInstance);
   const nativeEdit = canSelect ? options.nativeEdit : undefined;
-  let nativeMode: "translate" | "rotate" = "translate";
+  // Selecting a piece must not silently arm MOVE. The user chooses a mode.
+  let nativeMode: "select" | "translate" | "rotate" = "select";
   let nativeDrag = false;
+  let ringDrag: {
+    readonly id: number;
+    readonly axis: NativeProjectRotateAxis;
+    readonly pivot: THREE.Vector3;
+    readonly startingQuaternion: THREE.Quaternion;
+    readonly start: readonly [number, number];
+  } | null = null;
   let gizmoPointerGesture = false;
   let trackedNativeId: string | null = null;
   let selectionGesture: { id: number; x: number; y: number } | null = null;
@@ -145,7 +161,7 @@ export function mountExperimentalNativeThreePreview(
   const actionStatus = document.createElement("div");
   actionStatus.style.cssText = "padding:5px 8px;color:#d1fae5";
   actionStatus.textContent = nativeEdit
-    ? "Selecciona una pieza y arrastra los ejes del gizmo aquí. Mover/Rotar cambian de modo."
+    ? "Selecciona una pieza y elige Mover o Rotar. El modo no se activa automáticamente."
     : "Clic en una pieza para seleccionarla · editar en Model Space";
   const toolbar = document.createElement("div");
   toolbar.style.cssText = "display:flex;gap:5px;flex-wrap:wrap;padding:6px 8px 0";
@@ -181,28 +197,65 @@ export function mountExperimentalNativeThreePreview(
     makeAction("Deshacer", options.onUndo);
     makeAction("Rehacer", options.onRedo);
   }
+  const rotationShortcuts: HTMLButtonElement[] = [];
+  if (nativeEdit) {
+    const note = document.createElement("span");
+    note.textContent = "Rotación exacta:";
+    note.style.cssText = "align-self:center;color:#cbd5e1";
+    toolbar.append(note);
+    for (const axis of ["X", "Y", "Z"] as const) {
+      const button = makeAction(`${axis} +90°`, () => {
+        const target = nativeEdit.getTarget();
+        if (!target || nativeDrag || ringDrag || !nativeEdit.begin("rotate")) return false;
+        const rotated = nativeProjectRotationFromStart(target.quaternion, axis, Math.PI / 2);
+        if (!rotated || !nativeEdit.preview(target.position, rotated)) {
+          nativeEdit.finish(false);
+          return false;
+        }
+        return nativeEdit.finish(true);
+      });
+      button.title = `Rotar 90° sobre el eje global ${axis}, con Undo/Redo y .flproject.`;
+      rotationShortcuts.push(button);
+    }
+  }
 
   // Own one TransformControls instance for the INSPECTOR canvas. Its helper
   // lives in an overlay scene, never in the production scene. Only the
   // original FrameLogic model can commit a transform.
   const gizmoScene = nativeEdit ? new THREE.Scene() : null;
   const gizmoPivot = nativeEdit ? new THREE.Object3D() : null;
+  // TransformControls is retained for MOVE only. Its rotation rings have
+  // unreliable pointer capture when driven by the secondary canvas, so ROTATE
+  // gets its own hit-tested rings and signed world-space ray/plane gesture.
   const gizmo = nativeEdit ? new TransformControls(camera, renderer.domElement) : null;
+  const rotateRings = nativeEdit ? createNativeProjectRotationRings() : null;
+  if (gizmoScene && rotateRings) {
+    rotateRings.group.visible = false;
+    gizmoScene.add(rotateRings.group);
+  }
   if (gizmoScene && gizmo && gizmoPivot) {
     gizmoScene.add(gizmoPivot);
     gizmoScene.add(gizmo.getHelper());
-    gizmo.setMode(nativeMode);
+    gizmo.setMode("translate");
     gizmo.setSpace("world");
     gizmo.setSize(0.9);
     setNativeMode = (mode) => {
-      if (disposed || !nativeEdit?.getTarget() || nativeDrag) return false;
+      if (disposed || !nativeEdit?.getTarget() || nativeDrag || ringDrag) return false;
       nativeMode = mode;
-      gizmo.setMode(mode);
+      if (mode === "rotate") {
+        gizmo.detach();
+        if (rotateRings) rotateRings.group.visible = true;
+      } else {
+        if (rotateRings) rotateRings.group.visible = false;
+        gizmo.setMode("translate");
+      }
+      if (moveButton) moveButton.setAttribute("aria-pressed", String(mode === "translate"));
+      if (rotateButton) rotateButton.setAttribute("aria-pressed", String(mode === "rotate"));
       return true;
     };
   }
   const handleGizmoMouseDown = (): void => {
-    if (!nativeEdit || !gizmo || nativeDrag) return;
+    if (!nativeEdit || !gizmo || nativeDrag || nativeMode !== "translate") return;
     // Gizmo hit takes priority over ordinary piece-selection clicks.
     gizmoPointerGesture = true;
     selectionGesture = null;
@@ -233,7 +286,85 @@ export function mountExperimentalNativeThreePreview(
   gizmo?.addEventListener("objectChange", handleGizmoObjectChange);
   gizmo?.addEventListener("mouseUp", handleGizmoMouseUp);
 
+  // ROTATE is handled directly by the inspector canvas. The actual
+  // PieceInstance transform is changed through nativeEdit.preview(), never
+  // through a transient mesh-only rotation.
+  const onRotatePointerDown = (event: PointerEvent): void => {
+    if (!nativeEdit || !rotateRings || nativeMode !== "rotate"
+      || nativeDrag || ringDrag || event.button !== 0) return;
+    const target = nativeEdit.getTarget();
+    if (!target) return;
+    const axis = pickNativeProjectRotationRing(
+      rotateRings.group, camera, event.clientX, event.clientY,
+      renderer.domElement.getBoundingClientRect(),
+    );
+    if (!axis) return;
+    if (!nativeEdit.begin("rotate")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectionGesture = null;
+    gizmoPointerGesture = true;
+    ringDrag = {
+      id: event.pointerId, axis,
+      pivot: target.position.clone(),
+      startingQuaternion: target.quaternion.clone(),
+      start: [event.clientX, event.clientY],
+    };
+    renderer.domElement.setPointerCapture?.(event.pointerId);
+    actionStatus.textContent = `Rotación ${axis}: arrastra el anillo y suelta para confirmar. Escape cancela.`;
+  };
+
+  const onRotatePointerMove = (event: PointerEvent): void => {
+    const drag = ringDrag;
+    if (!drag || !nativeEdit || drag.id !== event.pointerId) return;
+    const angle = nativeProjectRotationDragAngle(
+      camera, drag.pivot, drag.axis, drag.start,
+      [event.clientX, event.clientY],
+      renderer.domElement.getBoundingClientRect(),
+    );
+    if (angle === null) return;
+    const orientation = nativeProjectRotationFromStart(
+      drag.startingQuaternion, drag.axis, angle,
+    );
+    if (!orientation || !nativeEdit.preview(drag.pivot, orientation)) {
+      nativeEdit.finish(false);
+      ringDrag = null;
+      actionStatus.textContent = "Rotación cancelada: la pieza dejó de ser editable.";
+      return;
+    }
+    event.preventDefault();
+  };
+
+  const finishRotateGesture = (commit: boolean): void => {
+    const drag = ringDrag;
+    if (!drag || !nativeEdit) return;
+    ringDrag = null;
+    if (renderer.domElement.hasPointerCapture?.(drag.id)) {
+      renderer.domElement.releasePointerCapture(drag.id);
+    }
+    const changed = nativeEdit.finish(commit);
+    actionStatus.textContent = !commit
+      ? "Rotación cancelada; pieza restaurada."
+      : changed
+        ? `Rotación ${drag.axis} guardada en el proyecto. Undo/Redo disponible.`
+        : "No se modificó la rotación.";
+  };
+
+  if (rotateRings) {
+    // Capture runs before other listeners so rotation rings beat picking a
+    // mesh directly behind them and the translate TransformControls handler.
+    renderer.domElement.addEventListener("pointerdown", onRotatePointerDown, true);
+    renderer.domElement.addEventListener("pointermove", onRotatePointerMove);
+    renderer.domElement.addEventListener("pointerup", (event) => {
+      if (ringDrag?.id === event.pointerId) finishRotateGesture(true);
+    });
+  }
+
   const cancelNativeDrag = (): void => {
+    if (ringDrag) {
+      finishRotateGesture(false);
+      gizmoPointerGesture = false;
+    }
     if (!nativeDrag) return;
     nativeDrag = false;
     nativeEdit?.finish(false);
@@ -241,7 +372,7 @@ export function mountExperimentalNativeThreePreview(
     actionStatus.textContent = "Transformación cancelada; pieza restaurada.";
   };
   const handleNativeEscape = (event: KeyboardEvent): void => {
-    if (event.key !== "Escape" || !nativeDrag) return;
+    if (event.key !== "Escape" || (!nativeDrag && !ringDrag)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     cancelNativeDrag();
@@ -255,7 +386,7 @@ export function mountExperimentalNativeThreePreview(
   }
 
   const onPointerDown = (event: PointerEvent): void => {
-    if (!canSelect || event.button !== 0 || gizmoPointerGesture) return;
+    if (!canSelect || event.button !== 0 || gizmoPointerGesture || ringDrag) return;
     selectionGesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
   };
   const onPointerUp = (event: PointerEvent): void => {
@@ -266,7 +397,7 @@ export function mountExperimentalNativeThreePreview(
     }
     const start = selectionGesture;
     selectionGesture = null;
-    if (nativeDrag) return;
+    if (nativeDrag || ringDrag) return;
     if (!start || disposed || start.id !== event.pointerId
       || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) return;
     const getTargets = options.getInstanceTargets;
@@ -315,6 +446,9 @@ export function mountExperimentalNativeThreePreview(
     selectionGesture = null;
     gizmoPointerGesture = false;
     cancelNativeDrag();
+    renderer.domElement.removeEventListener("pointerdown", onRotatePointerDown, true);
+    renderer.domElement.removeEventListener("pointermove", onRotatePointerMove);
+    renderer.domElement.removeEventListener("pointerup", onRotatePointerUp);
     window.removeEventListener("keydown", handleNativeEscape, true);
     window.removeEventListener("blur", handleNativeBlur);
     renderer.domElement.removeEventListener("pointercancel", handleNativePointerCancel);
@@ -323,6 +457,7 @@ export function mountExperimentalNativeThreePreview(
     gizmo?.removeEventListener("mouseUp", handleGizmoMouseUp);
     gizmo?.detach();
     gizmo?.dispose();
+    rotateRings?.dispose();
     if (frame !== null) window.cancelAnimationFrame(frame);
     panel.remove();
     // Only own the extra renderer. Geometry, materials, scene and textures
