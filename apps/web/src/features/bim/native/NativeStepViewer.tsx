@@ -373,9 +373,12 @@ export function NativeStepViewer() {
     const escapeSelection = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (moveDrag) {
+        const pointerId = moveDrag.id;
         moveRef.current.endDrag(false);
         moveDrag = null;
+        if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
         refreshMoveUi();
+        clearSnap();
         setMoveStatus("Desplazamiento cancelado.");
         return;
       }
