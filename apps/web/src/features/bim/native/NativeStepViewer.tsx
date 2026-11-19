@@ -450,6 +450,9 @@ export function NativeStepViewer() {
         },
         () => {
           if (!runtime.disposed) {
+            const clean = new URL(window.location.href);
+            clean.searchParams.delete("handoff");
+            window.history.replaceState(window.history.state, "", clean.toString());
             setMoveStatus("No se recibió el STEP desde Model Space. Puedes abrirlo manualmente con Abrir STEP / Ensamblaje.");
           }
         },
