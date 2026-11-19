@@ -243,6 +243,10 @@ export class NativeStepMoveController {
     return this.rotationDrag !== null;
   }
 
+  get activeRotationCopy(): boolean {
+    return Boolean(this.rotationDrag?.copy);
+  }
+
   get isCopying(): boolean {
     return this.drag?.copy !== null && this.drag !== null;
   }
