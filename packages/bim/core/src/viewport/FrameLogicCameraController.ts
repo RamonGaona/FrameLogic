@@ -31,6 +31,18 @@ export interface FrameLogicCameraDriver {
   ) => unknown;
   readonly zoomTo: (zoom: number, transition: boolean) => unknown;
   readonly subscribeUpdate: (listener: () => void) => () => void;
+  readonly getDistance: () => number;
+  readonly getTarget: (target: THREE.Vector3) => THREE.Vector3;
+  readonly getOrthographicCamera: () => THREE.OrthographicCamera;
+  readonly setMinimumZoom: (value: number) => void;
+  readonly getMouseButtons: () => FrameLogicCameraMouseButtons;
+}
+
+export interface FrameLogicCameraMouseButtons {
+  left: number;
+  middle: number;
+  right: number;
+  wheel: number;
 }
 
 export class FrameLogicCameraController {
@@ -59,6 +71,28 @@ export class FrameLogicCameraController {
 
   get enabled(): boolean {
     return this.driver.getEnabled();
+  }
+
+  get distance(): number {
+    return this.driver.getDistance();
+  }
+
+  /** Return the live native orthographic camera used by CAD Model Space. */
+  get orthographicCamera(): THREE.OrthographicCamera {
+    return this.driver.getOrthographicCamera();
+  }
+
+  getTarget(target: THREE.Vector3): THREE.Vector3 {
+    return this.driver.getTarget(target);
+  }
+
+  setMinimumZoom(value: number): void {
+    this.driver.setMinimumZoom(value);
+  }
+
+  /** CAD mouse bindings stay plain mutable values, not That Open types. */
+  get mouseBindings(): { readonly mouseButtons: FrameLogicCameraMouseButtons } {
+    return { mouseButtons: this.driver.getMouseButtons() };
   }
 
   setEnabled(enabled: boolean): void {
