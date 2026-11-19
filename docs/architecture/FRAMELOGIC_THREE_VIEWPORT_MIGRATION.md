@@ -479,6 +479,29 @@ ownership: it does not yet port the native STEP gizmos into the authoritative
 project viewport, nor guarantee all project/assembly/DWG use cases. Future
 steps: persistent STEP native gizmo input, hierarchical Ctrl-copy and SNAP,
 DWG reference command parity and Paper Space; IFC adapter integration last.
+## Phase 3p — direct draggable native gizmo with authoritative CAD transforms (v0.1.204)
+
+Reported regression after v0.1.203: the secondary renderer showed the
+Model Space gizmos, but those TransformControls listened on the primary
+canvas. Activating MOVE or ROTATE from the inspector did not make them
+draggable in the inspector itself.
+
+The project inspection panel now owns a separate THREE.TransformControls
+instance bound to its *own canvas* and copied orthographic camera, rendering
+only the gizmo helper over the shared project scene. Choosing Mover / Rotar
+sets that native gizmo's mode; pointer drags are passed through a new
+NativeProjectCadEditBridge. It validates exactly one editable PieceInstance,
+preserves parent transforms, updates the real DesignModel through existing
+updateDesignPieceInstanceTransform, and commits one CadHistory record on
+pointer release. Escape, blur and close revert the original transform.
+Transforms are included in .flproject using the existing project serializer.
+
+Selection and gizmo interactions are scoped to the secondary renderer canvas.
+No temporary Three.Group state is saved independently. Arbitrary CAD line
+references, IFC/Fragments, hidden/locked pieces and multi-selection cannot
+be transformed by this single-piece bridge; advanced native SNAP/Ctrl-copy
+and assembly-wide dragging remain planned. The production Model Space and
+Paper Space/PDF are untouched. IFC integration remains the final phase.
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
