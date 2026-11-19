@@ -42,6 +42,16 @@ describe("Native Three.js orthographic diagnostic preview", () => {
     expect(source.right - source.left).toBe(100);
   });
 
+  it("never recursively clones camera children every rendered frame", () => {
+    const source = new THREE.OrthographicCamera();
+    source.add(new THREE.Object3D());
+    const destination = new THREE.OrthographicCamera();
+    copyNativeOrthographicPreviewCamera(source, 320, 200, destination);
+    copyNativeOrthographicPreviewCamera(source, 320, 200, destination);
+    expect(destination.children).toHaveLength(0);
+    expect(source.children).toHaveLength(1);
+  });
+
   it("rejects invalid viewport sizes", () => {
     const source = new THREE.OrthographicCamera();
     expect(() => copyNativeOrthographicPreviewCamera(source, 0, 200)).toThrow(/positive/);
