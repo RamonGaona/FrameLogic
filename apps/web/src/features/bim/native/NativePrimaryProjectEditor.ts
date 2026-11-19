@@ -40,7 +40,7 @@ export interface NativePrimaryProjectEditorHandle {
  * scene, project, drawing or WebGL context: DWG/DXF, assemblies, .flproject
  * and Paper Space continue to use the existing authoritative controllers.
  *
- * Closing this tool returns pointer/navigation ownership to Model Space.
+ * Ending a transformation restores ordinary CAD input in the same Model Space.
  */
 export function mountNativePrimaryProjectEditor(
   options: NativePrimaryProjectEditorOptions,
@@ -74,7 +74,7 @@ export function mountNativePrimaryProjectEditor(
   // command is explicitly armed, never during ordinary model selection.
   const toolbar = document.createElement("details");
   toolbar.dataset.nativePrimaryToolbar = "true";
-  toolbar.setAttribute("aria-label", "Edición Three.js del Model Space principal");
+  toolbar.setAttribute("aria-label", "Transformaciones del Model Space");
   toolbar.style.cssText = [
     "position:absolute", "right:16px", "bottom:16px", "z-index:52",
     "max-width:min(520px,calc(100% - 32px))", "background:#162434",
@@ -83,14 +83,14 @@ export function mountNativePrimaryProjectEditor(
     "box-shadow:0 5px 22px #0008",
   ].join(";");
   const title = document.createElement("summary");
-  title.textContent = "Three.js · herramientas del Model Space";
+  title.textContent = "Transformar · mover y rotar";
   title.style.cssText = "font-weight:bold;cursor:pointer";
   toolbar.open = false;
   const actions = document.createElement("div");
   actions.style.cssText = "display:flex;gap:5px;flex-wrap:wrap";
   const info = document.createElement("div");
   info.style.cssText = "padding-top:6px;color:#cbd5e1";
-  info.textContent = "Selecciona una pieza en Model Space como siempre. Mover y Rotar activan el gizmo nativo; el resto de herramientas CAD, DWG/DXF y Paper Space permanecen disponibles.";
+  info.textContent = "Selecciona una pieza en Model Space y elige Mover o Rotar. Los comandos CAD, STEP, DWG/DXF, ensamblajes y Paper Space utilizan este mismo proyecto.";
   toolbar.append(title, actions, info);
   host.append(toolbar);
 
@@ -127,7 +127,11 @@ export function mountNativePrimaryProjectEditor(
   const selectButton = addButton("Seleccionar", () => setMode("select"));
   const moveButton = addButton("Mover", () => setMode("translate"));
   const rotateButton = addButton("Rotar", () => setMode("rotate"));
-  const closeButton = addButton("Volver a CAD", () => dispose());
+  addButton("Cerrar herramientas", () => {
+    cancelGesture();
+    setMode("select");
+    toolbar.open = false;
+  });
   const undoButton = addButton("Deshacer", () => {
     if (activeMove || ringDrag) return;
     setMessage(options.undo() ? "Última operación CAD deshecha." : "No hay cambios para deshacer.");
@@ -371,7 +375,7 @@ export function mountNativePrimaryProjectEditor(
   };
   const onOutsidePointerDown = (event: PointerEvent): void => {
     // Switching to ribbon tools, configuration, Project/Open or Paper Space
-    // returns input to the complete established CAD workflow automatically.
+    // restores normal CAD input without changing the active Three.js viewport.
     if (mode === "select" || toolbar.contains(event.target as Node)
       || input.contains(event.target as Node)) return;
     cancelGesture();
