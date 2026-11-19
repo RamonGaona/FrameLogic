@@ -93,6 +93,8 @@ export function findNativeExactSnap(
   clientY: number,
   canvasRect: Pick<DOMRect, "left" | "top" | "width" | "height">,
   tolerancePx = 13,
+  /** Optional exact-candidate gate for product bounds and visibility. */
+  acceptCandidate?: (candidate: NativeExactSnapPoint) => boolean,
 ): NativeExactSnapHit | null {
   if (!selectedDocumentId || canvasRect.width <= 0 || canvasRect.height <= 0
     || !Number.isFinite(tolerancePx) || tolerancePx <= 0) return null;
@@ -114,6 +116,9 @@ export function findNativeExactSnap(
     const candidateY = canvasRect.top + (1 - ndc.y) * 0.5 * canvasRect.height;
     const distance = Math.hypot(candidateX - clientX, candidateY - clientY);
     if (distance > tolerancePx) continue;
+    // Evaluate the gate only after cheap camera/document/tolerance filters.
+    // If the nearest candidate is occluded, keep searching for a visible one.
+    if (acceptCandidate && !acceptCandidate(candidate)) continue;
     if (best && distance > best.screenDistancePx + 0.25) continue;
     if (best && Math.abs(distance - best.screenDistancePx) <= 0.25
       && PRIORITY[candidate.kind] >= PRIORITY[best.kind]) continue;
