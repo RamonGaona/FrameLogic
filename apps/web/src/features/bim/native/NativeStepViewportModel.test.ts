@@ -34,6 +34,29 @@ describe("Native STEP viewer geometry and independent orthographic camera", () =
     expect(materialDispose).toHaveBeenCalledOnce();
   });
 
+  it("carries STEP product and exact B-Rep source identity on visual meshes", () => {
+    const group = buildNativeStepMeshGroup({
+      brepDocumentId: "brep:A",
+      meshes: [{
+        id: "mesh-profile",
+        positions: new Float32Array([0, 0, 0, 100, 0, 0, 0, 100, 0]),
+        indices: new Uint32Array([0, 1, 2]),
+      }],
+      products: [{
+        id: "product-profile",
+        name: "Perfil estructural",
+        geometryIds: ["mesh-profile"],
+        childIds: [],
+      }],
+    }, "ensamble.step");
+    const mesh = group.children[0] as THREE.Mesh;
+    expect(mesh.userData["sourceFileName"]).toBe("ensamble.step");
+    expect(mesh.userData["brepDocumentId"]).toBe("brep:A");
+    expect(mesh.userData["stepProductId"]).toBe("product-profile");
+    expect(mesh.userData["stepProductName"]).toBe("Perfil estructural");
+    disposeNativeStepMeshGroup(group);
+  });
+
   it("fits a long STEP assembly and preserves a native Z-up orthographic camera", () => {
     const bounds = new THREE.Box3(
       new THREE.Vector3(0, -20, -20),

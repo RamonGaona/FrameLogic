@@ -4,6 +4,9 @@ export interface NativeStepSelectionInfo {
   readonly uuid: string;
   readonly meshId: string;
   readonly sourceFileName: string;
+  readonly brepDocumentId: string | null;
+  readonly stepProductId: string | null;
+  readonly stepProductName: string | null;
   readonly triangleCount: number;
   readonly boundsMm: readonly [number, number, number];
 }
@@ -88,6 +91,12 @@ export class NativeStepSelectionController {
       sourceFileName: typeof mesh.userData["sourceFileName"] === "string"
         ? mesh.userData["sourceFileName"] as string
         : "STEP",
+      brepDocumentId: typeof mesh.userData["brepDocumentId"] === "string"
+        ? mesh.userData["brepDocumentId"] as string : null,
+      stepProductId: typeof mesh.userData["stepProductId"] === "string"
+        ? mesh.userData["stepProductId"] as string : null,
+      stepProductName: typeof mesh.userData["stepProductName"] === "string"
+        ? mesh.userData["stepProductName"] as string : null,
       triangleCount: geometry.index
         ? Math.floor(geometry.index.count / 3)
         : Math.floor((geometry.getAttribute("position")?.count ?? 0) / 3),

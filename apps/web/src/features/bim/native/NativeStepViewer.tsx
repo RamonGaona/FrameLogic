@@ -8,6 +8,14 @@ const VERSION = typeof __FRAMELOGIC_VERSION__ === "string"
   ? __FRAMELOGIC_VERSION__ : "dev";
 
 import { OcctStepGeometryAdapter } from "../step/OcctStepGeometryAdapter";
+import { getOpenCascadeBrepKernel } from "@framelogic/geometry";
+import {
+  findNativeExactSnap,
+  indexNativeBrepSnapPoints,
+  NATIVE_SNAP_LABELS,
+  type NativeExactSnapHit,
+  type NativeExactSnapPoint,
+} from "./NativeStepExactSnapController";
 import {
   NativeStepSelectionController,
   pickNativeStepMesh,
@@ -84,6 +92,8 @@ export function NativeStepViewer() {
   const brepDocuments = useRef<string[]>([]);
   const adapterRef = useRef(new OcctStepGeometryAdapter());
   const selectionRef = useRef(new NativeStepSelectionController());
+  const snapIndexRef = useRef(new Map<string, readonly NativeExactSnapPoint[]>());
+  const [snap, setSnap] = useState<NativeExactSnapHit | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [loadedNames, setLoadedNames] = useState<string[]>([]);
@@ -147,6 +157,30 @@ export function NativeStepViewer() {
       startX: number; startY: number; moved: boolean; pan: boolean;
     } | null = null;
     const canvas = renderer.domElement;
+    let lastSnapQuery = -Infinity;
+    const clearSnap = () => setSnap((previous) => previous ? null : previous);
+    const updateSnapFromPointer = (event: PointerEvent) => {
+      const selected = selectionRef.current.selectedMesh;
+      const id = selected?.userData["brepDocumentId"];
+      if (typeof id !== "string" || id.length === 0) {
+        clearSnap();
+        return;
+      }
+      // Avoid O(topology vertices) projection on every high-frequency mouse event.
+      const now = performance.now();
+      if (now - lastSnapQuery < 70) return;
+      lastSnapQuery = now;
+      updateNativeOrthographicCamera(camera, state, width / height);
+      const result = findNativeExactSnap(
+        snapIndexRef.current.get(id) ?? [],
+        id, camera, event.clientX, event.clientY,
+        canvas.getBoundingClientRect(), 13,
+      );
+      setSnap((previous) => previous?.id === result?.id
+        && previous?.screenX === result?.screenX
+        && previous?.screenY === result?.screenY
+        ? previous : result);
+    };
     const down = (e: PointerEvent) => {
       if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
       pointer = {
@@ -155,10 +189,15 @@ export function NativeStepViewer() {
         pan: e.button === 2 || (e.button === 0 && e.shiftKey),
       };
       canvas.setPointerCapture(e.pointerId);
+      clearSnap();
       e.preventDefault();
     };
     const move = (e: PointerEvent) => {
-      if (!pointer || pointer.id !== e.pointerId) return;
+      if (!pointer) {
+        updateSnapFromPointer(e);
+        return;
+      }
+      if (pointer.id !== e.pointerId) return;
       const dx = e.clientX - pointer.x;
       const dy = e.clientY - pointer.y;
       if (Math.hypot(e.clientX - pointer.startX, e.clientY - pointer.startY) > 5) {
@@ -189,10 +228,12 @@ export function NativeStepViewer() {
           canvas.getBoundingClientRect(),
         );
         setSelection(selectionRef.current.setSelected(mesh));
+        clearSnap();
       }
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
+      clearSnap();
       wheelNativeCamera(state, e.deltaY);
     };
     const contextMenu = (e: Event) => e.preventDefault();
@@ -200,6 +241,7 @@ export function NativeStepViewer() {
       if (e.key !== "Escape") return;
       selectionRef.current.clear();
       setSelection(null);
+      clearSnap();
     };
     canvas.addEventListener("pointerdown", down);
     canvas.addEventListener("pointermove", move);
@@ -253,6 +295,7 @@ export function NativeStepViewer() {
       canvas.removeEventListener("contextmenu", contextMenu);
       window.removeEventListener("keydown", escapeSelection);
       selectionRef.current.dispose();
+      snapIndexRef.current.clear();
       // The root changes after each successful STEP import. Dispose the
       // active model rather than the original empty startup group.
       disposeNativeStepMeshGroup(runtime.modelRoot);
@@ -279,6 +322,7 @@ export function NativeStepViewer() {
     const started = performance.now();
     const staged = new THREE.Group();
     const stagedBrep: string[] = [];
+    const stagedSnapIndex = new Map<string, readonly NativeExactSnapPoint[]>();
     let meshes = 0;
     let triangles = 0;
     try {
@@ -293,7 +337,19 @@ export function NativeStepViewer() {
           targetUnit: "millimeter",
           includeExactFeatures: false,
         });
-        if (document.brepDocumentId) stagedBrep.push(document.brepDocumentId);
+        if (document.brepDocumentId) {
+          stagedBrep.push(document.brepDocumentId);
+          // This is the same exact OCCT document used by CAD geometry tools.
+          // Index once per STEP, not by tessellated mesh vertices.
+          const snapshot = getOpenCascadeBrepKernel()
+            .getDocument(document.brepDocumentId);
+          if (snapshot) {
+            stagedSnapIndex.set(
+              document.brepDocumentId,
+              indexNativeBrepSnapPoints(snapshot),
+            );
+          }
+        }
         if (!aliveRef.current || generation !== loadGeneration.current) return;
         const group = buildNativeStepMeshGroup(document, file.name);
         staged.add(group);
@@ -306,11 +362,13 @@ export function NativeStepViewer() {
 
       selectionRef.current.clear();
       setSelection(null);
+      setSnap(null);
       const previous = runtime.modelRoot;
       runtime.scene.remove(previous);
       disposeNativeStepMeshGroup(previous);
       for (const id of brepDocuments.current) adapterRef.current.disposeDocument(id);
       brepDocuments.current = stagedBrep.slice();
+      snapIndexRef.current = stagedSnapIndex;
 
       runtime.scene.add(staged);
       runtime.modelRoot = staged;
@@ -340,12 +398,14 @@ export function NativeStepViewer() {
   function setView(view: NativeView): void {
     const runtime = runtimeRef.current;
     if (!runtime) return;
+    setSnap(null);
     applyStandardView(runtime, view);
   }
 
   function fit(): void {
     const runtime = runtimeRef.current;
     if (!runtime || runtime.modelRoot.children.length === 0) return;
+    setSnap(null);
     const canvas = runtime.renderer.domElement;
     const aspect = Math.max(canvas.clientWidth, 1) / Math.max(canvas.clientHeight, 1);
     Object.assign(
@@ -417,6 +477,8 @@ export function NativeStepViewer() {
           }}>
             <strong>Malla seleccionada: {selection.meshId}</strong>
             <div>Archivo: {selection.sourceFileName}</div>
+            <div>Producto STEP: {selection.stepProductName ?? "sin identificar en el árbol"}</div>
+            <div>Identificador de producto: {selection.stepProductId ?? "no disponible"}</div>
             <div>Triángulos: {selection.triangleCount.toLocaleString("es-CO")}</div>
             <div>Dimensiones aproximadas (mm): {selection.boundsMm.map(
               (value) => value.toFixed(1),
@@ -424,13 +486,39 @@ export function NativeStepViewer() {
             <button type="button" style={buttonStyle} onClick={() => {
               selectionRef.current.clear();
               setSelection(null);
+              setSnap(null);
             }}>Deseleccionar</button>
           </div>
         ) : (
           <div style={{ color: "#8ca3b9" }}>Selección: ninguna</div>
         )}
+        <div style={{ color: "#a5cde0" }}>
+          SNAP B-Rep exacto: selecciona una malla y acerca el cursor a un vértice,
+          punto medio o centro. Los puntos pertenecen al STEP completo,
+          no todavía a cada subpieza.
+        </div>
+        <div data-native-brep-snap-status="true" style={{ color: "#99e6c9" }}>
+          {snap ? `${NATIVE_SNAP_LABELS[snap.kind]} · ${snap.point.x.toFixed(2)}, ${snap.point.y.toFixed(2)}, ${snap.point.z.toFixed(2)} mm`
+            : "SNAP: sin punto detectado"}
+        </div>
         {error ? <div role="alert" style={{ color: "#fca5a5" }}>{error}</div> : null}
       </section>
+      {snap && (
+        <div data-native-brep-snap-marker="true" aria-label={NATIVE_SNAP_LABELS[snap.kind]}
+          style={{
+            position: "absolute", zIndex: 4, pointerEvents: "none",
+            left: snap.screenX, top: snap.screenY,
+            transform: "translate(-50%, -50%)", width: 15, height: 15,
+            border: "2px solid #43f2be", borderRadius: snap.kind === "CIRCLE_CENTER" ? "50%" : "2px",
+            background: "#073c2c88", boxShadow: "0 0 8px #43f2be",
+          }}>
+          <span style={{
+            position: "absolute", left: "50%", top: "50%",
+            transform: "translate(-50%, -50%)", color: "#e6fff4",
+            fontSize: 11, lineHeight: 1,
+          }}>+</span>
+        </div>
+      )}
       <aside style={{
         position: "absolute", right: 14, bottom: 14, zIndex: 2,
         background: "#101820e8", border: "1px solid #526477", borderRadius: 9,
