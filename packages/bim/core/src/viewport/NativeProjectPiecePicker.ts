@@ -17,12 +17,14 @@ function isVisibleThrough(
   owner: THREE.Object3D,
 ): boolean {
   let node: THREE.Object3D | null = hitObject;
+  let foundOwner = false;
   while (node) {
     if (!node.visible) return false;
-    if (node === owner) return true;
+    if (node === owner) foundOwner = true;
     node = node.parent;
   }
-  return false;
+  // A hidden parent assembly or hidden CAD layer must also be rejected.
+  return foundOwner;
 }
 
 export function pickNativeProjectPieceInstance(
