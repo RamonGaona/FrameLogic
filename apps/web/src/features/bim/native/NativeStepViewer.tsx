@@ -305,7 +305,10 @@ export function NativeStepViewer() {
       pivot: THREE.Vector3;
       axisLength: number;
     } | null = null;
-    const clearSnap = () => setSnap((previous) => previous ? null : previous);
+    const clearSnap = () => {
+      setSnap((previous) => previous ? null : previous);
+      setUntilSurface((previous) => previous ? null : previous);
+    };
     const findUntilReferenceAt = (x: number, y: number): NativeAxisUntilReference | null => {
       const armed = armedUntilRef.current;
       const target = moveTargetRef.current;
@@ -549,6 +552,7 @@ export function NativeStepViewer() {
         return;
       }
       if (wasClick) {
+        clearArmedUntil();
         snapPlacementRef.current = null;
         setSnapBase(null);
         // A click selects the nearest visible STEP triangle, never an orbit
@@ -812,6 +816,7 @@ export function NativeStepViewer() {
     const runtime = runtimeRef.current;
     if (!runtime) return;
     setSnap(null);
+    setUntilSurface(null);
     applyStandardView(runtime, view);
   }
 
@@ -819,6 +824,7 @@ export function NativeStepViewer() {
     const runtime = runtimeRef.current;
     if (!runtime || runtime.modelRoot.children.length === 0) return;
     setSnap(null);
+    setUntilSurface(null);
     const canvas = runtime.renderer.domElement;
     const aspect = Math.max(canvas.clientWidth, 1) / Math.max(canvas.clientHeight, 1);
     Object.assign(
@@ -973,8 +979,19 @@ export function NativeStepViewer() {
             )}
             <div data-native-move-status="true" style={{ color: moveEligible ? "#86efac" : "#fcd34d" }}>
               {moveEligible
-                ? "Gizmo XYZ: arrastra para mover · Ctrl + arrastrar para copiar (original inmóvil) · Mover/Copiar por mm."
+                ? "Gizmo XYZ: arrastra para mover · Ctrl + arrastrar para copiar · clic corto en un eje = HASTA (siguiente clic en referencia)."
                 : "Movimiento y copia bloqueados: STEP con varios productos o identidad ambigua."}
+              {armedUntil && (
+                <div data-native-axis-until-active="true" style={{
+                  marginTop: 5, color: "#fcd34d",
+                }}>
+                  {armedUntil.copy ? "COPIAR HASTA" : "MOVER HASTA"} · eje {armedUntil.axis}
+                  {" · "}clic sobre SNAP B-Rep o cara visible
+                  {armedUntil.copy
+                    ? " · puedes seguir colocando copias; Esc termina."
+                    : " · Ctrl en el clic de destino copia; Esc cancela."}
+                </div>
+              )}
               {snapBase && (
                 <div data-native-copybase-active="true" style={{ color: "#67e8f9" }}>
                   COPYBASE · base {snapBase.toArray().map(v => v.toFixed(2)).join(", ")} mm
@@ -1013,6 +1030,19 @@ export function NativeStepViewer() {
                   <button type="button" style={buttonStyle}
                     onClick={() => moveNumeric(true)}>Copiar</button>
                 </div>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                  <button type="button" style={buttonStyle}
+                    onClick={(event) => armNativeUntil(moveAxis, event.ctrlKey)}>
+                    Hasta
+                  </button>
+                  <button type="button" style={buttonStyle}
+                    onClick={() => armNativeUntil(moveAxis, true)}>
+                    Copiar hasta
+                  </button>
+                  <span style={{ color: "#b9d4e7" }}>
+                    Eje {moveAxis} · siguiente clic elige referencia
+                  </span>
+                </div>
               </div>
             )}
             <div style={{ display: "flex", gap: 6 }}>
@@ -1023,6 +1053,9 @@ export function NativeStepViewer() {
             </div>
             <button type="button" style={buttonStyle} onClick={() => {
               selectionRef.current.clear();
+              clearArmedUntil();
+              snapPlacementRef.current = null;
+              setSnapBase(null);
               partScopeRef.current = null;
               setSelection(null);
               setTransformTarget(null);
@@ -1046,9 +1079,11 @@ export function NativeStepViewer() {
           en STEP, .flproject ni en la topología OCCT. No admite mover ni copiar
           subpiezas de un STEP que contenga varios productos.
         </div>
-        <div data-native-brep-snap-status="true" style={{ color: "#99e6c9" }}>
+        <div data-native-brep-snap-status="true" style={{ color: untilSurface ? "#fcd34d" : "#99e6c9" }}>
           {snap ? `${NATIVE_SNAP_LABELS[snap.kind]} · ${snap.point.x.toFixed(2)}, ${snap.point.y.toFixed(2)}, ${snap.point.z.toFixed(2)} mm`
-            : "SNAP: sin punto detectado"}
+            : untilSurface
+              ? `Cara STEP (aprox.) · ${untilSurface.point.x.toFixed(2)}, ${untilSurface.point.y.toFixed(2)}, ${untilSurface.point.z.toFixed(2)} mm`
+              : "SNAP: sin punto detectado"}
         </div>
         {error ? <div role="alert" style={{ color: "#fca5a5" }}>{error}</div> : null}
       </section>
@@ -1065,6 +1100,23 @@ export function NativeStepViewer() {
             position: "absolute", left: "50%", top: "50%",
             transform: "translate(-50%, -50%)", color: "#e6fff4",
             fontSize: 11, lineHeight: 1,
+          }}>+</span>
+        </div>
+      )}
+      {armedUntil && untilSurface && (
+        <div data-native-axis-until-surface-marker="true"
+          aria-label="Punto de superficie STEP aproximado"
+          style={{
+            position: "absolute", zIndex: 4, pointerEvents: "none",
+            left: untilSurface.screenX, top: untilSurface.screenY,
+            transform: "translate(-50%, -50%)", width: 13, height: 13,
+            border: "2px solid #fcd34d", borderRadius: "50%",
+            background: "#6d3a0e99", boxShadow: "0 0 7px #fcd34d",
+          }}>
+          <span style={{
+            position: "absolute", left: "50%", top: "50%",
+            transform: "translate(-50%, -50%)",
+            color: "#fff7ed", fontSize: 10, lineHeight: 1,
           }}>+</span>
         </div>
       )}
