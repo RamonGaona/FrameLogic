@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { TransformControls } from "three/addons/controls/TransformControls.js";
 
 import type { FrameLogicViewportPort } from "./FrameLogicViewportPort";
 import {
@@ -53,6 +54,17 @@ export interface ExperimentalNativeThreePreviewOptions {
   readonly onStartRotate?: () => boolean;
   readonly onUndo?: () => boolean;
   readonly onRedo?: () => boolean;
+  /**
+   * Optional direct gizmo editing contract. The production CAD model is the
+   * only source of transforms and Undo/Redo. No visual-only placement.
+   */
+  readonly nativeEdit?: {
+    getTarget(): { readonly id: string; readonly position: THREE.Vector3; readonly quaternion: THREE.Quaternion } | null;
+    begin(mode: "translate" | "rotate"): boolean;
+    preview(position: THREE.Vector3, quaternion: THREE.Quaternion): boolean;
+    finish(commit: boolean): boolean;
+    readonly isDragging: boolean;
+  };
 }
 
 export interface ExperimentalNativeThreePreviewHandle {
@@ -87,6 +99,11 @@ export function mountExperimentalNativeThreePreview(
   let sampleFrames = 0;
   const camera = new THREE.OrthographicCamera();
   const canSelect = Boolean(options.getInstanceTargets && options.onSelectInstance);
+  const nativeEdit = canSelect ? options.nativeEdit : undefined;
+  let nativeMode: "translate" | "rotate" = "translate";
+  let nativeDrag = false;
+  let gizmoPointerGesture = false;
+  let trackedNativeId: string | null = null;
   let selectionGesture: { id: number; x: number; y: number } | null = null;
 
   renderer.setPixelRatio(1);
@@ -116,8 +133,9 @@ export function mountExperimentalNativeThreePreview(
   header.append(title, close);
 
   const status = document.createElement("div");
-  status.textContent = canSelect
-    ? "Selección nativa · edición persistente con gizmo en Model Space"
+  status.textContent = nativeEdit
+    ? "Gizmo Three.js interactivo · transformaciones reales en .flproject"
+    : canSelect ? "Selección nativa · edición con gizmo en Model Space"
     : "Vista secundaria de diagnóstico · solo lectura";
   status.style.cssText = "padding:4px 8px 7px;color:#cbd5e1";
 
@@ -126,7 +144,9 @@ export function mountExperimentalNativeThreePreview(
   // are all performed by the authoritative Model Space on its own canvas.
   const actionStatus = document.createElement("div");
   actionStatus.style.cssText = "padding:5px 8px;color:#d1fae5";
-  actionStatus.textContent = "Clic en una pieza para seleccionarla · editar en Model Space";
+  actionStatus.textContent = nativeEdit
+    ? "Selecciona una pieza y arrastra los ejes del gizmo aquí. Mover/Rotar cambian de modo."
+    : "Clic en una pieza para seleccionarla · editar en Model Space";
   const toolbar = document.createElement("div");
   toolbar.style.cssText = "display:flex;gap:5px;flex-wrap:wrap;padding:6px 8px 0";
 
@@ -139,29 +159,114 @@ export function mountExperimentalNativeThreePreview(
       if (disposed || !handler) return;
       const did = handler();
       actionStatus.textContent = did
-        ? `${label}: comando aplicado en Model Space. Los cambios usan el historial y .flproject.`
-        : `${label}: no se pudo ejecutar; selecciona una pieza editable en Model Space.`;
+        ? nativeEdit && (label === "Mover" || label === "Rotar")
+          ? `${label}: arrastra un eje en esta vista. Se guardará en el proyecto al soltar.`
+          : `${label}: comando aplicado en Model Space. Los cambios usan el historial y .flproject.`
+        : `${label}: no se pudo ejecutar; selecciona una pieza editable.`;
     });
     toolbar.append(button);
     return button;
   };
 
+  // The native action changes the drag controls IN THIS CANVAS rather than
+  // arming a TransformControls instance bound to the main CAD canvas.
+  let setNativeMode: ((mode: "translate" | "rotate") => boolean) | null = null;
   const moveButton = canSelect
-    ? makeAction("Mover", options.onStartMove) : null;
+    ? makeAction("Mover", nativeEdit
+      ? () => setNativeMode?.("translate") ?? false : options.onStartMove) : null;
   const rotateButton = canSelect
-    ? makeAction("Rotar", options.onStartRotate) : null;
+    ? makeAction("Rotar", nativeEdit
+      ? () => setNativeMode?.("rotate") ?? false : options.onStartRotate) : null;
   if (canSelect) {
     makeAction("Deshacer", options.onUndo);
     makeAction("Rehacer", options.onRedo);
   }
 
+  // Own one TransformControls instance for the INSPECTOR canvas. Its helper
+  // lives in an overlay scene, never in the production scene. Only the
+  // original FrameLogic model can commit a transform.
+  const gizmoScene = nativeEdit ? new THREE.Scene() : null;
+  const gizmoPivot = nativeEdit ? new THREE.Object3D() : null;
+  const gizmo = nativeEdit ? new TransformControls(camera, renderer.domElement) : null;
+  if (gizmoScene && gizmo && gizmoPivot) {
+    gizmoScene.add(gizmoPivot);
+    gizmoScene.add(gizmo.getHelper());
+    gizmo.setMode(nativeMode);
+    gizmo.setSpace("world");
+    gizmo.setSize(0.9);
+    setNativeMode = (mode) => {
+      if (disposed || !nativeEdit?.getTarget() || nativeDrag) return false;
+      nativeMode = mode;
+      gizmo.setMode(mode);
+      return true;
+    };
+  }
+  const handleGizmoMouseDown = (): void => {
+    if (!nativeEdit || !gizmo || nativeDrag) return;
+    // Gizmo hit takes priority over ordinary piece-selection clicks.
+    gizmoPointerGesture = true;
+    selectionGesture = null;
+    if (!nativeEdit.begin(nativeMode)) {
+      gizmo.reset();
+      actionStatus.textContent = "Pieza bloqueada, oculta o no editable; no se puede iniciar el gizmo.";
+      return;
+    }
+    nativeDrag = true;
+  };
+  const handleGizmoObjectChange = (): void => {
+    if (!nativeDrag || !nativeEdit || !gizmoPivot) return;
+    if (!nativeEdit.preview(gizmoPivot.position, gizmoPivot.quaternion)) {
+      nativeEdit.finish(false);
+      nativeDrag = false;
+      actionStatus.textContent = "Transformación cancelada: la pieza dejó de ser editable.";
+    }
+  };
+  const handleGizmoMouseUp = (): void => {
+    if (!nativeDrag || !nativeEdit) return;
+    nativeDrag = false;
+    const changed = nativeEdit.finish(true);
+    actionStatus.textContent = changed
+      ? `${nativeMode === "translate" ? "Movimiento" : "Rotación"} guardado en el modelo del proyecto. Undo/Redo disponible.`
+      : "Sin cambios de posición o rotación.";
+  };
+  gizmo?.addEventListener("mouseDown", handleGizmoMouseDown);
+  gizmo?.addEventListener("objectChange", handleGizmoObjectChange);
+  gizmo?.addEventListener("mouseUp", handleGizmoMouseUp);
+
+  const cancelNativeDrag = (): void => {
+    if (!nativeDrag) return;
+    nativeDrag = false;
+    nativeEdit?.finish(false);
+    gizmo?.reset();
+    actionStatus.textContent = "Transformación cancelada; pieza restaurada.";
+  };
+  const handleNativeEscape = (event: KeyboardEvent): void => {
+    if (event.key !== "Escape" || !nativeDrag) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    cancelNativeDrag();
+  };
+  const handleNativeBlur = (): void => { cancelNativeDrag(); };
+  const handleNativePointerCancel = (): void => { cancelNativeDrag(); };
+  if (nativeEdit) {
+    window.addEventListener("keydown", handleNativeEscape, true);
+    window.addEventListener("blur", handleNativeBlur);
+    renderer.domElement.addEventListener("pointercancel", handleNativePointerCancel);
+  }
+
   const onPointerDown = (event: PointerEvent): void => {
-    if (!canSelect || event.button !== 0) return;
+    if (!canSelect || event.button !== 0 || gizmoPointerGesture) return;
     selectionGesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
   };
   const onPointerUp = (event: PointerEvent): void => {
+    if (gizmoPointerGesture) {
+      gizmoPointerGesture = false;
+      selectionGesture = null;
+      return;
+    }
     const start = selectionGesture;
     selectionGesture = null;
+    if (nativeDrag) return;
     if (!start || disposed || start.id !== event.pointerId
       || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) return;
     const getTargets = options.getInstanceTargets;
@@ -177,11 +282,16 @@ export function mountExperimentalNativeThreePreview(
       actionStatus.textContent = "Sin pieza seleccionable en esta posición.";
     } else {
       actionStatus.textContent = select(id)
-        ? `Pieza seleccionada: ${id}. Usa Mover o Rotar para editarla en Model Space.`
+        ? nativeEdit
+          ? `Pieza seleccionada: ${id}. Arrastra un eje del gizmo Three.js.`
+          : `Pieza seleccionada: ${id}. Usa Mover o Rotar para editarla en Model Space.`
         : "La pieza está oculta o bloqueada; no se puede seleccionar.";
     }
   };
-  const onPointerCancel = (): void => { selectionGesture = null; };
+  const onPointerCancel = (): void => {
+    selectionGesture = null;
+    gizmoPointerGesture = false;
+  };
   renderer.domElement.style.cssText = canSelect
     ? "display:block;width:100%;height:auto;pointer-events:auto;cursor:crosshair"
     : "display:block;width:100%;height:auto;pointer-events:none";
@@ -203,6 +313,16 @@ export function mountExperimentalNativeThreePreview(
     renderer.domElement.removeEventListener("pointerup", onPointerUp);
     renderer.domElement.removeEventListener("pointercancel", onPointerCancel);
     selectionGesture = null;
+    gizmoPointerGesture = false;
+    cancelNativeDrag();
+    window.removeEventListener("keydown", handleNativeEscape, true);
+    window.removeEventListener("blur", handleNativeBlur);
+    renderer.domElement.removeEventListener("pointercancel", handleNativePointerCancel);
+    gizmo?.removeEventListener("mouseDown", handleGizmoMouseDown);
+    gizmo?.removeEventListener("objectChange", handleGizmoObjectChange);
+    gizmo?.removeEventListener("mouseUp", handleGizmoMouseUp);
+    gizmo?.detach();
+    gizmo?.dispose();
     if (frame !== null) window.cancelAnimationFrame(frame);
     panel.remove();
     // Only own the extra renderer. Geometry, materials, scene and textures
@@ -221,7 +341,29 @@ export function mountExperimentalNativeThreePreview(
         status.textContent = "Vista no disponible: cámara 3D no ortográfica";
       } else {
         copyNativeOrthographicPreviewCamera(source, width, height, camera);
+        if (nativeEdit && gizmo && gizmoPivot && !nativeDrag) {
+          const target = nativeEdit.getTarget();
+          if (target) {
+            if (trackedNativeId !== target.id) {
+              gizmo.detach();
+              trackedNativeId = target.id;
+            }
+            gizmoPivot.position.copy(target.position);
+            gizmoPivot.quaternion.copy(target.quaternion);
+            gizmoPivot.updateMatrixWorld(true);
+            if (!gizmo.object) gizmo.attach(gizmoPivot);
+          } else {
+            trackedNativeId = null;
+            gizmo.detach();
+          }
+        }
         renderer.render(options.viewport.scene, camera);
+        if (gizmoScene && gizmo?.object) {
+          renderer.clearDepth();
+          renderer.autoClear = false;
+          renderer.render(gizmoScene, camera);
+          renderer.autoClear = true;
+        }
         if (canSelect) {
           const hasPiece = Boolean(options.getSelectedInstanceIds?.().length);
           if (moveButton) moveButton.disabled = !hasPiece;

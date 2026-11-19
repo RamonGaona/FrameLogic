@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.204 — 2026-11-19 (corrección: gizmo Three.js ya puede transformar piezas del proyecto)
+
+- **Incidencia confirmada:** en v0.1.203 la vista secundaria dibujaba los gizmos del Model Space pero no recibían interacción porque su `TransformControls` estaba conectado al canvas principal. Los botones Mover/Rotar solo activaban herramientas del canvas principal; desde la vista Three.js no se podía arrastrar una pieza.
+- **Gizmo nativo interactivo real:** el panel **Vista Three.js del proyecto** dispone ahora de sus propios `TransformControls` Three.js ligados a **su canvas y cámara**, con el widget de mover o rotar renderizado en una escena overlay que no modifica la escena de producción. El usuario selecciona una pieza visible y arrastra los ejes/rings directamente en la vista. Los botones **Mover/Rotar** cambian allí el modo, en vez de exigir usar el otro canvas.
+- **Transformaciones persistentes:** adaptador `NativeProjectCadEditBridge` resuelve la instancia de pieza real, comprueba capa/visibilidad/bloqueo, convierte el transform world→local si hay padre y aplica la posición/rotación a `designModel.pieceInstances` mediante `updateDesignPieceInstanceTransform()`. Cada arrastre validado registra **una sola operación MOVE/ROTATE** con `CadHistoryController.recordTransform`; los mismos datos se incluyen en `.flproject` y en los flujos existentes de Undo/Redo.
+- **Cancelación y seguridad:** arrastrar un gizmo tiene prioridad sobre seleccionar una malla detrás. Escape, desenfoque o cerrar la vista cancelan el gesto y restauran el transform original sin agregar historia. Selecciones múltiples, piezas ocultas o bloqueadas y objetos en modo preparación de geometría no reciben edición directa. Las referencias DWG/DXF y IFC no son transformadas accidentalmente como piezas STEP.
+- **Alcance actual:** edición directa probada en el adaptador para una sola instancia editable. Ctrl-copia, SNAP exacto como destino, arrastre multinivel de ensamble y gizmos avanzados del visor STEP experimental siguen pendientes de portar al modelo persistente. El motor CAD normal, DWG/DXF y Paper Space/PDF no se reemplazan; IFC continúa expresamente para la última fase.
+- **Validación:** tests unitarios de movimiento, rotación, matrices de padre, bloqueos, rollback e historial; tests de integración de canvas y ciclo de vida; typecheck, build y otras regresiones CI. Las pruebas con archivos de proyecto reales siguen requiriendo comprobación manual.
+
+---
 ## v0.1.203 — 2026-11-19 (selección Three.js conectada a comandos CAD persistentes; IFC aplazado)
 
 - **Primera interacción real CAD desde la vista nativa:** la ventana **Vista Three.js del proyecto** ya permite seleccionar una instancia de pieza desde sus mallas mediante raycast ortográfico. La selección se identifica en `DesignSceneController.getInstanceEntries()` y se aplica en `DesignSelectionController.selectSingle()`, respetando los filtros y bloqueos existentes. Las referencias CAD y geometría de ayuda sin identidad de pieza no se convierten en supuestas piezas seleccionables.
