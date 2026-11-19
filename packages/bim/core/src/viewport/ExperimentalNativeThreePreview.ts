@@ -35,6 +35,11 @@ export interface ExperimentalNativeThreePreviewOptions {
   readonly viewport: FrameLogicViewportPort;
   /** Injected only in tests; default is a completely separate WebGLRenderer. */
   readonly createRenderer?: () => THREE.WebGLRenderer;
+  /** Larger on-demand project-wide viewport; default remains 320 x 200. */
+  readonly width?: number;
+  readonly height?: number;
+  readonly title?: string;
+  readonly onClose?: () => void;
 }
 
 export interface ExperimentalNativeThreePreviewHandle {
@@ -54,6 +59,10 @@ export interface ExperimentalNativeThreePreviewHandle {
 export function mountExperimentalNativeThreePreview(
   options: ExperimentalNativeThreePreviewOptions,
 ): ExperimentalNativeThreePreviewHandle {
+  // Clamp DOM- and WebGL-backed dimensions; every preview owns just its
+  // extra WebGL context, never the production Three.js scene or CAD tools.
+  const width = Math.round(THREE.MathUtils.clamp(options.width ?? PREVIEW_WIDTH, 160, 960));
+  const height = Math.round(THREE.MathUtils.clamp(options.height ?? PREVIEW_HEIGHT, 120, 640));
   const renderer = options.createRenderer?.() ?? new THREE.WebGLRenderer({
     antialias: true,
     alpha: false,
@@ -66,7 +75,7 @@ export function mountExperimentalNativeThreePreview(
   const camera = new THREE.OrthographicCamera();
 
   renderer.setPixelRatio(1);
-  renderer.setSize(PREVIEW_WIDTH, PREVIEW_HEIGHT, false);
+  renderer.setSize(width, height, false);
   renderer.outputColorSpace = options.viewport.renderer.outputColorSpace;
   renderer.toneMapping = options.viewport.renderer.toneMapping;
   renderer.toneMappingExposure = options.viewport.renderer.toneMappingExposure;
@@ -75,7 +84,7 @@ export function mountExperimentalNativeThreePreview(
   panel.setAttribute("aria-label", "Vista experimental Three.js");
   panel.style.cssText = [
     "position:absolute", "bottom:16px", "right:16px", "z-index:50",
-    "width:320px", "max-width:calc(100% - 32px)", "background:#101820",
+    `width:${width}px`, "max-width:calc(100% - 32px)", "background:#101820",
     "border:1px solid #64748b", "border-radius:8px", "overflow:hidden",
     "box-shadow:0 5px 20px #0008", "color:#f1f5f9",
     "font:12px system-ui,sans-serif",
@@ -84,7 +93,7 @@ export function mountExperimentalNativeThreePreview(
   const header = document.createElement("div");
   header.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:6px 8px;gap:6px";
   const title = document.createElement("span");
-  title.textContent = "Three.js nativo · vista experimental";
+  title.textContent = options.title ?? "Three.js nativo · vista experimental";
   const close = document.createElement("button");
   close.type = "button";
   close.textContent = "Cerrar";
@@ -108,6 +117,7 @@ export function mountExperimentalNativeThreePreview(
     // belong to the main viewport and must never be disposed here.
     renderer.dispose();
     renderer.forceContextLoss();
+    options.onClose?.();
   };
   close.addEventListener("click", dispose);
 
@@ -118,7 +128,7 @@ export function mountExperimentalNativeThreePreview(
       if (!(source instanceof THREE.OrthographicCamera)) {
         status.textContent = "Vista no disponible: cámara 3D no ortográfica";
       } else {
-        copyNativeOrthographicPreviewCamera(source, PREVIEW_WIDTH, PREVIEW_HEIGHT, camera);
+        copyNativeOrthographicPreviewCamera(source, width, height, camera);
         renderer.render(options.viewport.scene, camera);
         sampleFrames++;
         if (!lastSample) lastSample = now;
