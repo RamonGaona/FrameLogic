@@ -157,7 +157,7 @@ export function NativeStepViewer() {
       startX: number; startY: number; moved: boolean; pan: boolean;
     } | null = null;
     const canvas = renderer.domElement;
-    let lastSnapQuery = 0;
+    let lastSnapQuery = -Infinity;
     const clearSnap = () => setSnap((previous) => previous ? null : previous);
     const updateSnapFromPointer = (event: PointerEvent) => {
       const selected = selectionRef.current.selectedMesh;
