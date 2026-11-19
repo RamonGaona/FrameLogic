@@ -102,6 +102,7 @@ export function mountExperimentalNativeThreePreview(
   const nativeEdit = canSelect ? options.nativeEdit : undefined;
   let nativeMode: "translate" | "rotate" = "translate";
   let nativeDrag = false;
+  let gizmoPointerGesture = false;
   let trackedNativeId: string | null = null;
   let selectionGesture: { id: number; x: number; y: number } | null = null;
 
@@ -203,6 +204,7 @@ export function mountExperimentalNativeThreePreview(
   const handleGizmoMouseDown = (): void => {
     if (!nativeEdit || !gizmo || nativeDrag) return;
     // Gizmo hit takes priority over ordinary piece-selection clicks.
+    gizmoPointerGesture = true;
     selectionGesture = null;
     if (!nativeEdit.begin(nativeMode)) {
       gizmo.reset();
@@ -253,10 +255,15 @@ export function mountExperimentalNativeThreePreview(
   }
 
   const onPointerDown = (event: PointerEvent): void => {
-    if (!canSelect || event.button !== 0) return;
+    if (!canSelect || event.button !== 0 || gizmoPointerGesture) return;
     selectionGesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
   };
   const onPointerUp = (event: PointerEvent): void => {
+    if (gizmoPointerGesture) {
+      gizmoPointerGesture = false;
+      selectionGesture = null;
+      return;
+    }
     const start = selectionGesture;
     selectionGesture = null;
     if (nativeDrag) return;
@@ -281,7 +288,10 @@ export function mountExperimentalNativeThreePreview(
         : "La pieza está oculta o bloqueada; no se puede seleccionar.";
     }
   };
-  const onPointerCancel = (): void => { selectionGesture = null; };
+  const onPointerCancel = (): void => {
+    selectionGesture = null;
+    gizmoPointerGesture = false;
+  };
   renderer.domElement.style.cssText = canSelect
     ? "display:block;width:100%;height:auto;pointer-events:auto;cursor:crosshair"
     : "display:block;width:100%;height:auto;pointer-events:none";
@@ -303,6 +313,7 @@ export function mountExperimentalNativeThreePreview(
     renderer.domElement.removeEventListener("pointerup", onPointerUp);
     renderer.domElement.removeEventListener("pointercancel", onPointerCancel);
     selectionGesture = null;
+    gizmoPointerGesture = false;
     cancelNativeDrag();
     window.removeEventListener("keydown", handleNativeEscape, true);
     window.removeEventListener("blur", handleNativeBlur);
