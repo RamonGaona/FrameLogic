@@ -203,6 +203,36 @@ The production CAD viewport, IFC/Fragments and Paper Space/PDF continue to
 use their established implementations. Only the native experimental route
 adds the snap display. Keep the orthographic-only camera safety restriction.
 
+## Phase 3f — STEP product scope and visible B-Rep snaps (v0.1.193)
+
+The user confirmed the native Three.js exact snap marker in v0.1.192
+works on their STEP model. The native viewer now creates a scoped,
+**read-only selection identity** from the B-Rep document id and unique
+`StepProductNode.geometryIds` mapping. A visual mesh referenced by multiple
+product nodes, or an ambiguous repeated mesh identifier, must not be assigned
+an arbitrary product; it falls back to a session-local visual mesh identity.
+
+Selecting a valid STEP product highlights all of its visual meshes and
+restores each material exactly on deselection. The scope contains the
+world-space bounding box and a non-mutating pivot for future gizmo controls.
+
+Snap coordinates are still sourced only from exact OpenCascade document
+B-Rep geometry. The new conservative gate filters candidates outside the
+selected scope bounding box or behind the nearest rendered STEP surface.
+The camera is orthographic; sphere/circle centres in genuine openings can
+remain visible. The filters only run on nearby candidates during hover.
+
+**Critical precision qualification:** current B-Rep indices do not map
+edges/vertices to individual STEP product nodes. Spatial bounds and rendered
+occlusion cannot certify per-piece exact topology when parts overlap or
+share coincident surfaces. Do not use these provisional visual snap results
+for manufacturing transforms. The transform-target contract is explicitly
+read-only (`editable: false`), with no gizmo, undo/redo or persistence yet.
+
+The production Model Space viewport, IFC, drawings and PDF remain unchanged.
+The next phase needs actual B-Rep subshape-to-product identity or a strict,
+proven selection scope before enabling native editing.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,

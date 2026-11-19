@@ -71,6 +71,17 @@ describe("Native exact OpenCascade B-Rep snaps", () => {
     }
   });
 
+  it("skips an occluded nearest snap and accepts the next eligible candidate", () => {
+    const c = camera();
+    const index = indexNativeBrepSnapPoints(sampleSnapshot());
+    const hit = clientAt(c, index[0].point);
+    const nearest = findNativeExactSnap(index, "brep:plate-1",
+      c, hit.clientX, hit.clientY, rect, 150,
+      (candidate) => candidate.kind !== "VERTEX");
+    expect(nearest).not.toBeNull();
+    expect(nearest?.kind).not.toBe("VERTEX");
+  });
+
   it("never uses points from a different STEP source document", () => {
     const c = camera();
     const indexed = indexNativeBrepSnapPoints(sampleSnapshot());

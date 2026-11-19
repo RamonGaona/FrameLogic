@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.193 — 2026-11-18 (fase 3f: ámbito de producto, snaps visibles y pivote de gizmo)
+
+- **Identidad de producto STEP:** en el visor autónomo `?threeNative=1` se identifican y agrupan las mallas que pertenecen inequívocamente al mismo nodo de producto del árbol STEP y al mismo documento B-Rep. Si un identificador de geometría se repite o pertenece a varios productos, se marca como **ambiguo** y se conserva la selección de una sola malla, sin atribuirle un producto arbitrario.
+- **Resaltado completo:** cuando el producto STEP agrupa varias mallas, la selección resalta el conjunto y restaura individualmente los colores y la intensidad de emisión de todos sus materiales al deseleccionar, cargar otro STEP o salir.
+- **Snaps más selectivos:** los candidatos siguen viniendo exclusivamente de OpenCascade B-Rep, pero ahora deben situarse dentro de la caja espacial del producto/malla seleccionado (con tolerancia pequeña en mm) y no quedar detrás de una superficie visual más cercana según un raycast con cámara ortográfica. Un candidato oculto se descarta antes de escoger el siguiente. Se conservan las etiquetas, unidades y controles de v0.1.192.
+- **Límite técnico explícito:** el B-Rep actual mantiene topología exacta **por documento STEP**, no asignación topológica certificada por producto. El recorte por límites y la prueba de visibilidad son **filtros geométricos conservadores, no una garantía absoluta de pertenencia a una subpieza** cuando hay piezas que se solapan o comparten caras. No se generan snaps exactos a partir de triángulos.
+- **Preparación de gizmos sin edición:** el sistema calcula una identidad temporal de selección, conjunto de mallas y pivote en coordenadas mm para un futuro controlador de traslación/rotación. `editable: false` impide presentar esta estructura como un gizmo implementado. El visor experimental sigue siendo de solo visualización; movimientos, copias, Undo/Redo y snaps de transformación permanecen en Model Space estable.
+- **Compatibilidad y validación:** cámara 3D ortográfica; sin cambios en IFC/Fragments, Paper Space, PDF y guardado `.flproject`. Nuevas pruebas de producto multinalla, identificadores ambiguos, resaltado reversible, filtrado de oclusión y preparación no mutante del pivote, incluidas en `test:camera`.
+
+---
+
 ## v0.1.192 — 2026-11-18 (fase 3e: snaps exactos B-Rep y referencias de producto STEP)
 
 - **Snaps STEP nativos basados en OpenCascade:** el visor autónomo `?threeNative=1` registra en la carga un índice de vértices, puntos medios de aristas, centros de círculos y orígenes de ejes cilíndricos extraídos de la topología **B-Rep exacta** de OpenCascade, usando la misma escala `modelScale` que el motor CAD existente. No se convierten los vértices triangulados visuales en snaps exactos.

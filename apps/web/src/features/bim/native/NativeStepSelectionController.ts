@@ -44,8 +44,11 @@ export function pickNativeStepMesh(
 /** Selection is visual only. No modifications to STEP geometry or transforms. */
 export class NativeStepSelectionController {
   private selected: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null = null;
-  private originalEmissive = new THREE.Color();
-  private originalIntensity = 0;
+  private readonly highlighted: Array<{
+    mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+    emissive: THREE.Color;
+    intensity: number;
+  }> = [];
 
   get selectedMesh(): THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null {
     return this.selected;
@@ -53,23 +56,37 @@ export class NativeStepSelectionController {
 
   setSelected(
     mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null,
+    productMeshes?: readonly THREE.Mesh[],
   ): NativeStepSelectionInfo | null {
     if (this.selected === mesh) return mesh ? this.describe(mesh) : null;
     this.clear();
     if (!mesh) return null;
 
     this.selected = mesh;
-    this.originalEmissive.copy(mesh.material.emissive);
-    this.originalIntensity = mesh.material.emissiveIntensity;
-    mesh.material.emissive.setHex(0x15a9e8);
-    mesh.material.emissiveIntensity = 1.25;
+    // The selected STEP product can contain multiple visual meshes. Highlight
+    // the whole product without making it an editable CAD assembly.
+    const meshes = new Set<THREE.Mesh>([mesh, ...(productMeshes ?? [])]);
+    for (const item of meshes) {
+      if (!(item.geometry instanceof THREE.BufferGeometry)
+        || !(item.material instanceof THREE.MeshStandardMaterial)) continue;
+      const typed = item as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+      this.highlighted.push({
+        mesh: typed,
+        emissive: typed.material.emissive.clone(),
+        intensity: typed.material.emissiveIntensity,
+      });
+      typed.material.emissive.setHex(0x15a9e8);
+      typed.material.emissiveIntensity = 1.25;
+    }
     return this.describe(mesh);
   }
 
   clear(): void {
-    if (!this.selected) return;
-    this.selected.material.emissive.copy(this.originalEmissive);
-    this.selected.material.emissiveIntensity = this.originalIntensity;
+    for (const item of this.highlighted) {
+      item.mesh.material.emissive.copy(item.emissive);
+      item.mesh.material.emissiveIntensity = item.intensity;
+    }
+    this.highlighted.length = 0;
     this.selected = null;
   }
 

@@ -11,17 +11,18 @@ export function buildNativeStepMeshGroup(
   const group = new THREE.Group();
   group.name = "STEP · Three.js nativo";
 
-  // The STEP product tree can associate a mesh with its original product
-  // node. This label is not yet an editable piece-instance identity.
-  const meshProducts = new Map<string, { id: string; name: string }>();
+  // Do not silently assign the first product if geometry identifiers are
+  // reused across the STEP tree. Ambiguous mappings must stay visual-only.
+  const meshProducts = new Map<string, Array<{ id: string; name: string }>>();
+  const geometryIdCounts = new Map<string, number>();
+  for (const mesh of document.meshes) {
+    geometryIdCounts.set(mesh.id, (geometryIdCounts.get(mesh.id) ?? 0) + 1);
+  }
   for (const product of document.products ?? []) {
-    for (const geometryId of product.geometryIds) {
-      if (!meshProducts.has(geometryId)) {
-        meshProducts.set(geometryId, {
-          id: product.id,
-          name: product.name || product.id,
-        });
-      }
+    for (const geometryId of new Set(product.geometryIds)) {
+      const entries = meshProducts.get(geometryId) ?? [];
+      entries.push({ id: product.id, name: product.name || product.id });
+      meshProducts.set(geometryId, entries);
     }
   }
 
@@ -49,10 +50,14 @@ export function buildNativeStepMeshGroup(
     if (document.brepDocumentId) {
       object.userData["brepDocumentId"] = document.brepDocumentId;
     }
-    const product = meshProducts.get(mesh.id);
-    if (product) {
+    const products = meshProducts.get(mesh.id) ?? [];
+    if (products.length === 1 && geometryIdCounts.get(mesh.id) === 1) {
+      const product = products[0];
       object.userData["stepProductId"] = product.id;
       object.userData["stepProductName"] = product.name;
+      object.userData["stepPartKey"] = `${document.brepDocumentId ?? sourceFileName}:product:${product.id}`;
+    } else if (products.length > 1 || (geometryIdCounts.get(mesh.id) ?? 0) > 1) {
+      object.userData["stepProductAmbiguous"] = true;
     }
     group.add(object);
   }

@@ -22,6 +22,14 @@ import {
   type NativeStepSelectionInfo,
 } from "./NativeStepSelectionController";
 import {
+  isNativeSnapVisible,
+  isSnapWithinNativePartScope,
+  prepareNativeStepTransformTarget,
+  resolveNativeStepPartScope,
+  type NativeStepPartScope,
+  type NativeStepTransformTarget,
+} from "./NativeStepPartScope";
+import {
   buildNativeStepMeshGroup,
   disposeNativeStepMeshGroup,
   fitNativeOrthographicCamera,
@@ -92,12 +100,14 @@ export function NativeStepViewer() {
   const brepDocuments = useRef<string[]>([]);
   const adapterRef = useRef(new OcctStepGeometryAdapter());
   const selectionRef = useRef(new NativeStepSelectionController());
+  const partScopeRef = useRef<NativeStepPartScope | null>(null);
   const snapIndexRef = useRef(new Map<string, readonly NativeExactSnapPoint[]>());
   const [snap, setSnap] = useState<NativeExactSnapHit | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [loadedNames, setLoadedNames] = useState<string[]>([]);
   const [selection, setSelection] = useState<NativeStepSelectionInfo | null>(null);
+  const [transformTarget, setTransformTarget] = useState<NativeStepTransformTarget | null>(null);
   const [stats, setStats] = useState<NativeViewerStats>(EMPTY_STATS);
 
   useEffect(() => {
@@ -162,7 +172,9 @@ export function NativeStepViewer() {
     const updateSnapFromPointer = (event: PointerEvent) => {
       const selected = selectionRef.current.selectedMesh;
       const id = selected?.userData["brepDocumentId"];
-      if (typeof id !== "string" || id.length === 0) {
+      const partScope = partScopeRef.current;
+      if (typeof id !== "string" || id.length === 0
+        || !partScope || partScope.documentId !== id) {
         clearSnap();
         return;
       }
@@ -175,6 +187,9 @@ export function NativeStepViewer() {
         snapIndexRef.current.get(id) ?? [],
         id, camera, event.clientX, event.clientY,
         canvas.getBoundingClientRect(), 13,
+        (candidate) =>
+          isSnapWithinNativePartScope(candidate.point, partScope)
+          && isNativeSnapVisible(candidate.point, camera, runtime.modelRoot),
       );
       setSnap((previous) => previous?.id === result?.id
         && previous?.screenX === result?.screenX
@@ -227,7 +242,13 @@ export function NativeStepViewer() {
           runtime.modelRoot, camera, e.clientX, e.clientY,
           canvas.getBoundingClientRect(),
         );
-        setSelection(selectionRef.current.setSelected(mesh));
+        const partScope = mesh
+          ? resolveNativeStepPartScope(runtime.modelRoot, mesh) : null;
+        setSelection(selectionRef.current.setSelected(
+          mesh, partScope?.meshes,
+        ));
+        partScopeRef.current = partScope;
+        setTransformTarget(partScope ? prepareNativeStepTransformTarget(partScope) : null);
         clearSnap();
       }
     };
@@ -240,7 +261,9 @@ export function NativeStepViewer() {
     const escapeSelection = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       selectionRef.current.clear();
+      partScopeRef.current = null;
       setSelection(null);
+      setTransformTarget(null);
       clearSnap();
     };
     canvas.addEventListener("pointerdown", down);
@@ -295,6 +318,7 @@ export function NativeStepViewer() {
       canvas.removeEventListener("contextmenu", contextMenu);
       window.removeEventListener("keydown", escapeSelection);
       selectionRef.current.dispose();
+      partScopeRef.current = null;
       snapIndexRef.current.clear();
       // The root changes after each successful STEP import. Dispose the
       // active model rather than the original empty startup group.
@@ -361,7 +385,9 @@ export function NativeStepViewer() {
       if (meshes === 0) throw new Error("El STEP no contiene mallas visualizables.");
 
       selectionRef.current.clear();
+      partScopeRef.current = null;
       setSelection(null);
+      setTransformTarget(null);
       setSnap(null);
       const previous = runtime.modelRoot;
       runtime.scene.remove(previous);
@@ -479,13 +505,26 @@ export function NativeStepViewer() {
             <div>Archivo: {selection.sourceFileName}</div>
             <div>Producto STEP: {selection.stepProductName ?? "sin identificar en el árbol"}</div>
             <div>Identificador de producto: {selection.stepProductId ?? "no disponible"}</div>
+            <div>Identidad: {transformTarget?.productId
+              ? "Producto STEP identificado"
+              : "Solo malla visual; producto no inequívoco"}</div>
+            <div>Mallas en selección: {transformTarget?.affectedMeshCount ?? 1}</div>
             <div>Triángulos: {selection.triangleCount.toLocaleString("es-CO")}</div>
             <div>Dimensiones aproximadas (mm): {selection.boundsMm.map(
               (value) => value.toFixed(1),
             ).join(" × ")}</div>
+            {transformTarget && (
+              <div data-native-transform-target="true">
+                Pivote futuro gizmo (mm): {transformTarget.pivot.toArray()
+                  .map((value) => value.toFixed(2)).join(", ")}
+                {" · Solo preparación; movimiento y rotación desactivados"}
+              </div>
+            )}
             <button type="button" style={buttonStyle} onClick={() => {
               selectionRef.current.clear();
+              partScopeRef.current = null;
               setSelection(null);
+              setTransformTarget(null);
               setSnap(null);
             }}>Deseleccionar</button>
           </div>
@@ -493,9 +532,10 @@ export function NativeStepViewer() {
           <div style={{ color: "#8ca3b9" }}>Selección: ninguna</div>
         )}
         <div style={{ color: "#a5cde0" }}>
-          SNAP B-Rep exacto: selecciona una malla y acerca el cursor a un vértice,
-          punto medio o centro. Los puntos pertenecen al STEP completo,
-          no todavía a cada subpieza.
+          SNAP B-Rep: los puntos provienen de OpenCascade, filtrados por los
+          límites del producto o malla seleccionada y por su visibilidad.
+          La atribución por pieza es espacial, no topológica definitiva;
+          en ensamblajes con piezas superpuestas puede ser aproximada.
         </div>
         <div data-native-brep-snap-status="true" style={{ color: "#99e6c9" }}>
           {snap ? `${NATIVE_SNAP_LABELS[snap.kind]} · ${snap.point.x.toFixed(2)}, ${snap.point.y.toFixed(2)}, ${snap.point.z.toFixed(2)} mm`
