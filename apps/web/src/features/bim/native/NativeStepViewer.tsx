@@ -43,6 +43,7 @@ import {
   setNativeMoveCenterHovered,
   type NativeMoveGizmo,
 } from "./NativeStepMoveGizmo";
+import { NativeStepRotateRingClick } from "./NativeStepRotateRingClick";
 import {
   createNativeRotateGizmo,
   nativeRotationAngleToReference,
@@ -145,6 +146,7 @@ export function NativeStepViewer() {
   const moveRef = useRef(new NativeStepMoveController());
   const gizmoModeRef = useRef<"MOVE" | "ROTATE">("MOVE");
   const [gizmoMode, setGizmoMode] = useState<"MOVE" | "ROTATE">("MOVE");
+  const rotateClickRef = useRef(new NativeStepRotateRingClick());
   const moveTargetRef = useRef<NativeIsolatedStepTarget | null>(null);
   const moveGizmoRef = useRef<NativeMoveGizmo | null>(null);
   const moveGizmoKeyRef = useRef<string | null>(null);
@@ -244,6 +246,7 @@ export function NativeStepViewer() {
     if (moveRef.current.isDragging || moveRef.current.isRotating) return;
     gizmoModeRef.current = mode;
     setGizmoMode(mode);
+    rotateClickRef.current.reset();
     clearArmedPivot();
     clearArmedUntil();
     clearArmedRotation();
@@ -371,6 +374,7 @@ export function NativeStepViewer() {
     clearArmedPivot();
     clearArmedUntil();
     clearArmedRotation();
+    rotateClickRef.current.reset();
     snapPlacementRef.current = null;
     setSnapBase(null);
     const runtime = runtimeRef.current;
@@ -618,8 +622,8 @@ export function NativeStepViewer() {
             moveGizmoRef.current, camera, e.clientX, e.clientY,
             canvas.getBoundingClientRect(),
           );
-          if (ring && (armedRotationRef.current || armedPivotRef.current)) {
-            armNativeRotationUntil(ring.axis, armedRotationRef.current?.copy || e.ctrlKey, ring.worldPoint);
+          if (ring && armedPivotRef.current) {
+            armNativeRotationUntil(ring.axis, e.ctrlKey, ring.worldPoint);
             e.preventDefault();
             return;
           }
@@ -768,6 +772,8 @@ export function NativeStepViewer() {
           && Math.hypot(e.clientX - rotateDrag.startX, e.clientY - rotateDrag.startY) <= 5;
         const axis = rotateDrag.axis;
         const from = rotateDrag.from.clone();
+        const pivot = rotateDrag.pivot.clone();
+        const sourceKey = moveTargetRef.current?.key ?? "";
         const copy = Boolean(moveRef.current.isRotating
           && (e.ctrlKey || Boolean(moveRef.current.activeRotationCopy)));
         const committed = moveRef.current.endRotation(e.type === "pointerup" && !shortClick);
@@ -775,10 +781,30 @@ export function NativeStepViewer() {
         rotateDrag = null;
         if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
         if (shortClick) {
+          const doubleClick = rotateClickRef.current.shortClick(
+            axis, sourceKey, e.clientX, e.clientY, performance.now(),
+          );
+          if (doubleClick) {
+            clearArmedRotation();
+            const source = moveTargetRef.current;
+            const scope = partScopeRef.current;
+            const rotated = source && source.key === sourceKey && scope
+              && setNativeStepGizmoPivot(scope, pivot)
+              && moveRef.current.rotateBy(source, axis, 90, pivot, copy);
+            const turn = moveRef.current.lastResult;
+            if (rotated && turn?.kind === "COPY") focusNativeTarget(turn.target);
+            else refreshMoveUi();
+            clearSnap();
+            setMoveStatus(rotated
+              ? `Doble clic: +90° sobre ${axis}.${copy ? " Copia independiente; original inmóvil." : ""}`
+              : "Doble clic de rotación rechazado; geometría intacta.");
+            return;
+          }
           refreshMoveUi();
           armNativeRotationUntil(axis, copy, from);
           return;
         }
+        rotateClickRef.current.reset();
         if (committed && outcome?.kind === "COPY") focusNativeTarget(outcome.target);
         else refreshMoveUi();
         clearSnap();
@@ -834,6 +860,7 @@ export function NativeStepViewer() {
         return;
       }
       if (wasClick && armedRotationRef.current) {
+        rotateClickRef.current.reset();
         const armed = armedRotationRef.current;
         const source = moveTargetRef.current;
         const reference = findUntilReferenceAt(e.clientX, e.clientY);
@@ -922,6 +949,7 @@ export function NativeStepViewer() {
         return;
       }
       if (wasClick) {
+        rotateClickRef.current.reset();
         clearArmedPivot();
         clearArmedUntil();
         clearArmedRotation();
@@ -988,6 +1016,7 @@ export function NativeStepViewer() {
         }
       }
       if (e.key !== "Escape") return;
+      rotateClickRef.current.reset();
       if (pivotDrag) {
         const pointerId = pivotDrag.id;
         pivotDrag = null;
@@ -1114,6 +1143,7 @@ export function NativeStepViewer() {
       armedPivotRef.current = null;
       armedUntilRef.current = null;
       armedRotationRef.current = null;
+      rotateClickRef.current.reset();
       snapPlacementRef.current = null;
       moveRef.current.reset();
       moveGizmoRef.current?.dispose();
@@ -1190,6 +1220,7 @@ export function NativeStepViewer() {
       clearArmedPivot();
       clearArmedUntil();
       clearArmedRotation();
+      rotateClickRef.current.reset();
       snapPlacementRef.current = null;
       setSnapBase(null);
       moveRef.current.reset();
@@ -1306,6 +1337,7 @@ export function NativeStepViewer() {
   }
 
   function rotateNumeric(copy = false): void {
+    rotateClickRef.current.reset();
     clearArmedPivot();
     clearArmedUntil();
     clearArmedRotation();
