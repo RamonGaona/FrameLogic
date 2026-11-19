@@ -93,6 +93,50 @@ export function createNativeMoveGizmo(
   };
 }
 
+const NATIVE_GIZMO_TARGET_LENGTH_PX = 96;
+
+/**
+ * Maintain a usable on-screen XYZ gizmo as the orthographic camera zooms.
+ * Only the disposable gizmo display group is scaled; no selected STEP mesh,
+ * OCCT geometry, local-mm pivot or CAD transform is ever modified.
+ *
+ * The world-space length of each axis intentionally changes with zoom,
+ * because the axis is a user-interface handle rather than model geometry.
+ */
+export function updateNativeMoveGizmoScreenScale(
+  gizmo: NativeMoveGizmo,
+  camera: THREE.OrthographicCamera,
+  viewportWidth: number,
+  viewportHeight: number,
+): boolean {
+  if (!Number.isFinite(viewportWidth) || !Number.isFinite(viewportHeight)
+    || viewportWidth <= 0 || viewportHeight <= 0
+    || !Number.isFinite(gizmo.axisLengthMm) || gizmo.axisLengthMm <= 0) return false;
+
+  const visibleHeightMm = (camera.top - camera.bottom) / camera.zoom;
+  if (!(visibleHeightMm > 0) || !Number.isFinite(visibleHeightMm)) return false;
+
+  // Leave space for the panel and viewport edges on small screens.
+  const targetPixels = Math.min(
+    NATIVE_GIZMO_TARGET_LENGTH_PX,
+    Math.max(48, Math.min(viewportWidth, viewportHeight) * 0.18),
+  );
+  const worldPerPixelMm = visibleHeightMm / viewportHeight;
+  const scale = targetPixels * worldPerPixelMm / gizmo.axisLengthMm;
+  if (!Number.isFinite(scale) || scale <= 0) return false;
+  if (Math.abs(gizmo.group.scale.x - scale) > Math.max(1e-12, scale * 1e-6)) {
+    gizmo.group.scale.setScalar(scale);
+    gizmo.group.updateMatrixWorld(true);
+  }
+  return true;
+}
+
+/** Return actual display-axis world length for correct millimetre drag math. */
+export function getNativeMoveGizmoWorldAxisLength(gizmo: NativeMoveGizmo): number {
+  gizmo.group.updateMatrixWorld(true);
+  return gizmo.axisLengthMm * gizmo.group.getWorldScale(new THREE.Vector3()).x;
+}
+
 /** Centre appearance changes only; the handle never transforms the STEP geometry. */
 export function setNativeMoveCenterHovered(
   gizmo: NativeMoveGizmo,
