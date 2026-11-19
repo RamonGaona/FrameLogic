@@ -19,7 +19,8 @@ export function copyNativeOrthographicPreviewCamera(
   if (!(width > 0 && height > 0)) {
     throw new Error("Native preview requires positive viewport dimensions.");
   }
-  destination.copy(source);
+  // Never clone child objects on each frame (Object3D.copy defaults recursive).
+  destination.copy(source, false);
   const halfHeight = (source.top - source.bottom) / 2;
   const centerX = (source.left + source.right) / 2;
   const halfWidth = halfHeight * (width / height);
