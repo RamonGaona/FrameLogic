@@ -38,6 +38,13 @@ describe("native Three.js project picker uses authoritative Model Space identiti
     expect(pickNativeProjectPieceInstance(300, 400, rect, camera, [
       ["hidden", hidden], ["visible", visible],
     ])).toBeNull();
+    visible.children[0].visible = true;
+    const hiddenAssembly = new THREE.Group();
+    hiddenAssembly.visible = false;
+    hiddenAssembly.add(visible);
+    expect(pickNativeProjectPieceInstance(300, 400, rect, camera, [
+      ["visible", visible],
+    ])).toBeNull();
   });
 
   it("does not select unregistered construction geometry, CAD references or empty space", () => {
