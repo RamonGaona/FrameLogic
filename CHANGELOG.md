@@ -15,6 +15,17 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.194 — 2026-11-18 (fase 3g: primer gizmo nativo de movimiento, seguro y reversible)
+
+- **Movimiento XYZ experimental:** el visor autónomo `?threeNative=1` muestra flechas X, Y y Z para desplazar en milímetros un **archivo STEP aislado**, solo cuando todas sus mallas pertenecen inequívocamente a un mismo producto STEP y un documento B-Rep. Se puede arrastrar un eje en pantalla o introducir una distancia numérica con signo. Una orientación que proyecta un eje a casi cero píxeles bloquea el arrastre de ese eje y permite usar la entrada numérica.
+- **Protección de ensamblajes:** quedan bloqueados los archivos STEP que contienen varios productos, referencias ambiguas, identificadores B-Rep faltantes o mallas ajenas al producto. El controlador mueve el `THREE.Group` completo del archivo; no mueve mallas aisladas dentro de un STEP multipartes, ni modifica otros archivos STEP cargados en la misma sesión. El permiso se comprueba por estructura del documento, no por una caja de selección que pueda contener otras piezas.
+- **Historia local:** deshacer, rehacer y cancelación con Escape para transacciones de traslación visual; los cambios se aplican por grupo y la carga de un nuevo lote STEP descarta la historia anterior. Durante el arrastre, la órbita de la cámara queda separada del control de eje. La liberación del puntero al cancelar evita estados de gizmo bloqueados.
+- **Snaps tras movimiento:** la representación de puntos exactos B-Rep se proyecta usando la matriz actual del grupo STEP trasladado, sin sobrescribir el índice de OpenCascade. Los filtros de pertenencia espacial y oclusión permanecen activos sobre las coordenadas visuales transformadas.
+- **Importante — límite de precisión:** este es un **prototipo de colocación visual y temporal**, **no una transformación B-Rep certificada ni una operación CAD persistente**. El sólido OCCT original y el archivo STEP no se alteran, y no se guarda en `.flproject`; tampoco hay rotación, copia con Ctrl, alineación, snaps como destino de movimiento ni edición sobre subpiezas de STEP multipartes. No usar el movimiento visual experimental como dato de fabricación.
+- **Compatibilidad y pruebas:** el Model Space estable, IFC/Fragments, Paper Space/PDF, formato de proyectos y cámara ortográfica no cambian. Nuevos tests de elegibilidad, bloqueo multipartes, aislamientos entre documentos, movimientos XYZ, deshacer/rehacer, cancelación, matemáticas de gizmo y proyección B-Rep trasladada, añadidos a `test:camera`.
+
+---
+
 ## v0.1.193 — 2026-11-18 (fase 3f: ámbito de producto, snaps visibles y pivote de gizmo)
 
 - **Identidad de producto STEP:** en el visor autónomo `?threeNative=1` se identifican y agrupan las mallas que pertenecen inequívocamente al mismo nodo de producto del árbol STEP y al mismo documento B-Rep. Si un identificador de geometría se repite o pertenece a varios productos, se marca como **ambiguo** y se conserva la selección de una sola malla, sin atribuirle un producto arbitrario.

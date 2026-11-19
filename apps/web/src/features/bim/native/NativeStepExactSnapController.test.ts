@@ -82,6 +82,19 @@ describe("Native exact OpenCascade B-Rep snaps", () => {
     expect(nearest?.kind).not.toBe("VERTEX");
   });
 
+  it("projects moved exact B-Rep coordinates without mutating the native snapshot", () => {
+    const c = camera();
+    const points = indexNativeBrepSnapPoints(sampleSnapshot());
+    const original = points[0].point.clone();
+    const matrix = new THREE.Matrix4().makeTranslation(5, 0, 0);
+    const projected = clientAt(c, original.clone().applyMatrix4(matrix));
+    const hit = findNativeExactSnap(points, "brep:plate-1", c,
+      projected.clientX, projected.clientY, rect, 8,
+      (candidate) => candidate.point.x === 15, matrix);
+    expect(hit?.point.x).toBe(15);
+    expect(points[0].point.toArray()).toEqual([10, 0, 0]);
+  });
+
   it("never uses points from a different STEP source document", () => {
     const c = camera();
     const indexed = indexNativeBrepSnapPoints(sampleSnapshot());

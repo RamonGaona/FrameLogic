@@ -10,6 +10,10 @@ export function buildNativeStepMeshGroup(
 ): THREE.Group {
   const group = new THREE.Group();
   group.name = "STEP · Three.js nativo";
+  group.userData["nativeStepDocument"] = true;
+  if (document.brepDocumentId) {
+    group.userData["brepDocumentId"] = document.brepDocumentId;
+  }
 
   // Do not silently assign the first product if geometry identifiers are
   // reused across the STEP tree. Ambiguous mappings must stay visual-only.

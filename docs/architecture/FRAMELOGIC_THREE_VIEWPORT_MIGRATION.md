@@ -233,6 +233,38 @@ The production Model Space viewport, IFC, drawings and PDF remain unchanged.
 The next phase needs actual B-Rep subshape-to-product identity or a strict,
 proven selection scope before enabling native editing.
 
+## Phase 3g — guarded native XYZ movement experiment (v0.1.194)
+
+After the user validated the product selection and visible snaps in v0.1.193,
+FrameLogic adds its first **temporary visual XYZ move gizmo** in
+`?threeNative=1`. A target is eligible only if it is a complete, separately
+loaded STEP document whose every visible mesh maps unambiguously to the same
+STEP product, B-Rep document and source group. Multi-product STEP assemblies,
+ambiguous identities and arbitrary submesh selections remain blocked.
+Moving one independent STEP file never transforms another loaded file.
+
+The native gizmo is drawn as three independent colored THREE.Mesh handles
+outside the model's raycast root, and supports pointer dragging along an
+orthographic screen-projected world axis, or a signed numeric distance in mm
+when that axis projects edge-on. ESC can cancel an in-progress drag.
+Session-local undo and redo revert the exact group positions in a bounded
+history; importing another batch invalidates the old history.
+
+**Crucially, this is visual-only placement:** THREE.Group transforms are
+applied to the loaded document's display meshes, while the OCCT B-Rep source
+remains unchanged. Snap markers project exact B-Rep local coordinates through
+the display group matrix so the visual placement stays aligned with visible
+snap previews, but *these are not yet authoritative persisted CAD transforms*.
+No STEP output, .flproject persistence, geometry editing, rotation, Ctrl-copy
+or precision snap destination selection has been implemented in this phase.
+Never use experimental moved coordinates for manufacturing decisions.
+
+The stable That Open CAD viewport retains production editing and exact B-Rep
+operations, while Paper Space/PDF and IFC/Fragments are unchanged. The native
+camera remains orthographic-only. Real production migration requires exact
+subshape-to-product identity, authoritative B-Rep transform composition,
+persistent undoable project commands and tests on real assemblies.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,

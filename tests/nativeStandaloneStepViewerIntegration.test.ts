@@ -55,7 +55,9 @@ describe("Standalone native Three.js test route", () => {
     expect(native).toContain("disposeNativeStepMeshGroup(runtime.modelRoot)");
     expect(native).toContain("selectionRef.current.dispose()");
     expect(native).toContain("window.removeEventListener(\"keydown\", escapeSelection)");
-    expect(native).toContain("selectionRef.current.clear();\n      partScopeRef.current = null;\n      setSelection(null);\n      setTransformTarget(null);\n      setSnap(null);\n      const previous");
+    expect(native).toContain("selectionRef.current.clear();\n      moveRef.current.reset();");
+    expect(native).toContain("moveGizmoRef.current?.dispose()");
+    expect(native).toContain("disposeNativeStepMeshGroup(previous)");
   });
 
   it("indexes only OpenCascade B-Rep exact snaps for the selected STEP document", () => {
@@ -91,6 +93,25 @@ describe("Standalone native Three.js test route", () => {
     expect(scope).toContain("editable: false");
     expect(scope).not.toContain("@thatopen/components");
     expect(model).toContain('object.userData["stepProductAmbiguous"] = true;');
+  });
+
+  it("only enables session-local visual movement for isolated STEP files", () => {
+    const viewer = read("../apps/web/src/features/bim/native/NativeStepViewer.tsx");
+    const mover = read("../apps/web/src/features/bim/native/NativeStepMoveController.ts");
+    const gizmo = read("../apps/web/src/features/bim/native/NativeStepMoveGizmo.ts");
+    expect(viewer).toContain("resolveNativeIsolatedStepTarget(scope)");
+    expect(viewer).toContain('data-native-move-controls="true"');
+    expect(viewer).toContain("moveRef.current.moveBy(target, moveAxis, amount)");
+    expect(viewer).toContain("pickNativeMoveAxis(");
+    expect(viewer).toContain("nativeMoveAxisDistanceFromPixels(");
+    expect(viewer).toContain("moveRef.current.undo()");
+    expect(viewer).toContain("moveRef.current.redo()");
+    expect(viewer).toContain("getNativeStepBrepWorldTransform(moveTargetRef.current)");
+    expect(viewer).toContain("no se modifican ni guardan los STEP originales");
+    expect(mover).toContain('parent.userData["nativeStepDocument"] !== true');
+    expect(mover).toContain('parent.children.length !== scope.meshes.length');
+    expect(gizmo).toContain("new THREE.CylinderGeometry(");
+    expect(viewer).not.toContain("createBimCore(");
   });
 
   it("keeps perspective blocked and existing CAD drawings untouched", () => {
