@@ -41,7 +41,8 @@ describe("Native STEP product scoping, visibility and gizmo preparation", () => 
     expect(scope?.meshes).toEqual([a1, a2]);
     expect(scope?.meshes).not.toContain(other);
     expect(scope?.meshes).not.toContain(separate);
-    expect(scope?.key).toBe("brep-A:product:product-A");
+    expect(scope?.key).toContain("brep-A:instance:");
+    expect(scope?.key).toContain(":product:product-A");
     expect(scope?.pivot.x).toBeCloseTo(1.5);
     expect(scope && isSnapWithinNativePartScope(new THREE.Vector3(3, 0, 0), scope)).toBe(true);
     expect(scope && isSnapWithinNativePartScope(new THREE.Vector3(30, 0, 0), scope)).toBe(false);
@@ -53,7 +54,8 @@ describe("Native STEP product scoping, visibility and gizmo preparation", () => 
     const scope = resolveNativeStepPartScope(root, a1);
     expect(scope?.kind).toBe("VISUAL_MESH");
     expect(scope?.meshes).toEqual([a1]);
-    expect(scope?.key).toContain("brep-A:visual:");
+    expect(scope?.key).toContain("brep-A:instance:");
+    expect(scope?.key).toContain(":visual:");
     expect(scope && prepareNativeStepTransformTarget(scope)).toMatchObject({
       editable: false,
       productId: null,
