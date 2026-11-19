@@ -265,6 +265,44 @@ camera remains orthographic-only. Real production migration requires exact
 subshape-to-product identity, authoritative B-Rep transform composition,
 persistent undoable project commands and tests on real assemblies.
 
+## Phase 3h — safe Ctrl-copy and exact B-Rep COPYBASE (v0.1.195)
+
+After v0.1.194 movement was validated with real STEP files, the independent
+`?threeNative=1` viewer now has **Ctrl + drag to create a separate visual
+instance** of a complete isolated STEP file. The source group is never moved
+in copy mode; pressing Ctrl midway through an existing move immediately
+restores the source before creating the duplicate. Releasing Ctrl does not
+turn the operation back into a move. Drag cancellation removes the preview
+without touching the original. Signed numeric COPY is supported alongside
+signed MOVE.
+
+A fresh `nativeStepInstanceId` separates the STEP visual instances sharing
+the same exact B-Rep document. Each duplicate owns independent GPU materials
+and geometry, and selected source emissive colors are restored when cloning.
+A separate history entry records COPY versus MOVE: Undo(COPY) detaches only
+the copy; Redo(COPY) reattaches the same instance. Detached visual assets
+are disposed when redo is invalidated or the session resets.
+
+There is also an explicit COPYBASE workflow: capture a visible exact OCCT
+snap on the selected isolated STEP instance, then click an exact visible
+snap on another or the same STEP instance. The copy is placed using the
+3D vector between those world-space exact B-Rep points. Points are projected
+through each visual instance's world transform without changing OpenCascade
+coordinates. This is a separate mode from axis drag and must be canceled
+with Escape when no destination is desired.
+
+**Safety and limitations:** These operations are still temporary visual
+placements of the whole independently loaded STEP group. Neither a copied
+topological OCCT document nor a .flproject piece/assembly entity is created.
+The original STEP bytes, B-Rep model, manufacturing geometry and stable CAD
+history are unaffected. A multi-product or ambiguously mapped STEP file
+remains ineligible for these native editing controls. Full hierarchical
+Ctrl-copy, persistent file save and per-product exact B-Rep ownership require
+subsequent migrations and must not be claimed here.
+
+The normal That Open-backed CAD viewer, orthographic camera safety guard,
+IFC/Fragments, DWG and Paper Space/PDF remain unchanged.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
