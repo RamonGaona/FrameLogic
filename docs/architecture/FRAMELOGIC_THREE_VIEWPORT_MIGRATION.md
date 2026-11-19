@@ -449,6 +449,15 @@ Before considering the native renderer as the default full FrameLogic engine:
 
 `?threeNative=1` remains a separate, opt-in STEP viewer for this increment.
 
+## Phase 3n — inspect the full live CAD scene with Three.js (v0.1.202)
+
+The stable Model Space already exposes THREE.Scene, active camera and renderer through FrameLogicViewportPort. An opt-in button on the root FrameLogic page mounts a read-only native Three.js preview that shares the same live scene.
+Existing STEP meshes and IFC/Fragments, DWG/DXF and assembly visuals present in the active CAD scene can appear without converting geometry or duplicating projects. Project restore recreates the active scene; the preview observes it without mutating the project file.
+
+The panel owns only its extra renderer and camera. CAD pointer input, snaps, numeric tools, history and .flproject persistence remain in Model Space; Paper Space and PDFs keep their production pipelines. External IFC materials and large DWG files require real browser validation; two simultaneous renderers increase GPU usage.
+
+This is NOT a complete native CAD backend integration. Before replacing the default renderer, implement native semantic identity and authoritative CAD commands, IFC/DWG/2D parity, project persistence and Paper Space integration. Keep the original Model Space as fallback.
+
 ## Phase 3 — native Three.js backend
 
 1. Implement a new viewport backend using THREE.Scene,
