@@ -71,10 +71,10 @@ describe("Native STEP selection (experimental visual-only)", () => {
     const second = fixture();
     const selection = new NativeStepSelectionController();
     const originalFirst = first.mesh.material.emissive.clone();
+    const originalSecond = second.mesh.material.emissive.clone();
     selection.setSelected(first.mesh);
     selection.setSelected(second.mesh);
     expect(first.mesh.material.emissive.equals(originalFirst)).toBe(true);
-    const originalSecond = new THREE.Color();
     selection.dispose();
     expect(second.mesh.material.emissive.equals(originalSecond)).toBe(true);
     expect(selection.selectedMesh).toBeNull();
