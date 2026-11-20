@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import * as THREE from "three";
 import { resolveAssemblyViewBasis } from "../packages/bim/core/src/drawing/AssemblyViewOrientationControls";
 
 const source = readFileSync(
@@ -37,7 +36,8 @@ describe("Paper Space selected View orientation", () => {
     expect(handler).toContain("previousDimensionState, orientationMode,");
     expect(handler).not.toContain("registerPieceInstance(");
     expect(handler).not.toContain("setInstanceTransform(");
-    const points = [-6, 6].flatMap(x => [-0.2, 0.2].map(y => ({ x, y, z: 0 })));
+    const points = [-6, 6].flatMap(x => [-0.2, 0.2].flatMap(y =>
+      [-0.1, 0.1].map(z => ({ x, y, z }))));
     const original = JSON.stringify(points);
     const front = resolveAssemblyViewBasis("LONGITUDINAL", points);
     const top = resolveAssemblyViewBasis("LOCAL_TOP", points);
