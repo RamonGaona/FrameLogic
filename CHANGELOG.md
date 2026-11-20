@@ -15,6 +15,13 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.211 — 2026-11-20 (cambio visible de orientación de Views en Paper Space)
+
+- **Proyección inmediata:** al seleccionar Alzado, Planta, Posterior, Inferior, Extremo o Isométrica en VIEW seleccionada, se actualiza primero la vista vectorial preliminar en el SVG sin esperar al cálculo pesado STEP/HLR del ensamble.
+- **Aristas exactas cuando estén disponibles:** se mantiene el cálculo STEP/HLR y sus cotas, reemplazando la vista preliminar al terminar. Si HLR falla pero hay geometría visual, permanece una proyección preliminar con advertencia visible.
+- **Conservar estado:** no se modifican piezas 3D, transformaciones, posición ni escala de la View. Se recuperan los ajustes de cotas A/B por orientación desde el estado previo, incluso si la proyección de malla ya se mostró.
+- **Pruebas:** contrato de actualización SVG antes de HLR, retorno a vista preliminar y conservación de dimensiones; sigue pendiente comprobación interactiva con el proyecto del usuario y casos reales de ensambles largos.
+
 ## v0.1.210 — 2026-11-19 (aristas visibles al editar FLPIECE)
 
 - **Edición aislada:** Sólido + aristas dibuja los contornos a partir de la geometría visual detallada original, incluso si la malla visible está en modo Diseño/Básico, para conservar perímetros, perforaciones y placas.
