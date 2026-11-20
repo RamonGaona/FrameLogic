@@ -2490,23 +2490,73 @@ export class GeneralPdfController {
         }
         plane = this.createOrientedWorkPlane(original, basis);
       }
-      // Same projection path used by «Generar planos automáticamente»:
-      // prefer STEP B-Rep/HLR and retain explicitly labelled mesh fallback.
+      // Show a valid CAD-mesh projection immediately. STEP/B-Rep HLR for
+      // many pieces is asynchronous and may take time, so waiting for HLR
+      // before updating the SVG makes the orientation selector appear broken.
+      // Use the same basis for both the provisional and exact projections.
+      const previousDimensionState = {
+        orientationMode: view.orientationMode,
+        dimensionOverrides: view.dimensionOverrides,
+        orientationDimensionOverrides: view.orientationDimensionOverrides,
+        orientationDimensionSignatures: view.orientationDimensionSignatures,
+        geometrySignature: view.geometrySignature,
+      };
+      const preview = this.buildPlanGeometry(view.instanceIds, plane);
+      if (preview) {
+        view.workPlane = snapshotWorkPlane(plane);
+        view.width = preview.width;
+        view.height = preview.height;
+        view.offsetX = preview.offsetX;
+        view.offsetY = preview.offsetY;
+        view.segments = preview.segments;
+        view.orientationMode = orientationMode;
+        view.orientationLabel = this.orientationModeLabel(orientationMode);
+        view.automaticDimensions = [];
+        view.automaticAnchors = [];
+        view.dimensionOverrides = {};
+        view.exactInstances = 0;
+        view.fallbackInstances = view.instanceIds.length;
+        view.assemblyOcclusionExact = false;
+        view.automaticWarnings = [
+          "Vista preliminar de malla. Calculando aristas STEP/HLR exactas.",
+        ];
+        view.resolved = true;
+        this.lastTreeSignature = "";
+        this.workspace.render();
+        this.workspace.setStatus(
+          "VIEW: " + view.orientationLabel
+          + ". Vista preliminar visible; calculando proyección STEP/HLR.",
+        );
+      } else {
+        this.workspace.setStatus(
+          "VIEW: calculando " + this.orientationModeLabel(orientationMode) + "…",
+        );
+      }
+
+      // Exact HLR still replaces the preview when it succeeds. A failed
+      // optional HLR must not prevent using a valid geometric projection.
+      let exactFailure: string | null = null;
       const projection = await projectAssembly({
         instanceIds: view.instanceIds, workPlane: plane,
         designModel: this.designModel, designScene: this.designScene,
+      }).catch((error: unknown) => {
+        if (!preview) throw error;
+        exactFailure = String(error);
+        return null;
       });
-      const geometry = projection ?? this.buildPlanGeometry(view.instanceIds, plane);
+      const geometry = projection ?? preview;
       if (!geometry) throw new Error("No se encontró geometría 3D proyectable.");
+      if (this.disposed || !sheet.views.includes(view)
+        || this.getActiveSheetId() !== sheetId) return;
 
-      // Keep 2D A/B edits isolated by orientation. The resulting state is
-      // committed only after projection succeeds, leaving other Views intact.
+      // Preserve the original mode's manual A/B edits, even though the
+      // preliminary projection has already updated the visible View.
       const newGeometrySignature = assemblyProjectionSignature({
         instanceIds: view.instanceIds,
         designModel: this.designModel, designScene: this.designScene,
       });
       const dimensionState = transitionOrientationDimensions(
-        view, orientationMode,
+        previousDimensionState, orientationMode,
         orientationMode.endsWith("ISO") ? [] : projection?.dimensions ?? [],
         newGeometrySignature,
       );
@@ -2534,6 +2584,7 @@ export class GeneralPdfController {
         ...(projection?.warnings ?? [
           "Vista de malla preliminar: líneas ocultas y cotas no verificadas.",
         ]),
+        ...(exactFailure ? ["Proyección STEP/HLR no disponible: " + exactFailure] : []),
         ...dimensionState.warnings,
       ];
       view.geometrySignature = newGeometrySignature;
