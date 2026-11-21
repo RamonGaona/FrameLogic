@@ -881,7 +881,6 @@ export class CadNumericInputController {
       }
 
 
-      this.lineCanvas = detail.domElement;
       this.showLineDistance();
 
   };
