@@ -15,6 +15,13 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.213 — 2026-11-20 (demo STEP autocontenida sin JSON)
+
+- **Archivos de ejemplo originales:** se incorporan REC1500.stp, REC3000.stp y REC6000.stp a apps/web/public/examples/step/. Se conserva íntegro cada fichero STEP suministrado; Rec3000(1).stp se publica como REC3000.stp sin modificar sus bytes.
+- **Insertar (demo) autónomo:** el botón deja de leer POSITIONS.json, DBFrameLogic.json o carpetas locales FLPIECE. Tras seleccionar una línea CAD, descarga y carga los tres STEP del despliegue mediante el importador OpenCascade de FrameLogic, registra definiciones reales sin instancias en el origen y solicita confirmación antes de insertar.
+- **Orden fijo provisional:** REC1500 → REC3000 → REC6000, repetido mientras quepan piezas completas en la línea seleccionada, máximo 250 instancias. Las longitudes de colocación proceden del eje geométrico de las mallas importadas (milímetros), no se deducen del nombre del fichero ni de catálogos.
+- **Persistencia y seguridad:** la inserción reutiliza el motor actual de CAD History (Undo/Redo) y la serialización .flproject; detecta conflictos de códigos preexistentes, evita placeholders y cancela sin generar instancias si faltan archivos o geometría. Las definiciones ya importadas pueden quedar cacheadas aunque se cancele la inserción, sin incorporar piezas al modelo.
+- **Pruebas:** manifest y hashes SHA-256 de los tres STEP, planificación de líneas y regresión de ausencia de lectura JSON. Validación interactiva con modelos reales pendiente.
 ## v0.1.212 — 2026-11-20 (evitar el visor secundario Three.js al inicio)
 
 - **Arranque normal de FrameLogic:** la ventana flotante «Three.js · proyecto actual (solo vista)» solo puede lanzarse con `?threePreview=1` en un entorno de desarrollo local (`import.meta.env.DEV`). En Cloudflare Pages, incluso los enlaces antiguos con ese parámetro abren el Model Space principal sin la ventana diagnóstica.
