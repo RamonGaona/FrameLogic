@@ -27,7 +27,7 @@ describe("bundled repository STEP insertion demo", () => {
       .toEqual(["REC1500", "REC3000", "REC6000"]);
     for (const [index, item] of REPOSITORY_STEP_EXAMPLES.entries()) {
       expect(item.url).toBe("/examples/step/" + item.fileName);
-      const data = readFileSync(new URL("../../public" + item.url, import.meta.url));
+      const data = readFileSync(new URL("../../../public" + item.url, import.meta.url));
       expect(data.toString("utf8", 0, 13)).toBe("ISO-10303-21;");
       expect(createHash("sha256").update(data).digest("hex")).toBe(hashes[index]);
     }
