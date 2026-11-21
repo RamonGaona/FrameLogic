@@ -15,6 +15,14 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.215 — 2026-11-20 (panel de distancia LINE compacto y fijo)
+
+- **Entrada manual:** el panel negro de LINE deja de seguir al cursor y vuelve a permanecer centrado en la parte inferior del Model Space, sin dependencia de zoom, pan u órbita. Se compacta el estilo: título «Distancia», campo decimal vacío con indicación de milímetros y botón de confirmación «↵»; Enter sigue dibujando el segmento.
+- **Longitud real separada:** se desactiva la instancia de CadLineNumericPreviewBridgeController, que sobreescribía la etiqueta azul con la longitud digitada. La etiqueta azul de CadLineTemporaryDimensionController sigue el extremo provisional y muestra exclusivamente la longitud geométrica en tiempo real, incluso si existe una entrada manual distinta.
+- **Compatibilidad:** se mantienen las reglas existentes de LINE, SNAP, WorkPlane, atajos, foco tras movimiento de cámara y cancelación; los campos de MOVE, ROTATE, POINT y LINE XYZ conservan su estilo anterior. Sin cambios a STEP, Insertar (demo), DWG/DXF, ensambles ni Paper Space.
+- **Archivos:** CadNumericInputController.ts, navigationIndex.ts y pruebas CadLineCameraNumericInput.test.ts y CadLineTemporaryDimensionController.test.ts. Versiones de package.json y package-lock.json sincronizadas, indicador de versión automático.
+- **Verificación:** pruebas de posición fija, aspecto minimalista, borrador numérico y longitud provisional de geometría añadidas. Su aprobación, las verificaciones de CI y la inspección visual se registrarán según resultados; no se presupone validación de navegador.
+
 ## v0.1.214 — 2026-11-20 (entrada dinámica de longitud LINE)
 
 - **Problema:** la etiqueta de la longitud temporal se anclaba al punto medio 3D del segmento y desaparecía al ampliar un extremo; el cuadro editable LINE · LONGITUD permanecía centrado en la zona inferior del contenedor.
