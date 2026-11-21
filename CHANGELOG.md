@@ -15,6 +15,12 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.212 — 2026-11-20 (evitar el visor secundario Three.js al inicio)
+
+- **Arranque normal de FrameLogic:** la ventana flotante «Three.js · proyecto actual (solo vista)» solo puede lanzarse con `?threePreview=1` en un entorno de desarrollo local (`import.meta.env.DEV`). En Cloudflare Pages, incluso los enlaces antiguos con ese parámetro abren el Model Space principal sin la ventana diagnóstica.
+- **Sin alterar CAD:** el Model Space Three.js, herramientas de mover/rotar, STEP, DWG/DXF, ensambles, `.flproject`, Paper Space, comandos e historial se mantienen como estaban. Sigue disponible `?cadLegacy=1` para el respaldo de interacción.
+- **Regresión:** se añade la comprobación de que el visor diagnóstico está protegido por un guard de desarrollo y la ruta pública ejecuta el editor principal. La validación visual en navegador después del despliegue queda pendiente.
+
 ## v0.1.211 — 2026-11-20 (cambio visible de orientación de Views en Paper Space)
 
 - **Proyección inmediata:** al seleccionar Alzado, Planta, Posterior, Inferior, Extremo o Isométrica en VIEW seleccionada, se actualiza primero la vista vectorial preliminar en el SVG sin esperar al cálculo pesado STEP/HLR del ensamble.
