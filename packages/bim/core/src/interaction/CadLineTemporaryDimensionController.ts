@@ -34,6 +34,22 @@ const TEMP_DIMENSION_COLOR = 0x72e6ff;
 const OFFSET_PIXELS = 30;
 const TICK_PIXELS = 5;
 
+/** Keep the preview length readable without obscuring the current SNAP. */
+export function placePreviewLineLengthLabel(
+  area: { left: number; top: number; width: number; height: number },
+  pointer: { x: number; y: number },
+  label: { width: number; height: number },
+): { x: number; y: number } {
+  const minX = area.left + 10;
+  const maxX = Math.max(minX, area.left + area.width - label.width - 10);
+  const minY = area.top + 44;
+  const maxY = Math.max(minY, area.top + area.height - label.height - 58);
+  return {
+    x: Math.min(maxX, Math.max(minX, pointer.x - label.width - 24)),
+    y: Math.min(maxY, Math.max(minY, pointer.y + 18)),
+  };
+}
+
 /**
  * Cota informativa temporal para líneas CAD del Model Space.
  *
@@ -68,6 +84,13 @@ export class CadLineTemporaryDimensionController {
 
   private animationFrame: number | null = null;
   private disposed = false;
+  private lastPointer: { x: number; y: number } | null = null;
+
+  private readonly handlePointerMove = (event: PointerEvent): void => {
+    if (event.target === this.domElement
+      && Number.isFinite(event.clientX) && Number.isFinite(event.clientY))
+      this.lastPointer = { x: event.clientX, y: event.clientY };
+  };
 
   constructor(
     options: CadLineTemporaryDimensionControllerOptions,
@@ -103,6 +126,7 @@ export class CadLineTemporaryDimensionController {
     this.angleLabel.style.color = "#eef8fb";
     this.angleLabel.style.display = "none";
 
+    this.domElement.addEventListener("pointermove", this.handlePointerMove);
     this.scheduleSync();
   }
 
@@ -186,10 +210,13 @@ export class CadLineTemporaryDimensionController {
     this.geometry.computeBoundingSphere();
     this.dimensionLines.visible = true;
 
-    const labelPoint = dimensionStart.clone()
-      .lerp(dimensionEnd, 0.5);
+    // During LINE, the midpoint may be far outside the zoomed-in work area.
+    // Keep the label at the provisional end; retain midpoint for selections.
+    const labelPoint = segment.source === "PREVIEW"
+      ? dimensionEnd
+      : dimensionStart.clone().lerp(dimensionEnd, 0.5);
     this.label.textContent = this.formatDistance(distance);
-    this.syncLabel(labelPoint, rect, camera);
+    this.syncLabel(labelPoint, rect, camera, segment.source === "PREVIEW");
 
     if (segment.source === "PREVIEW") {
       const angle = this.getWorkPlaneAngle(
@@ -384,26 +411,39 @@ export class CadLineTemporaryDimensionController {
     point: THREE.Vector3,
     rect: DOMRect,
     camera: THREE.Camera,
+    preview = false,
   ): void {
     const projected = point.clone().project(camera);
-
-    if (
-      !Number.isFinite(projected.x)
-      || !Number.isFinite(projected.y)
-      || !Number.isFinite(projected.z)
-      || projected.z < -1
-      || projected.z > 1
-    ) {
+    const valid = Number.isFinite(projected.x)
+      && Number.isFinite(projected.y) && Number.isFinite(projected.z)
+      && projected.z >= -1 && projected.z <= 1;
+    if (!preview && !valid) {
       this.label.style.display = "none";
       return;
     }
 
-    this.label.style.left = `${
-      rect.left + (projected.x + 1) * 0.5 * rect.width
-    }px`;
-    this.label.style.top = `${
-      rect.top + (1 - projected.y) * 0.5 * rect.height
-    }px`;
+    const visibleInCanvas = valid
+      && projected.x >= -1 && projected.x <= 1
+      && projected.y >= -1 && projected.y <= 1;
+    const anchor = preview && !visibleInCanvas
+      ? this.lastPointer ?? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+      : {
+          x: rect.left + (projected.x + 1) * 0.5 * rect.width,
+          y: rect.top + (1 - projected.y) * 0.5 * rect.height,
+        };
+    if (preview) {
+      const position = placePreviewLineLengthLabel(rect, anchor, {
+        width: this.label.offsetWidth || 80,
+        height: this.label.offsetHeight || 20,
+      });
+      this.label.style.transform = "none";
+      this.label.style.left = String(position.x) + "px";
+      this.label.style.top = String(position.y) + "px";
+    } else {
+      this.label.style.transform = "translate(-50%, -150%)";
+      this.label.style.left = String(anchor.x) + "px";
+      this.label.style.top = String(anchor.y) + "px";
+    }
     this.label.style.display = "block";
   }
 
@@ -485,6 +525,7 @@ export class CadLineTemporaryDimensionController {
       this.animationFrame = null;
     }
 
+    this.domElement.removeEventListener("pointermove", this.handlePointerMove);
     this.scene.remove(this.dimensionLines);
     this.geometry.dispose();
     this.material.dispose();

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { DesignModel } from "@framelogic/domain";
-import { CadLineTemporaryDimensionController } from "./CadLineTemporaryDimensionController";
+import { CadLineTemporaryDimensionController, placePreviewLineLengthLabel } from "./CadLineTemporaryDimensionController";
 import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
 
 vi.mock("../import/CadReferenceTransformController", () => ({
@@ -46,5 +46,42 @@ describe("automatic dimensions for read-only DWG line members", () => {
     const f = setup();
     f.selection.getSelectedIds.mockReturnValue([f.line.id]);
     expect(f.segment()?.start.distanceTo(f.segment()!.end)).toBe(5);
+  });
+});
+
+describe("LINE preview label visibility", () => {
+  it("keeps the label inside the canvas even when zoom moves the endpoint beyond it", () => {
+    const area = { left: 50, top: 60, width: 720, height: 450 };
+    const label = { width: 110, height: 20 };
+    for (const anchor of [
+      { x: 200, y: 180 }, { x: -10000, y: 300 },
+      { x: 90000, y: 20000 }, { x: 50, y: 60 },
+    ]) {
+      const p = placePreviewLineLengthLabel(area, anchor, label);
+      expect(p.x).toBeGreaterThanOrEqual(60);
+      expect(p.x + label.width).toBeLessThanOrEqual(760);
+      expect(p.y).toBeGreaterThanOrEqual(104);
+      expect(p.y + label.height).toBeLessThanOrEqual(452);
+    }
+  });
+
+  it("uses the last screen pointer when a projected preview endpoint leaves the camera", () => {
+    const dimension = Object.create(CadLineTemporaryDimensionController.prototype);
+    const style: Record<string, string> = {};
+    const label = { style, offsetWidth: 110, offsetHeight: 20 };
+    Reflect.set(dimension, "label", label);
+    Reflect.set(dimension, "lastPointer", { x: 275, y: 160 });
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+    camera.position.set(0, 0, 10);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+    const rect = { left: 50, top: 60, width: 720, height: 450 } as DOMRect;
+    const syncLabel = Reflect.get(dimension, "syncLabel") as Function;
+    syncLabel.call(dimension, new THREE.Vector3(1_000, 1_000, 0), rect, camera, true);
+    const expected = placePreviewLineLengthLabel(rect, { x: 275, y: 160 }, { width: label.offsetWidth, height: label.offsetHeight });
+    expect(style.left).toBe(String(expected.x) + "px");
+    expect(style.top).toBe(String(expected.y) + "px");
+    expect(style.display).toBe("block");
   });
 });

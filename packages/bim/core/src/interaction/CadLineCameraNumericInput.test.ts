@@ -4,6 +4,7 @@ import {
   CadNumericInputController,
   canResumeLineDistanceKey,
   nextLineDistanceDraft,
+  placeLineDistanceInput,
 } from "./CadNumericInputController";
 import { isCameraNavigationPointerMove } from "./CadLinePlacementController";
 
@@ -21,6 +22,11 @@ class FakeDocument extends EventTarget {
 }
 class FakeElement extends EventTarget {
   readonly style: Record<string, string> = {};
+  bounds = { left: 0, top: 0, width: 260, height: 60 };
+  getBoundingClientRect() {
+    return { ...this.bounds, right: this.bounds.left + this.bounds.width,
+      bottom: this.bounds.top + this.bounds.height } as DOMRect;
+  }
   readonly dataset: Record<string, string> = {};
   readonly children: FakeElement[] = [];
   parent: FakeElement | null = null;
@@ -86,6 +92,8 @@ function fixture() {
   const canvas = new FakeElement("canvas", doc);
   const container = new FakeElement("div", doc);
   container.append(canvas);
+  container.bounds = { left: 0, top: 0, width: 800, height: 600 };
+  canvas.bounds = { left: 0, top: 0, width: 800, height: 600 };
   const win = new EventTarget() as EventTarget & {
     getComputedStyle: () => { position: string };
     setTimeout: (cb: () => void) => number;
@@ -118,6 +126,44 @@ function fixture() {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("LINE exact distance after camera navigation", () => {
+  it("positions the editable box near the pointer within the drawing area", () => {
+    const area = { left: 80, top: 100, width: 800, height: 500 };
+    const panel = { width: 250, height: 60 };
+    for (const pointer of [
+      { x: 90, y: 110 }, { x: 800, y: 570 },
+      { x: 400, y: 300 }, { x: -5000, y: 7000 },
+    ]) {
+      const p = placeLineDistanceInput(area, pointer, panel);
+      expect(p.x).toBeGreaterThanOrEqual(92);
+      expect(p.x + panel.width).toBeLessThanOrEqual(868);
+      expect(p.y).toBeGreaterThanOrEqual(144);
+      expect(p.y + panel.height).toBeLessThanOrEqual(542);
+    }
+  });
+
+  it("repositions after pointer motion and viewport changes without replacing the draft", () => {
+    const f = fixture();
+    const root = f.container.children[1]!;
+    f.input.value = "3500.5";
+    f.nav("handleLinePointerMove", 0); // no coordinates: ignored
+    const track = Reflect.get(f.controller, "handleLinePointerMove") as Function;
+    track({ target: f.canvas, clientX: 745, clientY: 100 });
+    const before = { x: root.style.left, y: root.style.top };
+    expect(root.style.transform).toBe("none");
+    expect(Number.parseFloat(root.style.left)).toBeGreaterThanOrEqual(0);
+    expect(Number.parseFloat(root.style.top)).toBeGreaterThanOrEqual(44);
+    f.container.bounds = { left: 20, top: 30, width: 620, height: 360 };
+    f.canvas.bounds = { left: 20, top: 30, width: 620, height: 360 };
+    (Reflect.get(f.controller, "positionLineInput") as Function).call(f.controller);
+    expect(root.style.left).not.toBe(before.x);
+    expect(f.input.value).toBe("3500.5");
+    f.controller.hide();
+    expect(root.style.left).toBe("50%");
+    expect(root.style.bottom).toBe("20px");
+    expect(root.style.transform).toBe("translateX(-50%)");
+    f.controller.dispose();
+  });
+
   it("allows decimal and negative drafts without hijacking shortcuts", () => {
     expect(nextLineDistanceDraft("0", "1")).toBe("1");
     expect(nextLineDistanceDraft("12", ".")).toBe("12.");
