@@ -28,33 +28,6 @@ export function canResumeLineDistanceKey(
   return key === "Enter" || nextLineDistanceDraft("0", key) !== null;
 }
 
-/**
- * Screen-space placement for LINE's editable distance box.
- * Pointer is preferred over the 3D segment midpoint; the panel is always
- * kept inside the canvas with room for status and navigation controls.
- */
-export function placeLineDistanceInput(
-  area: { left: number; top: number; width: number; height: number },
-  pointer: { x: number; y: number },
-  panel: { width: number; height: number },
-): { x: number; y: number } {
-  const margin = 12;
-  const topInset = 44;
-  const bottomInset = 58;
-  const left = area.left + margin;
-  const right = Math.max(left, area.left + area.width - margin - panel.width);
-  const top = area.top + topInset;
-  const bottom = Math.max(top, area.top + area.height - bottomInset - panel.height);
-  const desiredX = pointer.x + 24 + panel.width <= area.left + area.width - margin
-    ? pointer.x + 24 : pointer.x - panel.width - 24;
-  const desiredY = pointer.y - panel.height - 22 >= top
-    ? pointer.y - panel.height - 22 : pointer.y + 22;
-  return {
-    x: Math.min(right, Math.max(left, desiredX)),
-    y: Math.min(bottom, Math.max(top, desiredY)),
-  };
-}
-
 export type MoveNumericAxis =
   | "X"
   | "Y"
@@ -104,9 +77,6 @@ export interface CadLineDistanceApplyDetail {
 export class CadNumericInputController {
   private readonly focusGate = new PointerFocusGate();
   private cameraNavigationPointer: number | null = null;
-  private lineCanvas: HTMLElement | null = null;
-  private lastLineCursor: { x: number; y: number } | null = null;
-  private linePositionFrame: number | null = null;
 
   private readonly container:
     HTMLElement;
@@ -373,7 +343,6 @@ export class CadNumericInputController {
     window.addEventListener("pointerdown", this.handleCameraNavigationDown, true);
     window.addEventListener("pointerup", this.handleCameraNavigationUp, true);
     window.addEventListener("pointercancel", this.handleCameraNavigationCancel, true);
-    window.addEventListener("pointermove", this.handleLinePointerMove, true);
 
 
     document.addEventListener(
@@ -663,20 +632,12 @@ export class CadNumericInputController {
       null;
 
 
-    this.title.textContent =
-      "LINE · LONGITUD";
+    this.title.textContent = "Distancia";
+    this.applyButton.textContent = "↵";
+    this.applyButton.title = "Dibujar con distancia exacta (Enter)";
+    this.applyButton.setAttribute("aria-label", "Confirmar longitud con Enter");
 
-
-    this.applyButton.textContent =
-      "Dibujar";
-
-
-    this.buildInputs(
-      [
-        "L",
-      ],
-      "",
-    );
+    this.buildInputs([""], "mm");
 
 
     this.root.style.display =
@@ -687,15 +648,44 @@ export class CadNumericInputController {
       field.type = "text";
       field.inputMode = "decimal";
       field.autocomplete = "off";
-      field.setAttribute("aria-label", "Longitud exacta de LINE");
+      field.value = "";
+      field.placeholder = "0";
+      field.style.width = "88px";
+      field.style.height = "26px";
+      field.style.background = "#0d1823";
+      field.style.color = "#f1f5f9";
+      field.style.border = "1px solid rgba(148, 163, 184, 0.55)";
+      field.style.borderRadius = "4px";
+      field.style.font = "12px ui-monospace, Consolas, monospace";
+      field.setAttribute("aria-label", "Distancia exacta de LINE en milímetros");
     }
 
-    // Use CSS screen coordinates rather than anchoring the editable box to
-    // a world-space midpoint; the input itself is never recreated by camera motion.
-    this.root.style.bottom = "auto";
-    this.root.style.transform = "none";
-    this.positionLineInput();
-    this.scheduleLinePosition();
+    const caption = this.fields.querySelector("span");
+    if (caption) caption.style.display = "none";
+    this.root.dataset["framelogicLineDistanceInput"] = "true";
+    this.root.style.padding = "5px 8px";
+    this.root.style.gap = "6px";
+    this.root.style.alignItems = "center";
+    this.root.style.borderRadius = "6px";
+    this.root.style.background = "rgba(20, 27, 35, 0.94)";
+    this.root.style.border = "1px solid rgba(148, 163, 184, 0.35)";
+    this.root.style.boxShadow = "0 2px 8px rgba(0, 0, 0, 0.25)";
+    this.root.style.fontSize = "11px";
+    this.title.style.fontWeight = "500";
+    this.title.style.color = "#cbd5e1";
+    this.applyButton.style.height = "26px";
+    this.applyButton.style.width = "28px";
+    this.applyButton.style.padding = "0";
+    this.applyButton.style.border = "1px solid rgba(148, 163, 184, 0.35)";
+    this.applyButton.style.borderRadius = "4px";
+    this.applyButton.style.background = "#263746";
+    this.applyButton.style.color = "#f1f5f9";
+    this.applyButton.style.cursor = "pointer";
+    // Fixed beneath Model Space; camera navigation must not relocate the input.
+    this.root.style.left = "50%";
+    this.root.style.top = "auto";
+    this.root.style.bottom = "20px";
+    this.root.style.transform = "translateX(-50%)";
     this.focusFirstInput();
 
   }
@@ -1073,56 +1063,33 @@ export class CadNumericInputController {
     };
 
 
-  private readonly handleLinePointerMove = (event: PointerEvent): void => {
-    if (this.mode !== "LINE_DISTANCE" || !Number.isFinite(event.clientX)
-      || !Number.isFinite(event.clientY)
-      || !(event.target instanceof Node)
-      || !this.container.contains(event.target)
-      || this.root.contains(event.target)) return;
-    this.lastLineCursor = { x: event.clientX, y: event.clientY };
-    this.positionLineInput();
-  };
-
-  private positionLineInput(): void {
-    if (this.mode !== "LINE_DISTANCE") return;
-    const canvas = this.lineCanvas ?? this.container;
-    if (typeof canvas.getBoundingClientRect !== "function"
-      || typeof this.container.getBoundingClientRect !== "function"
-      || typeof this.root.getBoundingClientRect !== "function") return;
-    const area = canvas.getBoundingClientRect();
-    const parent = this.container.getBoundingClientRect();
-    const panel = this.root.getBoundingClientRect();
-    if (area.width <= 0 || area.height <= 0 || panel.width <= 0 || panel.height <= 0) return;
-    const pointer = this.lastLineCursor ?? {
-      x: area.left + area.width * 0.5,
-      y: area.top + area.height * 0.5,
-    };
-    const position = placeLineDistanceInput(area, pointer, panel);
-    this.root.style.left = String(position.x - parent.left) + "px";
-    this.root.style.top = String(position.y - parent.top) + "px";
-  }
-
-  private scheduleLinePosition(): void {
-    if (this.linePositionFrame !== null || typeof window.requestAnimationFrame !== "function") return;
-    const frame = (): void => {
-      this.linePositionFrame = null;
-      if (this.mode !== "LINE_DISTANCE") return;
-      this.positionLineInput(); // also handles resizing and camera movement without pointermove
-      this.linePositionFrame = window.requestAnimationFrame(frame);
-    };
-    this.linePositionFrame = window.requestAnimationFrame(frame);
-  }
-
+  /** Restore the shared numeric panel style for MOVE, ROTATE, POINT and LINE XYZ. */
   private resetLinePosition(): void {
-    if (this.linePositionFrame !== null && typeof window.cancelAnimationFrame === "function")
-      window.cancelAnimationFrame(this.linePositionFrame);
-    this.linePositionFrame = null;
-    this.lineCanvas = null;
-    this.lastLineCursor = null;
+    delete this.root.dataset["framelogicLineDistanceInput"];
     this.root.style.left = "50%";
     this.root.style.top = "auto";
     this.root.style.bottom = "20px";
     this.root.style.transform = "translateX(-50%)";
+    this.root.style.padding = "10px 12px";
+    this.root.style.gap = "8px";
+    this.root.style.alignItems = "flex-end";
+    this.root.style.borderRadius = "8px";
+    this.root.style.background = "rgba(24, 24, 27, 0.94)";
+    this.root.style.border = "1px solid rgba(255,255,255,0.18)";
+    this.root.style.boxShadow = "0 8px 24px rgba(0,0,0,0.28)";
+    this.root.style.fontSize = "12px";
+    this.title.style.fontWeight = "600";
+    this.title.style.color = "";
+    this.applyButton.style.height = "30px";
+    this.applyButton.style.width = "";
+    this.applyButton.style.padding = "";
+    this.applyButton.style.border = "";
+    this.applyButton.style.borderRadius = "";
+    this.applyButton.style.background = "";
+    this.applyButton.style.color = "";
+    this.applyButton.style.cursor = "";
+    this.applyButton.title = "";
+    this.applyButton.removeAttribute("aria-label");
   }
 
   private isExternalTextEditor(target: EventTarget | null): boolean {
@@ -1208,7 +1175,6 @@ export class CadNumericInputController {
     window.removeEventListener("pointerdown", this.handleCameraNavigationDown, true);
     window.removeEventListener("pointerup", this.handleCameraNavigationUp, true);
     window.removeEventListener("pointercancel", this.handleCameraNavigationCancel, true);
-    window.removeEventListener("pointermove", this.handleLinePointerMove, true);
     this.resetLinePosition();
     this.focusGate.dispose();
 
