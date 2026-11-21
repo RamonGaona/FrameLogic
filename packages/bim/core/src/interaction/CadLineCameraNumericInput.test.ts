@@ -4,7 +4,6 @@ import {
   CadNumericInputController,
   canResumeLineDistanceKey,
   nextLineDistanceDraft,
-  placeLineDistanceInput,
 } from "./CadNumericInputController";
 import { isCameraNavigationPointerMove } from "./CadLinePlacementController";
 
@@ -52,6 +51,7 @@ class FakeElement extends EventTarget {
     return this.children.some(c => c.contains(target));
   }
   setAttribute(_name: string, _value: string): void {}
+  removeAttribute(_name: string): void {}
   closest(_selector: string): FakeElement | null {
     return ["input", "textarea", "select"].includes(this.tag) ? this : null;
   }
@@ -126,41 +126,46 @@ function fixture() {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("LINE exact distance after camera navigation", () => {
-  it("positions the editable box near the pointer within the drawing area", () => {
-    const area = { left: 80, top: 100, width: 800, height: 500 };
-    const panel = { width: 250, height: 60 };
-    for (const pointer of [
-      { x: 90, y: 110 }, { x: 800, y: 570 },
-      { x: 400, y: 300 }, { x: -5000, y: 7000 },
-    ]) {
-      const p = placeLineDistanceInput(area, pointer, panel);
-      expect(p.x).toBeGreaterThanOrEqual(92);
-      expect(p.x + panel.width).toBeLessThanOrEqual(868);
-      expect(p.y).toBeGreaterThanOrEqual(144);
-      expect(p.y + panel.height).toBeLessThanOrEqual(542);
-    }
-  });
-
-  it("repositions after pointer motion and viewport changes without replacing the draft", () => {
+  it("keeps the manual distance panel compact and fixed at the bottom after pointer motion", () => {
     const f = fixture();
     const root = f.container.children[1]!;
-    f.input.value = "3500.5";
-    f.nav("handleLinePointerMove", 0); // no coordinates: ignored
-    const track = Reflect.get(f.controller, "handleLinePointerMove") as Function;
-    track({ target: f.canvas, clientX: 745, clientY: 100 });
-    const before = { x: root.style.left, y: root.style.top };
-    expect(root.style.transform).toBe("none");
-    expect(Number.parseFloat(root.style.left)).toBeGreaterThanOrEqual(0);
-    expect(Number.parseFloat(root.style.top)).toBeGreaterThanOrEqual(44);
-    f.container.bounds = { left: 20, top: 30, width: 620, height: 360 };
-    f.canvas.bounds = { left: 20, top: 30, width: 620, height: 360 };
-    (Reflect.get(f.controller, "positionLineInput") as Function).call(f.controller);
-    expect(root.style.left).not.toBe(before.x);
-    expect(f.input.value).toBe("3500.5");
-    f.controller.hide();
+    expect(root.dataset["framelogicLineDistanceInput"]).toBe("true");
     expect(root.style.left).toBe("50%");
     expect(root.style.bottom).toBe("20px");
+    expect(root.style.top).toBe("auto");
     expect(root.style.transform).toBe("translateX(-50%)");
+    expect(root.style.padding).toBe("5px 8px");
+    expect(root.style.boxShadow).toBe("0 2px 8px rgba(0, 0, 0, 0.25)");
+    expect(root.style.display).toBe("flex");
+    expect(f.input.value).toBe("");
+    expect(f.input.type).toBe("text");
+
+    f.input.value = "2300";
+    f.win.dispatchEvent(new Event("pointermove"));
+    f.canvas.bounds = { left: 20, top: 40, width: 580, height: 320 };
+    expect(root.style.left).toBe("50%");
+    expect(root.style.top).toBe("auto");
+    expect(root.style.bottom).toBe("20px");
+    expect(f.input.value).toBe("2300");
+    f.controller.hide();
+    expect(root.dataset["framelogicLineDistanceInput"]).toBeUndefined();
+    expect(root.style.padding).toBe("10px 12px");
+    expect(root.style.transform).toBe("translateX(-50%)");
+    f.controller.dispose();
+  });
+
+  it("shows just one editable millimetre field and a small Enter confirmation", () => {
+    const f = fixture();
+    const root = f.container.children[1]!;
+    const fields = root.querySelectorAll<FakeElement>("input");
+    expect(fields).toHaveLength(1);
+    expect(fields[0]?.value).toBe("");
+    expect(root.querySelectorAll<FakeElement>("button")).toHaveLength(1);
+    const title = root.children[0]!;
+    expect(title.textContent).toBe("Distancia");
+    const apply = root.querySelector<FakeElement>("button")!;
+    expect(apply.textContent).toBe("↵");
+    expect(apply.title).toBe("Dibujar con distancia exacta (Enter)");
     f.controller.dispose();
   });
 
