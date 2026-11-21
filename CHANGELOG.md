@@ -15,6 +15,16 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.214 — 2026-11-20 (entrada dinámica de longitud LINE)
+
+- **Problema:** la etiqueta de la longitud temporal se anclaba al punto medio 3D del segmento y desaparecía al ampliar un extremo; el cuadro editable LINE · LONGITUD permanecía centrado en la zona inferior del contenedor.
+- **Corrección:** durante el trazado, la cota informativa sigue al extremo provisional reproyectado por Three.js; si sale del frustum, utiliza la última posición del puntero dentro del canvas. La posición final se limita a la región útil de dibujo, separada del SNAP. Las líneas seleccionadas conservan su cota de punto medio.
+- **Entrada numérica:** el cuadro editable sigue al cursor en coordenadas de pantalla, invierte su lado cerca de los bordes y se recoloca en el ciclo de animación incluso cuando cambia el tamaño del viewport o la cámara sin eventos pointermove. El mismo DOM e input continúan activos al mover la cámara; los modos de otros comandos restauran su posición previa.
+- **Alcance:** CadNumericInputController y CadLineTemporaryDimensionController. No se modifican algoritmos geométricos de LINE, WorkPlane, SNAP, History, DWG/DXF, STEP, Insertar (demo), ensambles ni Paper Space.
+- **Regresiones añadidas:** comprobaciones matemáticas de ubicación en pantalla y respaldo tras perder de vista el extremo, conservación del valor numérico y restauración del diseño anterior al salir de LINE en CadLineCameraNumericInput.test.ts y CadLineTemporaryDimensionController.test.ts.
+- **Validación:** pruebas automatizadas añadidas al repositorio; ejecución de CI, interacción real en navegador y comprobación del despliegue pendientes hasta obtener sus resultados.
+- **Limitación:** queda por comprobar visualmente la convivencia del cuadro con paneles flotantes específicos en tamaños de pantalla muy reducidos.
+
 ## v0.1.213 — 2026-11-20 (demo STEP autocontenida sin JSON)
 
 - **Archivos de ejemplo originales:** se incorporan REC1500.stp, REC3000.stp y REC6000.stp a apps/web/public/examples/step/. Se conserva íntegro cada fichero STEP suministrado; Rec3000(1).stp se publica como REC3000.stp sin modificar sus bytes.
