@@ -1119,12 +1119,14 @@ export function BimViewport() {
 
             // Three.js is the permanent Model Space surface: this is the same
             // CAD scene, geometry, camera, model and persistence as before.
-            // Keep the diagnostic viewer behind an explicit URL flag only.
+            // The separate diagnostic renderer is development-only. Public
+            // links (including old bookmarks with ?threePreview=1) always
+            // open just the production Three.js Model Space.
             // By default they do not intercept a single legacy CAD pointer
             // event; only an explicitly armed gizmo temporarily owns input.
             // ?cadLegacy=1 is the immediate safe rollback for regressions.
             const viewportFlags = new URLSearchParams(window.location.search);
-            if (viewportFlags.get("threePreview") === "1") {
+            if (import.meta.env.DEV && viewportFlags.get("threePreview") === "1") {
               toggleNativeProjectPreview();
             } else if (viewportFlags.get("cadLegacy") !== "1") {
               toggleNativePrimaryEditor();
