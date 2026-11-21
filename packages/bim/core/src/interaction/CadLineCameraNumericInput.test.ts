@@ -160,10 +160,10 @@ describe("LINE exact distance after camera navigation", () => {
     const fields = root.querySelectorAll<FakeElement>("input");
     expect(fields).toHaveLength(1);
     expect(fields[0]?.value).toBe("");
-    expect(root.querySelectorAll<FakeElement>("button")).toHaveLength(1);
+    expect(root.children[1]?.style.display).toBe("none"); // ROTATE-only buttons stay hidden
     const title = root.children[0]!;
     expect(title.textContent).toBe("Distancia");
-    const apply = root.querySelector<FakeElement>("button")!;
+    const apply = root.children[3]!;
     expect(apply.textContent).toBe("↵");
     expect(apply.title).toBe("Dibujar con distancia exacta (Enter)");
     f.controller.dispose();
