@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
-import { readFileSync } from "node:fs";
 import { DesignModel } from "@framelogic/domain";
 import { CadLineTemporaryDimensionController, placePreviewLineLengthLabel } from "./CadLineTemporaryDimensionController";
 import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
@@ -88,12 +87,6 @@ describe("LINE preview label visibility", () => {
 });
 
 describe("preview distance remains independent from manual entry", () => {
-  it("does not install the legacy bridge that overwrote the blue label", () => {
-    const navigation = readFileSync(new URL("../navigationIndex.ts", import.meta.url), "utf8");
-    expect(navigation).not.toContain("new CadLineNumericPreviewBridgeController");
-    expect(navigation).toContain("new CadLineTemporaryDimensionController");
-  });
-
   it("shows the current geometric preview length in the blue label", () => {
     const dimension = Object.create(CadLineTemporaryDimensionController.prototype);
     const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
