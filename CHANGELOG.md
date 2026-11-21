@@ -15,6 +15,14 @@ Este archivo registra los cambios relevantes de cada versión visible de FrameLo
 
 ---
 
+## v0.1.216 — 2026-11-20 (ángulo de LINE junto al extremo móvil)
+
+- **Posición del ángulo:** el indicador temporal de ángulo de LINE toma como anclaje el punto final móvil del segmento, en lugar del punto de inicio fijo. Conserva el ángulo calculado respecto al eje X del WorkPlane activo (o X global si está desactivado).
+- **Visibilidad durante navegación:** la etiqueta se proyecta con la cámara de Three.js en cada actualización y permanece dentro del viewport al acercarse a los bordes. Si el extremo provisional queda fuera de vista, se usa la última posición disponible del cursor para conservar la etiqueta sin cambiar el valor del ángulo.
+- **Sin interferencias:** separación lateral y vertical respecto al SNAP y al recuadro de longitud real, que sigue en la posición y con el valor geométrico de v0.1.215. La entrada manual minimalista continúa fija en la parte inferior.
+- **Pruebas:** se amplían las regresiones de CadLineTemporaryDimensionController.test.ts para verificar anclaje en el extremo final, actualización por proyección de cámara y corrección de límites, sin modificar LINE, STEP, DWG/DXF, ensambles o Paper Space.
+- **Verificación:** el resultado de CI y la validación visual en navegador se registrarán por separado; no se consideran realizados por esta nota.
+
 ## v0.1.215 — 2026-11-20 (panel de distancia LINE compacto y fijo)
 
 - **Entrada manual:** el panel negro de LINE deja de seguir al cursor y vuelve a permanecer centrado en la parte inferior del Model Space, sin dependencia de zoom, pan u órbita. Se compacta el estilo: título «Distancia», campo decimal vacío con indicación de milímetros y botón de confirmación «↵»; Enter sigue dibujando el segmento.

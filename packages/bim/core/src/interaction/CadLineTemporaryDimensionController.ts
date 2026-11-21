@@ -51,6 +51,30 @@ export function placePreviewLineLengthLabel(
 }
 
 /**
+ * Place the live angle next to LINE's moving endpoint, inside Model Space.
+ * Offset upward/right of the endpoint so it does not cover its SNAP marker
+ * or the blue length label (which is placed to the left/below).
+ */
+export function placePreviewLineAngleLabel(
+  area: { left: number; top: number; width: number; height: number },
+  endpoint: { x: number; y: number },
+  label: { width: number; height: number },
+): { x: number; y: number } {
+  const margin = 10;
+  const minX = area.left + margin;
+  const maxX = Math.max(minX, area.left + area.width - label.width - margin);
+  const minY = area.top + 44;
+  const maxY = Math.max(minY, area.top + area.height - label.height - 58);
+  const toRight = endpoint.x + label.width + 18 <= area.left + area.width - margin;
+  const desiredX = toRight ? endpoint.x + 18 : endpoint.x - label.width - 18;
+  const desiredY = endpoint.y - label.height - 18;
+  return {
+    x: Math.min(maxX, Math.max(minX, desiredX)),
+    y: Math.min(maxY, Math.max(minY, desiredY)),
+  };
+}
+
+/**
  * Cota informativa temporal para líneas CAD del Model Space.
  *
  * - Una línea seleccionada muestra su longitud sin crear una anotación.
@@ -227,7 +251,7 @@ export class CadLineTemporaryDimensionController {
       if (angle !== null) {
         this.angleLabel.textContent = `${angle}°`;
         this.syncAngleLabel(
-          segment.start,
+          segment.end,
           rect,
           camera,
         );
@@ -448,33 +472,36 @@ export class CadLineTemporaryDimensionController {
   }
 
   private syncAngleLabel(
-    point: THREE.Vector3,
+    movingEndpoint: THREE.Vector3,
     rect: DOMRect,
     camera: THREE.Camera,
   ): void {
-    const projected = point.clone().project(camera);
+    const projected = movingEndpoint.clone().project(camera);
+    const visible = Number.isFinite(projected.x)
+      && Number.isFinite(projected.y)
+      && Number.isFinite(projected.z)
+      && projected.x >= -1 && projected.x <= 1
+      && projected.y >= -1 && projected.y <= 1
+      && projected.z >= -1 && projected.z <= 1;
 
-    if (
-      !Number.isFinite(projected.x)
-      || !Number.isFinite(projected.y)
-      || !Number.isFinite(projected.z)
-      || projected.z < -1
-      || projected.z > 1
-    ) {
-      this.angleLabel.style.display = "none";
-      return;
-    }
-
-    this.angleLabel.style.left = `${
-      rect.left
-      + (projected.x + 1) * 0.5 * rect.width
-      + 18
-    }px`;
-    this.angleLabel.style.top = `${
-      rect.top
-      + (1 - projected.y) * 0.5 * rect.height
-      + 22
-    }px`;
+    // Panning/orbiting may temporarily move the provisional endpoint offscreen.
+    // Use the last pointer as fallback, without altering the measured angle.
+    const anchor = visible
+      ? {
+          x: rect.left + (projected.x + 1) * 0.5 * rect.width,
+          y: rect.top + (1 - projected.y) * 0.5 * rect.height,
+        }
+      : this.lastPointer ?? {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        };
+    const position = placePreviewLineAngleLabel(rect, anchor, {
+      width: this.angleLabel.offsetWidth || 44,
+      height: this.angleLabel.offsetHeight || 20,
+    });
+    this.angleLabel.style.transform = "none";
+    this.angleLabel.style.left = `${position.x}px`;
+    this.angleLabel.style.top = `${position.y}px`;
     this.angleLabel.style.display = "block";
   }
 
