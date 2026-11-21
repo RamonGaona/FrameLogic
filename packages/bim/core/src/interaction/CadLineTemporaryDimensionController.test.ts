@@ -79,7 +79,7 @@ describe("LINE preview label visibility", () => {
     const rect = { left: 50, top: 60, width: 720, height: 450 } as DOMRect;
     const syncLabel = Reflect.get(dimension, "syncLabel") as Function;
     syncLabel.call(dimension, new THREE.Vector3(1_000, 1_000, 0), rect, camera, true);
-    const expected = placePreviewLineLengthLabel(rect, { x: 275, y: 160 }, label);
+    const expected = placePreviewLineLengthLabel(rect, { x: 275, y: 160 }, { width: label.offsetWidth, height: label.offsetHeight });
     expect(style.left).toBe(String(expected.x) + "px");
     expect(style.top).toBe(String(expected.y) + "px");
     expect(style.display).toBe("block");
