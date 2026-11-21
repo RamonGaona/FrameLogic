@@ -16,10 +16,6 @@ import {
 } from "./interaction/CadCommandInputController";
 
 import {
-  CadLineNumericPreviewBridgeController,
-} from "./interaction/CadLineNumericPreviewBridgeController";
-
-import {
   CadLineSnapOrthoPriorityController,
 } from "./interaction/CadLineSnapOrthoPriorityController";
 
@@ -232,15 +228,6 @@ export async function createBimCore(
         })
       : null;
 
-  const lineNumericPreview =
-    renderer
-      ? new CadLineNumericPreviewBridgeController({
-          container,
-          linePlacement:
-            core.cadLinePlacement,
-        })
-      : null;
-
   const commandInput =
     renderer
       ? new CadCommandInputController({
@@ -294,7 +281,6 @@ export async function createBimCore(
         true;
       projectCameraState.dispose();
       commandInput?.dispose();
-      lineNumericPreview?.dispose();
       temporaryLineDimensions?.dispose();
       lineSnapOrthoPriority.dispose();
       disposeMillimeterRuntime();
