@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
+import { readFileSync } from "node:fs";
 import { DesignModel } from "@framelogic/domain";
 import { CadLineTemporaryDimensionController, placePreviewLineLengthLabel } from "./CadLineTemporaryDimensionController";
 import { getActiveCadReferenceBlockController } from "../import/CadReferenceTransformController";
@@ -83,5 +84,52 @@ describe("LINE preview label visibility", () => {
     expect(style.left).toBe(String(expected.x) + "px");
     expect(style.top).toBe(String(expected.y) + "px");
     expect(style.display).toBe("block");
+  });
+});
+
+describe("preview distance remains independent from manual entry", () => {
+  it("does not install the legacy bridge that overwrote the blue label", () => {
+    const navigation = readFileSync(new URL("../navigationIndex.ts", import.meta.url), "utf8");
+    expect(navigation).not.toContain("new CadLineNumericPreviewBridgeController");
+    expect(navigation).toContain("new CadLineTemporaryDimensionController");
+  });
+
+  it("shows the current geometric preview length in the blue label", () => {
+    const dimension = Object.create(CadLineTemporaryDimensionController.prototype);
+    const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 100);
+    camera.position.set(0, 0, 20);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+
+    const label = { style: {} as Record<string, string>, textContent: "",
+      offsetWidth: 90, offsetHeight: 20 };
+    const angleLabel = { style: {} as Record<string, string>, textContent: "" };
+    const geometry = new THREE.BufferGeometry();
+    const lines = { visible: false };
+    const start = new THREE.Vector3(0, 0, 0);
+    const end = new THREE.Vector3(2_300, 0, 0);
+    Reflect.set(dimension, "domElement", {
+      isConnected: true,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+    });
+    Reflect.set(dimension, "getActiveSegment", () => ({ start, end, source: "PREVIEW" }));
+    Reflect.set(dimension, "cameraProvider", () => camera);
+    Reflect.set(dimension, "geometry", geometry);
+    Reflect.set(dimension, "dimensionLines", lines);
+    Reflect.set(dimension, "label", label);
+    Reflect.set(dimension, "angleLabel", angleLabel);
+    Reflect.set(dimension, "workPlane", { getState: () => ({ enabled: false }) });
+
+    const sync = Reflect.get(dimension, "sync") as Function;
+    sync.call(dimension);
+    expect(label.textContent).toBe("2.300 mm");
+    expect(label.style.display).toBe("block");
+
+    // Changing the provisional geometry changes the label independently of input drafts.
+    end.set(1800, 0, 0);
+    sync.call(dimension);
+    expect(label.textContent).toBe("1.800 mm");
+    geometry.dispose();
   });
 });
