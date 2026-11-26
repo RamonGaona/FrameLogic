@@ -1,0 +1,410 @@
+{
+  "info": {
+    "name": "FrameLogic — F1-A5 Autenticación",
+    "description": "Flujo de registro, aprobación, login y bloqueo. Ejecutar en orden con el Runner sobre la API temporal de pruebas. La comprobación inicial requiere el marcador del entorno desechable.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": ""
+    },
+    {
+      "key": "operatorEmail",
+      "value": "operator-a@example.test"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const baseUrl = pm.variables.get('baseUrl') || '';",
+          "const isFixtureCheck = pm.info.requestName === 'Verificar entorno de pruebas';",
+          "if (isFixtureCheck) pm.variables.set('fixtureVerified', '0');",
+          "",
+          "function stop(message) {",
+          "  pm.test(message, () => pm.expect(false).to.equal(true));",
+          "  pm.execution.setNextRequest(null);",
+          "  pm.execution.skipRequest();",
+          "}",
+          "",
+          "if (!/^http:\\/\\/127\\.0\\.0\\.1:\\d+$/.test(baseUrl)) {",
+          "  stop('Se requiere la URL temporal de loopback');",
+          "} else if (!isFixtureCheck && pm.variables.get('fixtureVerified') !== '1') {",
+          "  stop('Primero debe verificarse el entorno desechable');",
+          "} else if (pm.info.requestName === 'Autenticar operador ficticio') {",
+          "  const password = pm.environment.get('operatorPassword');",
+          "  if (!password) {",
+          "    stop('Se requiere la contraseña ficticia en el entorno local');",
+          "  } else {",
+          "    pm.variables.set('operatorPasswordJson', JSON.stringify(password));",
+          "  }",
+          "} else if (pm.info.requestName === 'Registrar cuenta pendiente') {",
+          "  const suffix = pm.variables.replaceIn('{{$guid}}');",
+          "  pm.variables.set('testEmail', 'f1-a5-' + suffix + '@example.test');",
+          "  pm.variables.set('testPassword', pm.variables.replaceIn('{{$guid}}'));",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const steps = {",
+          "  \"Verificar entorno de pruebas\": [",
+          "    200,",
+          "    \"fixture\"",
+          "  ],",
+          "  \"Autenticar operador ficticio\": [",
+          "    200,",
+          "    \"operator\"",
+          "  ],",
+          "  \"Registrar cuenta pendiente\": [",
+          "    201,",
+          "    \"register\"",
+          "  ],",
+          "  \"Rechazar login pendiente\": [",
+          "    401,",
+          "    \"pending\"",
+          "  ],",
+          "  \"Aprobar cuenta\": [",
+          "    200,",
+          "    \"approve\"",
+          "  ],",
+          "  \"Autenticar cuenta aprobada\": [",
+          "    200,",
+          "    \"login\"",
+          "  ],",
+          "  \"Bloquear cuenta\": [",
+          "    200,",
+          "    \"block\"",
+          "  ],",
+          "  \"Rechazar login bloqueado\": [",
+          "    401,",
+          "    \"blocked\"",
+          "  ]",
+          "};",
+          "const [status, kind] = steps[pm.info.requestName];",
+          "",
+          "function exactKeys(value, keys) {",
+          "  pm.expect(Object.keys(value).sort()).to.deep.equal(keys.sort());",
+          "}",
+          "",
+          "function checkLogin(body) {",
+          "  exactKeys(body, ['accessToken', 'user']);",
+          "  exactKeys(body.user, ['id', 'email', 'name', 'approved']);",
+          "  pm.expect(body.user.approved).to.equal(true);",
+          "  pm.expect(typeof body.accessToken === 'string' && body.accessToken.length > 0).to.equal(true);",
+          "}",
+          "",
+          "pm.test('Estado HTTP y respuesta del paso', () => {",
+          "  try {",
+          "    pm.response.to.have.status(status);",
+          "    const body = pm.response.json();",
+          "",
+          "    switch (kind) {",
+          "      case 'fixture':",
+          "        pm.expect(pm.response.headers.get('X-FrameLogic-Test-Instance')).to.equal('approval-postgres');",
+          "        pm.expect(body).to.deep.equal({ status: 'ok', database: 'ok' });",
+          "        pm.variables.set('fixtureVerified', '1');",
+          "        break;",
+          "      case 'operator':",
+          "        checkLogin(body);",
+          "        pm.expect(body.user.email).to.equal(pm.variables.get('operatorEmail'));",
+          "        pm.variables.set('operatorToken', body.accessToken);",
+          "        pm.variables.unset('operatorPasswordJson');",
+          "        break;",
+          "      case 'register':",
+          "        exactKeys(body, ['id', 'name', 'email', 'approved', 'createdAt']);",
+          "        pm.expect(typeof body.id === 'string' && body.id.length > 0).to.equal(true);",
+          "        pm.expect(body.email).to.equal(pm.variables.get('testEmail'));",
+          "        pm.expect(body.approved).to.equal(false);",
+          "        pm.variables.set('testUserId', body.id);",
+          "        break;",
+          "      case 'pending':",
+          "      case 'blocked':",
+          "        pm.expect(body).to.deep.equal({ message: 'La cuenta no está aprobada.' });",
+          "        break;",
+          "      case 'approve':",
+          "      case 'block':",
+          "        exactKeys(body, ['id', 'name', 'email', 'approved', 'updatedAt']);",
+          "        pm.expect(body.id).to.equal(pm.variables.get('testUserId'));",
+          "        pm.expect(body.approved).to.equal(kind === 'approve');",
+          "        break;",
+          "      case 'login': {",
+          "        checkLogin(body);",
+          "        const id = pm.variables.get('testUserId');",
+          "        pm.expect(body.user.id).to.equal(id);",
+          "        const parts = body.accessToken.split('.');",
+          "        pm.expect(parts.length).to.equal(3);",
+          "        const Buffer = require('buffer').Buffer;",
+          "        const header = JSON.parse(Buffer.from(parts[0], 'base64').toString('utf8'));",
+          "        const claims = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));",
+          "        pm.expect(header.alg).to.equal('HS256');",
+          "        exactKeys(claims, ['sub', 'iat', 'exp']);",
+          "        pm.expect(claims.sub).to.equal(id);",
+          "        pm.expect(claims.exp - claims.iat).to.equal(86400);",
+          "        break;",
+          "      }",
+          "    }",
+          "  } catch (error) {",
+          "    pm.execution.setNextRequest(null);",
+          "    throw error;",
+          "  } finally {",
+          "    if (kind === 'blocked') {",
+          "      for (const key of ['fixtureVerified', 'operatorToken', 'testUserId', 'testEmail', 'testPassword']) {",
+          "        pm.variables.unset(key);",
+          "      }",
+          "    }",
+          "  }",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Verificar entorno de pruebas",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "noauth"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Autenticar operador ficticio",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{operatorEmail}}\",\n  \"password\": {{operatorPasswordJson}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Registrar cuenta pendiente",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Cuenta de prueba\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Rechazar login pendiente",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Aprobar cuenta",
+      "request": {
+        "method": "PATCH",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{operatorToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"{{testUserId}}\",\n  \"approved\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/internal/users/approval",
+          "host": ["{{baseUrl}}"],
+          "path": ["internal", "users", "approval"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Autenticar cuenta aprobada",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Bloquear cuenta",
+      "request": {
+        "method": "PATCH",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{operatorToken}}",
+              "type": "string"
+            }
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"{{testUserId}}\",\n  \"approved\": false\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/internal/users/approval",
+          "host": ["{{baseUrl}}"],
+          "path": ["internal", "users", "approval"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Rechazar login bloqueado",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

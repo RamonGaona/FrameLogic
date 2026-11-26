@@ -57,6 +57,52 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Pruebas integrales de autenticación (F1-A5)
+
+Ejecuta los comandos desde la raíz del repositorio con Node.js 24, el cliente Prisma ya generado y Docker disponible. Compila los contratos antes de ejecutar las pruebas si el paquete todavía no tiene su salida local.
+
+```powershell
+npm run build -w @framelogic/contracts
+npm run test -w api
+npm run test:e2e -w api
+```
+
+La suite HTTP habitual usa Prisma simulado. Para incluir las pruebas con PostgreSQL 16 real, habilita la ejecución desechable en la misma sesión.
+
+```powershell
+$env:APPROVAL_POSTGRES_TEST = '1'
+try {
+  npm run test:e2e -w api
+} finally {
+  Remove-Item Env:APPROVAL_POSTGRES_TEST
+}
+```
+
+La prueba crea un contenedor `framelogic-approval-test-…` con un puerto local efímero, aplica el esquema inicial existente a una base exclusiva y prepara tres operadores ficticios. El recorrido comprueba registro 201, login pendiente 401, aprobación 200, login 200, bloqueo 200 y nuevo login 401. También comprueba los contratos, el JWT de 86.400 segundos, las operaciones de los tres operadores y los bloqueos cruzados concurrentes. El contenedor se retira al finalizar.
+
+### Repetir el recorrido en Postman
+
+1. Compila los contratos y la API. En PowerShell 7 levanta el entorno temporal e introduce una contraseña **ficticia** de al menos 8 caracteres y como máximo 72 bytes. Usa esa misma contraseña en el entorno local de Postman.
+
+   ```powershell
+   npm run build -w @framelogic/contracts
+   npm run build -w api
+   $env:FRAMELOGIC_POSTMAN_OPERATOR_PASSWORD = Read-Host -MaskInput 'Contraseña ficticia del operador'
+   try {
+     node apps/api/test/run-auth-postman.mjs
+   } finally {
+     Remove-Item Env:FRAMELOGIC_POSTMAN_OPERATOR_PASSWORD
+   }
+   ```
+
+2. Importa [la colección F1-A5](../../docs/postman/framelogic-auth.postman_collection.json). En un entorno local de Postman define `baseUrl` con la URL temporal que imprime el comando y `operatorPassword` con la contraseña ficticia. El operador predeterminado es `operator-a@example.test`. Para repetir con otro operador, cambia `operatorEmail` a `operator-b@example.test` o `operator-c@example.test`.
+3. Ejecuta la colección completa en orden en el **Collection Runner**. Desactiva **Persist responses for a session** y activa **Turn off logs during run**. La primera solicitud comprueba el marcador de la API desechable antes de enviar credenciales o registrar la cuenta. El Runner genera un correo nuevo por ejecución y mantiene el ID y el JWT del operador en variables temporales. Comparte únicamente estados y conteos de pruebas.
+4. Termina el proceso de la API temporal con **Ctrl+C**. Comprueba que su contenedor desapareció con `docker ps -a --filter name=framelogic-approval-test-`. Si una interrupción forzada deja el contenedor, ejecuta `docker stop` con el nombre exacto que imprimió el proceso. Esto retira solo ese contenedor de pruebas. Elimina del entorno local de Postman la contraseña ficticia cuando termines.
+
+### Comportamiento actual del bloqueo
+
+El bloqueo impide iniciar sesión. Un JWT ya emitido conserva su firma y su expiración. La ruta administrativa comprueba el valor actual de `approved` en cada intento y rechaza a un operador bloqueado aunque el JWT siga vigente. Si el operador se rehabilita, un token suyo todavía vigente puede volver a superar esa comprobación. La política definitiva para estos JWT en las rutas protegidas queda pendiente del acuerdo de F1-B con Miguel.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

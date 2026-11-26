@@ -1,146 +1,70 @@
-import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { setTimeout as delay } from 'node:timers/promises';
 import type { INestApplication } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import * as bcrypt from 'bcrypt';
+import {
+  createAccountResponseSchema,
+  loginResponseSchema,
+  setUserApprovalResponseSchema,
+} from '@framelogic/contracts';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  approvalOperators as operators,
+  operatorEmail,
+  seedApprovalOperators,
+  startApprovalPostgres,
+  waitFor,
+} from './support/approval-postgres.fixture.js';
 
 // Activar con APPROVAL_POSTGRES_TEST=1. Cada ejecución crea su propio PostgreSQL.
 describe.skipIf(process.env.APPROVAL_POSTGRES_TEST !== '1')(
   'Aprobación con PostgreSQL',
   () => {
-    const container = `framelogic-approval-test-${randomBytes(8).toString('hex')}`;
-    const dbName = 'approval_test';
-    const operators = ['operator-a', 'operator-b', 'operator-c'];
     const path = '/internal/users/approval';
     const password = randomBytes(16).toString('hex');
     let app: INestApplication | undefined;
     let prisma: (typeof import('@framelogic/database'))['prisma'] | undefined;
     let http: ReturnType<typeof request>;
-    let ownsContainer = false;
+    let jwt: JwtService;
+    let fixture: Awaited<ReturnType<typeof startApprovalPostgres>> | undefined;
 
-    const emailFor = (id: string) => `${id}@example.test`;
     const login = (email: string) =>
       http.post('/auth/login').send({ email, password });
     const approval = (token: string, id: string, approved: boolean) =>
       http.patch(path).auth(token, { type: 'bearer' }).send({ id, approved });
 
     beforeAll(async () => {
-      const dbPassword = randomBytes(32).toString('hex');
-      docker(
-        [
-          'run',
-          '--rm',
-          '--detach',
-          '--name',
-          container,
-          '--publish',
-          '127.0.0.1::5432',
-          '--env',
-          'POSTGRES_PASSWORD',
-          '--env',
-          'POSTGRES_DB',
-          'postgres:16',
-        ],
-        {
-          env: {
-            ...process.env,
-            POSTGRES_PASSWORD: dbPassword,
-            POSTGRES_DB: dbName,
-          },
-        },
-      );
-      ownsContainer = true;
-
-      await waitFor(
-        () => {
-          try {
-            docker([
-              'exec',
-              container,
-              'pg_isready',
-              '-h',
-              '127.0.0.1',
-              '-U',
-              'postgres',
-              '-d',
-              dbName,
-            ]);
-            return true;
-          } catch {
-            return false;
-          }
-        },
-        30_000,
-        'PostgreSQL de pruebas no inició',
-      );
-
-      const port = /^127\.0\.0\.1:(\d+)$/m.exec(
-        docker(['port', container, '5432/tcp']),
-      )?.[1];
-      if (!port)
-        throw new Error(
-          'El contenedor de pruebas no tiene un puerto local asignado',
-        );
-      const migration = readFileSync(
-        new URL(
-          '../../../packages/database/prisma/migrations/20261022034349_init/migration.sql',
-          import.meta.url,
-        ),
-        'utf8',
-      );
-      docker(
-        [
-          'exec',
-          '-i',
-          container,
-          'psql',
-          '-U',
-          'postgres',
-          '-d',
-          dbName,
-          '-v',
-          'ON_ERROR_STOP=1',
-        ],
-        {
-          input: migration,
-        },
-      );
-
-      vi.stubEnv(
-        'DATABASE_URL',
-        `postgresql://postgres:${dbPassword}@127.0.0.1:${port}/${dbName}`,
-      );
+      fixture = await startApprovalPostgres();
+      vi.stubEnv('DATABASE_URL', fixture.url);
       vi.stubEnv('JWT_SECRET', randomBytes(32).toString('hex'));
       vi.stubEnv('APPROVAL_OPERATOR_IDS', operators.join(','));
       ({ prisma } = await import('@framelogic/database'));
-      const [database] = await prisma.$queryRaw<{ name: string }[]>`
-      SELECT current_database() AS name
-    `;
-      if (database.name !== dbName) {
-        throw new Error('La conexión no apunta a la base desechable');
-      }
+      await seedApprovalOperators(prisma, fixture.database, password);
       const { AppModule } = await import('../src/app.module.js');
-      const passwordHash = await bcrypt.hash(password, 4);
-      await prisma.user.createMany({
-        data: operators.map((id) => ({
-          id,
-          name: id,
-          email: emailFor(id),
-          password: passwordHash,
-          approved: true,
-        })),
-      });
       const module = await Test.createTestingModule({
         imports: [AppModule],
       }).compile();
+      jwt = module.get(JwtService);
       app = module.createNestApplication({ logger: false });
       await app.listen(0, '127.0.0.1');
       http = request(app.getHttpServer());
     }, 60_000);
+
+    beforeEach(async () => {
+      await prisma!.user.updateMany({
+        where: { id: { in: [...operators] } },
+        data: { approved: true },
+      });
+    });
 
     afterAll(async () => {
       try {
@@ -148,40 +72,101 @@ describe.skipIf(process.env.APPROVAL_POSTGRES_TEST !== '1')(
         await prisma?.$disconnect();
       } finally {
         vi.unstubAllEnvs();
-        if (ownsContainer) docker(['stop', container]);
+        fixture?.stop();
       }
     }, 30_000);
 
     it('registra, aprueba y bloquea por HTTP sin cambiar la contraseña guardada', async () => {
       const email = 'new-account@example.test';
       const name = 'Cuenta de prueba';
-      const registered = await http
+      const { body: registerBody } = await http
         .post('/auth/register')
         .send({ name, email, password })
         .expect(201);
-      expect(registered.body.approved).toBe(false);
-      const id: string = registered.body.id;
+      const registered = verifyBody(createAccountResponseSchema, registerBody, [
+        'id',
+        'name',
+        'email',
+        'approved',
+        'createdAt',
+      ]);
+      expect(registered).toMatchObject({ name, email, approved: false });
+      const { id } = registered;
       const before = await prisma!.user.findUniqueOrThrow({ where: { id } });
-      const operator = await login(emailFor(operators[0])).expect(200);
+      const [first, second, third] = await Promise.all(
+        operators.map(async (operatorId) => {
+          const { body } = await login(operatorEmail(operatorId)).expect(200);
+          return (await verifyLogin(body, operatorId)).accessToken;
+        }),
+      );
 
-      await login(email).expect(401);
-      await approval(operator.body.accessToken, id, true).expect(200);
-      await login(email).expect(200);
-      await approval(operator.body.accessToken, id, false).expect(200);
-      await login(email).expect(401);
+      const denied = { message: 'La cuenta no está aprobada.' };
+      await login(email).expect(401, denied);
+      await checkApproval(first, true);
+      const { body: loginBody } = await login(email).expect(200);
+      const session = await verifyLogin(loginBody, id);
+      expect(session.user).toEqual({ id, name, email, approved: true });
+      await approval(session.accessToken, id, true).expect(403, {
+        message: 'No tiene permiso para administrar cuentas.',
+      });
+      await checkApproval(second, false);
+      await login(email).expect(401, denied);
+
+      await checkApproval(third, true);
+      await checkApproval(third, false);
 
       const after = await prisma!.user.findUniqueOrThrow({ where: { id } });
       expect(after.approved).toBe(false);
       expect(after.name).toBe(before.name);
       expect(after.email).toBe(before.email);
       expect(after.password === before.password).toBe(true);
+
+      async function checkApproval(token: string, approved: boolean) {
+        const { body } = await approval(token, id, approved).expect(200);
+        const result = verifyBody(setUserApprovalResponseSchema, body, [
+          'id',
+          'name',
+          'email',
+          'approved',
+          'updatedAt',
+        ]);
+        expect(result).toMatchObject({ id, name, email, approved });
+        const stored = await prisma!.user.findUniqueOrThrow({
+          where: { id },
+          select: { approved: true },
+        });
+        expect(stored.approved).toBe(approved);
+      }
+
+      async function verifyLogin(body: unknown, subject: string) {
+        const session = verifyBody(loginResponseSchema, body, [
+          'accessToken',
+          'user',
+        ]);
+        expect(Object.keys((body as typeof session).user).sort()).toEqual([
+          'approved',
+          'email',
+          'id',
+          'name',
+        ]);
+        expect(session.user.id).toBe(subject);
+        const claims = await jwt.verifyAsync<{
+          sub: string;
+          iat: number;
+          exp: number;
+        }>(session.accessToken, { algorithms: ['HS256'] });
+        expect(Object.keys(claims).sort()).toEqual(['exp', 'iat', 'sub']);
+        expect(claims.sub).toBe(subject);
+        expect(claims.exp - claims.iat).toBe(86_400);
+        return session;
+      }
     });
 
     it('preserva un operador activo ante bloqueos cruzados concurrentes', async () => {
       const [first, second, third] = operators;
       const [firstLogin, secondLogin] = await Promise.all([
-        login(emailFor(first)).expect(200),
-        login(emailFor(second)).expect(200),
+        login(operatorEmail(first)).expect(200),
+        login(operatorEmail(second)).expect(200),
       ]);
       const firstToken: string = firstLogin.body.accessToken;
       const secondToken: string = secondLogin.body.accessToken;
@@ -215,7 +200,7 @@ describe.skipIf(process.env.APPROVAL_POSTGRES_TEST !== '1')(
       }
 
       const active = await prisma!.user.findMany({
-        where: { id: { in: operators }, approved: true },
+        where: { id: { in: [...operators] }, approved: true },
         select: { id: true },
       });
       expect(active).toHaveLength(1);
@@ -229,26 +214,17 @@ describe.skipIf(process.env.APPROVAL_POSTGRES_TEST !== '1')(
   },
 );
 
-function docker(
-  args: string[],
-  options: { input?: string; env?: NodeJS.ProcessEnv } = {},
-) {
-  return execFileSync('docker', args, {
-    encoding: 'utf8',
-    timeout: 30_000,
-    ...options,
-  }).trim();
-}
-
-async function waitFor(
-  check: () => boolean | Promise<boolean>,
-  timeout: number,
-  error: string,
-) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    if (await check()) return;
-    await delay(50);
+function verifyBody<T>(
+  schema: {
+    safeParse(input: unknown): { success: true; data: T } | { success: false };
+  },
+  body: unknown,
+  keys: string[],
+): T {
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    throw new Error('La respuesta HTTP incumple su contrato Zod.');
   }
-  throw new Error(error);
+  expect(Object.keys(body as object).sort()).toEqual(keys.sort());
+  return parsed.data;
 }
