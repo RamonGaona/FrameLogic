@@ -33,6 +33,7 @@ afterEach(() => {
 
 it('rechaza el arranque de Nest si JWT_SECRET está vacío', async () => {
   vi.stubEnv('JWT_SECRET', '');
+  vi.stubEnv('APPROVAL_OPERATOR_IDS', '');
 
   await expect(
     Test.createTestingModule({ imports: [AppModule] }).compile(),
@@ -63,6 +64,7 @@ describe('API HTTP (e2e)', () => {
 
   beforeEach(async () => {
     vi.stubEnv('JWT_SECRET', jwtSecret);
+    vi.stubEnv('APPROVAL_OPERATOR_IDS', '');
     findUser.mockReset();
     createUser.mockReset();
 
