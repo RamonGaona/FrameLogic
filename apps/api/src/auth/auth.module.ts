@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthController } from './auth.controller.js';
+import { AuthExceptionFilter } from './auth-exception.filter.js';
 import { AuthService } from './auth.service.js';
 import { createJwtOptions } from './jwt.config.js';
 import { UserApprovalController } from './user-approval.controller.js';
@@ -12,6 +14,10 @@ import { UserApprovalService } from './user-approval.service.js';
 @Module({
   imports: [JwtModule.registerAsync({ useFactory: createJwtOptions })],
   controllers: [AuthController, UserApprovalController],
-  providers: [AuthService, UserApprovalService],
+  providers: [
+    AuthService,
+    UserApprovalService,
+    { provide: APP_FILTER, useClass: AuthExceptionFilter },
+  ],
 })
 export class AuthModule {}

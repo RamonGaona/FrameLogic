@@ -1,20 +1,12 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  ServiceUnavailableException,
-  UnauthorizedException,
-} from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { Injectable, Logger } from '@nestjs/common';
+import { JsonWebTokenError, JwtService } from '@nestjs/jwt';
 import {
   setUserApprovalSchema,
   type SetUserApprovalResponse,
 } from '@framelogic/contracts';
 import { prisma } from '@framelogic/database';
 import { readApiEnv } from './api-env.js';
+import { authError, validateAuthBody } from './auth-errors.js';
 
 const publicUserFields = {
   id: true,
@@ -38,16 +30,12 @@ export class UserApprovalService {
   ): Promise<SetUserApprovalResponse> {
     const operatorIds = this.operatorIds;
     if (!operatorIds) {
-      throw new ServiceUnavailableException(
-        'La aprobación de usuarios no está configurada.',
-      );
+      throw authError('approvalUnavailable');
     }
 
     const token = await this.verifyToken(authorization);
     if (!operatorIds.has(token.sub)) {
-      throw new ForbiddenException(
-        'No tiene permiso para administrar cuentas.',
-      );
+      throw authError('approvalForbidden');
     }
 
     for (let attempt = 1; ; attempt++) {
@@ -55,7 +43,7 @@ export class UserApprovalService {
         const user = await prisma.$transaction(
           async (tx) => {
             if (token.exp <= Date.now() / 1000) {
-              throw new UnauthorizedException('Token de acceso vencido.');
+              throw authError('expiredToken');
             }
 
             // La autorización se vuelve a comprobar en cada intento, dentro de la transacción.
@@ -64,23 +52,16 @@ export class UserApprovalService {
               select: { approved: true },
             });
             if (!operator?.approved) {
-              throw new ForbiddenException(
-                'No tiene permiso para administrar cuentas.',
-              );
+              throw authError('approvalForbidden');
             }
 
-            const parsed = setUserApprovalSchema.safeParse(body);
-            if (!parsed.success) {
-              throw new BadRequestException(
-                'Los datos de aprobación no son válidos.',
-              );
-            }
-
-            const { id, approved } = parsed.data;
+            const { id, approved } = validateAuthBody(
+              setUserApprovalSchema,
+              body,
+              'approval',
+            );
             if (id === token.sub && !approved) {
-              throw new ConflictException(
-                'Un operador no puede bloquear su propia cuenta.',
-              );
+              throw authError('selfBlock');
             }
 
             const target = await tx.user.findUnique({
@@ -88,9 +69,7 @@ export class UserApprovalService {
               select: publicUserFields,
             });
             if (!target) {
-              throw new NotFoundException(
-                'No se encontró la cuenta solicitada.',
-              );
+              throw authError('accountNotFound');
             }
             if (target.approved === approved) {
               return target;
@@ -119,15 +98,13 @@ export class UserApprovalService {
             ? error.code
             : undefined;
         if (code === 'P2025') {
-          throw new NotFoundException('No se encontró la cuenta solicitada.');
+          throw authError('accountNotFound');
         }
         if (code !== 'P2034' && !isAdapterWriteConflict(error)) {
           throw error;
         }
         if (attempt === maxAttempts) {
-          throw new ConflictException(
-            'Hubo un conflicto al actualizar la aprobación. Inténtelo de nuevo.',
-          );
+          throw authError('approvalConflict');
         }
       }
     }
@@ -136,15 +113,18 @@ export class UserApprovalService {
   private async verifyToken(authorization: string | undefined) {
     const bearer = /^Bearer +([^\s,]+)$/i.exec(authorization ?? '');
     if (!bearer) {
-      throw new UnauthorizedException('Se requiere un token de acceso.');
+      throw authError('tokenRequired');
     }
 
     const payload = await this.jwt
       .verifyAsync<Record<string, unknown>>(bearer[1], {
         algorithms: ['HS256'],
       })
-      .catch(() => {
-        throw new UnauthorizedException('Token de acceso inválido o vencido.');
+      .catch((error: unknown) => {
+        if (error instanceof JsonWebTokenError) {
+          throw authError('invalidOrExpiredToken');
+        }
+        throw error;
       });
 
     const sub = payload?.sub;
@@ -155,7 +135,7 @@ export class UserApprovalService {
       typeof exp !== 'number' ||
       !Number.isFinite(exp)
     ) {
-      throw new UnauthorizedException('Token de acceso inválido.');
+      throw authError('invalidToken');
     }
     return { sub, exp };
   }

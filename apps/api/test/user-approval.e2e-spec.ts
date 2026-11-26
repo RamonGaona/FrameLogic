@@ -33,6 +33,7 @@ describe('PATCH /internal/users/approval', () => {
   const updatedAt = new Date('2026-01-01T00:00:00Z');
   let app: INestApplication | undefined;
   let http: ReturnType<typeof request>;
+  let jwtVerifier: JwtService;
   let users: Map<
     string,
     {
@@ -52,6 +53,7 @@ describe('PATCH /internal/users/approval', () => {
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
+    jwtVerifier = module.get(JwtService);
     app = module.createNestApplication({ logger: false });
     await app.listen(0, '127.0.0.1');
     http = request(app.getHttpServer());
@@ -110,14 +112,48 @@ describe('PATCH /internal/users/approval', () => {
       jwt.sign({}, { expiresIn: '1h' }),
     ];
     const body = { id: ordinaryId, approved: false };
-    await http.patch(path).send(body).expect(401);
+    await http
+      .patch(path)
+      .send(body)
+      .expect(401, { message: 'Se requiere un token de acceso.' });
     for (const token of invalid) {
       await http
         .patch(path)
         .auth(token, { type: 'bearer' })
         .send(body)
-        .expect(401);
+        .expect(401)
+        .expect(({ body: error }) => {
+          expect(Object.keys(error)).toEqual(['message']);
+          expect(error.message).toMatch(/^Token de acceso inválido/);
+        });
     }
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it('responde 500 si el verificador JWT falla inesperadamente', async () => {
+    const token = tokenFor(operators[0]);
+    const verify = vi
+      .spyOn(jwtVerifier, 'verifyAsync')
+      .mockRejectedValueOnce(new Error('DETALLE_INTERNO_DE_PRUEBA'));
+    try {
+      await http
+        .patch(path)
+        .auth(token, { type: 'bearer' })
+        .send({ id: ordinaryId, approved: false })
+        .expect(500, { message: 'Ocurrió un error interno.' });
+      expect(transaction).not.toHaveBeenCalled();
+    } finally {
+      verify.mockRestore();
+    }
+  });
+
+  it('sanitiza JSON malformado sin consultar Prisma', async () => {
+    await http
+      .patch(path)
+      .auth(tokenFor(operators[0]), { type: 'bearer' })
+      .type('json')
+      .send('{"dato": DETALLE_INTERNO_DE_PRUEBA')
+      .expect(400, { message: 'El cuerpo de la solicitud no es válido.' });
     expect(transaction).not.toHaveBeenCalled();
   });
 
@@ -127,13 +163,13 @@ describe('PATCH /internal/users/approval', () => {
       .patch(path)
       .auth(tokenFor(ordinaryId), { type: 'bearer' })
       .send({ id: ordinaryId, approved: true })
-      .expect(403);
+      .expect(403, { message: 'No tiene permiso para administrar cuentas.' });
     users.get(ordinaryId)!.approved = true;
     await http
       .patch(path)
       .auth(tokenFor(ordinaryId), { type: 'bearer' })
       .send({ id: operators[0], approved: false })
-      .expect(403);
+      .expect(403, { message: 'No tiene permiso para administrar cuentas.' });
     expect(transaction).not.toHaveBeenCalled();
   });
 
@@ -144,7 +180,7 @@ describe('PATCH /internal/users/approval', () => {
       .patch(path)
       .auth(token, { type: 'bearer' })
       .send({ id: ordinaryId, approved: false })
-      .expect(403);
+      .expect(403, { message: 'No tiene permiso para administrar cuentas.' });
     await http
       .patch(path)
       .auth(token, { type: 'bearer' })
@@ -160,16 +196,56 @@ describe('PATCH /internal/users/approval', () => {
         .patch(path)
         .auth(tokenFor(operators[0]), { type: 'bearer' })
         .send(body);
-    await send({ id: '', approved: true }).expect(400);
-    await send({ id: ordinaryId, approved: 'true' }).expect(400);
+    const validationMessage = 'Los datos de aprobación no son válidos.';
+    await send({ id: '', approved: true }).expect(400, {
+      message: validationMessage,
+      issues: ['id: este campo es obligatorio.'],
+    });
+    await send({ id: ordinaryId, approved: 'true' }).expect(400, {
+      message: validationMessage,
+      issues: ['approved: debe ser verdadero o falso.'],
+    });
     await send({
       id: ordinaryId,
       approved: true,
       actorId: operators[1],
-    }).expect(400);
-    await send({ id: 'missing', approved: true }).expect(404);
-    await send({ id: operators[0], approved: false }).expect(409);
+    }).expect(400, {
+      message: validationMessage,
+      issues: ['El cuerpo contiene campos no permitidos.'],
+    });
+    await send({ id: 'missing', approved: true }).expect(404, {
+      message: 'No se encontró la cuenta solicitada.',
+    });
+    await send({ id: operators[0], approved: false }).expect(409, {
+      message: 'Un operador no puede bloquear su propia cuenta.',
+    });
     expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it('conserva el 409 tras agotar los reintentos de la transacción', async () => {
+    transaction.mockRejectedValue({
+      code: 'P2034',
+      message: 'DETALLE_INTERNO_DE_PRUEBA',
+    });
+    await http
+      .patch(path)
+      .auth(tokenFor(operators[0]), { type: 'bearer' })
+      .send({ id: ordinaryId, approved: false })
+      .expect(409, {
+        message:
+          'Hubo un conflicto al actualizar la aprobación. Inténtelo de nuevo.',
+      });
+    expect(transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it('oculta los fallos inesperados de la transacción', async () => {
+    transaction.mockRejectedValueOnce(new Error('DETALLE_INTERNO_DE_PRUEBA'));
+    await http
+      .patch(path)
+      .auth(tokenFor(operators[0]), { type: 'bearer' })
+      .send({ id: ordinaryId, approved: false })
+      .expect(500, { message: 'Ocurrió un error interno.' });
+    expect(transaction).toHaveBeenCalledTimes(1);
   });
 
   it.each(operators)('concede los mismos permisos a %s', async (operator) => {
@@ -203,7 +279,9 @@ describe('PATCH /internal/users/approval', () => {
     vi.stubEnv('APPROVAL_OPERATOR_IDS', operators.join(','));
     try {
       await disabled.listen(0, '127.0.0.1');
-      await request(disabled.getHttpServer()).patch(path).send({}).expect(503);
+      await request(disabled.getHttpServer()).patch(path).send({}).expect(503, {
+        message: 'La aprobación de usuarios no está configurada.',
+      });
       expect(transaction).not.toHaveBeenCalled();
     } finally {
       await disabled.close();

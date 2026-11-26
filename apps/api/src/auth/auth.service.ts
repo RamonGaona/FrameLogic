@@ -1,18 +1,13 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import {
   createAccountSchema,
   loginSchema,
-  type CreateAccountInput,
   type LoginResponse,
 } from '@framelogic/contracts';
 import { prisma } from '@framelogic/database';
+import { authError, validateAuthBody } from './auth-errors.js';
 
 // Servicio de Acceso: registrar una cuenta nueva.
 // En orden: valida con el contrato del Día 7, cifra la contraseña con
@@ -26,19 +21,7 @@ export class AuthService {
   constructor(private readonly jwtService: JwtService) {}
 
   async register(input: unknown) {
-    const parsed = createAccountSchema.safeParse(input);
-
-    if (!parsed.success) {
-      const issues = parsed.error.issues.map(
-        (issue) => `${issue.path.join('.')}: ${issue.message}`,
-      );
-      throw new BadRequestException({
-        message: 'Los datos del registro no son válidos.',
-        issues,
-      });
-    }
-
-    const data: CreateAccountInput = parsed.data;
+    const data = validateAuthBody(createAccountSchema, input, 'register');
 
     // El 10 es el costo de bcrypt: cuántas vueltas da el algoritmo.
     // Más vueltas, más seguro y más lento. 10 es el estándar.
@@ -67,26 +50,14 @@ export class AuthService {
     } catch (error) {
       // Correo duplicado: el email es @unique, Prisma rechaza con P2002.
       if (isUniqueConstraintError(error)) {
-        throw new ConflictException('Ya existe una cuenta con ese correo.');
+        throw authError('duplicateEmail');
       }
       throw error;
     }
   }
 
   async login(input: unknown): Promise<LoginResponse> {
-    const parsed = loginSchema.safeParse(input);
-
-    if (!parsed.success) {
-      const issues = parsed.error.issues.map(
-        (issue) => `${issue.path.join('.')}: ${issue.message}`,
-      );
-      throw new BadRequestException({
-        message: 'Los datos del inicio de sesión no son válidos.',
-        issues,
-      });
-    }
-
-    const { email, password } = parsed.data;
+    const { email, password } = validateAuthBody(loginSchema, input, 'login');
     const user = await prisma.user.findUnique({
       where: { email },
       select: {
@@ -99,11 +70,11 @@ export class AuthService {
     });
 
     if (!user || !(await bcrypt.compare(password, user.password))) {
-      throw new UnauthorizedException('Correo o contraseña incorrectos.');
+      throw authError('invalidCredentials');
     }
 
     if (!user.approved) {
-      throw new UnauthorizedException('La cuenta no está aprobada.');
+      throw authError('unapprovedAccount');
     }
 
     const accessToken = await this.jwtService.signAsync({ sub: user.id });
