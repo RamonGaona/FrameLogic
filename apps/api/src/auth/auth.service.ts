@@ -2,11 +2,15 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import {
   createAccountSchema,
+  loginSchema,
   type CreateAccountInput,
+  type LoginResponse,
 } from '@framelogic/contracts';
 import { prisma } from '@framelogic/database';
 
@@ -19,6 +23,8 @@ import { prisma } from '@framelogic/database';
 // hay ningún PrismaService en el proyecto.
 @Injectable()
 export class AuthService {
+  constructor(private readonly jwtService: JwtService) {}
+
   async register(input: unknown) {
     const parsed = createAccountSchema.safeParse(input);
 
@@ -65,6 +71,52 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  async login(input: unknown): Promise<LoginResponse> {
+    const parsed = loginSchema.safeParse(input);
+
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map(
+        (issue) => `${issue.path.join('.')}: ${issue.message}`,
+      );
+      throw new BadRequestException({
+        message: 'Los datos del inicio de sesión no son válidos.',
+        issues,
+      });
+    }
+
+    const { email, password } = parsed.data;
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        password: true,
+        approved: true,
+      },
+    });
+
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      throw new UnauthorizedException('Correo o contraseña incorrectos.');
+    }
+
+    if (!user.approved) {
+      throw new UnauthorizedException('La cuenta no está aprobada.');
+    }
+
+    const accessToken = await this.jwtService.signAsync({ sub: user.id });
+
+    return {
+      accessToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        approved: true,
+      },
+    };
   }
 }
 
