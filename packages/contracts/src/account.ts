@@ -1,10 +1,23 @@
 import { z } from 'zod';
 
+const utf8 = new TextEncoder();
+const bcryptMaxBytes = 72;
+
 export const createAccountSchema = z
     .object({
         name: z.string().trim().min(2).max(80),
         email: z.string().trim().toLowerCase().email(),
-        password: z.string().min(8).max(72),
+        password: z.string().min(8).superRefine((password, ctx) => {
+            if (utf8.encode(password).byteLength > bcryptMaxBytes) {
+                ctx.addIssue({
+                    code: 'too_big',
+                    origin: 'string',
+                    maximum: bcryptMaxBytes,
+                    inclusive: true,
+                    message: 'La contraseña supera los 72 bytes UTF-8.',
+                });
+            }
+        }),
     })
     .strict();
 

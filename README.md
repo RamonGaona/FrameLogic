@@ -23,16 +23,40 @@ El cálculo estructural y BIM 4D son módulos posteriores, no hacen parte del MV
    Si acabás de hacer `git pull` o `git merge`, volvé a correr `npm install`
    desde la raíz, aunque ya lo hayas corrido antes.
 
-3. Crea los dos archivos `.env`, con la misma línea en los dos. Uno va en
-   la raíz y el otro dentro de `packages/database`, porque Prisma 7 lee
-   la URL desde `prisma7.config.ts` con `process.env`:
+3. Para una instalación nueva, genera en tu gestor de contraseñas 64 caracteres
+   hexadecimales aleatorios y guárdalos como credencial de esta base local.
+   En el archivo `.env` de la raíz configura `POSTGRES_PASSWORD` con ese valor.
+   En `packages/database/.env` configura la URL que usan Prisma y la API.
+   Sustituye el marcador por la misma contraseña en ambos archivos:
 
-   ```
-   DATABASE_URL="postgresql://framelogic:framelogic@localhost:5432/framelogic"
+   ```dotenv
+   # .env de la raíz (Docker Compose)
+   POSTGRES_PASSWORD=<contraseña-local>
    ```
 
-   Los `.env` nunca se suben a Git. Si `git status` muestra un `.env`,
-   no se commitea.
+   ```dotenv
+   # packages/database/.env (Prisma y API)
+   DATABASE_URL=postgresql://framelogic:<contraseña-local>@127.0.0.1:5432/framelogic
+   ```
+
+   La contraseña hexadecimal se puede insertar directamente en la URL. Para
+   una credencial existente con caracteres reservados, codifica el componente
+   contraseña de la URL y usa el valor original en Compose. Las variables
+   exportadas en la terminal tienen prioridad sobre los archivos. Mantén los
+   valores en tu máquina y fuera de Git. Desde la raíz, valida la configuración
+   con `docker compose config --quiet` para evitar imprimir la contraseña.
+   El puerto de desarrollo queda publicado únicamente en `127.0.0.1`.
+
+   **Si ya tienes un volumen**, empieza con la contraseña vigente del rol.
+   PostgreSQL solo usa `POSTGRES_PASSWORD` al inicializar un directorio de
+   datos vacío. Para rotar la credencial, acuerda una ventana local, comprueba
+   el respaldo y pausa los clientes. Conéctate al contenedor existente mediante
+   `docker exec -it framelogic-postgres psql -U framelogic -d framelogic`,
+   confirma la conexión con `\conninfo` y usa `\password framelogic` para
+   introducir la nueva contraseña en el prompt oculto. Actualiza ambos archivos
+   locales y las variables exportadas, recrea el servicio con el mismo volumen
+   y reinicia los clientes. Verifica una conexión nueva con el paso 8.
+   Conserva el volumen durante toda la rotación.
 
 4. Levanta la base de datos desde la raíz:
 
@@ -45,7 +69,7 @@ El cálculo estructural y BIM 4D son módulos posteriores, no hacen parte del MV
 5. Aplica la migración desde `packages/database`:
 
    ```
-   npx prisma migrate dev
+   npx prisma migrate dev --config prisma7.config.ts
    ```
 
    Si la base ya está al día, Prisma dice que está en sincronía y no
@@ -54,7 +78,7 @@ El cálculo estructural y BIM 4D son módulos posteriores, no hacen parte del MV
 6. Genera el cliente de Prisma desde `packages/database`:
 
    ```
-   npx prisma generate
+   npx prisma generate --config prisma7.config.ts
    ```
 
    Este paso crea el cliente en `packages/database/generated/prisma`.

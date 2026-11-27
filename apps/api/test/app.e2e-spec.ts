@@ -151,6 +151,20 @@ describe('API HTTP (e2e)', () => {
   );
 
   describe('POST /auth/login', () => {
+    it('permite el login de una cuenta anterior con contraseña de más de 72 bytes', async () => {
+      const legacyPassword = 'é'.repeat(37);
+      findUser.mockResolvedValueOnce({
+        ...pendingUser,
+        approved: true,
+        password: await bcrypt.hash(legacyPassword, 4),
+      });
+
+      await http
+        .post('/auth/login')
+        .send({ email: account.email, password: legacyPassword })
+        .expect(200);
+    });
+
     it('devuelve 400 antes de consultar Prisma ante un campo extra', async () => {
       await http
         .post('/auth/login')
@@ -212,6 +226,38 @@ describe('API HTTP (e2e)', () => {
   });
 
   describe('POST /auth/register', () => {
+    it.each([
+      ['ASCII', 'a'.repeat(72)],
+      ['acentos', 'é'.repeat(36)],
+      ['emojis', '😀'.repeat(18)],
+      ['espacios y acentos combinados', ' ' + 'e\u0301'.repeat(23) + 'a '],
+    ])('acepta 72 bytes y conserva el texto original (%s)', async (_, input) => {
+      expect(Buffer.byteLength(input, 'utf8')).toBe(72);
+      createUser.mockResolvedValueOnce(pendingUser);
+      await http
+        .post('/auth/register')
+        .send({ ...account, password: input })
+        .expect(201);
+      const { data } = createUser.mock.calls[0][0];
+      expect(await bcrypt.compare(input, data.password)).toBe(true);
+    });
+
+    it.each([
+      ['ASCII', 'a'.repeat(73)],
+      ['acentos', 'é'.repeat(36) + 'a'],
+      ['emojis', '😀'.repeat(18) + 'a'],
+    ])('rechaza 73 bytes antes de crear la cuenta (%s)', async (_, input) => {
+      expect(Buffer.byteLength(input, 'utf8')).toBe(73);
+      await http
+        .post('/auth/register')
+        .send({ ...account, password: input })
+        .expect(400, {
+          message: 'Los datos del registro no son válidos.',
+          issues: ['password: supera la longitud máxima.'],
+        });
+      expect(createUser).not.toHaveBeenCalled();
+    });
+
     it('conserva el 201, el usuario pendiente y el hash bcrypt de costo 10', async () => {
       createUser.mockResolvedValueOnce(pendingUser);
 
